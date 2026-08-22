@@ -1,0 +1,162 @@
+module gunbc.systemd_property_directive_overlap
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, SingleAuthority }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
+  MemoryCurrent, TasksCurrent, ControlGroup,
+  ActiveEnterTimestampMonotonic, ActiveState,
+  systemd_unit_property_wire,
+}
+
+data systemd_property_directive_overlap_scope: Disposition = SingleAuthority
+
+// WHY THIS CARRIER EXISTS, AND WHY IT IS AN OBSERVATION RATHER THAN A REPAIR.
+//
+// systemd spells one cgroup knob the same way in both directions: `MemoryMax=` written into a unit
+// file and `MemoryMax` read back by `systemctl show --property=`. This repository models those two
+// directions in two places -- extdeps.systemd's SystemdUnitProperty for the read, and
+// extdeps.systemd.unit_file's section-scoped directive types for the write -- and the names overlap
+// because the upstream names overlap.
+//
+// That looks like the DESIGN section 3 nicknaming this tree exists to remove, and the tempting repair
+// is to delete the write-side vocabulary and reuse SystemdUnitProperty as the directive type. THAT
+// REPAIR IS WRONG, and the reason is the whole point of this row: SystemdUnitProperty is not the
+// knob, it is the SHOW SURFACE. It carries settable knobs and read-only observations in one flat
+// coproduct, so using it as a directive type would make `MemoryCurrent=` and `ActiveState=` writable
+// into a unit file -- directives systemd rejects. It would buy reuse by making an invalid state
+// REPRESENTABLE, which is the exact inverse of what the per-section directive types are for
+// (DESIGN section 4b: construction over validation).
+//
+// So the overlap is real and the obvious dissolution of it is a regression. Recording it rather than
+// acting on it is the deliberate choice, and the classification below is what makes the recording
+// mean something a mechanism can check instead of prose a reader must trust.
+
+data overlap_is_a_state_space_conflation_note: String = "SystemdUnitProperty ANSWERS TWO QUESTIONS WITH ONE VOCABULARY, and that is the defect underneath the naming overlap rather than the overlap itself. 'What may I write into a unit' and 'what may I read back from the manager' have different answers -- MemoryMax is in both, MemoryCurrent is only in the second, and no member is only in the first -- so a single coproduct standing for both admits combinations neither question does. It is the state-space conflation DESIGN's failure-mode list names, wearing upstream's own spelling, which is what makes it tempting and what makes the collapse undetectable at the type level once it has been made.\n\nTHE TERMINAL SHAPE, so this row is not read as an argument for leaving it alone forever: one settable-knob authority that BOTH surfaces project from -- the directive types deriving their writable members from it, and the show surface widening it with the observation-only members. That is a refactor of a merged module with read-side consumers across converge, the runner unit live read and the fleet effective read; it is not something a renderer migration should perform on the way past, because a contract change smuggled inside a migration is read by reviewers who came for the migration.\n\nWHAT THE CENSUS BELOW FOUND THAT THE NAMING ARGUMENT DID NOT. The typed value barely travels: SystemdUnitProperty in typed form reaches only the show-argv builders. Every other consumer takes one of the pre-stringified data rows, and three of them then RECOVER the variant by string equality against those same rows -- a match written as string comparison, after a round trip through text that discarded the type. So the write side is not merely modeled elsewhere; it never had the type at all, and part of the read side gives it up and re-derives it. Any unification that only splits the coproduct and leaves the stringified rows in place would fix the smaller half."
+
+// THE CLASSIFICATION IS THE LOAD-BEARING PART, because it is what a mechanism can check.
+//
+// Every member is decided against systemd's own specification: settable members are the cgroup
+// resource-control directives systemd.resource-control(5) admits in a unit's [Service] or [Slice]
+// section; observable members are values the manager computes and reports, which no unit file may
+// assign. The function is total over the coproduct, so a member added upstream cannot be left
+// unclassified -- it becomes a compile error here.
+type SystemdPropertyWritability
+  = SettableDirective
+  | ObservationOnly
+
+fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropertyWritability {
+  match property {
+    MemoryMax => SettableDirective
+    MemorySwapMax => SettableDirective
+    MemoryHigh => SettableDirective
+    CPUWeight => SettableDirective
+    TasksMax => SettableDirective
+    MemoryCurrent => ObservationOnly
+    TasksCurrent => ObservationOnly
+    ControlGroup => ObservationOnly
+    ActiveEnterTimestampMonotonic => ObservationOnly
+    ActiveState => ObservationOnly
+  }
+}
+
+fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
+  match systemd_property_writability(property: property) {
+    SettableDirective => true
+    ObservationOnly => false
+  }
+}
+
+// THE MEMBER ROSTER IS A PARALLEL REPRESENTATION OF THE COPRODUCT, AND IT IS ONLY HALF WALLED.
+//
+// Declared rather than left for a reader to notice, because the obvious reassurance is wrong in the
+// likelier direction. The classifier below is a total match, so ADDING A VARIANT AND NOT
+// CLASSIFYING IT is a compile error -- that half is genuinely covered. But adding a variant,
+// classifying it, and forgetting THIS list compiles clean: the wire projections silently omit the
+// member, and every count and predicate derived from them under-reports. That is the more likely
+// sequence, because the author is looking at the compile error in the classifier, not at a list
+// below it.
+//
+// It is not fixable here. A `.dag` source module has no facility for enumerating a coproduct's
+// variants -- the substrate's own `v2.std.node` `behavior_coproduct_variants` hand-authors the same
+// roster for the same reason -- so the completeness of this list is exactly as strong as the
+// author's attention, which is the definition of the mitigatable rung rather than a wall.
+//
+// NEXT-RUNG TRIGGER: a variant-enumeration surface over a declared coproduct, at which point this
+// row is derived and deleted rather than maintained. Until then the honest statement is that the
+// classification is walled and the enumeration is not, and a census derived from the enumeration
+// carries that weakness -- which is why the consumer roster below is measured by grep against the
+// corpus rather than computed from this list.
+data systemd_unit_property_members: List<SystemdUnitProperty> = [
+  MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
+  MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState,
+]
+
+fn settable_property_wires() -> List<String> {
+  map(
+    filter(systemd_unit_property_members, p => systemd_property_is_settable(property: p)),
+    p => systemd_unit_property_wire(property: p) as String,
+  )
+}
+
+fn observation_only_property_wires() -> List<String> {
+  map(
+    filter(systemd_unit_property_members, p => !systemd_property_is_settable(property: p)),
+    p => systemd_unit_property_wire(property: p) as String,
+  )
+}
+
+// THE CONFLATION PREDICATE, and it is deliberately NOT a count.
+//
+// The claim is that ONE vocabulary carries BOTH kinds, which is a property of the type rather than
+// of how many members it happens to have today -- so it is asserted as both classes being inhabited,
+// not as `5 and 5`. A member added or removed upstream leaves this true, which is correct: the
+// conflation is unchanged by its population. It goes false exactly when the type stops mixing the
+// two, which is the same event this row's dissolution names.
+fn systemd_unit_property_mixes_writability() -> Bool {
+  (settable_property_wires().count() > 0) && (observation_only_property_wires().count() > 0)
+}
+
+// THE DISSOLUTION IS A RETIREMENT, NOT AN ARRIVAL, and that is what makes it verifiable today.
+//
+// The unification completes when the mixed coproduct is GONE -- not when some new symbol appears.
+// Naming a symbol nobody has declared would be the fabricated-citation class std.dissolution's own
+// header records as the reason DeclarationRetires exists; naming SystemdUnitProperty binds this row
+// to a declaration that exists right now, so the reference is checkable at the moment it is written
+// and the trigger fires on the deletion that is the actual completion.
+data systemd_property_directive_overlap_dissolution: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.systemd", decl_name: "SystemdUnitProperty"),
+)
+
+// THE MEASURED CONSUMER POPULATION, recorded at IDENTITY grain rather than as counts.
+//
+// DESIGN's oracle rule is the reason: a literal copied from the current tree is not an oracle, and
+// completeness is an identity join, not a count equality. So these rows name the modules, and a
+// reader re-deriving the population greps for the row and compares NAMES -- a difference then says
+// which module joined or left, which a changed integer cannot.
+type SystemdPropertyConsumerRole
+  = ShowArgvTyped
+  | DirectiveWriteStringified
+  | VariantRecoveredByStringEquality
+
+type SystemdPropertyConsumer {
+  module_path: NonEmptyStr
+  role: SystemdPropertyConsumerRole
+}
+
+data systemd_property_consumers: List<SystemdPropertyConsumer> = [
+  SystemdPropertyConsumer { module_path: "extdeps.systemd.systemctl" as NonEmptyStr, role: ShowArgvTyped },
+  SystemdPropertyConsumer { module_path: "gunbc.systemctl_show_read" as NonEmptyStr, role: ShowArgvTyped },
+  SystemdPropertyConsumer { module_path: "gunbc.host_hygiene_reaper_observe" as NonEmptyStr, role: ShowArgvTyped },
+  SystemdPropertyConsumer { module_path: "gunbc.host_axis_caps" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.host_converge" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.fleet_converge_plan" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.host_converge_slice1" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+  SystemdPropertyConsumer { module_path: "gunbc.runner_unit_live_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+  SystemdPropertyConsumer { module_path: "gunbc.fleet_show_effective_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+]
+
+data consumer_roster_provenance_note: String = "HOW THIS ROSTER WAS MEASURED, so it can be re-derived rather than trusted. Read on origin/main at 90986d1946 (2026-08-22). ShowArgvTyped members are the modules that consume SystemdUnitProperty AS THE TYPE -- found by grepping the type name and systemd_unit_property_wire across dag/ and src/v2, which returns exactly extdeps.systemd itself plus these three. The other two roles are modules consuming one of the pre-stringified data rows (systemd_memory_max_property and its siblings); DirectiveWriteStringified passes that string on as unit or drop-in content, VariantRecoveredByStringEquality compares it back against the same row to work out which property it holds.\n\nTWO ROWS HAVE NO CONSUMER AT ALL: systemd_memory_current_property and systemd_tasks_current_property, both ObservationOnly. They are named here rather than deleted because deleting an unconsumed extdeps row is a separate judgement about the cited surface -- an upstream property this repository does not currently read is not thereby wrong to model -- and because a census that silently omitted them would misreport the observable half as smaller than it is.\n\nTEST MODULES ARE EXCLUDED. They consume the same rows and would double the roster without adding a distinct role; the question this census exists to answer is which PRODUCTION authorities a unification must move."

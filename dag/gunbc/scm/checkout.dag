@@ -35,6 +35,14 @@ type CheckoutOutcome
 // the same name, substitute a plausible one, or fall back to whatever the store currently holds --
 // each of those is the fabricated-plausible-output arm DESIGN section 5 forbids, and each would make
 // the program's meaning depend on the store's current population rather than on the commit.
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
+// copies the whole accumulator per child, so rebuilding one node cost O(children^2) for work that is
+// O(children) -- the cost shape DESIGN section 6 says is always fixed regardless of the realized n,
+// because "n is small here" is not a fact that stays true under reuse.
+//
+// The reverse is load-bearing, not cosmetic: these edges are handed to node_synthetic in order, and
+// under a positional discipline the order IS the program. A dropped or doubled reverse would rebuild
+// `f(x, y)` as `f(y, x)` silently.
 type CheckoutEdgeAcc {
   edges: List<Edge>
   refusal: CheckoutRefusal?
@@ -49,7 +57,7 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
           CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
         CheckedOut { program: child } =>
           CheckoutEdgeAcc {
-            edges: concat(acc.edges, [Edge { label: stored.label, target: child }]),
+            edges: concat([Edge { label: stored.label, target: child }], acc.edges),
             refusal: acc.refusal,
           }
       }
@@ -65,7 +73,8 @@ fn checkout_record(store: ObjectStore, record: ObjectRecord) -> CheckoutOutcome 
     CheckoutEdgeAcc { edges: edges, refusal: refusal } =>
       match refusal {
         Present { value: cause } => CheckoutRefused { cause: cause }
-        Absent => CheckedOut { program: node_synthetic(kind: record.kind, children: edges) }
+        Absent =>
+          CheckedOut { program: node_synthetic(kind: record.kind, children: reverse(edges)) }
       }
   }
 }

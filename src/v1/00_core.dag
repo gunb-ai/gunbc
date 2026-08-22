@@ -176,6 +176,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
   | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
@@ -195,6 +196,15 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | TransportEmissionNotModeled {
+      transport_kind: String,
+      service: String,
+      operation: String,
+      declaring_module: String,
+      target: String,
+      missing_realization_fact: String,
+      span: SourceSpan
+    }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -304,6 +314,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
     ConstructorCallAdmissionRefused {
@@ -327,6 +338,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Absent => no_span()
       }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
   }
 }
 
@@ -358,6 +370,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
+      concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
     BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
       concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
@@ -398,6 +412,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
       concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
+      concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
   }
 }
 

@@ -16,6 +16,7 @@ type ExecutionCapability
   | CargoCapability
   | RustcCapability
   | RustfmtCapability
+  | RustupCapability
 
 type ValidationOperation
   = GunbcClaimValidation {
@@ -66,6 +67,7 @@ fn execution_capability_label(capability: ExecutionCapability) -> String {
     CargoCapability => "cargo"
     RustcCapability => "rustc"
     RustfmtCapability => "rustfmt"
+    RustupCapability => "rustup"
   }
 }
 

@@ -1,0 +1,184 @@
+module gunbc.dissolution_observation
+
+import std.roster_frontier {
+  FrontierRow,
+  FrontierExpiryReport,
+  fold_frontier_expiry,
+}
+import std.dissolution {
+  DissolutionCondition,
+  BoundDissolution,
+  UnboundDissolution,
+  dissolution_is_bound,
+  dissolution_trigger_ref,
+}
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefAmbiguous,
+}
+
+// THE POPULATION THE FOLD IS ANSWERED AGAINST, AND WHY IT USED TO BE EMPTY.
+//
+// `dissolution_census_report` folded the roster against `present_decls: []`. Under an
+// empty population no `DeclarationAppears` trigger can ever be found, so every bound row
+// reports Pending, `fired_still_present_count` is 0 BY CONSTRUCTION, and
+// `frontier_expiry_clean` — the census's headline assertion — could not fail. That is
+// not a weak check; it is a predicate with one reachable answer, reporting green over a
+// roster nothing had read. `std.dissolution` was a correct model with no observer.
+//
+// The population is now the live tree, and the two trigger directions read it in
+// opposite ways: a forward trigger fires when its declaration is FOUND, a retirement
+// trigger when it is GONE. That symmetry is why a partial or wrong population is
+// dangerous rather than merely imprecise — it would mass-fire one direction while
+// mass-silencing the other — so nothing here answers a ref it could not resolve.
+data dissolution_census_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn dissolution_census_facts() -> List<DeclFact> {
+  decl_facts(pool_roots: dissolution_census_pool_roots)
+}
+
+fn dissolution_census_modules() -> List<ModuleDeclarationFact> {
+  module_declaration_facts_live(pool_roots: dissolution_census_pool_roots)
+}
+
+fn frontier_row_trigger_refs(row: FrontierRow) -> List<DeclarationRef> {
+  match row.dissolution {
+    BoundDissolution { trigger: t } => [dissolution_trigger_ref(trigger: t)]
+    UnboundDissolution { description: _ } => []
+  }
+}
+
+fn census_trigger_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  flat_map(rows, row => frontier_row_trigger_refs(row: row))
+}
+
+// A MODULE THE DECLARATION INDEX DOES NOT COVER IS NOT A MODULE WHOSE DECLARATIONS ARE
+// GONE, and conflating the two is the whole hazard. `decl_facts` deliberately skips test
+// `.dag` files while `module_declaration_facts` still reports their modules, so a ref
+// into a witness module resolves as DeclarationAbsent for a reason that has nothing to
+// do with the tree. `std.decl_ref` already names this state
+// (`OutsideDeclIndexTestWitnessModule`); here it is DERIVED rather than pattern-matched
+// on a path convention — a module is outside the index exactly when the index carries no
+// declaration from its file at all.
+fn module_rel_path(module_path: String, modules: List<ModuleDeclarationFact>) -> String {
+  fold(modules, init: "", f: fn(acc, m) { if m.module == module_path { m.path } else { acc } })
+}
+
+fn index_covers_rel_path(rel_path: String, facts: List<DeclFact>) -> Bool {
+  fold(facts, init: false, f: fn(acc, f) { acc || f.rel_path == rel_path })
+}
+
+type CensusRefVerdict
+  = CensusRefPresent { ref: DeclarationRef }
+  | CensusRefAbsent { ref: DeclarationRef }
+  | CensusRefOutsideIndex { ref: DeclarationRef }
+  | CensusRefAmbiguous { ref: DeclarationRef }
+
+fn census_ref_verdict(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> CensusRefVerdict {
+  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+    DeclarationRefResolved { declaration_identity: _ } => CensusRefPresent { ref: ref }
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => CensusRefAmbiguous { ref: ref }
+    DeclarationRefFieldAbsent { reference: _ } => CensusRefAbsent { ref: ref }
+    DeclarationRefModuleAbsent { reference: _ } => CensusRefAbsent { ref: ref }
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      if index_covers_rel_path(
+        rel_path: module_rel_path(module_path: ref.module_path as String, modules: modules),
+        facts: facts,
+      ) {
+        CensusRefAbsent { ref: ref }
+      } else {
+        CensusRefOutsideIndex { ref: ref }
+      }
+  }
+}
+
+fn census_ref_is_present(verdict: CensusRefVerdict) -> Bool {
+  match verdict {
+    CensusRefPresent { ref: _ } => true
+    CensusRefAbsent { ref: _ } => false
+    CensusRefOutsideIndex { ref: _ } => false
+    CensusRefAmbiguous { ref: _ } => false
+  }
+}
+
+fn census_ref_is_undecided(verdict: CensusRefVerdict) -> Bool {
+  match verdict {
+    CensusRefPresent { ref: _ } => false
+    CensusRefAbsent { ref: _ } => false
+    CensusRefOutsideIndex { ref: _ } => true
+    CensusRefAmbiguous { ref: _ } => true
+  }
+}
+
+fn census_ref_verdict_ref(verdict: CensusRefVerdict) -> DeclarationRef {
+  match verdict {
+    CensusRefPresent { ref: r } => r
+    CensusRefAbsent { ref: r } => r
+    CensusRefOutsideIndex { ref: r } => r
+    CensusRefAmbiguous { ref: r } => r
+  }
+}
+
+fn census_ref_verdicts(
+  rows: List<FrontierRow>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> List<CensusRefVerdict> {
+  census_trigger_refs(rows: rows)
+    |> map(ref => census_ref_verdict(ref: ref, facts: facts, modules: modules))
+}
+
+// The present population is the roster's OWN refs that resolved, so identity is exact —
+// no qualified-name reprojection stands between the resolver's answer and the fold's
+// `declaration_ref_eq`, and field grain is preserved because the resolver already
+// decided it.
+fn census_present_decls(verdicts: List<CensusRefVerdict>) -> List<DeclarationRef> {
+  verdicts
+    |> filter(v => census_ref_is_present(verdict: v))
+    |> map(v => census_ref_verdict_ref(verdict: v))
+}
+
+fn census_undecided_refs(verdicts: List<CensusRefVerdict>) -> List<DeclarationRef> {
+  verdicts
+    |> filter(v => census_ref_is_undecided(verdict: v))
+    |> map(v => census_ref_verdict_ref(verdict: v))
+}
+
+// THE FAILURE ARM REFUSES, IT DOES NOT WIDEN OR NARROW (DESIGN §5). A ref the resolver
+// could not decide is neither present nor absent, and answering it either way would
+// silently fire one trigger direction. The verdict carries the located refs so the
+// deficit is countable and prioritizable rather than absorbed.
+type DissolutionCensusVerdict
+  = DissolutionCensusAnswered { report: FrontierExpiryReport }
+  | DissolutionCensusRefused { undecided: List<DeclarationRef> }
+
+fn dissolution_census_verdict_for(
+  rows: List<FrontierRow>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> DissolutionCensusVerdict {
+  let verdicts = census_ref_verdicts(rows: rows, facts: facts, modules: modules)
+  let undecided = census_undecided_refs(verdicts: verdicts)
+  if length(xs: undecided) > 0 {
+    DissolutionCensusRefused { undecided: undecided }
+  } else {
+    DissolutionCensusAnswered {
+      report: fold_frontier_expiry(
+        rows: rows,
+        present_decls: census_present_decls(verdicts: verdicts),
+      ),
+    }
+  }
+}
+

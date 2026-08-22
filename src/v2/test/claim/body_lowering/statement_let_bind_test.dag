@@ -1,0 +1,65 @@
+module v2.test.claim.body_lowering.statement_let_bind
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data statement_let_bind_note: String = "THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants rather than as observations of the present frontier so that neither inverts when the frontier moves.\n\nA statement-form let (`let n = e` with no `in`) does not carry its own Bind body: dag_grammar_let_expr is a CHOICE of two alternatives and only the `in` one has a body. The statement form's body is the REMAINDER OF THE ENCLOSING STATEMENT SPINE, so the lowering belongs at dag_surface_stmt_seq, which is the only node from which both halves of the Bind are reachable. Before that lowering existed, body_lower_let_expr was handed the let alone, looked for the `in` atom, and reported its absence as ^body_lowering_reason_unsupported_form -- which is what held boundary 4 of the seven-boundary product receipt on the compiler's own closure.\n\nTHE RED IS THE THIRD CLAIM AND IT IS THE ONE THAT MATTERS. A body whose non-final statement is NOT a binding has no continuation to bind and must refuse with its own cause. If that claim ever greens, the sequence lowering has started fabricating a body for a statement that never produced one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not retire when the capability lands; it is the standing control that the capability stayed honest."
+
+fn normalize_outcome(src: String) -> String {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^statement_let_bind_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => "PARSE_REFUSED"
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
+
+data statement_let_then_reference_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
+
+data statement_let_chain_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  let y = x\n  y\n}\n"
+
+data single_statement_source: String = "module m.t\nfn f() -> Int {\n  1\n}\n"
+
+data unbound_statement_prefix_source: String = "module m.t\nfn f() -> Int {\n  1\n  2\n}\n"
+
+// The two controls #8828 owed and did not land. The `in` form is the
+// alternative the statement form is NOT, and the PR argued from control flow
+// that it keeps its pre-existing path; that argument deserves an executed row.
+// The typed statement form exercises the grammar's optional annotation, which
+// the original matrix never did -- a spine reader that keys on the position of
+// the `=` finds a different node once `: T` is present.
+data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x\n}\n"
+
+data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
+
+test fn statement_let_then_reference_lowers_holds() -> Bool {
+  normalize_outcome(src: statement_let_then_reference_source) == "ACCEPTED"
+}
+
+test fn statement_let_chain_lowers_holds() -> Bool {
+  normalize_outcome(src: statement_let_chain_source) == "ACCEPTED"
+}
+
+test fn unbound_statement_prefix_refuses_holds() -> Bool {
+  normalize_outcome(src: unbound_statement_prefix_source)
+    == "body_lowering_reason_statement_precedes_without_binding"
+}
+
+test fn single_statement_body_unchanged_holds() -> Bool {
+  normalize_outcome(src: single_statement_source) == "ACCEPTED"
+}
+
+test fn let_in_form_unchanged_holds() -> Bool {
+  normalize_outcome(src: let_in_form_source) == "ACCEPTED"
+}
+
+test fn typed_statement_let_lowers_holds() -> Bool {
+  normalize_outcome(src: typed_statement_let_source) == "ACCEPTED"
+}

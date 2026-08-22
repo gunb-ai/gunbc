@@ -2,6 +2,12 @@
 // Source module: extdeps.languages.rust.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_languages_rust_capabilities::RustCapability;
+use crate::extdeps_languages_rust_capabilities::RustCapability::*;
+pub use crate::extdeps_languages_rust_capabilities::{
+    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
+    record_derive_traits_heap,
+};
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_dissolution::unbound_dissolution;
@@ -14,19 +20,15 @@ use crate::std_trait_derive_shape::PairCompletionBody::{
 use crate::std_trait_derive_shape::PairCompletionComponent::{
     PairCompletionNeg, PairCompletionPos,
 };
+use crate::std_trait_derive_shape::PairCompletionOp::{
+    PairCompletionOpAdd, PairCompletionOpDiv, PairCompletionOpMul, PairCompletionOpNeg,
+    PairCompletionOpSub,
+};
 use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
-    ReprDeriveDiv, ReprDeriveEq, ReprDeriveHash, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd,
-    ReprDerivePartialEq, ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
-};
-pub use crate::std_trait_derive_shape::{
-    nullary_coproduct_derive_traits, pair_completion_body_uses_rhs, pair_completion_op_rows,
-    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
-};
+pub use crate::std_trait_derive_shape::{pair_completion_body_uses_rhs, pair_completion_op_rows};
 pub use crate::std_trait_derive_shape::{
     PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
-    PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm, ReprGroundingDeriveTrait,
+    PairCompletionOp, PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -186,28 +188,28 @@ pub fn rust_enum_derives_copy() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+pub fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
     match derive_trait.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveDebug => "Debug".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveClone => "Clone".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveCopy => "Copy".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => "PartialEq".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveEq => "Eq".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "PartialOrd".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveOrd => "Ord".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveHash => "std::hash::Hash".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serde::Serialize".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "serde::Deserialize".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveAdd => "std::ops::Add".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSub => "std::ops::Sub".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveMul => "std::ops::Mul".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDiv => "std::ops::Div".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveRem => "std::ops::Rem".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveNeg => "std::ops::Neg".to_string(),
+        RustCapability::RustDebug => "Debug".to_string(),
+        RustCapability::RustClone => "Clone".to_string(),
+        RustCapability::RustCopy => "Copy".to_string(),
+        RustCapability::RustPartialEq => "PartialEq".to_string(),
+        RustCapability::RustEq => "Eq".to_string(),
+        RustCapability::RustPartialOrd => "PartialOrd".to_string(),
+        RustCapability::RustOrd => "Ord".to_string(),
+        RustCapability::RustHash => "std::hash::Hash".to_string(),
+        RustCapability::RustSerialize => "serde::Serialize".to_string(),
+        RustCapability::RustDeserialize => "serde::Deserialize".to_string(),
+        RustCapability::RustAdd => "std::ops::Add".to_string(),
+        RustCapability::RustSub => "std::ops::Sub".to_string(),
+        RustCapability::RustMul => "std::ops::Mul".to_string(),
+        RustCapability::RustDiv => "std::ops::Div".to_string(),
+        RustCapability::RustRem => "std::ops::Rem".to_string(),
+        RustCapability::RustNeg => "std::ops::Neg".to_string(),
     }
 }
 
-pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<ReprGroundingDeriveTrait>>) -> String {
+pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "#[derive(".to_string(),
@@ -661,6 +663,7 @@ pub fn rust_pair_completion_spelling_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustPairCompletionSpelling {
+    pub capability_key: PairCompletionOp,
     pub method: String,
     pub trait_path: String,
     pub where_bounds: String,
@@ -677,51 +680,54 @@ pub fn rust_pair_completion_carrier() -> String {
 
 pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<RustPairCompletionSpelling>>> = {
-            serde_json::from_value(serde_json::json!([{"method": "neg", "trait_path": "std::ops::Neg", "where_bounds": ""}, {"method": "add", "trait_path": "std::ops::Add", "where_bounds": "where M: std::ops::Add<Output = M>,"}, {"method": "sub", "trait_path": "std::ops::Sub", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,"}, {"method": "mul", "trait_path": "std::ops::Mul", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,"}, {"method": "div", "trait_path": "std::ops::Div", "where_bounds": "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,"}]))
-                .expect("valid data definition")
-        };
-    }
+            static CACHED: Rc<Vec<Rc<RustPairCompletionSpelling>>> = {
+                Rc::new(vec![Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpNeg,
+        method: "neg".to_string(),
+        trait_path: "std::ops::Neg".to_string(),
+        where_bounds: "".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpAdd,
+        method: "add".to_string(),
+        trait_path: "std::ops::Add".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M>,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpSub,
+        method: "sub".to_string(),
+        trait_path: "std::ops::Sub".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpMul,
+        method: "mul".to_string(),
+        trait_path: "std::ops::Mul".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpDiv,
+        method: "div".to_string(),
+        trait_path: "std::ops::Div".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,".to_string(),
+    })])
+            };
+        }
     CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
 }
 
-pub fn rust_pair_completion_op_key_totality_note() -> String {
+pub fn rust_pair_completion_key_join_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Total over ReprGroundingDeriveTrait by construction, with no wildcard arm (DESIGN §6 non-fold residue; caught by v2.lens.non_fold_residue on the first floor run that was not superseded). The first draft matched the five arithmetic variants and swept the other ten into `_ => \"\"`, which is two defects in one line: a new unrostered residue site, and a FABRICATED key — an empty string is not the key of any trait, it is the absence of an answer wearing a String. It also made the coproduct's growth silent, which is the actual cost: a sixteenth ReprGroundingDeriveTrait variant would have landed as \"\" and been read as a legitimate lookup that simply missed. Every variant now returns its own key. Ten of the fifteen have no pair-completion spelling row and are not expected to — a pair completion has no Debug or Ord operator, and Rem is arithmetic but is not one of the five Grothendieck ops — so they resolve to Absent in rust_pair_completion_spelling_for and surface through the compile_error! arm NAMED, which is strictly better than the empty key: the diagnostic says which trait was asked for. Adding a variant to the coproduct now forces an edit here rather than defaulting, and that is enforced rather than hoped for: with no wildcard the match is non-exhaustive the moment a sixteenth variant lands, which is a hard diagnostic from the batch-1 dag_compile_clean_gate_passes gate (extdeps/ is not one of the excluded paths). The wildcard was what made the coproduct extensible-in-silence; removing it is the construction, and the gate is the thing that notices.".to_string()
+            "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
-    match op.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveAdd => "add".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSub => "sub".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveMul => "mul".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDiv => "div".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveNeg => "neg".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveRem => "rem".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDebug => "debug".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveClone => "clone".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveCopy => "copy".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => "partial_eq".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveEq => "eq".to_string(),
-        ReprGroundingDeriveTrait::ReprDerivePartialOrd => "partial_ord".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveOrd => "ord".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveHash => "hash".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => "serialize".to_string(),
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => "deserialize".to_string(),
-    }
-}
-
 pub fn rust_pair_completion_spelling_for(
-    op: ReprGroundingDeriveTrait,
+    op: PairCompletionOp,
 ) -> Option<Rc<RustPairCompletionSpelling>> {
     Rc::new({
         let mut __result = Vec::new();
         for s in rust_pair_completion_spellings().iter().cloned() {
-            if (s.method.clone() == rust_pair_completion_op_key(op.clone())) {
+            if (s.capability_key.clone() == op.clone()) {
                 __result.push(s);
             }
         }
@@ -921,7 +927,7 @@ pub fn rust_pair_completion_impl_render(
     } else {
         "(self) -> Self::Output ".to_string()
     }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
-    None => v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: pair-completion row '".to_string(), rust_pair_completion_op_key(row.op.clone())), "' has no rust_pair_completion_spellings entry — std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+    None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
 }
 }
 

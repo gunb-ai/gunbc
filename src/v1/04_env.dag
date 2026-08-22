@@ -66,10 +66,16 @@ type ServiceCensusEntry {
   item: Node
 }
 
+// transparent_alias_rep is the PRECOMPUTED half of the transparent-alias identity relation:
+// declared type name -> the name its chain of plain `type A = B` aliases terminates at. It is
+// built once, with the rest of this census, over the whole module population, and is read by
+// name at O(1) -- the judgment seams must never chase an alias chain per comparison. See
+// transparent_alias_identity_note (v1.compiler.infer) for what counts as transparent and why.
 type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
+  transparent_alias_rep: Map<String, String>
 }
 
 type Scope {
@@ -77,7 +83,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -138,7 +144,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
   SymbolIndex {
     entries: map_insert(index.entries, qualified_name, resolved),
     global_bare: index.global_bare,
-    services: index.services
+    services: index.services,
+    transparent_alias_rep: index.transparent_alias_rep
   }
 }
 
@@ -146,7 +153,8 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
   SymbolIndex {
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
-    services: index.services
+    services: index.services,
+    transparent_alias_rep: index.transparent_alias_rep
   }
 }
 
@@ -154,7 +162,8 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item })
+    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
+    transparent_alias_rep: index.transparent_alias_rep
   }
 }
 
