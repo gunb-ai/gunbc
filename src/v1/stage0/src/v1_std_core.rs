@@ -18,6 +18,7 @@ use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::StringPart::*;
 use self::TokenShape::*;
+use self::TransportKind::*;
 use self::UnaryOpKind::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
@@ -351,6 +352,17 @@ pub enum OperationModifier {
     Idempotent,
     Readonly,
     Hermetic,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TransportKind {
+    RestTransport,
+    ShellTransport,
+    FileTransport,
+    LocalTransport,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2748,12 +2760,42 @@ pub fn is_file_transport(
     (transport_base_path(t.clone(), source_indices.clone()) != None)
 }
 
+pub fn is_bare_transport(t: Rc<Node>) -> bool {
+    ((((t.properties.clone().len() as i64) == 0) && ((t.children.clone().len() as i64) == 0))
+        && (t.body.clone() == None))
+}
+
+pub fn classify_transport(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<TransportKind> {
+    if is_rest_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::RestTransport)
+    } else {
+        if is_shell_transport(t.clone()) {
+            Some(TransportKind::ShellTransport)
+        } else {
+            if is_file_transport(t.clone(), source_indices.clone()) {
+                Some(TransportKind::FileTransport)
+            } else {
+                if is_bare_transport(t.clone()) {
+                    Some(TransportKind::LocalTransport)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub fn is_local_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((!is_rest_transport(t.clone(), source_indices.clone()) && !is_shell_transport(t.clone()))
-        && !is_file_transport(t.clone(), source_indices.clone()))
+    match classify_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::LocalTransport) => true,
+        _ => false,
+    }
 }
 
 pub fn field_init_operation_modifier(
@@ -4412,6 +4454,14 @@ pub struct Idempotent;
 pub struct Readonly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hermetic;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RestTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LocalTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChildrenListField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
