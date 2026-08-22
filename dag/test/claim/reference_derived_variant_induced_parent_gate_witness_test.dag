@@ -14,6 +14,24 @@ module test.claim.reference_derived_variant_induced_parent_gate_witness_test
 // the emitter is a separate integration receipt and is deliberately NOT restated here as a claim
 // this module proves — it lives in the change that introduced the arm.
 //
+// MEASURED 2026-08-22: that deferral cost the arm its entire working life. The admission law below
+// was correct and these five tests were green, while NOTHING COULD REACH THE ARM IN PRODUCTION —
+// reference_derived_use_line_dispositions never proposed an unspelled parent as a candidate, so
+// reference_derived_variant_induced_parent_spelled was unreachable-but-correct code from the day it
+// landed. The scoping note above is honest about what it proves; the gap is that the integration
+// receipt it points at is a commit message rather than anything that executes, so no mechanism ever
+// noticed the consumer was missing. A mirrored oracle cannot close this by construction: it
+// re-implements the LAW, and the defect was in the TRAVERSAL that feeds it — collect_value_ref_names
+// walks children/params/uses/properties/body/transport/type_annotation and a match arm's pattern is
+// `n.match_pattern`, a VALUE in none of those seven, so a pattern-position variant reference was
+// discarded before any candidate could be proposed. Repaired on gunbc#8905; the discriminating
+// evidence there is the emitted seed's own compile (E0433 12 -> 7), which is executing but
+// incidental — it discriminates only while those modules keep using variant patterns.
+//
+// The general tell, worth more than this instance: FINDING UNREACHABLE-BUT-CORRECT ADMISSION LOGIC
+// MEANS YOU ARE AT THE RIGHT LAYER AND ONE STAGE TOO LATE. A green unit test over a law whose
+// consumer cannot reach it is specification-without-execution wearing a passing suite.
+//
 // Dissolve-on: identical to the sibling witness — derive use-lines from BoundReferenceProvider /
 // P2a candidate-producer, at which point the spelling question and both oracles disappear.
 
