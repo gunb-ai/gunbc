@@ -423,16 +423,67 @@ at 24 sites keys on the bare authored name while the identity-keyed authority si
 module.** That is a stronger argument for consolidating the wrap decision into one authority than the
 unavailability reading would have been.
 
-## Emitter nondeterminism — reported separately, flagged here because it bounds every byte oracle
+## Emitter nondeterminism — the mechanism, and the retraction of my own hazard claim
 
 Same binary, same environment, same tree, consecutive emits of `src/v2/compiler/03_ingest.dag`
-differ on `v2_lens_enforcement_vocab.rs` and `v2_std_cross_tree_resolution.rs`.
+differ. I first reported this as a possible `--required-regen` flake source before characterising it.
+**That escalation is withdrawn.** The mechanism removes it.
 
-This bounds the consolidation proposal's own oracle. "Emitted bytes identical before and after" is
-only a valid equivalence check on the files where emission is deterministic; on these it will report
-a difference that has nothing to do with the change. **Any byte-identity oracle over emitted output
-needs a same-arm control run first** — the OFF-vs-OFF row above *is* that control, and it is the only
-reason this document's own control could be read at all.
+### Mechanism — pure `use`-statement reordering
 
-**Not claimed:** that these files are in the `--required-regen` population, or that regen has ever
-flaked on them. Only that the emitter is nondeterministic on them.
+Three emits of the unchanged tree, all three pairwise different, and the entire difference is one
+import line moving one position:
+
+```
+10d9
+<  pub use crate::v2_std_qualified_name::{QualifiedName};
+11a11
+>  pub use crate::v2_std_qualified_name::{QualifiedName};
+```
+
+Line counts identical across all three runs (336). Sorted-identical test on both files: **pure line
+reordering**, no content difference at all. So this is import-emission *order* — a set or map
+iteration — not a value or content nondeterminism.
+
+**The churn set is not stable.** The first run set churned two files; a second run set on the same
+tree churned only `v2_lens_enforcement_vocab.rs`, with `v2_std_cross_tree_resolution.rs` identical
+across all three. *Which* files churn is itself run-dependent while the shape is always reordering.
+A single run per arm therefore cannot even establish the churn population, let alone a difference.
+
+### Why the hazard does not fire — verified by execution
+
+`rustfmt` normalizes `use`-statement order. Checked with a discriminating control — two files
+differing only in the order of two `pub use` lines, formatted, converging byte-identically:
+
+```
+RUSTFMT NORMALIZES use-ORDER: two orderings converge
+```
+
+Any comparison over a rustfmt-normalized artifact cannot see this class. The regen gate compares
+normalized artifacts. The hazard required the nondeterminism to *survive* normalization; this one
+does not, so there is no coin flip for a gate to install — both arms normalize to the same bytes.
+
+This also explains the seed's `--emit-fresh` twice-zero result being rustfmt-normalized rather than
+natively deterministic. For this mechanism that green is genuinely closed, not papering over a
+difference: normalization is the fixed point in which the difference does not exist.
+
+**Not retracted:** the emitter *is* nondeterministic on raw output — measured, and it stands. The
+laundering argument also stands as reasoning for any nondeterminism that *does* survive `rustfmt`.
+What is withdrawn is the claim that this specimen is an instance of it. The lesson is the one this
+document keeps re-learning: a hazard asserted from an uncharacterised mechanism is a claim about
+something not yet observed.
+
+### Consequence for the consolidation oracle
+
+"Emitted bytes identical before and after" is unusable as stated on raw output. Two options, and the
+second is better by §5:
+
+1. Establish the nondeterministic set with N≥2 emits of the unchanged tree and **exclude** it,
+   stating the excluded population — validation, and the exclusion list is itself unsound if derived
+   from one run (see churn instability above).
+2. Compare **rustfmt-normalized** emitted output, which makes this entire class *unrepresentable* in
+   the oracle rather than subtracted from it — construction over validation, with no exclusion
+   population to state or maintain.
+
+Option 2 depends on a claim I have **not** closed: that no *other* nondeterminism survives
+normalization. Establishing that is the same N≥2 control, run over normalized rather than raw output.
