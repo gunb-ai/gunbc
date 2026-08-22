@@ -1,5 +1,6 @@
 module gunbc.live_deploy.deployed_tree_observation
 
+import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
 import extdeps.git
@@ -178,7 +179,7 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
 fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
   ]
 }
@@ -187,7 +188,7 @@ fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_p
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
 fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "--no-optional-locks",
     "status", "--porcelain=v1", "-z", "--untracked-files=all",
   ]
@@ -206,7 +207,7 @@ fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<Stri
 // module refuses to trust.
 fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String,
     "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]
