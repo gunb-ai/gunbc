@@ -328,11 +328,26 @@ in section 2 that must not move (`reachable`, `CONSUMED-DECISIVE`) beside the on
 required mode (src/v1 `.dag` parse sweep, `--required-regen`, witness floor). Its result on
 this branch is reported on the PR.
 
-The instrument is
-[`unconsumed-module-census-instrument.py`](unconsumed-module-census-instrument.py), kept
-beside the census so every number above is re-derivable and disagreeable rather than
-asserted. It is an audit instrument, not production and not a modeled route: it reads the
-tree and prints, it is on no execution path, and nothing in the repository consumes its
-output. It is committed because the census's own method section asks to be *"re-derived and
-disagreed with"*, and a method that ships without the thing that ran it can only be agreed
-with.
+**The instrument is not committed, and that is a repository rule rather than a choice:**
+`.gitignore` excludes `*.py` tree-wide, so the audit script that produced these numbers has
+no home here. What it does is fully specified instead -- it implements the census's own
+section-2 method without deviation, and the two arms that matter are stated exactly:
+
+- **Roots** are the discovery paths (`/test/`, `*_test.dag`, `/lens/`, `/manual/`,
+  `/fixture*`), every `--entry` argv literal and `*entry*:` path field found in any `.dag`,
+  `.rs`, `.md`, `.yml`, `.sh` or `.toml` file, and every module whose name-with-underscores
+  matches a `src/v1/stage0/src/*.rs` seed mirror. Edges are `import` lines plus
+  fully-qualified `module.symbol` references resolved by longest-prefix against the module
+  index. The population is what no root reaches.
+- **The defect-6 re-score** takes each population member's declared symbols -- not its name,
+  not its path -- keeps only those declared by exactly one module corpus-wide, and asks
+  whether any other `.dag` file names one bare. Comments and string literals are removed
+  with a character scanner, never a regex, because a regex terminates early on the `\{`
+  interpolation escapes real `.dag` prose contains. An identifier preceded by `.` or
+  followed by `:` is not a reference.
+
+That specification is what makes the numbers disagreeable: re-implementing it is a
+half-page, and any reader who does so and gets a different answer has found a defect in one
+of us. Beside it, the two counters in section 2 are checkable without the instrument at all
+-- `reachable` and `CONSUMED-DECISIVE` not moving is a claim about the tree, not about the
+script.
