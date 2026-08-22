@@ -1,0 +1,359 @@
+module gunbc.bare_name_identity_consumer_census
+
+import std.types { List, String, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE ROSTER OF PLACES THE v1 RUST EMITTER DECIDES A REALIZATION FROM A BARE NAME RATHER THAN FROM
+// THE RESOLVED DECLARATION IDENTITY. The rule being censused against, stated once so every row below
+// is read against the same proposition: the resolved provider identity is the terminal fact, and a
+// spelling is an INPUT to resolution, never an identity a downstream consumer may reinterpret.
+//
+// WHY A ROSTER AND NOT A REPAIR. Each known instance of this class was found by somebody tripping
+// over it while measuring something else, and at least one of them had two independent consumers
+// making the same mistake. Nobody knew how many there were. This carrier is that number, at the
+// grain of the deciding function rather than of the occurrence -- an occurrence census over one
+// closure is a different instrument, owned by royal-dove-436, and the two do not substitute for
+// each other: this one says WHICH DECISIONS can be wrong, that one says HOW OFTEN one of them is.
+//
+// THE SEQUENCING THIS CARRIER EXISTS TO PROTECT. gunbc.empty_decl_file_checkpoint_bypass states it
+// for its own row and it generalises to every row here: the sweep is a PRECONDITION for adding a
+// refusal, never a follow-up to it. A refusal landed ahead of the population converts an uncounted
+// silence into an uncounted red -- a defect nobody can see traded for an outage nobody predicted.
+// NOTHING IN THIS PR REPAIRS ANY ROW.
+
+// WHAT THE SITE COULD HAVE CONSULTED, and the discriminator the brief asks for between a design gap
+// and an oversight. A row may not claim identity was available without NAMING the expression that
+// holds it, because "available" asserted bare is the claim a reader most wants to check and the one
+// an author is most tempted to assume.
+//
+// AvailableAtSite is the oversight arm: the resolved declaration file is computable from a node the
+// deciding call already has, and at several rows it is computed on an ADJACENT LINE for a different
+// question. AvailableUpstreamNotThreaded is the design gap that is still closable: the caller holds
+// a node, the callee's signature has nowhere to put it. UnavailableNoNodeAtSite is the genuine gap:
+// the value flowing into the decision is a String that was severed from its declaration earlier,
+// so threading identity here requires re-shaping what upstream carries, not editing this call.
+type IdentityAvailability
+  = AvailableAtSite { holder_expression: String, adjacent_consulting_call: DeclarationRef }
+  | AvailableUpstreamNotThreaded { nearest_holder: DeclarationRef }
+  | UnavailableNoNodeAtSite { severed_at: DeclarationRef }
+
+// WHAT HAPPENS TODAY when the bare key is absent, ambiguous, or names the wrong provider. The
+// variants are ordered by how hard the outcome is to notice, worst first, and the distinction that
+// matters most is between the middle two: AmbiguityDetectedThenAnswered means the site COMPUTED the
+// fact that it could not decide and then decided anyway, which is strictly worse than never having
+// looked, because the detection is what makes the refusal one line away rather than a redesign.
+type BareKeyOutcome
+  = SilentWrongProviderAnswer { what_is_emitted: String }
+  | AmbiguityDetectedThenAnswered { sentinel: String, what_is_emitted: String }
+  | SilentDefaultNoAnswer { what_is_emitted: String }
+  | TypedRefusal { refusal_site: DeclarationRef }
+
+// REACH IS NOT PRESENCE, AND IT IS ITS OWN COLUMN. A site no current input can reach is a real
+// member with a real ceiling, not a false positive -- the six-renderer short-circuit is exactly
+// that from the other direction (the authority is present and nothing reaches IT). Rows are never
+// filtered on this field.
+//
+// The evidence bar is deliberately asymmetric, because the two claims are not equally cheap to get
+// wrong. ReachedByMeasuredPopulation costs a named measurement. UnreachableByConstantBody costs a
+// total-function fact -- the body is a literal, so NO input reaches an answer, which is a stronger
+// claim than any emitted-output diff could produce and is decidable by reading the body alone.
+// ReachabilityUnmeasured exists so that "I did not measure this" has a spelling; without it the
+// only way to file a row is to claim something about it, and the roster would acquire fabricated
+// reach the moment an author met a site they could not price.
+type Reachability
+  = ReachedByMeasuredPopulation { measurement: String }
+  | UnreachableByConstantBody { body_answer: String }
+  | ReachabilityUnmeasured { what_would_settle_it: String }
+
+// WHETHER AN IDENTITY-KEYED SIBLING IS ALREADY SITTING BESIDE THIS SITE UNUSED. This is the column
+// that decides the shape of the terminal repair: a row with a sibling is a ROUTING question, a row
+// without one needs the authority built first. DESIGN section 5 says the answer to a roster of
+// routing questions is one identity-keyed authority rather than N repaired lookups, which is why
+// the sibling is recorded per row rather than summarised in prose.
+//
+// SiblingPresentButOrdered carries the precedence because that is the whole mechanism at several
+// rows: the sibling is not missing, it is CONSULTED SECOND, and a bare-name arm that answers first
+// makes the second arm unreachable however correct it is.
+type IdentityKeyedSibling
+  = SiblingPresentButOrdered { sibling: DeclarationRef, precedence: String }
+  | SiblingPresentButUnreachable { sibling: DeclarationRef, why_unreachable: String }
+  | NoSiblingExists { what_would_have_to_be_built: String }
+
+type BareNameConsumer {
+  site: DeclarationRef
+  fact_sought: String
+  keys_on: String
+  identity: IdentityAvailability
+  outcome: BareKeyOutcome
+  reach: Reachability
+  sibling: IdentityKeyedSibling
+  call_site_count: Int
+}
+
+// THE ROSTER. Every row was established by reading the deciding function and its call sites in the
+// live tree on 2026-08-22; the per-row method and the exact call-site lines are in
+// docs/probes/bare-name-identity-consumer-census-2026-08-22.md. Rows are NOT ordered by severity --
+// ordering a roster by an author's severity judgement is what lets a reader stop reading early.
+data bare_name_identity_consumers: List<BareNameConsumer> = [
+  {
+    site: decl_ref(module_path: "v1.compiler.coercion", decl_name: "lookup_checkpoint"),
+    fact_sought: "which Rust type this dag type realizes as",
+    keys_on: "the bare dag_name against the extdeps checkpoint table, whenever decl_file is the empty string",
+    identity: AvailableUpstreamNotThreaded { nearest_holder: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_decl_file") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "the table's spelling for the name, with the structural-declaration roster never consulted" },
+    reach: ReachedByMeasuredPopulation { measurement: "v1.compiler.emit emit_literal passes the empty string for every String literal; executed as literal_suffix_production_call_site_never_threads_declaration_identity in v1.tests.claim.checkpoint_identity_keying_witness_test" },
+    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "decl_file_declares_structurally"), precedence: "the empty-string guard returns false before the roster is reached, so the roster runs only for callers that already threaded identity" },
+    call_site_count: 10,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_text_carrier_type"),
+    fact_sought: "whether this type node realizes as the host String",
+    keys_on: "authored_name_at equals String, or equals FreeMonoid/List whose element is spelled Char",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "the literal String, for a reference resolving to a module whose String is the structural FreeMonoid<Char>" },
+    reach: ReachedByMeasuredPopulation { measurement: "34 live E0308 sites in the 03_ingest closure pairing a String-declared position against a FreeMonoid-realized value (royal-dove-436, docs/probes/t2_t3_realization_route_2026-08-21.md)" },
+    sibling: SiblingPresentButUnreachable { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_realization_decision"), why_unreachable: "six type renderers call this predicate on their FIRST line and return, so no String-spelled reference in type position reaches the authority" },
+    call_site_count: 11,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_optional_carrier_type"),
+    fact_sought: "whether this type node realizes as the host Option",
+    keys_on: "authored_name_at equals Optional, with at least one child",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "Option<..>, for any declaration anywhere in the closure spelled Optional" },
+    reach: ReachabilityUnmeasured { what_would_settle_it: "a second declaration spelled Optional in an emitted closure; no such declaration was searched for, and no divergence is claimed" },
+    sibling: SiblingPresentButUnreachable { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_realization_decision"), why_unreachable: "sits on the SECOND line of five of the same six renderers, ahead of every identity-keyed arm" },
+    call_site_count: 6,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_diagnostics_carrier_type"),
+    fact_sought: "whether this type node realizes as the host diagnostics carrier",
+    keys_on: "authored_name_at equals Diagnostics",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "Option<NonEmptyDiagnostics>, for any declaration anywhere in the closure spelled Diagnostics" },
+    reach: ReachabilityUnmeasured { what_would_settle_it: "a second declaration spelled Diagnostics in an emitted closure; no such declaration was searched for, and no divergence is claimed" },
+    sibling: SiblingPresentButUnreachable { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_realization_decision"), why_unreachable: "sits on the THIRD line of five of the same six renderers, ahead of every identity-keyed arm" },
+    call_site_count: 6,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_opaque_kernel_alias_carrier"),
+    fact_sought: "which Rust carrier the opaque kernel names Json, Bytes and Symbol realize as",
+    keys_on: "a three-name equality on the bare name, then coerce_primitive_type with decl_file hardcoded to the empty string INSIDE the function",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n), computed one line earlier in the same arm for rust_seed_host_numeric_alias", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.coercion", decl_name: "rust_seed_host_numeric_alias") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "the kernel carrier spelling, for any declaration anywhere in the closure spelled Json, Bytes or Symbol" },
+    reach: ReachabilityUnmeasured { what_would_settle_it: "a second declaration spelled Json, Bytes or Symbol in an emitted closure; the three are named in checkpoint_table_bypasses_identity_note's seven-name population as NOT separately declared under src/v2, which bears on how likely reach is and does not establish it" },
+    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base"), precedence: "at the two type-alias declaration arms the bare eligibility test is the FIRST branch and the identity-keyed grounding call is the ELSE, so the bare arm wins whenever it fires -- and the identity it would have needed is computed in that same else, as decl_identity_file(item: item)" },
+    call_site_count: 7,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_dag_value_type_name"),
+    fact_sought: "whether a record field's type is Copy at the target, which decides the record's derive set",
+    keys_on: "the bare field type name from TypeSummary.field_type_map, with decl_file hardcoded to the empty string",
+    identity: UnavailableNoNodeAtSite { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map") },
+    outcome: SilentDefaultNoAnswer { what_is_emitted: "false when the table has no row, so a Copy field is treated as non-Copy and the record loses a derive it was entitled to" },
+    reach: ReachabilityUnmeasured { what_would_settle_it: "a field whose declared type is Copy under one declaration and not under another sharing the spelling; the derive consequence is by inspection of the fold, not by execution" },
+    sibling: NoSiblingExists { what_would_have_to_be_built: "field_type_map carries names, not declarations -- an identity-keyed sibling has nothing to key on until the summary carries a DeclarationRef per field" },
+    call_site_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_json_value_extract"),
+    fact_sought: "which Rust type a REST response field decodes into",
+    keys_on: "the authored type name, with decl_file hardcoded to the empty string",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: tn) -- both callers already compute authored_name_at on the very node tn", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_json_value_extract") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "the table's carrier and the matching serde_json accessor, chosen without regard to which module declares the response field's type" },
+    reach: ReachabilityUnmeasured { what_would_settle_it: "a REST wire contract whose response field names a type with two declarations in the closure" },
+    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "coerce_primitive_type"), precedence: "the sibling IS the callee -- it takes decl_file and is handed the empty string, so the identity-keyed path is entered with identity erased rather than bypassed" },
+    call_site_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
+    fact_sought: "which enum a variant spelling belongs to, which decides whether the variant renders as a qualified path",
+    keys_on: "the bare variant name across every enum in every module of the closure",
+    identity: AvailableUpstreamNotThreaded { nearest_holder: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary") },
+    outcome: AmbiguityDetectedThenAnswered { sentinel: "the empty string, written into the map when a second enum claims the same variant spelling", what_is_emitted: "rust_qualify_type_leaf_name reads the sentinel and emits the BARE variant name -- the ambiguity is computed, then widened away rather than refused" },
+    reach: ReachedByMeasuredPopulation { measurement: "colliding variant spellings are measured in the corpus, not argued from the sentinel arm existing: Refused is declared by std.coercion TypeRealizationDecision, std.observation ObservationOutcome and v2.std.execution_surface ShellEmissionAuthorization; Unknown by std.encoding Encoding, std.reducible ReduceVerdict and v2.std.execution_surface AvailabilityFact (grep over dag/std and src/v2/std, 2026-08-22). The sentinel fires for any closure containing two of a set. BOUND: this measures the COLLISION population, not an emitted divergence -- no emitted artifact was diffed, and the identity authority own coproduct being in the set is an observation, not a claim that a closure emitted it wrongly" },
+    sibling: NoSiblingExists { what_would_have_to_be_built: "the map is keyed on the spelling, so the collision has already destroyed the discriminator by the time a consumer reads it -- the repair is a refusal at the sentinel, and per the sequencing rule above it waits on this roster" },
+    call_site_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"),
+    fact_sought: "the emit-time summary, declaration item and function item for a declared name",
+    keys_on: "the bare authored declaration name, inserted into three maps folded over EVERY module in the closure",
+    identity: AvailableAtSite { holder_expression: "decl_identity_file(item: item) -- the declaration node is the fold's own argument", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.coercion", decl_name: "decl_identity_file") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "last write wins in module fold order: two modules declaring one spelling collapse to one summary, and every consumer keyed on that map inherits the survivor" },
+    reach: ReachedByMeasuredPopulation { measurement: "build_emit_graph_info folds all modules into one map with no collision arm; this is the denominator the variant, shared-type and field-type rows above are computed from" },
+    sibling: NoSiblingExists { what_would_have_to_be_built: "a summary map keyed on declaration identity rather than spelling -- this is the row DESIGN section 5's construction move points at, and the one that would let several other rows dissolve rather than be repaired" },
+    call_site_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types"),
+    fact_sought: "whether a named type is reference-shared, which decides whether a reference renders wrapped in Rc",
+    keys_on: "the bare TypeSummary name, tested at reference sites by set membership on the bare leaf name",
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) at the reference sites that test membership", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
+    outcome: SilentWrongProviderAnswer { what_is_emitted: "an Rc wrap or its absence decided by the authored spelling, so one carrier renders two ways depending on how the reference was spelled" },
+    reach: ReachedByMeasuredPopulation { measurement: "the E0599 as_ref cluster on gunbc#8814: SymbolicCost::ConstantCost declared with a qualified spelling rendered bare while every consumer used Rc<Nat>" },
+    sibling: NoSiblingExists { what_would_have_to_be_built: "sharing is derived from the summary map, so it inherits the identity key that row nine would have to carry first" },
+    call_site_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_nominal_identity_carrier_type_eligible"),
+    fact_sought: "whether a zero-parameter declaration realizes as a nominal newtype over String",
+    keys_on: "nothing -- the parameter is accepted and discarded",
+    identity: AvailableAtSite { holder_expression: "decl_identity_file(item: item) at the two declaration arms; authored_name_at's node at the annotation arm", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base") },
+    outcome: SilentDefaultNoAnswer { what_is_emitted: "nothing: every caller takes the else arm" },
+    reach: UnreachableByConstantBody { body_answer: "the body is the literal false, so no input reaches an answer -- a total-function fact, not an inference from usage, and stronger than any emitted-output diff could establish" },
+    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base"), precedence: "the eligibility test guards a branch ahead of the identity-keyed grounding call, so the first row added to it inherits that precedence and becomes a live member with no further edit" },
+    call_site_count: 5,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_qualified_item_registry"),
+    fact_sought: "which module provides a qualified module.leaf value reference",
+    keys_on: "the exact module.leaf key -- qualified, not bare, and recorded here as the CONTRAST row",
+    identity: AvailableAtSite { holder_expression: "the qualified key itself carries the providing module", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_duplicate_qualified_item_registry_marker") },
+    outcome: TypedRefusal { refusal_site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_qualified_value_ref_crate_ident") },
+    reach: ReachedByMeasuredPopulation { measurement: "duplicate_qualified_item_registry_marker_note records the marker as define-and-consume with two named consuming refusals" },
+    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "duplicate_qualified_item_registry_marker"), precedence: "the collision arm runs INSTEAD of last-write-wins, which is the shape every row above is missing" },
+    call_site_count: 2,
+  },
+]
+
+// THE HISTOGRAM IS DERIVED, NEVER STORED. A stored count is a second representation of the roster
+// (DESIGN sections 2 and 3) and it rots silently the moment a row is added; worse, a witness
+// asserting a stored count against the roster it was copied from is the measure-equals-measure
+// change detector DESIGN section 5 rejects. Every number this carrier reports is a fold over the
+// rows, so adding a row moves the number and no author has to remember to.
+
+fn consumer_identity_was_available(c: BareNameConsumer) -> Bool {
+  match c.identity {
+    AvailableAtSite { holder_expression: _, adjacent_consulting_call: _ } => true
+    AvailableUpstreamNotThreaded { nearest_holder: _ } => true
+    UnavailableNoNodeAtSite { severed_at: _ } => false
+  }
+}
+
+fn consumer_has_unused_identity_sibling(c: BareNameConsumer) -> Bool {
+  match c.sibling {
+    SiblingPresentButOrdered { sibling: _, precedence: _ } => true
+    SiblingPresentButUnreachable { sibling: _, why_unreachable: _ } => true
+    NoSiblingExists { what_would_have_to_be_built: _ } => false
+  }
+}
+
+fn consumer_answers_wrongly_today(c: BareNameConsumer) -> Bool {
+  match c.outcome {
+    SilentWrongProviderAnswer { what_is_emitted: _ } => true
+    AmbiguityDetectedThenAnswered { sentinel: _, what_is_emitted: _ } => true
+    SilentDefaultNoAnswer { what_is_emitted: _ } => false
+    TypedRefusal { refusal_site: _ } => false
+  }
+}
+
+fn consumer_reach_is_measured(c: BareNameConsumer) -> Bool {
+  match c.reach {
+    ReachedByMeasuredPopulation { measurement: _ } => true
+    UnreachableByConstantBody { body_answer: _ } => false
+    ReachabilityUnmeasured { what_would_settle_it: _ } => false
+  }
+}
+
+fn census_member_count() -> Int {
+  bare_name_identity_consumers |> count
+}
+
+fn census_call_site_total() -> Int {
+  bare_name_identity_consumers |> fold(init: 0, f: (acc, c) => acc + c.call_site_count)
+}
+
+fn census_identity_available_count() -> Int {
+  bare_name_identity_consumers |> filter(c => consumer_identity_was_available(c: c)) |> count
+}
+
+fn census_unused_sibling_count() -> Int {
+  bare_name_identity_consumers |> filter(c => consumer_has_unused_identity_sibling(c: c)) |> count
+}
+
+fn census_wrong_answer_today_count() -> Int {
+  bare_name_identity_consumers |> filter(c => consumer_answers_wrongly_today(c: c)) |> count
+}
+
+fn census_measured_reach_count() -> Int {
+  bare_name_identity_consumers |> filter(c => consumer_reach_is_measured(c: c)) |> count
+}
+
+// THE CELL THAT DECIDES WHERE THE NEXT LANE GOES: reachable by a measured population AND answering
+// from the wrong provider today. The brief asks to be interrupted for exactly this set, so it is
+// derived here rather than left for a reader to intersect two columns by eye.
+fn census_reachable_and_wrong_today() -> List<BareNameConsumer> {
+  bare_name_identity_consumers |> filter(c => consumer_reach_is_measured(c: c) && consumer_answers_wrongly_today(c: c))
+}
+
+// POPULATION BASIS, stated in the same shape gunbc.empty_decl_file_checkpoint_bypass states its own,
+// because the two carriers are read together and a reader must be able to compare their bounds.
+//
+// That carrier reports UncountedNoSweepRun with one instance. This carrier IS that sweep, for the
+// emitter's realization decisions -- so its row is upgraded here from "no sweep run" to a swept
+// population WITH A NAMED SCOPE, and the scope is what bounds the claim: the sweep read every
+// top-level fn in v1.compiler.emit_rust, v1.compiler.emit, v1.compiler.infer_emit_info and
+// v1.compiler.coercion that takes a name-shaped String parameter or hardcodes decl_file to the empty
+// string, and followed each one's call sites.
+//
+// WHAT THAT SCOPE DOES NOT REACH, named rather than left as a silent edge: a decision keyed on a
+// name that is neither a String parameter nor a decl_file argument -- a match on a name computed
+// inline, a comparison against a literal inside a larger expression -- is outside the sweep's
+// selector and would not have been found. Three rows here were found that way anyway, while reading
+// call sites for something else, which is evidence that the selector is not complete rather than
+// evidence that it is.
+type CensusBasis
+  = SweptByDeclaredSelector { selector: String, modules_read: String, known_blind_spot: String }
+  | DerivedByLens { lens: String }
+
+data bare_name_census_basis: CensusBasis = SweptByDeclaredSelector {
+  selector: "top-level fns taking a name-shaped String parameter, plus every call passing decl_file as the empty string literal",
+  modules_read: "v1.compiler.emit_rust, v1.compiler.emit, v1.compiler.infer_emit_info, v1.compiler.coercion",
+  known_blind_spot: "a name compared against a literal inline, with no name-shaped parameter and no decl_file argument, is outside the selector",
+}
+
+// RUNG, at the honest grain and separated from the roster's own claims. The CLASS sits at
+// MITIGATABLE: nothing refuses at any row except the contrast row, and this carrier does not change
+// that -- it counts. The CARRIER sits lower than a reader might assume: its rows are hand-swept
+// from source text, so an emitter edit that adds a bare-name decision does not move any number here
+// and nothing detects the omission.
+//
+// The construction that IS carried, and it is the only rung claim this carrier makes: a row cannot
+// assert that identity was available without naming the expression that holds it, cannot assert
+// inertness without carrying the constant body that establishes it, and cannot omit reachability --
+// ReachabilityUnmeasured has a spelling precisely so that an unpriced site can be filed honestly
+// instead of being filed as reached. Those states are unwritable rather than checked.
+//
+// NEXT-RUNG TRIGGER: the roster is DERIVED by a lens over the emitter's own Node tree -- which
+// declaring functions consult a declaration-identity expression and which do not is a question the
+// containment tree can answer -- rather than swept by hand into rows. At that point the hand roster
+// dissolves and the derived one keeps the dispositions.
+data bare_name_census_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the roster above is derived by a lens over the v1 emitter's own Node tree instead of hand-swept, so a newly authored bare-name realization decision appears in the census without an author remembering to file it. Not satisfied by adding rows to the hand roster, however many: the defect this trigger names is that the roster cannot notice its own incompleteness, and a longer hand list has exactly the same blind spot.")
+
+// PROVENANCE OF THE TWO HANDED-OVER ROWS, AND ONE RETRACTION CARRIED FORWARD RATHER THAN REPEATED.
+//
+// Row one arrives with its own carrier (gunbc.empty_decl_file_checkpoint_bypass) and is restated
+// here as a member so the histogram is complete; that carrier remains the authority for it.
+//
+// Row two arrives from royal-dove-436 as "an authority that is present, correct and unreachable",
+// and the word CORRECT WAS RETRACTED BY ITS OWN AUTHOR before this census was written. The retraction
+// is load-bearing for anyone reading this roster as a work list: type_realization_decision takes
+// decl_file as a parameter and derives nothing declaration-shaped internally, and its production key
+// -- type_reference_decl_file -- falls back to the file the REFERENCE SITS IN whenever inference did
+// not resolve, which is a different fact from where the type is DECLARED. So routing the six
+// renderers to the authority would change which function computes the answer and leave the basis of
+// the answer unchanged. Recorded here because this roster's sibling column would otherwise read as a
+// routing work list, and for row two routing alone is measured to be insufficient.
+//
+// WHAT THIS CENSUS DOES NOT INHERIT FROM THAT LANE: the fallback-arm measurement that produced the
+// retraction was taken on the PRE-RECONCILE tree and its author withdrew the production claim. What
+// survives unconditionally is the SHAPE defect in type_reference_decl_file -- it cannot distinguish
+// "this node is its own declaration" from "this reference was not resolved here" -- and that is what
+// the paragraph above rests on, not the withdrawn count.
+data bare_name_census_handover_provenance: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.empty_decl_file_checkpoint_bypass", decl_name: "empty_decl_file_bypass_instances"),
+  decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note"),
+  decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_identity_note"),
+]
