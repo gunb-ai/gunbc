@@ -27,9 +27,9 @@ concentrated in the batch this document proposed to delete first.** The number i
 the headline table rather than a footnote because the headline number is the one anyone
 acts on. 206 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
 undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
-and what the re-score deliberately does *not* claim. **The actionable residue list is 117,
-not 206** — see §4h, and note that 112 is what a deletion lane consumes, while 206 is the
-unresolved population.
+and what the re-score deliberately does *not* claim. **The actionable residue list is 112,
+not 206** — see §4h: 112 is what a deletion lane consumes, while 206 is the unresolved
+population.
 
 Every number in this document carries its unit, and two units are deliberately never
 interchangeable: a **DistinctFileCount** (how many files name a thing) and a
@@ -332,8 +332,8 @@ have a live caller.**
    a bug its author did not have. (d) **Same-line coproducts**: `type PrerequisiteKind =
    Capability | Credential | …` puts every variant on the type line, so a scan anchored to
    lines *starting* with `=` or `|` never sees them. A region-based extractor handles it,
-   and all four cases pass on the extractor that produced the counts above — **117
-   postdates (d)**, re-verified rather than assumed. (e) **`operation` / `service` /
+   and all four cases pass on the extractor that produced the counts above, so
+   **every count in this document postdates (d)** — re-verified rather than assumed. (e) **`operation` / `service` /
    `resource` rows are declarations** in the flat service namespace (338 / 8 / 5 in the
    corpus). This document's instrument subtracts them from the *consuming* side but does
    not credit them to the *declaring* side, so a module whose declarations were **only**
