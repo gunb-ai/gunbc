@@ -1,0 +1,42 @@
+module v2.test.claim.dag_acceptance_rustc_wet
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileRejected }
+import v2.workflow.dag_acceptance {
+  TargetCompileDecided,
+  TargetCompileFailedUnparsed,
+  TargetCompileObservation,
+  TargetCompilerUnavailable
+}
+import v2.workflow.dag_acceptance_rustc { rustc_target_compile_observation }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data dag_acceptance_rustc_wet_note: String = "THIS IS THE WITNESS THAT THE FIFTH STAGE IS REAL, AND IT IS WET BY NECESSITY. v2's TranslateTo is exactly emit(tree, target): it produces target source and never invokes the target toolchain, so nothing in the pure chain can tell target source that COMPILES from target source that merely EXISTS. Only a real rustc invocation separates them, and a host effect cannot run inside the hermetic envelope — so this file runs on a wet execution and is not enrolled in the hermetic floor. Mocking it would defeat its entire purpose: the mock would answer from the same beliefs the emitter holds.\n\nThe pair is the discriminator. Valid Rust must be ACCEPTED and invalid Rust must be DIAGNOSED, by the same function, on the same host, in the same run. Either half alone is satisfiable by a broken observer that always answers one way."
+
+data valid_rust_source: String = "pub fn add(x: i32, y: i32) -> i32 { x + y }\n"
+data invalid_rust_source: String = "pub fn add(x: i32, y: i32) -> i32 { x + true }\n"
+
+fn observation_label(observation: TargetCompileObservation) -> Symbol {
+  match observation {
+    TargetCompileDecided { verdict: verdict } =>
+      match verdict {
+        TargetCompileAccepted => ^observed_accepted
+        TargetCompileRejected { diagnostic_code: _ } => ^observed_diagnosed
+      }
+    TargetCompileFailedUnparsed { exit_code: _, stderr_length: _ } => ^observed_failed_unparsed
+    TargetCompilerUnavailable { cause: _ } => ^observed_unavailable
+  }
+}
+
+test fn rustc_accepts_valid_target_source() -> Bool {
+  observation_label(observation: rustc_target_compile_observation(source: valid_rust_source))
+    == ^observed_accepted
+}
+
+test fn rustc_diagnoses_invalid_target_source() -> Bool {
+  observation_label(observation: rustc_target_compile_observation(source: invalid_rust_source))
+    == ^observed_diagnosed
+}
