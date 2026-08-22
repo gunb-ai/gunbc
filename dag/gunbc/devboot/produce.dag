@@ -1,30 +1,23 @@
 module gunbc.devboot.produce
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.measure { byte_size, Second, second, second_count }
 import std.content_hash { sha256_hex_digest }
 
 import extdeps.shell
 import extdeps.gunbc
+import extdeps.git
+import extdeps.git.plumbing
 import extdeps.filesystem.filesystem_io
 import gunbc.devboot.transport {
   devboot_witness_run,
   devboot_ensure_directory,
+  devboot_repo_address,
+  devboot_store_address,
+  devboot_ref_observation,
   retained_devboot_rm_file,
   retained_devboot_rm_rf,
-  retained_devboot_git_read_tree,
-  retained_devboot_git_add_all,
-  retained_devboot_git_write_tree,
-  retained_devboot_git_checkout_index,
   retained_devboot_rustc_version,
-  retained_devboot_git_bare_init,
-  retained_devboot_git_rev_parse,
-  retained_devboot_git_cat_file,
-  retained_devboot_git_object_exists,
-  retained_devboot_git_object_size,
-  retained_devboot_git_unpack_file,
-  retained_devboot_git_hash_object,
-  retained_devboot_git_update_ref,
   retained_devboot_sha256sum,
   retained_devboot_sleep,
   retained_devboot_cargo_build,
@@ -79,6 +72,18 @@ import gunbc.devboot.subject {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.git { git_ref_missing_exit_code }
+import extdeps.git.object_store { GitRefName, git_object_id_from_untagged_hex }
+import extdeps.git.plumbing {
+  GitRefObservation,
+  GitRefMutationOutcome,
+  GitRefMutationApplied,
+  GitRefMutationPreconditionNotHeld,
+  GitRefMutationExecutionRefused,
+  GitRefMutationObservationRefused,
+  GitRefMutationReadBackMismatch,
+  GitDeleteRefIfExpected,
+  git_ref_mutation_outcome,
+}
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
@@ -131,34 +136,29 @@ fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
     site: retained_devboot_rm_file,
     workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
   )
-  let baseline = devboot_witness_run(
-    site: retained_devboot_git_read_tree,
-    workdir: repo_root,
-    bin_path: "env",
-    args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", "HEAD"],
+  let baseline = git.Plumbing.ReadTreeIntoIndex(
+    address: devboot_repo_address(repo_root: repo_root),
+    index: index_path as FilePath,
+    treeish: "HEAD",
   )
-  if !baseline.success {
+  if !(baseline.exit_code == 0) {
     SnapshotRefused { detail: snapshot_step_refusal(step: "read-tree HEAD", exit_code: baseline.exit_code, stderr: baseline.stderr) }
   } else {
-    let staged = devboot_witness_run(
-    site: retained_devboot_git_add_all,
-    workdir: repo_root,
-      bin_path: "env",
-      args: [concat("GIT_INDEX_FILE=", index_path), "git", "add", "-A"],
-  )
-    if !staged.success {
+    let staged = git.Plumbing.AddAllIntoIndex(
+      address: devboot_repo_address(repo_root: repo_root),
+      index: index_path as FilePath,
+    )
+    if !(staged.exit_code == 0) {
       SnapshotRefused { detail: snapshot_step_refusal(step: "add -A", exit_code: staged.exit_code, stderr: staged.stderr) }
     } else {
-      let written = devboot_witness_run(
-    site: retained_devboot_git_write_tree,
-    workdir: repo_root,
-        bin_path: "env",
-        args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
-  )
-      if !written.success {
+      let written = git.Plumbing.WriteTreeFromIndex(
+        address: devboot_repo_address(repo_root: repo_root),
+        index: index_path as FilePath,
+      )
+      if !(written.exit_code == 0) {
         SnapshotRefused { detail: snapshot_step_refusal(step: "write-tree", exit_code: written.exit_code, stderr: written.stderr) }
       } else {
-        SnapshotTaken { tree_hex: trim(s: written.stdout) }
+        SnapshotTaken { tree_hex: trim(s: written.tree) }
       }
     }
   }
@@ -191,29 +191,20 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
     workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
   )
   let made = devboot_ensure_directory(repo_root: repo_root, path: source_dir)
-  let loaded = devboot_witness_run(
-    site: retained_devboot_git_read_tree,
-    workdir: repo_root,
-    bin_path: "env",
-    args: [concat("GIT_INDEX_FILE=", checkout_index), "git", "read-tree", tree_hex],
+  let loaded = git.Plumbing.ReadTreeIntoIndex(
+    address: devboot_repo_address(repo_root: repo_root),
+    index: checkout_index as FilePath,
+    treeish: tree_hex,
   )
-  if !loaded.success {
+  if !(loaded.exit_code == 0) {
     SourceMaterializationRefused { detail: snapshot_step_refusal(step: "read-tree <snapshot>", exit_code: loaded.exit_code, stderr: loaded.stderr) }
   } else {
-    let checked_out = devboot_witness_run(
-    site: retained_devboot_git_checkout_index,
-    workdir: repo_root,
-      bin_path: "env",
-      args: [
-        concat("GIT_INDEX_FILE=", checkout_index),
-        "git",
-        "checkout-index",
-        "-a",
-        "-f",
-        concat("--prefix=", join([source_dir, "/"], "")),
-      ],
-  )
-    if !checked_out.success {
+    let checked_out = git.Plumbing.CheckoutIndexToPrefix(
+      address: devboot_repo_address(repo_root: repo_root),
+      index: checkout_index as FilePath,
+      prefix: join([source_dir, "/"], ""),
+    )
+    if !(checked_out.exit_code == 0) {
       SourceMaterializationRefused { detail: snapshot_step_refusal(step: "checkout-index", exit_code: checked_out.exit_code, stderr: checked_out.stderr) }
     } else {
       SourceMaterialized { source_dir: source_dir }
@@ -324,13 +315,11 @@ type StoreReadiness
   | StoreInitRefused { detail: String }
 
 fn ensure_store_repository(store_root: String, repo_root: String) -> StoreReadiness {
-  let init = devboot_witness_run(
-    site: retained_devboot_git_bare_init,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["init", "--bare", "--quiet", store_root],
+  let init = git.Plumbing.InitBareAt(
+    address: devboot_repo_address(repo_root: repo_root),
+    path: store_root as FilePath,
   )
-  if init.success {
+  if init.exit_code == 0 {
     StoreReady
   } else {
     StoreInitRefused {
@@ -467,14 +456,12 @@ type ArtifactLookup
   | ArtifactLookupRefused { detail: String }
 
 fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> ArtifactLookup {
-  let existing = devboot_witness_run(
-    site: retained_devboot_git_rev_parse,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
+  let existing = git.Plumbing.ObserveRef(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: ref_name,
   )
-  if existing.success {
-    ArtifactRefPresent { oid: trim(s: existing.stdout) }
+  if existing.exit_code == 0 {
+    ArtifactRefPresent { oid: trim(s: existing.revision) }
   } else {
     if existing.exit_code == git_ref_missing_exit_code {
       ArtifactRefAbsent
@@ -494,27 +481,23 @@ fn artifact_lookup(store_root: String, repo_root: String, token: String) -> Arti
 //
 // WHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model.
 fn recorded_artifact_digest(store_root: String, repo_root: String, token: String) -> String {
-  let out = devboot_witness_run(
-    site: retained_devboot_git_cat_file,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "cat-file", "blob", digest_ref_of(token: token)],
+  let out = git.Plumbing.CatFileBlob(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    object: digest_ref_of(token: token),
   )
-  if out.success {
-    trim(s: out.stdout)
+  if out.exit_code == 0 {
+    trim(s: out.content)
   } else {
     ""
   }
 }
 
 fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
-  let stored = devboot_witness_run(
-    site: retained_devboot_git_cat_file,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "cat-file", "blob", subject_ref_of(token: token)],
+  let stored = git.Plumbing.CatFileBlob(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    object: subject_ref_of(token: token),
   )
-  if stored.success { stored.stdout } else { "" }
+  if stored.exit_code == 0 { stored.content } else { "" }
 }
 
 // EXACT EQUALITY, NOT A PREFIX, and the difference was a live false match rather than a stylistic one. An earlier revision accepted the stored record when the request's rendering was a PREFIX of it. Renderings are built by appending axes, so a request carrying no cargo-config entries renders as a strict prefix of a stored subject that carries one -- the shorter request would have matched the longer stored subject and been handed a binary built with configuration it never asked for. Every visible signal would have agreed: the digest found the candidate, the comparison passed, the bytes verified against their own record.
@@ -545,16 +528,14 @@ fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMa
 //
 // The cost is one read of the artifact on the reuse path. That is the honest price of the contract this vertical was given -- a reuse that skipped it would be reporting retrievability it had not established, which is the one thing there is no arm for.
 fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) -> String {
-  let unpacked = devboot_witness_run(
-    site: retained_devboot_git_unpack_file,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "unpack-file", oid],
+  let unpacked = git.Plumbing.UnpackObject(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    object: oid,
   )
-  if !unpacked.success {
+  if !(unpacked.exit_code == 0) {
     ""
   } else {
-    let temp_name = trim(s: unpacked.stdout)
+    let temp_name = trim(s: unpacked.path)
     let digest = devboot_witness_run(
     site: retained_devboot_sha256sum,
     workdir: repo_root,
@@ -601,13 +582,11 @@ fn observe_artifact_availability(
   token: String,
   subject: BuildSubject,
 ) -> ArtifactAvailability {
-  let present = devboot_witness_run(
-    site: retained_devboot_git_object_exists,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "cat-file", "-e", oid],
+  let present = git.Plumbing.CatFileExists(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    object: oid,
   )
-  if !present.success {
+  if !(present.exit_code == 0) {
     ArtifactMissing
   } else {
     let observed = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: oid)
@@ -619,12 +598,10 @@ fn observe_artifact_availability(
           subject: subject,
           oid: oid,
           sha256_hex: observed,
-          bytes_text: trim(s: devboot_witness_run(
-    site: retained_devboot_git_object_size,
-    workdir: repo_root,
-            bin_path: "git",
-            args: [concat("--git-dir=", store_root), "cat-file", "-s", oid],
-  ).stdout),
+          bytes_text: trim(s: git.Plumbing.CatFileSize(
+            address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+            object: oid,
+          ).size),
         )
       } else {
         corrupt_artifact_observation(
@@ -871,24 +848,26 @@ fn lease_failure_report(
   }
 }
 
+// THE LEASE IS TAKEN BY CREATION AND THAT IS THE WHOLE MECHANISM. `update-ref <ref> <new>`
+// with an EMPTY old value is git's own "this ref must not already exist", so exactly one
+// concurrent producer wins and every other one refuses. Naming the transition
+// git.Plumbing.CreateRefIfAbsent rather than passing an empty string is what makes that
+// precondition readable at the call site instead of being an argument nobody can explain.
 fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
-  let claim = devboot_witness_run(
-    site: retained_devboot_git_hash_object,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", claim_path],
+  let claim = git.Plumbing.HashObjectWrite(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    path: claim_path as FilePath,
   )
-  let claim_oid = trim(s: claim.stdout)
-  let taken = devboot_witness_run(
-    site: retained_devboot_git_update_ref,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "update-ref", lease_ref_of(token: token), claim_oid, ""],
+  let claim_oid = trim(s: claim.oid)
+  let taken = git.Plumbing.CreateRefIfAbsent(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: lease_ref_of(token: token),
+    new: claim_oid,
   )
-  if !taken.success {
+  if !(taken.exit_code == 0) {
     lease_failure_report(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token, detail: trim(s: taken.stderr))
   } else {
     devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
@@ -1072,14 +1051,12 @@ fn devboot_run_build_plan(
       reason: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
     }
   } else {
-    let stored = devboot_witness_run(
-    site: retained_devboot_git_hash_object,
-    workdir: repo_root,
-      bin_path: "git",
-      args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", join([target_dir, "/", artifact_path], "")],
-  )
-    let blob_oid = trim(s: stored.stdout)
-    if !stored.success || blob_oid == "" {
+    let stored = git.Plumbing.HashObjectWrite(
+      address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+      path: join([target_dir, "/", artifact_path], "") as FilePath,
+    )
+    let blob_oid = trim(s: stored.oid)
+    if !(stored.exit_code == 0) || blob_oid == "" {
       ProduceRefused {
         reason: join(["the build produced no retrievable artifact at ", artifact_path, " (git hash-object exit ", to_string(stored.exit_code), "): ", trim(s: stored.stderr)], ""),
       }
@@ -1125,57 +1102,50 @@ fn devboot_bind_produced_artifact(
     path: record_path,
     content: render_build_subject(subject: subject),
   )
-  let record_blob = devboot_witness_run(
-    site: retained_devboot_git_hash_object,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", record_path],
+  let record_blob = git.Plumbing.HashObjectWrite(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    path: record_path as FilePath,
   )
-  let record_bound = devboot_witness_run(
-    site: retained_devboot_git_update_ref,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "update-ref", subject_ref_of(token: token), trim(s: record_blob.stdout), ""],
+  let record_bound = git.Plumbing.CreateRefIfAbsent(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: subject_ref_of(token: token),
+    new: trim(s: record_blob.oid),
   )
   let digest_path = join([store_root, "/devboot-digest-", token], "")
   let digest_written = Filesystem.Write(path: digest_path, content: artifact_sha256)
-  let digest_blob = devboot_witness_run(
-    site: retained_devboot_git_hash_object,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", digest_path],
+  let digest_blob = git.Plumbing.HashObjectWrite(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    path: digest_path as FilePath,
   )
-  let digest_bound = devboot_witness_run(
-    site: retained_devboot_git_update_ref,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "update-ref", digest_ref_of(token: token), trim(s: digest_blob.stdout), ""],
+  let digest_bound = git.Plumbing.CreateRefIfAbsent(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: digest_ref_of(token: token),
+    new: trim(s: digest_blob.oid),
   )
-  let bound = devboot_witness_run(
-    site: retained_devboot_git_update_ref,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
+  let bound = git.Plumbing.CreateRefIfAbsent(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: artifact_ref_of(token: token),
+    new: blob_oid,
   )
   if !record_written.success {
     ProduceRefused { reason: bind_step_refusal(step: "writing the subject record", exit_code: 0, detail: record_path) }
   } else {
-    if !record_blob.success {
+    if !(record_blob.exit_code == 0) {
       ProduceRefused { reason: bind_step_refusal(step: "hashing the subject record", exit_code: record_blob.exit_code, detail: trim(s: record_blob.stderr)) }
     } else {
-      if !record_bound.success {
+      if !(record_bound.exit_code == 0) {
         ProduceRefused { reason: bind_step_refusal(step: "binding the subject record", exit_code: record_bound.exit_code, detail: trim(s: record_bound.stderr)) }
       } else {
         if !digest_written.success {
           ProduceRefused { reason: bind_step_refusal(step: "writing the artifact digest", exit_code: 0, detail: digest_path) }
         } else {
-          if !digest_blob.success {
+          if !(digest_blob.exit_code == 0) {
             ProduceRefused { reason: bind_step_refusal(step: "hashing the artifact digest", exit_code: digest_blob.exit_code, detail: trim(s: digest_blob.stderr)) }
           } else {
-            if !digest_bound.success {
+            if !(digest_bound.exit_code == 0) {
               ProduceRefused { reason: bind_step_refusal(step: "binding the artifact digest", exit_code: digest_bound.exit_code, detail: trim(s: digest_bound.stderr)) }
             } else {
-              if !bound.success {
+              if !(bound.exit_code == 0) {
                 ProduceRefused { reason: bind_step_refusal(step: "binding the artifact", exit_code: bound.exit_code, detail: trim(s: bound.stderr)) }
               } else {
                 ProduceProduced { token: token, artifact: blob_oid }
@@ -1192,13 +1162,11 @@ fn devboot_bind_produced_artifact(
 //
 // The caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester.
 fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: String, out_path: String) -> String {
-  let unpacked = devboot_witness_run(
-    site: retained_devboot_git_unpack_file,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "unpack-file", artifact_oid],
+  let unpacked = git.Plumbing.UnpackObject(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    object: artifact_oid,
   )
-  let temp_name = trim(s: unpacked.stdout)
+  let temp_name = trim(s: unpacked.path)
   let moved = devboot_witness_run(
     site: retained_devboot_mv,
     workdir: repo_root,
@@ -1424,29 +1392,89 @@ type LeaseRecovery
 
 // THE DECISION IS SEPARATE FROM THE TRANSPORT, so the arm a caller receives can be witnessed without a repository. What belongs to this module is the mapping -- a successful compare-and-swap is a broken lease, a failed one is a refusal naming who was expected -- while the compare-and-swap SEMANTICS belong to git and are cited there. Fusing them left the mapping reachable only through an effect, which is how it ended up resting on a manual run.
 
+// THE REFUSAL USED TO NAME A CAUSE THE EXIT CODE CANNOT SUPPORT. This function decided from a
+// Bool derived from `update-ref -d`'s exit status and then reported, as fact, that the lease
+// "was not held by <holder> at the moment of the break". `update-ref` exits 128 both when the
+// expected old value no longer matches AND when it could not reach the object store, so an
+// unreachable store was reported as a lease someone else had taken -- a fabricated cause, and
+// one whose remedy (wait for the other producer) is the opposite of the true one (fix the
+// store). It is the exit-128 conflation extdeps.git.plumbing git_ref_mutation_outcome exists
+// to resolve, sitting in a caller of the very operation that carries the resolution.
+//
+// So the decision now comes from the outcome, which took an independent read-back, and each
+// arm says what it actually knows. The `succeeded` Bool is gone rather than kept beside the
+// outcome: a caller could otherwise pass a true Bool next to a refusing outcome and the pair
+// would carry one fact twice with a contradiction writable between them.
 fn lease_recovery_from_outcome(
-  succeeded: Bool,
-  exit_code: Int,
-  stderr: String,
+  outcome: GitRefMutationOutcome,
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  if succeeded {
-    LeaseBroken { token: token, former_holder: expected_holder }
-  } else {
-    LeaseRecoveryRefused {
-      detail: join([
-        "the lease for ",
-        token,
-        " was not held by ",
-        expected_holder,
-        " at the moment of the break, so it was left alone (git exit ",
-        to_string(exit_code),
-        "): ",
-        trim(s: stderr),
-      ], ""),
-    }
+  match outcome {
+    GitRefMutationApplied { mutation } =>
+      LeaseBroken { token: token, former_holder: expected_holder }
+    GitRefMutationPreconditionNotHeld { mutation, observed } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease for ",
+          token,
+          " was not held by ",
+          expected_holder,
+          " at the moment of the break, so it was left alone",
+        ], ""),
+      }
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease for ",
+          token,
+          " is still held by ",
+          expected_holder,
+          " and the store refused to delete it (git exit ",
+          to_string(exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease ref for ",
+          token,
+          " could not be read, so whether it was broken is unknown (git exit ",
+          to_string(exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+    GitRefMutationReadBackMismatch { mutation, observed } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the delete of the lease for ",
+          token,
+          " reported success and the ref is still present",
+        ], ""),
+      }
   }
+}
+
+// THE BREAK IS EXACT AND THAT IS WHY IT IS SAFE. Deleting the lease unconditionally would
+// strip a lease a LIVE producer had just taken; naming the holder as the expected old value
+// means the delete refuses unless the ref still holds exactly the claim this caller observed
+// as stranded.
+// The read-back the break's adjudication needs, over the STORE address rather than the
+// worktree one -- the lease lives in the bare artifact store, so gunbc.devboot.transport's
+// worktree observer is the wrong repository to ask.
+fn devboot_lease_observation(store_root: String, repo_root: String, token: String) -> GitRefObservation {
+  let read = git.Plumbing.ObserveRef(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: lease_ref_of(token: token),
+  )
+  devboot_ref_observation(
+    exit_code: read.exit_code,
+    revision: read.revision,
+    stderr: read.stderr,
+  )
 }
 
 fn devboot_break_stranded_lease(
@@ -1455,19 +1483,40 @@ fn devboot_break_stranded_lease(
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  let broken = devboot_witness_run(
-    site: retained_devboot_git_update_ref,
-    workdir: repo_root,
-    bin_path: "git",
-    args: [concat("--git-dir=", store_root), "update-ref", "-d", lease_ref_of(token: token), expected_holder],
-  )
-  lease_recovery_from_outcome(
-    succeeded: broken.success,
-    exit_code: broken.exit_code,
-    stderr: broken.stderr,
-    token: token,
-    expected_holder: expected_holder,
-  )
+  match git_object_id_from_untagged_hex(hex: trim(s: expected_holder)) {
+    Absent =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the observed lease holder for ",
+          token,
+          " is not an object id this producer can decode, so no exact break is possible: ",
+          trim(s: expected_holder),
+        ], ""),
+      }
+    Present { value: holder_oid } =>
+      let broken = git.Plumbing.DeleteRefIfExpected(
+        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+        ref_name: lease_ref_of(token: token),
+        expected_old: expected_holder,
+      )
+      lease_recovery_from_outcome(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitDeleteRefIfExpected {
+            name: lease_ref_of(token: token) as GitRefName,
+            expected_old: holder_oid,
+          },
+          exit_code: broken.exit_code,
+          stderr: trim(s: broken.stderr),
+          observed_after: devboot_lease_observation(
+            store_root: store_root,
+            repo_root: repo_root,
+            token: token,
+          ),
+        ),
+        token: token,
+        expected_holder: expected_holder,
+      )
+  }
 }
 
 // THE PLATFORM C LIBRARY IS OBSERVED HERE, once, because both the producer and the caller need the same reading and a second implementation of it would be a second answer to one question. ldd reports the version as the trailing field of its first line; the vendor text ahead of it differs between distributions, so the field is taken from the end positionally rather than by matching any distribution's phrasing. A reading that fails yields LibcUnobserved, which the subject then refuses -- never a fabricated version, because a wrong version here is exactly a wrong artifact identity.

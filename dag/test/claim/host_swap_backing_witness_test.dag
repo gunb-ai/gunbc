@@ -93,10 +93,51 @@ test fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
   swap_cap_verdict_gate_accepts(verdict: std.upsert_decision.Converged, backing: std.upsert_decision.Converged)
 }
 
-data witness_frontier_count_note: String = "The observation frontier is a counted number, not a silence. All four enrolled hosts derive UnknownRefused today because no /proc/swaps or free(1) producer exists in the tree, and pinning the count to the full fleet size means landing a producer is a VISIBLE event that must update this witness. It also fails in the right direction: if someone were to add a fabricated per-host fixture to make the matrix look greener, this count would drop and the witness would red."
+// THE OBSERVATION FRONTIER IS A SET OF NAMED HOSTS, NOT A COUNT -- AND ITS PROSE HAD DRIFTED FROM
+// ITS FOLD WITHOUT ANYTHING BEING ABLE TO NOTICE. The previous form asserted
+// host_swap_backing_fleet_unobserved_count() == fleet_subsumption_hosts.length(), and the note beside
+// it said "all four enrolled hosts derive UnknownRefused today". There are SIX enrolled rows: srv1
+// through srv4 for CI, and srv5 and srv6, the two DGX Spark units. The FOLD was right and the NOTE
+// was stale -- written when four hosts were enrolled and never updated when the Sparks were.
+//
+// THAT IS THE ARGUMENT FOR IDENTITY GRAIN AND IT DOES NOT DEPEND ON EITHER BEING WRONG. A count has
+// no members, so a count and its own description cannot contradict each other detectably: no review,
+// no execution and no lens can compare "four" in a sentence against a number that never says who it
+// counted. A named set can be read against its own note at a glance. Prose drift beside a count is
+// undetectable in principle rather than merely unchecked, which is a stronger claim than DESIGN's
+// existing one that counts are weaker oracles, and it is why this converts even though nothing about
+// the assertion was false.
+//
+// DESIGN section 5 is the rule: completeness is an identity join, not a count equality.
+//
+// WHAT THIS DOES NOT SAY, recorded because an earlier revision of this block said it and it was
+// FALSE: srv5 and srv6 are not empty rack positions and were never being miscounted. Both DGX Spark
+// units arrived and are live on the operator LAN with ARP-confirmed MACs and static reservations
+// (gunbc.spark.dgx_procurement dgx_spark_arrival_standing derives arrival from the observed
+// reservation rows), and they carry distinct measured SSH host keys
+// (gunbc.host_reach_identity_probe). They are real hosts nobody has measured swap on yet, which is
+// exactly what this witness should say about them. Their inventory chassis rows are named
+// "placeholder" because a desktop appliance has no RACKMOUNT CHASSIS asset -- that is rack furniture
+// modelling, not a claim that the machine is absent, and reading it as one is the inference this
+// note exists to stop the next reader from repeating.
+//
+// THE ADVERSARY THE OLD NOTE NAMED IS STILL CAUGHT. Someone adding a fabricated per-host fixture to
+// make the matrix look greener removes that host from this set and reds the witness, now with the
+// host's name in the failure.
+//
+// THE UNIVERSE IS THE ENROLLED POPULATION, NOT A LIST TYPED HERE. Joining against a hand-authored
+// roster would replace a count pinned to a population with a list pinned to nothing -- the same
+// defect with more typing. fleet_subsumption_hosts is independently authored and closed, which is
+// what DESIGN requires of the subject universe.
+fn swap_backing_unobserved_hosts() -> List<HostIdentity> {
+  filter(
+    fleet_subsumption_hosts,
+    h => host_swap_backing_host_verdict(host: h) == UnknownRefused,
+  )
+}
 
 test fn witness_every_enrolled_host_is_unobserved_today() -> Bool {
-  host_swap_backing_fleet_unobserved_count() == fleet_subsumption_hosts.length()
+  swap_backing_unobserved_hosts() == fleet_subsumption_hosts
     && fleet_subsumption_hosts.length() > 0
 }
 

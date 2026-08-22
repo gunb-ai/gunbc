@@ -20,8 +20,7 @@ import v1.std.core {
   expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target,
   return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
   index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality,
-  Connective, Conj, Disj, CardOptional, is_rest_transport, is_shell_transport,
-  is_file_transport
+  Connective, Conj, Disj, CardOptional, is_rest_transport, is_shell_transport
 }
 
 import v1.compiler.artifact { RenderTarget, Go }
@@ -441,7 +440,6 @@ fn emit_go_transport_body(transport: Node, op_name: String, source_indices: Map<
     transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
     render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
-    render_file: (n, d) => emit_go_file_call(op_name: n, depth: d),
     render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
 
@@ -513,16 +511,6 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_indic
   )
   let all_lines = concat([cmd_line, dir_line], env_lines, [run_lines])
   all_lines |> join(separator: "\n")
-}
-
-fn emit_go_file_call(op_name: String, depth: Int) -> String {
-  let prefix = make_indent(level: depth)
-  concat(
-    prefix, "path := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BasePath)\n",
-    "data, err := os.ReadFile(path)\n",
-    "if err != nil {\n\treturn \"\", fmt.Errorf(\"reading file: %w\", err)\n}\n",
-    "return string(data), nil"
-  )
 }
 
 fn emit_go_local_call(op_name: String, depth: Int) -> String {

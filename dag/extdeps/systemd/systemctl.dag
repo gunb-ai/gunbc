@@ -1,7 +1,7 @@
 module extdeps.systemd.systemctl
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -14,6 +14,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
+
+fn systemctl_binary_path() -> NonEmptyStr {
+  systemd_binary_path(name: systemctl_binary_name)
+}
+
+data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
+
+// The reboot command in the two renderings a sudoers grant and its actuator need. Unlike
+// enable-linger this verb takes no subject -- it reboots the host the grant is installed on -- and
+// that asymmetry is the reason the grant coproduct carries its subject per-variant rather than
+// taking one uniformly: a subject appended here would authorize an argument sudo would then refuse
+// to match, and `systemctl reboot <anything>` is not a command upstream accepts.
+fn systemctl_reboot_argv() -> List<String> {
+  [systemctl_binary_name as String, systemctl_reboot_verb as String]
+}
+
+fn systemctl_reboot_command() -> NonEmptyStr {
+  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as NonEmptyStr
+}
+
+// THE REST OF THIS MODULE STILL SPELLS "systemctl" INLINE, at 24 sites, and that is left alone
+// deliberately rather than overlooked. Most of them sit inside `transport shell { argv: [...] }`
+// rows whose elements are literals in a transport DSL, so routing them through the row above is a
+// different and larger change than routing two argv builders through it. The rows added here exist
+// because a privilege grant needs the absolute and bare renderings to be derived from one authority;
+// converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
 
 fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
