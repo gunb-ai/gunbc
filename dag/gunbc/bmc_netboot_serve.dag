@@ -220,7 +220,7 @@ func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   let mk = bmc_netboot_run_bmc(
     plan: plan,
     command: mkdir_parents_command_at(
-      mkdir_binary: "mkdir",
+      mkdir_binary: "mkdir" as NonEmptyStr,
       path: join([plan.netboot_dir as String, "/nocloud"], ""),
     ),
   )

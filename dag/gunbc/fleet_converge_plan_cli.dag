@@ -192,7 +192,7 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    chmod_set_mode_command(mode: "0755", path: fleet_converge_plan_apply_shell_path),
+                    chmod_set_mode_command(mode: "0755" as NonEmptyStr, path: fleet_converge_plan_apply_shell_path),
                     cat_command(path: fleet_converge_plan_body_path),
                     cat_command(path: fleet_converge_plan_content_hash_path),
                   ],
