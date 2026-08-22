@@ -2671,7 +2671,7 @@ enforces end to end.
    binary, including a boundary control written specifically to catch over-peeling. The corpus was
    the only instrument that detected any of this.
 
-28. **An identifier inside a `transport shell { argv: [...] }` position is NEVER NAME-RESOLVED
+29. **An identifier inside a `transport shell { argv: [...] }` position is NEVER NAME-RESOLVED
    at compile time — a symbol declared nowhere in the corpus produces ZERO diagnostics.**
    Measured 2026-08-22 by `still-seal-394` while dissolving the `env`/`chmod` binary-path
    nicknames; recorded here in its CORRECTED, WEAKER form at the measuring session's own request.
