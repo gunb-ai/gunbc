@@ -2326,6 +2326,54 @@ enforces end to end.
    on either would refute it.
 
 
+22. **`cmp_values` is not a total order, so `method_call.sort_by` orders unrecognised element
+   kinds by map/list traversal accident rather than by any order at all** (opened 2026-08-22,
+   session lively-moth-59, found while building the `sorted_map_keys` interpreter arm in
+   gunbc#8841 — recorded rather than fixed, because it is a different arm with a different
+   caller contract and repairing it inside that PR would have been a second, unasked change).
+
+   INVALID STATE. `v1_interpreter` `cmp_values` matches four scalar pairs — `Int`/`Int`,
+   `Float`/`Float`, `Str`/`Str`, `Bool`/`Bool` — and its final arm answers
+   `std::cmp::Ordering::Equal` for **every other pair**: mismatched kinds, and `Record`,
+   `Variant`, `List`, `Map`, `Set`, `Null`, `Unit` against themselves. `Equal` is not "I could
+   not compare these"; it is a claim that the two elements tie. `v1_interpreter`
+   `method_call.sort_by` passes that comparator to `sort_by`.
+
+   HARM. A comparator that answers `Equal` for distinct elements is not a total order, so
+   `sort_by` over a list of records or variants is order-preserving-by-accident rather than
+   sorted — and silently so, because the call returns a plausible list and nothing refuses.
+   This is the §5 fabricated-plausible-output shape one level down from the one gunbc#8841
+   closes: there the risk was two realizations disagreeing on ONE order, here a single
+   realization has no order to disagree about. It is the same reason that PR authored its own
+   comparator over exactly `Str`/`Int`/`Bool` instead of reusing `cmp_values`, and refuses
+   every other key kind: reusing it would have shipped a nondeterministic key order behind a
+   green parity test.
+
+   DISTINGUISHING FACTS, stated at the grain actually held. OBSERVED ON: `cmp_values`' arms as
+   READ in `src/v1/stage0/src/v1_interpreter.rs`, and the `method_call.sort_by` arm's use of it,
+   both by source read. CLAIM ABOUT: `sort_by`'s runtime behaviour on unrecognised element
+   kinds, which was NOT executed. So the mechanism is confirmed and the victim is not — no
+   corpus `sort_by` call site has been shown to pass non-scalar elements, and the population is
+   unmeasured. The two halves are separated deliberately: an executed comparator read does not
+   license a sentence about a call this session never ran.
+
+   RUNG FOUND AT: **below the ladder** if the claim-about half holds — silent wrongness, which
+   §4b places outside the ladder rather than on its bottom rung — and merely *mitigatable* if
+   every live `sort_by` receiver turns out to be scalar-element, which is exactly the unmeasured
+   part. CEILING: **structurally impossible**, and the reason is that the ordering question is
+   decidable per element kind: a comparator that returns a typed refusal for kinds it cannot
+   order (the shape gunbc#8841's `sorted_map_keys_in_emitted_order` already uses) makes the
+   silent tie unwritable, and a `sort_by` whose contract requires a total order can demand one.
+
+   NEXT TRIGGER, in order and each cheap: (1) census the corpus `sort_by` call sites by receiver
+   element kind, which converts CLAIM ABOUT into an observed population and decides between the
+   two rungs above; (2) if any non-scalar receiver exists, that is the discriminating RED —
+   a `sort_by` over two distinct records asserting a defined order; (3) replace the fail-open
+   final arm with the typed refusal. Step (1) is the blocking one; nothing here should be
+   repaired before it, because a comparator widened on speculation is the same unproven
+   machinery §4b(2) says to leave as a declared row instead.
+
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
