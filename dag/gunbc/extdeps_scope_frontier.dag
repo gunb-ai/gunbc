@@ -124,6 +124,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/ci_compute_pricing.dag",
   "dag/extdeps/vendor/amphenol.dag",
   "dag/extdeps/vendor/lotes.dag",
   "dag/extdeps/vendor/microchip_technology.dag",

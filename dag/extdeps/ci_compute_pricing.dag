@@ -1,0 +1,829 @@
+module extdeps.ci_compute_pricing
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat, nat_min }
+import std.currency { CurrencyCode, Eur, Usd }
+import std.measure {
+  MoneyPerHour, MoneyPerMinute, money_amount_micro,
+  money_per_hour_micros, money_per_minute_micros,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/compute/all-pricing"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_compute_pricing",
+      decl_name: "ci_compute_offers",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// What a competitor charges for CI compute, and what a spill route would cost us, normalized so the
+// rows can be compared at all.
+//
+// The unit is one COMPUTE UNIT-MINUTE: one isolated CPU entitlement plus 4 GiB of RAM for one
+// minute. That ratio is chosen because it is what a 160-core / 512 GiB machine actually offers, and
+// because billing CPU alone lets a memory-heavy job consume a node while paying for a fraction of
+// it.
+//
+// Prices are micro-dollars, so $0.000809 is 809 and nothing is a float.
+
+// THE DISTINCTION THAT MAKES THE TABLE MEAN ANYTHING. A GCP N2 vCPU is one hardware thread; an
+// Ampere Altra core is a whole physical core with no SMT. Counting them as the same unit because
+// both are called a CPU would understate a 160-core Altra on CPU-bound work - and CI is CPU-bound
+// work. Any row whose entitlement is unstated says so rather than being silently promoted.
+//
+// The size of that understatement is NOT stated here. It is a benchmark result and no benchmark has
+// been run, so PerformanceStanding below carries the obligation instead of a number.
+type CpuEntitlement
+  = PhysicalCore
+  | SmtHardwareThread
+  | ProviderVcpuUnspecified
+  | SharedBurstableVcpu
+
+// Architecture is load-bearing for spill: an x86-only job cannot run on an Arm route and the
+// reverse is equally false. A route that cannot say which it is cannot be selected for either.
+type CpuArchitecture
+  = Amd64
+  | Arm64
+  | ArchitectureUnstated
+
+fn architecture_label(a: CpuArchitecture) -> NonEmptyStr {
+  match a {
+    Amd64 => "x86-64",
+    Arm64 => "Arm64",
+    ArchitectureUnstated => "unstated",
+  }
+}
+
+// Shared-burstable capacity provides baseline performance with temporary bursting. CI compilation is
+// exactly the workload that exposes the difference, so a guaranteed-performance tier cannot be
+// served from a shared family without a benchmark receipt.
+type ResourceDedication
+  = DedicatedResource { note: NonEmptyStr }
+  | SharedResource { note: NonEmptyStr }
+  | DedicationUnread { obligation: NonEmptyStr }
+
+type InterruptionStanding
+  = NonPreemptible { note: NonEmptyStr }
+  | Preemptible { note: NonEmptyStr }
+  | InterruptionUnread { obligation: NonEmptyStr }
+
+type AvailabilityStanding
+  = AvailabilitySlaPublished { permille: Nat, note: NonEmptyStr }
+  | AvailabilityUnread { obligation: NonEmptyStr }
+
+// WHETHER A NEW CUSTOMER CAN BUY IT AT ALL, which is not the price and not the SLA.
+//
+// A vendor may keep serving a rate to existing customers while withdrawing it from new ones. That
+// rate still bounds what the vendor was willing to serve, so the row must not be deleted - but it
+// is not a price WE could be undercut by, and a competitive frontier that ranks it as if a new
+// customer could buy it is answering a question nobody asked.
+//
+// The default arm is NoPurchaseRestrictionObserved, not OpenToNewCustomers: for most rows nobody
+// checked, and "we did not look" must not be recorded as "we confirmed it is open".
+type PurchaseAvailability
+  = OpenToNewCustomers { note: NonEmptyStr }
+  | ClosedToNewCustomers { note: NonEmptyStr, still_served: NonEmptyStr }
+  | NoPurchaseRestrictionObserved { note: NonEmptyStr }
+
+fn purchase_label(p: PurchaseAvailability) -> NonEmptyStr {
+  match p {
+    OpenToNewCustomers { note } => "open to new customers",
+    ClosedToNewCustomers { note, still_served } => "CLOSED to new customers",
+    NoPurchaseRestrictionObserved { note } => "no restriction observed",
+  }
+}
+
+// A row a new customer cannot buy is not a competitive bound on our price.
+fn offer_is_purchasable_by_new_customer(o: ComputeOfferObservation) -> Bool {
+  match o.purchase {
+    OpenToNewCustomers { note } => true,
+    ClosedToNewCustomers { note, still_served } => false,
+    NoPurchaseRestrictionObserved { note } => true,
+  }
+}
+
+data purchase_default: PurchaseAvailability = NoPurchaseRestrictionObserved {
+  note: "Ordinary published product. Purchase availability was not separately checked for this row; no restriction was observed.",
+}
+
+type DataAllowance
+  = IncludedTraffic { terabytes: Nat, scope: NonEmptyStr }
+  | AllowanceUnread { obligation: NonEmptyStr }
+
+type RegionIdentity
+  = RegionNamed { name: NonEmptyStr }
+  | RegionUnread { obligation: NonEmptyStr }
+
+// Whether the quoted rate already carries consumption tax. Comparing a tax-excluded European rate
+// with a tax-excluded US rate is fine; comparing either with a tax-inclusive one is not.
+type TaxStanding
+  = TaxExcluded { note: NonEmptyStr }
+  | TaxIncluded { note: NonEmptyStr }
+  | TaxStandingUnread { obligation: NonEmptyStr }
+
+// A published shape is what the vendor sells. A shape reconstructed backwards from a per-unit rate
+// is a normalization someone performed, and it must not be read as a product the vendor lists.
+type ShapeProvenance
+  = ShapePublished { note: NonEmptyStr }
+  | ShapeNormalizedFromUnitRate { note: NonEmptyStr }
+
+// Blacksmith and a raw GCP VM are not selling the same thing. Keeping them in one table is right -
+// they bound the same price - but collapsing the classes would read a CI product's integration,
+// cache, isolation and support premium as pure margin.
+type MarketClass
+  = RawInfrastructure
+  | HostedCiProduct
+
+fn market_class_label(c: MarketClass) -> NonEmptyStr {
+  match c {
+    RawInfrastructure => "raw infra",
+    HostedCiProduct => "CI product",
+  }
+}
+
+// Whether the row may be used as a place to send overflow work. A competitor's retail runner is not
+// a spill route; an experimental trial programme is not one either.
+type SpillAdmission
+  = SpillAdmitted { note: NonEmptyStr }
+  | CompetitorNotSpill { note: NonEmptyStr }
+  | ExperimentalNotAdmitted { obligation: NonEmptyStr }
+
+// Delivered throughput is not billing units. No benchmark has been run against any of these rows,
+// including our own hardware, so nothing here may claim a performance ratio.
+type PerformanceStanding
+  = PerformanceMeasured { benchmark_suite: NonEmptyStr, score: Nat, receipt: NonEmptyStr }
+  | PerformanceUnmeasured { obligation: NonEmptyStr }
+
+data performance_unmeasured_default: PerformanceStanding = PerformanceUnmeasured {
+  obligation: "Run one fixed CI workload on each admitted route and on an Altra node, and record wall time with a receipt. Until then billing units are billing units and no route may be credited with delivering more work per unit than another.",
+}
+
+// How the price was obtained. A number that cannot say where it came from must not be spendable.
+// These figures were RELAYED by the operator, not fetched - outbound network access is refused in
+// this authoring environment - and the operator has confirmed they are good. That is a real warrant
+// and it is not a first-party read, so it is recorded as what it is.
+type PriceEvidence
+  = PriceVendorPageRead { authority: ExternalAuthority, read_on: NonEmptyStr }
+  | PriceOperatorConfirmed { note: NonEmptyStr, observed_on: NonEmptyStr }
+  | PriceUnread { obligation: NonEmptyStr }
+
+data price_provenance_note: NonEmptyStr = "Provenance is per row and carried in each row's evidence field, not asserted collectively here. An earlier revision of this note claimed EVERY rate was operator-relayed; that became false the moment a rate was read from a vendor page, which is exactly how a collective provenance claim rots. Today the table mixes PriceVendorPageRead (GitHub, read 2026-08-22), PriceOperatorConfirmed (the rest, including Ubicloud's 2026 adjustment table), and PriceUnread for competitors whose rate nobody has read. Operator confirmation is a stronger warrant than a search summary and weaker than a first-party read with a timestamped capture; a pricing decision that turns on a competitor being within ten percent of a stated figure should re-read that figure before it lands."
+
+// Vendors bill in their own period. Folding that into a field name loses the fact, so the native
+// period is carried in the type and normalized only at read time.
+type VendorRate
+  = RatePerHour { rate: MoneyPerHour }
+  | RatePerMinute { rate: MoneyPerMinute }
+
+fn vendor_rate_micros_per_hour(r: VendorRate) -> Nat {
+  match r {
+    RatePerHour { rate } => money_per_hour_micros(q: rate),
+    RatePerMinute { rate } => money_per_minute_micros(q: rate) * 60,
+  }
+}
+
+fn vendor_rate_currency(r: VendorRate) -> CurrencyCode {
+  match r {
+    RatePerHour { rate } => rate.currency,
+    RatePerMinute { rate } => rate.currency,
+  }
+}
+
+fn usd_per_hour(micros: Nat) -> VendorRate {
+  RatePerHour { rate: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd } }
+}
+
+fn usd_per_minute(micros: Nat) -> VendorRate {
+  RatePerMinute { rate: MoneyPerMinute { amount: money_amount_micro(count: micros), currency: Usd } }
+}
+
+fn eur_per_hour(micros: Nat) -> VendorRate {
+  RatePerHour { rate: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Eur } }
+}
+
+// Exact identity, never a substring. A lookup keyed on "on-demand" matches whatever the catalog
+// happens to contain today, and a product rename turns into a silently different price.
+type ComputeOfferIdentity {
+  provider: NonEmptyStr
+  sku: NonEmptyStr
+}
+
+fn offer_identity_equal(a: ComputeOfferIdentity, b: ComputeOfferIdentity) -> Bool {
+  a.provider == b.provider && a.sku == b.sku
+}
+
+fn offer_identity_label(id: ComputeOfferIdentity) -> NonEmptyStr {
+  join([id.provider, " / ", id.sku], "")
+}
+
+type ComputeOfferObservation {
+  identity: ComputeOfferIdentity
+  product: NonEmptyStr
+  market_class: MarketClass
+  architecture: CpuArchitecture
+  entitlement: CpuEntitlement
+  dedication: ResourceDedication
+  interruption: InterruptionStanding
+  availability: AvailabilityStanding
+  purchase: PurchaseAvailability
+  region: RegionIdentity
+  included_traffic: DataAllowance
+  tax: TaxStanding
+  shape_provenance: ShapeProvenance
+  performance: PerformanceStanding
+  spill_admission: SpillAdmission
+  vcpu_count: Nat
+  memory_gib: Nat
+  rate: VendorRate
+  evidence: PriceEvidence
+}
+
+data operator_relay: PriceEvidence = PriceOperatorConfirmed {
+  note: "Relayed and confirmed by the operator.",
+  observed_on: "2026-08-12",
+}
+
+data region_unread_default: RegionIdentity = RegionUnread {
+  obligation: "Region was not stated with the relayed rate. Egress, latency and data-residency all turn on it, so a spill route must name one before it carries production work.",
+}
+
+data traffic_unread_default: DataAllowance = AllowanceUnread {
+  obligation: "Included traffic and the overage rate beyond it were not read. A cache-heavy CI job moves real bytes, so this is a cost line, not a footnote.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// RAW INFRASTRUCTURE: candidate spill routes.
+//
+// GCP N2 rows are derived from the published n2-standard-128 rate, $6.215552/hour on demand and
+// $2.94784/hour spot, taken down to a 2-vCPU slice. GCP is an EXPENSIVE x86 emergency route, not
+// the authority every price floor is measured against.
+// ---------------------------------------------------------------------------------------------
+
+data gcp_n2_on_demand: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-on-demand" },
+  product: "N2 on-demand (n2-standard-128 derived)",
+  market_class: RawInfrastructure,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicatedResource { note: "N2 runs on Intel processors and each vCPU is one hardware thread." },
+  interruption: NonPreemptible { note: "Standard on-demand allocation." },
+  availability: AvailabilityUnread { obligation: "Read the Compute Engine SLA for the specific region and configuration rather than assuming the marketing figure." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxExcluded { note: "List price, before tax." },
+  shape_provenance: ShapePublished { note: "Sliced from the published n2-standard-128 hourly rate." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Expensive x86 emergency route. Appropriate when a job requires x86 and cannot wait." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_hour(micros: 97118),
+  evidence: operator_relay,
+}
+
+data gcp_n2_spot: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-spot" },
+  product: "N2 Spot (n2-standard-128 derived)",
+  market_class: RawInfrastructure,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicatedResource { note: "Same hardware entitlement as on-demand while the instance lives." },
+  interruption: Preemptible { note: "Reclaimable at short notice. CI work is interruptible and re-runnable, which is close to the ideal spot workload." },
+  availability: AvailabilityUnread { obligation: "Spot capacity carries no availability guarantee; the question is what fraction of requests are filled in the chosen region, which has not been measured." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxExcluded { note: "List price, before tax." },
+  shape_provenance: ShapePublished { note: "Sliced from the published n2-standard-128 spot hourly rate." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Preemptible x86 route for queue-tolerant work." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_hour(micros: 46060),
+  evidence: operator_relay,
+}
+
+data gcp_cloud_run: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "cloud-run-container" },
+  product: "Cloud Run container",
+  market_class: RawInfrastructure,
+  architecture: Amd64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Cloud Run does not expose whether a vCPU is a dedicated thread." },
+  interruption: NonPreemptible { note: "Request-scoped allocation." },
+  availability: AvailabilityUnread { obligation: "Serverless SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxExcluded { note: "List price, before tax." },
+  shape_provenance: ShapePublished { note: "Published CPU and memory rates for an equivalent container." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Kept as the raw-container market anchor. Costs more per unit-minute than we charge, so it does not become the implementation." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 3120),
+  evidence: operator_relay,
+}
+
+// Hetzner CAX41: 16 Arm vCPU and 32 GB for $0.0777/hour excluding VAT, with 20 TB of included EU
+// traffic and a published 99.9 percent instance-availability SLA. Under the 4-GiB unit definition
+// that is eight units, and it is by a wide margin the cheapest Arm route in the table.
+//
+// CAX is a SHARED family. Hetzner describes shared instances as baseline CPU performance with
+// temporary bursting and recommends dedicated instances for continuous CPU-intensive work. CI
+// compilation is exactly that, so this route is admitted for best-effort and queue-tolerant work
+// and is NOT admissible for a guaranteed full-core tier until a benchmark receipt exists.
+data hetzner_cax41: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Hetzner", sku: "cax41" },
+  product: "CAX41 shared Arm",
+  market_class: RawInfrastructure,
+  architecture: Arm64,
+  entitlement: SharedBurstableVcpu,
+  dedication: SharedResource { note: "Shared vCPU family: baseline performance with temporary bursting. Hetzner recommends dedicated instances for continuous CPU-intensive workloads." },
+  interruption: NonPreemptible { note: "Ordinary cloud instance, not preemptible." },
+  availability: AvailabilitySlaPublished { permille: 999, note: "Published instance-availability SLA." },
+  purchase: purchase_default,
+  region: RegionNamed { name: "EU (Falkenstein / Nuremberg / Helsinki)" },
+  included_traffic: IncludedTraffic { terabytes: 20, scope: "EU traffic included on CAX; overage rate beyond the allowance not read." },
+  tax: TaxExcluded { note: "Excluding VAT." },
+  shape_provenance: ShapePublished { note: "Published CAX41 shape: 16 Arm vCPU, 32 GB." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Best-effort Arm spill. Cheapest route in the table; shared-family entitlement bars it from a guaranteed-performance tier." },
+  vcpu_count: 16, memory_gib: 32,
+  rate: usd_per_hour(micros: 77700),
+  evidence: operator_relay,
+}
+
+// OCI Ampere A1 is the cleaner architecture-matched baseline: a whole physical Arm core, priced at
+// $0.01 per OCPU-hour plus $0.0015 per GB-hour. One core plus four GiB is therefore $0.016/hour.
+// Flexible shapes scale to 80 Ampere cores and bare metal reaches 160.
+data oci_ampere_a1: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Oracle Cloud", sku: "ampere-a1-flex" },
+  product: "Ampere A1 flexible (1 OCPU + 4 GB)",
+  market_class: RawInfrastructure,
+  architecture: Arm64,
+  entitlement: PhysicalCore,
+  dedication: DedicatedResource { note: "One OCPU is one physical Ampere Altra core with no SMT." },
+  interruption: NonPreemptible { note: "On-demand flexible shape." },
+  availability: AvailabilityUnread { obligation: "Read the OCI compute SLA for the chosen region." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxExcluded { note: "List price, before tax." },
+  shape_provenance: ShapePublished { note: "Composed from the published per-OCPU-hour and per-GB-hour rates for a 1-core, 4-GiB shape." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Architecture-matched on-demand spill. Dedicated physical cores make it the route a guaranteed tier can actually use." },
+  vcpu_count: 1, memory_gib: 4,
+  rate: usd_per_hour(micros: 16000),
+  evidence: operator_relay,
+}
+
+// Scaleway AMP2 is cheaper still and is an explicit public Labs trial. It belongs in the market
+// table so the floor is visible and it is NOT a production route. Its shape here is reconstructed
+// backwards from a per-unit-minute figure rather than copied from a published shape, and its rate
+// is in euro against a table denominated in dollars, so the comparison column refuses it twice.
+data scaleway_amp2: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Scaleway", sku: "amp2-labs" },
+  product: "AMP2 Arm (public Labs trial)",
+  market_class: RawInfrastructure,
+  architecture: Arm64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Trial programme; entitlement not read." },
+  interruption: InterruptionUnread { obligation: "Trial programme; reclaim policy not read." },
+  availability: AvailabilityUnread { obligation: "A public Labs trial carries no availability commitment worth planning against." },
+  purchase: purchase_default,
+  region: RegionNamed { name: "EU (Paris)" },
+  included_traffic: traffic_unread_default,
+  tax: TaxExcluded { note: "Excluding VAT." },
+  shape_provenance: ShapeNormalizedFromUnitRate { note: "Shape reconstructed as one core plus 4 GiB from a relayed per-unit-minute figure. Scaleway publishes no such shape; this is a normalization, not a product." },
+  performance: performance_unmeasured_default,
+  spill_admission: ExperimentalNotAdmitted { obligation: "Public Labs trial. Obtain general-availability pricing, a shape listing and an availability commitment before this may carry any customer work." },
+  vcpu_count: 1, memory_gib: 4,
+  rate: eur_per_hour(micros: 6420),
+  evidence: operator_relay,
+}
+
+// ---------------------------------------------------------------------------------------------
+// HOSTED CI PRODUCTS: the competitors. These bound our price. None of them is a spill route.
+// ---------------------------------------------------------------------------------------------
+
+data ci_product_defaults_note: NonEmptyStr = "The hosted CI rows sell integration, isolation, cache, logs, billing, support and abuse handling on top of compute. Comparing their per-unit-minute rate with a raw VM rate is a fair way to bound our price and an unfair way to describe their margin."
+
+// Read from the vendor's own billing documentation in this pass.
+data github_billing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/billing/managing-billing-for-your-products/about-billing-for-github-actions"
+  }
+}
+
+data github_page_read: PriceEvidence = PriceVendorPageRead {
+  authority: github_billing_authority,
+  read_on: "2026-08-22",
+}
+
+data ubicloud_2026_relay: PriceEvidence = PriceOperatorConfirmed {
+  note: "Operator relayed Ubicloud's 2026 price-adjustment table verbatim: standard runner $0.0008 to $0.0010 per minute, premium-2 unchanged, and standard x64 withdrawn from new customers.",
+  observed_on: "2026-08-22",
+}
+
+data ubicloud_standard_x64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "standard-runner-x64" },
+  product: "standard CI runner, x64",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: ClosedToNewCustomers {
+    note: "Withdrawn from new customers in the 2026 price adjustment. A new customer cannot buy this rate at any price, so it is not a bound on ours.",
+    still_served: "Existing customers keep the standard tier, so the rate still shows what the vendor is willing to serve. The row stays rather than being deleted.",
+  },
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published runner shape." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 1000),
+  evidence: ubicloud_2026_relay,
+}
+
+// The relayed table names x64 alone as withdrawn. Arm64 is therefore NOT recorded as closed, and
+// NOT recorded as confirmed open either: the wording is our only basis, and an inference from
+// silence is not an observation. The note names the check that would settle it.
+data ubicloud_standard_arm64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "standard-runner-arm64" },
+  product: "standard CI runner, arm64",
+  market_class: HostedCiProduct,
+  architecture: Arm64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: NoPurchaseRestrictionObserved {
+    note: "The withdrawal notice names x64 only. Whether arm64 standard is still open to new customers has NOT been confirmed. Settle it by attempting a new-account signup and reading the offered tiers; the answer decides whether the cheap arm64 lane is contested or vacated.",
+  },
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published runner shape; arm64 rates stated to match x64." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 1000),
+  evidence: ubicloud_2026_relay,
+}
+
+
+data blacksmith_x64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "x64-runner" },
+  product: "x64 runner",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published runner shape." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 4000),
+  evidence: operator_relay,
+}
+
+data blacksmith_arm: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "arm-runner" },
+  product: "ARM runner",
+  market_class: HostedCiProduct,
+  architecture: Arm64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published runner shape: 2 CPU, 6 GiB." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpu_count: 2, memory_gib: 6,
+  rate: usd_per_minute(micros: 2500),
+  evidence: operator_relay,
+}
+
+data depot_runner: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Depot", sku: "standard-runner" },
+  product: "x64 or ARM runner",
+  market_class: HostedCiProduct,
+  architecture: ArchitectureUnstated,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published runner shape." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 4000),
+  evidence: operator_relay,
+}
+
+data buildkite_hosted: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Buildkite", sku: "hosted-linux-agent" },
+  product: "hosted Linux agent",
+  market_class: HostedCiProduct,
+  architecture: ArchitectureUnstated,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Agent entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted agent." },
+  availability: AvailabilityUnread { obligation: "Agent SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted agent rate not read." },
+  shape_provenance: ShapePublished { note: "Published agent shape: 2 CPU, 4 GiB." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpu_count: 2, memory_gib: 4,
+  rate: usd_per_minute(micros: 8000),
+  evidence: operator_relay,
+}
+
+data circleci_medium: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "CircleCI", sku: "docker-medium" },
+  product: "x64 2-CPU/4-GB class (credit model)",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Class entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted executor." },
+  availability: AvailabilityUnread { obligation: "Executor SLA not read." },
+  purchase: purchase_default,
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the credit rate not read." },
+  shape_provenance: ShapePublished { note: "Published resource class: 2 CPU, 4 GiB." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpu_count: 2, memory_gib: 4,
+  rate: usd_per_minute(micros: 6000),
+  evidence: operator_relay,
+}
+
+// THE INCUMBENT, and the row the whole table was implicitly measured against without carrying it.
+// Rates and core counts read from GitHub's billing documentation on 2026-08-22. RAM is NOT on that
+// page; the figures below come from GitHub's separate runner-specification documentation, which was
+// not re-read in this pass, so the shape provenance records which half was read where.
+data github_hosted_linux_2core_x64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux" },
+  product: "GitHub-hosted Linux 2-core runner, x64",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Actions SLA not read." },
+  purchase: OpenToNewCustomers { note: "Default runner for every GitHub account." },
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment not read." },
+  shape_provenance: ShapePublished { note: "Rate and core count read from the billing page 2026-08-22; memory taken from GitHub's runner-specification page, not re-read in this pass." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "The incumbent's own runner is not a spill route." },
+  vcpu_count: 2, memory_gib: 7,
+  rate: usd_per_minute(micros: 6000),
+  evidence: github_page_read,
+}
+
+data github_hosted_linux_2core_arm64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux_arm" },
+  product: "GitHub-hosted Linux 2-core runner, arm64",
+  market_class: HostedCiProduct,
+  architecture: Arm64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Actions SLA not read." },
+  purchase: OpenToNewCustomers { note: "Selectable by any GitHub account." },
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment not read." },
+  shape_provenance: ShapePublished { note: "Rate and core count read from the billing page 2026-08-22; memory taken from GitHub's runner-specification page, not re-read in this pass." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "The incumbent's own runner is not a spill route." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 5000),
+  evidence: github_page_read,
+}
+
+data ci_compute_offers: List<ComputeOfferObservation> = [
+  gcp_n2_on_demand,
+  gcp_n2_spot,
+  gcp_cloud_run,
+  hetzner_cax41,
+  oci_ampere_a1,
+  scaleway_amp2,
+  ubicloud_standard_x64,
+  ubicloud_standard_arm64,
+    github_hosted_linux_2core_x64,
+  github_hosted_linux_2core_arm64,
+  blacksmith_x64,
+  blacksmith_arm,
+  depot_runner,
+  buildkite_hosted,
+  circleci_medium,
+]
+
+data circleci_caveat_note: NonEmptyStr = "CircleCI is priced in credits and its bill also carries per-platform-user and per-feature charges. The rate carried here is the compute class alone, at 10 credits per minute against $15 per 25,000 credits, so it understates the total a customer actually pays and is not directly comparable to a flat per-minute runner."
+
+data ubicloud_premium_unread: PriceEvidence = PriceUnread {
+  obligation: "Ubicloud premium-2 per-minute rate. Read it from ubicloud.com/docs/about/pricing.",
+}
+
+data ubicloud_premium_note: NonEmptyStr = "Ubicloud's premium-2 tier has no offer row, for the Namespace reason and with more at stake. After the 2026 adjustment withdrew standard x64 from new customers, premium is the tier a NEW customer is actually offered - so premium, not the standard rate carried above, is the price our positioning would be compared against. The relayed adjustment table states premium is UNCHANGED without stating what it is, and a secondary summary putting it at double the standard rate is not a warrant. Carrying a plausible figure here would put a fabricated number in the single most decision-relevant cell of the table, and carrying a zero would be worse: offer_unit_price reads o.rate without consulting o.evidence, so a zero rate becomes a FREE unit price and would rank first on any frontier. Hence no row. This is the same refusal route_cost already takes when it says a missing price is not a free price."
+
+data namespace_unread: PriceEvidence = PriceUnread {
+  obligation: "Namespace publishes shapes and offers custom pricing without a clean public rate for the standard profile. Obtain a quote or a published rate; do not infer one from the shapes.",
+}
+
+data namespace_note: NonEmptyStr = "Namespace belongs in the competitor set and has no row here, because a competitor with no readable price is an unread price and not an absent one. Inventing a plausible figure for it would be the exact defect this tree exists to refuse."
+
+// A unit-minute is one CPU entitlement plus 4 GiB. Whichever of CPU and memory runs out first is
+// what the shape can actually deliver, so this takes the MINIMUM of the two. A 2-vCPU shape with
+// 4 GiB delivers one unit, not two: the second vCPU has no memory to work with.
+//
+// The count is carried in PERMILLE so a 6 GiB shape reads as 1.5 units instead of truncating to 1.
+fn offer_unit_count_permille(o: ComputeOfferObservation) -> Nat {
+  nat_min(a: o.vcpu_count * 1000, b: o.memory_gib * 1000 / 4)
+}
+
+// A price whose currency is not the table's currency is NOT comparable, and a foreign figure shown
+// in a comparison column is worse than no figure at all. The division happens once, at the end, so
+// the hourly-to-per-minute step does not truncate before the per-unit step.
+type UnitPriceStanding
+  = UnitPriceUsd { micro: Int }
+  | UnitPriceForeign { micro: Int, currency: CurrencyCode, obligation: NonEmptyStr }
+
+fn offer_unit_price(o: ComputeOfferObservation) -> UnitPriceStanding {
+  let micro = vendor_rate_micros_per_hour(r: o.rate) * 1000 / (60 * offer_unit_count_permille(o: o))
+  match vendor_rate_currency(r: o.rate) {
+    Usd => UnitPriceUsd { micro: micro },
+    Eur => UnitPriceForeign {
+      micro: micro,
+      currency: Eur,
+      obligation: "No exchange-rate reading is held. Converting at a rate nobody recorded would make a euro figure look like a dollar one; the row stays in its own currency until an FX observation with a timestamp exists.",
+    },
+  }
+}
+
+fn unit_price_is_usd(p: UnitPriceStanding) -> Bool {
+  match p {
+    UnitPriceUsd { micro } => true,
+    UnitPriceForeign { micro, currency, obligation } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RESOLUTION WITH CARDINALITY. A lookup that folds to a default of zero makes a missing provider
+// look free, and a lookup that keeps the last match silently picks one of several. Both are how a
+// renamed product turns into a zero-cost fallback that no gate refuses.
+// ---------------------------------------------------------------------------------------------
+
+type ComputeOfferResolution
+  = ComputeOfferResolved { offer: ComputeOfferObservation }
+  | ComputeOfferMissing { identity: ComputeOfferIdentity }
+  | ComputeOfferAmbiguous { identity: ComputeOfferIdentity, match_count: Int }
+
+fn resolve_offer(id: ComputeOfferIdentity) -> ComputeOfferResolution {
+  fold(ci_compute_offers, init: ComputeOfferMissing { identity: id }, f: fn(acc, o) {
+    if offer_identity_equal(a: o.identity, b: id) {
+      match acc {
+        ComputeOfferMissing { identity } => ComputeOfferResolved { offer: o },
+        ComputeOfferResolved { offer } => ComputeOfferAmbiguous { identity: id, match_count: 2 },
+        ComputeOfferAmbiguous { identity, match_count } =>
+          ComputeOfferAmbiguous { identity: id, match_count: match_count + 1 },
+      }
+    } else { acc }
+  })
+}
+
+// The catalog's own integrity: no two rows may share an identity, or every lookup against that
+// identity refuses and the table silently loses a route.
+fn offer_identities_are_unique() -> Bool {
+  all(ci_compute_offers, o => match resolve_offer(id: o.identity) {
+    ComputeOfferResolved { offer } => true,
+    ComputeOfferMissing { identity } => false,
+    ComputeOfferAmbiguous { identity, match_count } => false,
+  })
+}
+
+// The only spendable form of a route's price. Missing and ambiguous both refuse; neither becomes a
+// number, and in particular neither becomes zero.
+type RouteCostStanding
+  = RouteCostKnown { per_unit_minute_micro: Int, offer: ComputeOfferObservation }
+  | RouteCostRefused { identity: ComputeOfferIdentity, reason: NonEmptyStr }
+
+fn route_cost(id: ComputeOfferIdentity) -> RouteCostStanding {
+  match resolve_offer(id: id) {
+    ComputeOfferResolved { offer } =>
+      match offer_unit_price(o: offer) {
+        UnitPriceUsd { micro } => RouteCostKnown { per_unit_minute_micro: micro, offer: offer },
+        UnitPriceForeign { micro, currency, obligation } =>
+          RouteCostRefused { identity: id, reason: obligation },
+      },
+    ComputeOfferMissing { identity } =>
+      RouteCostRefused {
+        identity: identity,
+        reason: "no offer carries this identity. A missing price is not a free price, so this refuses instead of returning zero.",
+      },
+    ComputeOfferAmbiguous { identity, match_count } =>
+      RouteCostRefused {
+        identity: identity,
+        reason: "more than one offer carries this identity. The catalog must not silently pick one of them.",
+      },
+  }
+}
+
+fn entitlement_label(e: CpuEntitlement) -> NonEmptyStr {
+  match e {
+    PhysicalCore => "physical core",
+    SmtHardwareThread => "SMT thread",
+    ProviderVcpuUnspecified => "vCPU, unstated",
+    SharedBurstableVcpu => "shared burstable",
+  }
+}
+
+fn dedication_label(d: ResourceDedication) -> NonEmptyStr {
+  match d {
+    DedicatedResource { note } => "dedicated",
+    SharedResource { note } => "shared",
+    DedicationUnread { obligation } => "unread",
+  }
+}
+
+fn interruption_label(i: InterruptionStanding) -> NonEmptyStr {
+  match i {
+    NonPreemptible { note } => "durable",
+    Preemptible { note } => "preemptible",
+    InterruptionUnread { obligation } => "unread",
+  }
+}
+
+fn spill_admission_label(s: SpillAdmission) -> NonEmptyStr {
+  match s {
+    SpillAdmitted { note } => "spill route",
+    CompetitorNotSpill { note } => "competitor",
+    ExperimentalNotAdmitted { obligation } => "experimental",
+  }
+}
+
+fn offer_is_spill_admitted(o: ComputeOfferObservation) -> Bool {
+  match o.spill_admission {
+    SpillAdmitted { note } => true,
+    CompetitorNotSpill { note } => false,
+    ExperimentalNotAdmitted { obligation } => false,
+  }
+}
+
+fn admitted_spill_offers() -> List<ComputeOfferObservation> {
+  filter(ci_compute_offers, o => offer_is_spill_admitted(o: o))
+}
+
+// WHAT A NEW CUSTOMER COULD ACTUALLY CHOOSE INSTEAD OF US. This, not competitor_offers, is the set
+// a competitive frontier should rank: a withdrawn tier still appears in competitor_offers because it
+// records what the vendor was willing to serve, and it must not be deleted - but it cannot undercut
+// a price a new customer is unable to buy.
+fn purchasable_competitor_offers() -> List<ComputeOfferObservation> {
+  filter(competitor_offers(), o => offer_is_purchasable_by_new_customer(o: o))
+}
+
+fn competitor_offers() -> List<ComputeOfferObservation> {
+  filter(ci_compute_offers, o => match o.market_class {
+    HostedCiProduct => true,
+    RawInfrastructure => false,
+  })
+}
