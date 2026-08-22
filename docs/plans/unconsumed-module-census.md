@@ -324,6 +324,35 @@ have a live caller.**
    a reader can price each: **98 → 93 → 91** (defect 6 filters), then **→ 93** with variants
    and the three corrections above.
 
+   **A fourth extraction bug exists and this document's numbers postdate its fix; a fifth
+   is a real gap with measured zero exposure.** Both were found by the deletion lane
+   running the four discriminating cases published with the extractor — which is the
+   argument for shipping discriminators rather than bug descriptions, since the check found
+   a bug its author did not have. (d) **Same-line coproducts**: `type PrerequisiteKind =
+   Capability | Credential | …` puts every variant on the type line, so a scan anchored to
+   lines *starting* with `=` or `|` never sees them. A region-based extractor handles it,
+   and all four cases pass on the extractor that produced the counts above — **117
+   postdates (d)**, re-verified rather than assumed. (e) **`operation` / `service` /
+   `resource` rows are declarations** in the flat service namespace (338 / 8 / 5 in the
+   corpus). This document's instrument subtracts them from the *consuming* side but does
+   not credit them to the *declaring* side, so a module whose declarations were **only**
+   operation rows would own nothing and could score residue while consumed — the
+   delete-a-live-module direction. **Measured exposure on this population: zero.** No row
+   of the 298 declares nothing-but-operations, and more decisively, **not one of the 20
+   operation-bearing rows sits in STILL-UNCONSUMED** (13 AMBIGUOUS, 5 CONSUMED, 2
+   DEAD-CONSUMER-ONLY) — the bucket where a false residue would be dangerous contains none
+   of them. Mechanism real, no victim here; a lane extending this instrument to another
+   population must credit them.
+
+   **Two non-equivalent fixes for (c), worth distinguishing rather than reconciling.**
+   Subtracting declaration-keyword names from the *consumer's* reference set (this
+   document) is more precise; adding them to the *declaring* module's owned set (the
+   deletion lane) is more conservative, because it pushes a row to AMBIGUOUS where
+   subtraction correctly leaves it in STILL-UNCONSUMED. The two therefore disagree in a
+   known direction, and **for a deletion lane the conservative error is the right one** —
+   so the implementations are deliberately not unified, and a residue *count* should come
+   from the precise one while a deletion *set* comes from the conservative one.
+
    **Direction, and one row that went the other way.** At the population level this defect
    can only move modules *out* of residue. At the *row* level it is not one-directional:
    `extdeps.access.zanzibar` moved CONSUMED-DECISIVE → AMBIGUOUS, because counting variants
