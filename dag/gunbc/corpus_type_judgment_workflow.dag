@@ -1,0 +1,286 @@
+module gunbc.corpus_type_judgment_workflow
+
+import extdeps.languages.yaml.types { yaml_bool, yaml_int, kv }
+import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  StepCapabilityRole,
+  capability_neutral,
+  provides_only,
+  consumes_only,
+  workflow_job_capability_closure,
+  capability_closure_is_closed,
+}
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowDispatch,
+  WorkflowPermissions, PermRead,
+  checkout_action, setup_rust_action
+}
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import std.types { List, String, Int }
+
+// THE CORPUS TYPE-JUDGMENT MEASUREMENT, ON A BUTTON.
+//
+// It runs the required run's own preparation -- the same subject, the same whole-corpus compile --
+// and stops before any witness executes, reporting the located judgment population the strict gate
+// computes and discards. The mode is `claim_executor --corpus-type-judgment`.
+//
+// WHY IT IS ITS OWN WORKFLOW AND NOT A STEP IN witnesses.yml (operator ruling, 2026-08-22). A step
+// there would add a whole-corpus preparation to EVERY pull request's required path in order to
+// answer a question almost no pull request is asking, and the required path is the one thing in
+// this repository nobody can route around when it is slow or wrong. A measurement instrument earns
+// a dispatch button; it does not earn a tax on every author. If it later proves it should gate
+// something, that is a separate decision with its own operator agreement -- the CI re-add queue is
+// explicitly per-item, and this is not an item on it.
+//
+// WHY IT NEEDS A WORKFLOW AT ALL, rather than being run wherever someone happens to be. The
+// measurement is not runnable off this runner class: over the real roots the same compile is
+// OOM-killed on a BuildBuddy remote runner (exit 137, after frontend and normalize), while the
+// witness floor carries that load to completion here. So the envelope, not the mode, is what
+// decides where it can run -- and this is the runner class that has it.
+//
+// WHAT THIS WORKFLOW DELIBERATELY DOES NOT HAVE: push and pull_request triggers, a concurrency
+// group, and any dispatch input. The first two follow from it being a measurement rather than a
+// gate. The third is the instrument's central constraint expressed in the workflow: the mode takes
+// no subject argument, so there is nothing an input could usefully carry, and an input that COULD
+// narrow the corpus is exactly the mechanism by which every previous instrument in this lane
+// reported a closure as the corpus.
+data corpus_type_judgment_workflow_name: String = "Corpus type judgment"
+
+data corpus_type_judgment_workflow_job_id: String = "corpus_type_judgment"
+
+// A NULLARY ARGV, AND THAT IS THE POINT RATHER THAN AN OMISSION.
+//
+// `floor_run_command` folds `witness_layer_roots` onto its argv because the required run is told
+// what to compile. This command cannot be: the mode derives its roots from the same
+// `gunbc.ci_layer_roots` authority internally and REFUSES supplied roots, so there is no
+// `--source-root` to render here. The workflow therefore has no spelling for "measure part of it",
+// which is the constraint held as construction rather than as a flag a future editor must not add.
+fn corpus_type_judgment_run_command() -> ArgvCommand {
+  ArgvCommand {
+    argv: ["target/release/claim_executor", "--corpus-type-judgment"],
+  }
+}
+
+fn corpus_type_judgment_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// `cache: false` for the reason gunbc.witness_floor_workflow records at length: on this
+// self-hosted fleet the rust-cache post step's cleanBin/cleanRegistry delete against a
+// /home/ghrunner/.cargo that every slot on the host shares, so a cleanup correct for a
+// single-tenant runner removes files other jobs are building against. Same fleet, same home,
+// same consequence -- this is one fact with one home, not a setting copied because it was nearby.
+fn corpus_type_judgment_toolchain_step() -> Step {
+  UsesStep {
+    name: Present { value: "Install Rust toolchain" },
+    id: none,
+    uses: setup_rust_action,
+    with: Present {
+      value: [kv(key: "cache", value: yaml_bool(b: false))]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn corpus_type_judgment_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the measurement" },
+    id: Present { value: "build_corpus_type_judgment" },
+    run: "cargo build --release -p v1-compiler --bin claim_executor\n",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE RUN STEP IS A SHELL STRING, AND THAT IS THE SANCTIONED FORM HERE RATHER THAN RESIDUE.
+//
+// Recorded because the shape reads like the medium-as-string class on sight, and a reader who
+// stops there will re-file it as a defect. docs/plans/shell-emission-model.md's bash-minimization
+// rule (operator, 2026-07-03) admits emitted bash in exactly two places, and a GitHub Actions
+// `run:` block is the first of them: a FOREIGN EXECUTOR that accepts a shell payload and nothing
+// else. There is no typed transport to reach for at this seam — the executor is the constraint.
+//
+// What this file does NOT do is mint a second way of building that payload: the two words of argv
+// come from `corpus_type_judgment_run_command` as an ArgvCommand and are rendered by the shared
+// `shell_command_render`, exactly as gunbc.witness_floor_workflow does. So the string is a
+// rendering of a modeled command, not a hand-authored script, and this is one more instance of an
+// existing class rather than a new one.
+fn corpus_type_judgment_run_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "cd \"$ROOT\"\n",
+      concat(shell_command_render(command: corpus_type_judgment_run_command()), "\n")
+    )
+  )
+}
+
+// THE PRECONDITION IS DECLARED WITH A STATUS FUNCTION, not left to the default.
+//
+// A step with no `if` inherits `success()`, which is the conjunction of every earlier step -- so an
+// unconditioned run step is wired to whatever precedes it whether or not that was anyone's
+// decision. Here the dependency is real and worth stating explicitly: there is no measurement to
+// take if the binary did not build. `!cancelled()` is carried because a DECLARED condition without
+// a status function is CONJOINED with the default rather than replacing it (the defect
+// gunbc.witness_floor_workflow measured on its own floor step, where a step skipped while its
+// stated condition was true), and a cancelled run should stop rather than proceed.
+fn corpus_type_judgment_precondition() -> String {
+  "!cancelled() && steps.build_corpus_type_judgment.outcome == 'success'"
+}
+
+fn corpus_type_judgment_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Corpus type judgment (preparation only, no witness executes)" },
+    id: none,
+    run: corpus_type_judgment_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: corpus_type_judgment_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ONE LIST, TWO PROJECTIONS -- the steps GitHub sees and the capability roles the closure reads
+// are derived from the same rows, so they cannot drift apart (the same construction
+// gunbc.witness_floor_workflow uses, and for the same reason: a second hand-maintained role list
+// beside the step list is the fork the closure exists to close).
+type CorpusTypeJudgmentBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn corpus_type_judgment_bound_steps() -> List<CorpusTypeJudgmentBoundStep> {
+  [
+    CorpusTypeJudgmentBoundStep {
+      step: corpus_type_judgment_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout",
+    },
+    CorpusTypeJudgmentBoundStep {
+      step: corpus_type_judgment_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    CorpusTypeJudgmentBoundStep {
+      step: corpus_type_judgment_build_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "Build the measurement",
+    },
+    CorpusTypeJudgmentBoundStep {
+      step: corpus_type_judgment_run_step(),
+      role: capability_neutral,
+      step_name: "Corpus type judgment (preparation only, no witness executes)",
+    },
+  ]
+}
+
+fn corpus_type_judgment_steps() -> List<Step> {
+  list_map(xs: corpus_type_judgment_bound_steps(), f: fn(b) { b.step })
+}
+
+fn corpus_type_judgment_step_annotations() -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: corpus_type_judgment_bound_steps(),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn corpus_type_judgment_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: corpus_type_judgment_step_annotations()),
+  )
+}
+
+// A DECLARED PROVISIONAL BOUND, and it is provisional in the same honest sense
+// gunbc.witness_floor_workflow's 180 is: no run of this job has completed, so a bound derived from
+// one does not exist to quote. What 60 IS: above the two costs that have been measured on this
+// shape -- a release build of this binary at roughly four and a half minutes, and the required
+// run's strict preparation over the same subject at roughly nine -- with room for the corpus to
+// grow, and far enough below the inherited 360-minute default that a hung run returns its log the
+// same working hour instead of holding a self-hosted slot for six hours.
+//
+// RESTORATION TRIGGER: the first completed run replaces it with a real wall time, at which point
+// this note dissolves with the provisional number it explains.
+fn corpus_type_judgment_job_timeout_minutes() -> Int {
+  60
+}
+
+fn corpus_type_judgment_job() -> Job {
+  Job {
+    id: corpus_type_judgment_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: corpus_type_judgment_steps(),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: corpus_type_judgment_job_timeout_minutes(),
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data corpus_type_judgment_workflow: Workflow = {
+  name: corpus_type_judgment_workflow_name,
+  on: [WorkflowDispatch { inputs: [] }],
+  concurrency: none,
+  env: none,
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    }
+  },
+  jobs: [corpus_type_judgment_job()]
+}
+
+// EMISSION REFUSES RATHER THAN WARNS, for the reason gunbc.witness_floor_workflow states: a
+// capability check whose only consumer is a test is specification-without-execution, green forever
+// while the emitter produces the broken workflow beside it. A refusal marker cannot be mistaken for
+// a workflow by the drift gate, which compares bytes.
+data corpus_type_judgment_capability_closure_refusal: String = "REFUSED gunbc.corpus_type_judgment_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in corpus_type_judgment_bound_steps or the order of the steps themselves."
+
+type CorpusTypeJudgmentGenerationOutcome
+  = CorpusTypeJudgmentGenerated { content: String }
+  | CorpusTypeJudgmentGenerationRefused
+
+fn expected_corpus_type_judgment_yml() -> CorpusTypeJudgmentGenerationOutcome {
+  if corpus_type_judgment_capability_closure_holds() {
+    CorpusTypeJudgmentGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: corpus_type_judgment_workflow)) }
+  } else {
+    CorpusTypeJudgmentGenerationRefused
+  }
+}
