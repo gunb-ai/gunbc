@@ -11,6 +11,9 @@ import std.dissolution { bound_dissolution, unbound_dissolution, retires_dissolu
 import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigger }
 import extdeps.linux.usb_gadget { configfs_op_render_dissolution_trigger }
 import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
+import extdeps.cache.sccache { sccache_install_dissolution_trigger }
+import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
+import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
 import std.roster_frontier { FrontierRow, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }
 
 fn planted_bound_ref() -> DeclarationRef {
@@ -97,6 +100,9 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
     && dissolution_is_bound(condition: configfs_op_render_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
+    && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
+    && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
+    && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
 }
 
 fn w_unbound_dissolution_empty_literal_red() -> Bool {
