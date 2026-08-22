@@ -10380,6 +10380,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
     let mut behavioral_receipt_plan_mode = false;
@@ -10410,6 +10411,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--corpus-type-judgment" => {
+                corpus_type_judgment_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -10528,6 +10532,86 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if behavioral_receipt_plan_mode {
         return run_behavioral_receipt_plan(&source_roots);
+    }
+
+    // THE CORPUS TYPE-JUDGMENT MEASUREMENT — the required run's preparation, stopped before it
+    // judges.
+    //
+    // It reaches for `corpus_type_judgment_census`, which assembles THE SAME subject
+    // `--required-ci`'s floor phase prepares (`assemble_prepared_subject` under the floor's own
+    // exclusions) and runs THE SAME whole-corpus compile, then reports the per-class judgment
+    // population instead of collapsing it to a pass/fail. Nothing is evaluated: no claim scope, no
+    // interpreter context, no witness. That is the whole of the difference, and it is why this is
+    // a mode here rather than a second discovery in a bin of its own — a measurement over a
+    // population CI does not compile answers a neighbouring question (DESIGN §3).
+    //
+    // WHY IT EXISTS. The strict gate asks that compile exactly one question — is anything blocking
+    // — and discards the rest. So the advisory residue (the method-existence frontier and its
+    // siblings) is computed on every required run and counted by nothing, which is the state
+    // DESIGN §4b names: a frontier whose deficit frequency is unobservable never ranks for
+    // climbing.
+    //
+    // WHAT ITS EXIT CODE MEANS, because a measurement and a gate must not be read as each other:
+    // 0 means MEASURED, whatever the corpus turned out to say; nonzero means COULD NOT MEASURE.
+    // A blocking count above zero is a reported figure, not this mode's failure — the gate that
+    // stops the line on it is `--required-ci`, and duplicating that verdict here would be a second
+    // authority for the same fact.
+    if corpus_type_judgment_mode {
+        let exclusions = v1_compiler::cli_run::floor_prepared_subject_exclusions();
+        let census =
+            match v1_compiler::cli_run::corpus_type_judgment_census(&source_roots, &exclusions) {
+                Ok(c) => c,
+                Err(e) => {
+                    // A REFUSAL PRINTS NO COUNT. The one thing this mode must never do is answer
+                    // a question it could not measure with the number that reads as good news.
+                    eprintln!("corpus-type-judgment: {e}");
+                    return Err(ExitCode::from(1));
+                }
+            };
+        // The control prints FIRST and unconditionally: it is what makes every number below it
+        // readable, so it must not be something a reader has to scroll past a zero to find.
+        for row in &census.control_rows {
+            println!(
+                "CORPUS_JUDGMENT_CONTROL\t{}\t{}\t{}\t{}",
+                row.class,
+                row.subject_name,
+                row.severity.as_str(),
+                row.count
+            );
+        }
+        println!("CORPUS_JUDGMENT_SUBJECT\t{}", census.subject_statement);
+        println!(
+            "CORPUS_JUDGMENT_TOTALS\tdiagnostics={}\tblocking={}\tadvisory={}\tunclassified={}",
+            census.diagnostics_total,
+            census.blocking_total,
+            census.advisory_total,
+            census.unclassified_total
+        );
+        for row in &census.rows {
+            println!(
+                "CORPUS_JUDGMENT_ROW\t{}\t{}\t{}\t{}",
+                row.class,
+                row.subject_name,
+                row.severity.as_str(),
+                row.count
+            );
+        }
+        // `unclassified` is not a rounding bucket. A class counted by neither severity predicate
+        // is a frontier that renders to a terminal while every gate reports zero of it, so it is
+        // named on its own line rather than left to a reader to notice in a column.
+        if census.unclassified_total > 0 {
+            eprintln!(
+                "corpus-type-judgment: {} diagnostic(s) are admitted by NEITHER the blocking \
+                 predicate nor the advisory allowlist — each is a judgment the corpus produced \
+                 that no severity policy counts",
+                census.unclassified_total
+            );
+        }
+        eprintln!(
+            "corpus-type-judgment: measured (no witness evaluated) {}",
+            census.subject_statement
+        );
+        return Ok(ExitCode::SUCCESS);
     }
 
     // THE COMPOSED CI RUN — one process, three phases: the src/v1 .dag parse sweep, the regen

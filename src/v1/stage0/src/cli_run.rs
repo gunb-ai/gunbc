@@ -39238,13 +39238,44 @@ fn register_floor_prepared_authority_guard(
     FloorPreparedAuthorityGuard
 }
 
-/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
-/// typecheck gate, and returns everything a later consumer could want to know about the
-/// subject so that none of them reaches for the repository again.
-pub fn prepare_repository_once(
+/// THE SUBJECT THE REQUIRED RUN PREPARES — assembled once, BEFORE any judgment is passed on it.
+///
+/// Split out of [`prepare_repository_once`] rather than copied beside it because a consumer that
+/// wants to MEASURE the compiler's judgment over the required run's population must read the same
+/// population BY CONSTRUCTION, not by a second discovery that happens to agree today (DESIGN §3:
+/// one authority for "which modules CI compiles"). Two discoveries that drift make a measurement
+/// silently narrow, and a narrowed subject is exactly what makes a small number look like a quiet
+/// corpus.
+///
+/// Assembly is read-and-fold only: no resolve, no typecheck, no evaluation. Whether the subject is
+/// then judged strictly (the floor) or merely measured (the census) is the caller's question.
+pub struct PreparedSubject {
+    pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pub inventory: Vec<PreparedSourceView>,
+    pub witness_files: Vec<InventoryWitnessFile>,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+impl PreparedSubject {
+    /// The statement of WHICH population a number was taken over. Every count derived from this
+    /// subject prints beside it, so a reader never has to assume the denominator.
+    pub fn statement(&self) -> String {
+        format!(
+            "subject={} modules_resolved={} modules_excluded={}",
+            self.subject_digest, self.modules_resolved, self.modules_excluded
+        )
+    }
+}
+
+/// Read the active sources once and fold them into the subject. Refuses an empty corpus rather
+/// than returning an empty one: zero modules and a quiet corpus are different states, and only the
+/// refusal distinguishes them for every consumer downstream.
+pub fn assemble_prepared_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
-) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+) -> Result<PreparedSubject, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
@@ -39273,6 +39304,25 @@ pub fn prepare_repository_once(
     let modules_excluded = total - sources.len();
     witness_files.sort_by(|a, b| a.path.cmp(&b.path));
     let subject_digest = subject_digest_for_closure(&sources);
+    let modules_resolved = total - modules_excluded;
+    Ok(PreparedSubject {
+        sources,
+        inventory,
+        witness_files,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    })
+}
+
+/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
+/// typecheck gate, and returns everything a later consumer could want to know about the
+/// subject so that none of them reaches for the repository again.
+pub fn prepare_repository_once(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+    let subject = assemble_prepared_subject(source_roots, exclude_substrings)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
@@ -39282,10 +39332,15 @@ pub fn prepare_repository_once(
     // are indistinguishable in a log, and a subject that silently narrowed reads exactly like
     // one that did not. A receipt identifying the subject must precede the gate that can reject
     // it, so the error carries them rather than a second emit site racing the first.
-    let modules_resolved = total - modules_excluded;
-    let subject_statement = format!(
-        "subject={subject_digest} modules_resolved={modules_resolved} modules_excluded={modules_excluded}"
-    );
+    let subject_statement = subject.statement();
+    let PreparedSubject {
+        sources,
+        inventory,
+        witness_files,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     Ok((
@@ -39299,6 +39354,193 @@ pub fn prepare_repository_once(
         },
         inventory,
     ))
+}
+
+/// WHERE ONE DIAGNOSTIC CLASS SITS IN THE SEVERITY POLICY — three states, never two.
+///
+/// `Unclassified` exists because the policy is TWO INDEPENDENT PREDICATES, not a partition:
+/// `compile_clean_diagnostic_is_hard` decides blocking, and `compile_clean_diagnostic_is_advisory`
+/// is a CLOSED ALLOWLIST rather than its complement. A non-blocking variant absent from that
+/// allowlist is therefore admitted by neither, and a census that folded it into "advisory" — or,
+/// worse, dropped it — would report a frontier as counted while nothing counted it. That exact
+/// defect has already been found once in this repository (the method/conformance wall's residue,
+/// recorded on `CompilerDiagnostic`'s hand-Rust gate receipt). A third constructor makes the
+/// unpoliced case a visible number instead of an absence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CorpusJudgmentSeverity {
+    Blocking,
+    Advisory,
+    Unclassified,
+}
+
+impl CorpusJudgmentSeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocking => "blocking",
+            Self::Advisory => "advisory",
+            Self::Unclassified => "unclassified",
+        }
+    }
+
+    fn of(d: &Rc<ErrorNode>) -> Self {
+        if compile_clean_diagnostic_is_hard(d) {
+            Self::Blocking
+        } else if compile_clean_diagnostic_is_advisory(d) {
+            Self::Advisory
+        } else {
+            Self::Unclassified
+        }
+    }
+}
+
+/// One aggregated row of the corpus type-judgment census: a `(class, name, severity)` key and how
+/// many times the corpus compile produced it. `class`/`subject_name` are exactly the two halves of
+/// [`compile_clean_diagnostic_histogram_key`], whose total match over `CompilerDiagnostic` stays
+/// the single authority for naming a variant (DESIGN §3 — this is a projection, never a second
+/// diagnostic vocabulary).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorpusJudgmentRow {
+    pub class: String,
+    pub subject_name: String,
+    pub severity: CorpusJudgmentSeverity,
+    pub count: i64,
+}
+
+/// The measured judgment the v1 resolve+typecheck passed over the required run's prepared subject.
+///
+/// Every total here is a count over ONE compile of ONE stated population; `subject_statement`
+/// travels with them so no figure is readable without its denominator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorpusTypeJudgmentCensus {
+    pub subject_statement: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub diagnostics_total: i64,
+    pub blocking_total: i64,
+    pub advisory_total: i64,
+    pub unclassified_total: i64,
+    pub rows: Vec<CorpusJudgmentRow>,
+    /// What the same fold reported for the planted control diagnostic. Present so a reader can
+    /// see that the instrument was capable of a nonzero answer on the run that reported zero.
+    pub control_rows: Vec<CorpusJudgmentRow>,
+}
+
+/// Fold a diagnostic population into `(class, name, severity)` rows. One fold, used by both the
+/// corpus measurement and its control — a control that ran through a second fold would establish
+/// nothing about the fold that produced the number.
+fn corpus_judgment_rows(
+    diagnostics: impl Iterator<Item = Rc<ErrorNode>>,
+) -> Vec<CorpusJudgmentRow> {
+    let mut counts: BTreeMap<(String, String, CorpusJudgmentSeverity), i64> = BTreeMap::new();
+    for d in diagnostics {
+        let (class, name) = compile_clean_diagnostic_histogram_key(&d);
+        *counts
+            .entry((class, name, CorpusJudgmentSeverity::of(&d)))
+            .or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .map(
+            |((class, subject_name, severity), count)| CorpusJudgmentRow {
+                class,
+                subject_name,
+                severity,
+                count,
+            },
+        )
+        .collect()
+}
+
+/// THE PLANTED CONTROL. A hand-built diagnostic of a class the fold must be able to name, run
+/// through the same fold on the same run.
+///
+/// Why an instrument needs one at all: every failure mode of this census — an empty subject, a
+/// compile that produced nothing, a fold whose key or severity call silently dropped everything —
+/// lands on the SAME output as a corpus with nothing to report, and zero is the value that reads
+/// as good news. A zero is only interpretable beside a nonzero taken by the same instrument, so
+/// the control is computed on every run and refused on if it comes back empty. It discriminates
+/// the fold, the histogram key, and the severity classification; it does NOT discriminate the
+/// compile itself, which is what the subject statement and the refusals below are for.
+fn corpus_judgment_control_rows() -> Vec<CorpusJudgmentRow> {
+    let planted = Rc::new(ErrorNode {
+        diagnostic: Rc::new(crate::v1_std_core::CompilerDiagnostic::InternalError {
+            span: crate::v1_std_core::no_span(),
+            message: "corpus-type-judgment planted control diagnostic".to_string(),
+        }),
+        module_name: "<corpus-type-judgment-control>".to_string(),
+    });
+    corpus_judgment_rows(std::iter::once(planted))
+}
+
+/// MEASURE THE COMPILER'S JUDGMENT OVER THE REQUIRED RUN'S SUBJECT, AND STOP THERE.
+///
+/// This is the required run's preparation up to — and deliberately not past — the point where a
+/// verdict is taken: the same subject assembly (`assemble_prepared_subject` with the floor's own
+/// exclusions) and the same whole-corpus `compile_to_resolved` that
+/// [`prepare_repository_once`]'s strict gate runs. What it does NOT do is build an evaluation
+/// context, resolve a claim scope, or run a single witness. Nothing here evaluates.
+///
+/// WHAT IT ADDS, and why the required run cannot answer it today: the strict gate asks one
+/// question of that compile — is any diagnostic blocking — and having answered it, discards the
+/// population. Every advisory the corpus's typecheck produced (the method-existence frontier, the
+/// unenforced refinements, the unlisted-import residue) is computed on every CI run and then
+/// thrown away uncounted, which is precisely the state DESIGN §4b forbids: a frontier whose
+/// deficit frequency is unobservable never ranks for climbing.
+///
+/// IT CANNOT FAIL TOWARD ZERO. Each way this measurement could report a falsely small number is a
+/// refusal rather than a small number:
+///   * subject assembly fails, or the corpus is empty — refused by `assemble_prepared_subject`;
+///   * the compile produced no graph — refused here: a compile that did not get far enough to
+///     judge the corpus has not judged it quiet;
+///   * the fold, key or severity policy silently drops everything — refused here on the planted
+///     control, which must come back nonzero for the corpus figure to be reported at all.
+/// And the figure that survives all three is printed with the subject it was taken over, so a
+/// narrowed population cannot be read as a quiet one. A real zero remains possible and is
+/// reportable — that is the point of the control being a separate, visible number beside it.
+pub fn corpus_type_judgment_census(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<CorpusTypeJudgmentCensus, String> {
+    let subject = assemble_prepared_subject(source_roots, exclude_substrings)
+        .map_err(|e| format!("CORPUS-TYPE-JUDGMENT REFUSAL cause=SubjectUnassembled — {e}"))?;
+    let subject_statement = subject.statement();
+
+    let control_rows = corpus_judgment_control_rows();
+    if control_rows.is_empty() {
+        return Err(format!(
+            "CORPUS-TYPE-JUDGMENT REFUSAL cause=ControlFoldReportedNothing — the planted control \
+             diagnostic produced no census row, so this run's fold cannot be shown capable of a \
+             nonzero answer and its corpus figure is not reportable ({subject_statement})"
+        ));
+    }
+
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(subject.sources.into()));
+    if result.graph.is_none() {
+        return Err(format!(
+            "CORPUS-TYPE-JUDGMENT REFUSAL cause=NoResolvedGraph — the corpus compile produced no \
+             graph, so no judgment over the corpus was reached; a diagnostic count taken here \
+             would describe how far the compile got, not what it judged ({subject_statement})"
+        ));
+    }
+
+    let rows = corpus_judgment_rows(result.diagnostics.iter().cloned());
+    let total_for = |s: CorpusJudgmentSeverity| -> i64 {
+        rows.iter()
+            .filter(|r| r.severity == s)
+            .map(|r| r.count)
+            .sum()
+    };
+    Ok(CorpusTypeJudgmentCensus {
+        subject_statement,
+        modules_resolved: subject.modules_resolved,
+        modules_excluded: subject.modules_excluded,
+        diagnostics_total: rows.iter().map(|r| r.count).sum(),
+        blocking_total: total_for(CorpusJudgmentSeverity::Blocking),
+        advisory_total: total_for(CorpusJudgmentSeverity::Advisory),
+        unclassified_total: total_for(CorpusJudgmentSeverity::Unclassified),
+        rows,
+        control_rows,
+    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
