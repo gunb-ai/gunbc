@@ -10509,31 +10509,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    if source_roots.is_empty() {
-        eprintln!("claim_executor: provide at least one --source-root");
-        return Err(ExitCode::from(2));
-    }
-    let _phase_profile = PhaseProfile::install_from_env();
-
-    // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
-    // claim scope, one cheap mutable frame per claim, one linear fold over every witness in the
-    // tree. It takes no plan, so it short-circuits before the plan-arg requirement — there is no
-    // schedule to resolve, no batch to assign, no worker to spawn and no selection to compute,
-    // and the absence of those flags is the point rather than an omission. `run_required_floor`
-    // refuses when planned, executed and terminal identity counts disagree, so a silently short
-    // roster cannot report as a pass.
-    if behavioral_receipt_census_mode {
-        return run_behavioral_receipt_census(&source_roots);
-    }
-
-    if behavioral_receipt_selftest_mode {
-        return run_behavioral_receipt_selftest(&source_roots);
-    }
-
-    if behavioral_receipt_plan_mode {
-        return run_behavioral_receipt_plan(&source_roots);
-    }
-
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, and that ordering is load-bearing rather
+    // than cosmetic: this mode takes NO roots, so the generic "provide at least one --source-root"
+    // guard below would refuse the only invocation it has. Measured, not reasoned: the emitted
+    // workflow's exact command line exited 2 with that message before this branch was moved here,
+    // which is a mode that could never have run once. It short-circuits for the same reason
+    // `--verify-build-artifacts` and `--measure-cgroup-peak` do -- a mode with no subject argument
+    // cannot be gated on a subject argument.
     // THE CORPUS TYPE-JUDGMENT MEASUREMENT — the required run's preparation, stopped before it
     // judges.
     //
@@ -10639,6 +10621,31 @@ fn run() -> Result<ExitCode, ExitCode> {
         );
         eprintln!("corpus-type-judgment: measured, no witness evaluated");
         return Ok(ExitCode::SUCCESS);
+    }
+
+    if source_roots.is_empty() {
+        eprintln!("claim_executor: provide at least one --source-root");
+        return Err(ExitCode::from(2));
+    }
+    let _phase_profile = PhaseProfile::install_from_env();
+
+    // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
+    // claim scope, one cheap mutable frame per claim, one linear fold over every witness in the
+    // tree. It takes no plan, so it short-circuits before the plan-arg requirement — there is no
+    // schedule to resolve, no batch to assign, no worker to spawn and no selection to compute,
+    // and the absence of those flags is the point rather than an omission. `run_required_floor`
+    // refuses when planned, executed and terminal identity counts disagree, so a silently short
+    // roster cannot report as a pass.
+    if behavioral_receipt_census_mode {
+        return run_behavioral_receipt_census(&source_roots);
+    }
+
+    if behavioral_receipt_selftest_mode {
+        return run_behavioral_receipt_selftest(&source_roots);
+    }
+
+    if behavioral_receipt_plan_mode {
+        return run_behavioral_receipt_plan(&source_roots);
     }
 
     // THE COMPOSED CI RUN — one process, three phases: the src/v1 .dag parse sweep, the regen
