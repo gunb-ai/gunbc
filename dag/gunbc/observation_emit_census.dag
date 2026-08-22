@@ -124,26 +124,6 @@ data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
   }
 }
 
-data witness_row_cost_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[witness-row-cost]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "falsifier-cadence per-witness cost TSV probe lines (#7284 / placement #5 spine) — complete join projection of the ObservationEvent N+1 stream mirrored to the cadence log for task #20 reproduction; per-PR keeps the complete TSV file and summary line, still a raw tag family" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "fold the TSV emit into ObservationEvent-native emission (N+1 stream) and retire the bracket tag; TSV remains a complete join projection of the same events")
-  }
-}
-
-
-data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[witness-row-cost-migration-disclosure]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "falsifier-cadence mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — the per-row verdict body is cadence-scoped exactly as witness_row_cost_site/witness_row_cost_drift_site are, and the per-PR floor keeps only the worst-5 rows plus the [receipt] summary naming the TSV; still a raw tag family. DESCRIPTION CORRECTED: this row previously read 'per-floor-pass ... per-row verdict plus a worst-5 summary', which described the pre-#8126 behavior where all 8,614 rows printed on every floor run; the row was not updated when the emit was gated, so the census described a cadence the seed no longer had" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site")
-  }
-}
-
-
 data observation_emit_roster: List<CensusedEmitSite> = [
   floor_memory_site,
   typecheck_attribution_site,
@@ -156,9 +136,7 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   receipt_site,
   file_trace_site,
   resolve_split_site,
-  assembly_split_site,
-  witness_row_cost_site,
-  witness_row_cost_migration_disclosure_site
+  assembly_split_site
 ]
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
