@@ -1,7 +1,12 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-import std.trait_derive_shape { ReprGroundingDeriveTrait }
-import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+import extdeps.languages.rust.capabilities {
+  RustCapability
+}
+import v2.std.node_query {
+  coproduct_arm_keys,
+  coproduct_nullary_inhabitants
+}
 import v2.test.fixture.coproduct_reflection_generic_wrapper {
   nullary_reflection_through_generic_wrapper
 }
@@ -10,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
-data reflect_imported_derive_trait_type: Symbol = ^ReprGroundingDeriveTrait
+data reflect_imported_derive_trait_type: Symbol = ^RustCapability
 
 type NullaryReflectionRequestedA
   = NullaryReflectionRequestedAFirst
@@ -33,13 +38,13 @@ fn connective_discriminant(value: Connective) -> Symbol {
 }
 
 fn imported_derive_trait_discriminant(
-  value: ReprGroundingDeriveTrait
+  value: RustCapability
 ) -> Symbol {
   discriminant(v: value)
 }
 
 fn imported_derive_trait_discriminants(
-  inhabitants: List<ReprGroundingDeriveTrait>
+  inhabitants: List<RustCapability>
 ) -> List<Symbol> {
   fold_list(
     xs: inhabitants,

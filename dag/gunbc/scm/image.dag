@@ -1,0 +1,716 @@
+module gunbc.scm.image
+
+import std.types { Bool, Int, List, String }
+
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject,
+  JsonKeyValue,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+}
+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+
+import v2.std.node {
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  ComputationNode,
+  Connective,
+  Atom,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  Symbol,
+}
+import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  ObjectStore,
+  StoredEdge,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  insert_from_structure,
+  object_id_eq,
+  store_records_in_dependency_order,
+}
+
+// WHY THE IMAGE CARRIES NO OBJECT IDENTITIES AT ALL.
+//
+// insert_derived does NOT re-derive record.identity -- it takes the caller's word for it. Inside
+// this repository that is sound, because store_node is the only producer and it derives the identity
+// from the canonical node it just stored. A DECODER IS A SECOND PRODUCER, and one that reads
+// identities from a file it does not control. Had the image carried identities, a decoder would hand
+// insert_derived a record whose stated identity was a lie and nothing anywhere would refuse it: the
+// store would answer find_object for a locator whose payload was never hashed to it, and checkout
+// would reconstruct a program the commit never named. That is the forgeable-carrier class DESIGN
+// section 4b describes, arriving through persistence rather than through the substrate.
+//
+// The image therefore records STRUCTURE ONLY -- kind, edge labels, and which earlier object each
+// edge points at -- and every ObjectId is re-derived on load by replaying store_node. Forging an
+// identity is then not caught, it is UNWRITABLE: the format has no field to lie in. This is DESIGN
+// section 5's construction-over-validation applied to the one boundary where the store stops being
+// the only author of its own contents.
+//
+// The same move dissolves the integrity check the first design carried. An earlier shape recorded
+// the commit root's digest beside the objects so load could compare it against the re-derived root.
+// With identities gone the root is an INDEX, its identity is derived like every other, and there is
+// no claim left to check -- the comparison disappeared because nothing asserts anything, not because
+// the check was skipped.
+
+// EDGES POINT BACKWARDS BY POSITION, AND THAT IS WHAT PRESERVES SHARING.
+//
+// A nested-tree image would expand a shared subgraph once per reference, so a DAG whose sharing is
+// the whole point of content addressing would serialize exponentially. Recording objects in
+// dependency order and letting each edge name an EARLIER position keeps one entry per distinct
+// object. A position cannot forge an identity the way a digest could, because the identity at that
+// position is still derived from the bytes that follow it; a corrupted position names a different
+// object or no object at all, and the second refuses.
+type ImageRefusal
+  = ImageNotAnObject
+  | ImageMemberMissing { key: String }
+  | ImageMemberDuplicated { key: String }
+  | ImageMemberWrongShape { key: String }
+  | ImageFormatUnrecognized { found: String }
+  | ImageUnknownKindTag { found: String }
+  | ImageUnknownConnectiveTag { found: String }
+  | ImageUnknownBehaviorTag { found: String }
+  | ImageUnknownLabelTag { found: String }
+  | ImageEdgeTargetUnresolved { reference: String }
+  | ImageRootUnresolved { reference: String }
+  | ImageObjectCollision { identity: ObjectId }
+
+type ImageLoadOutcome
+  = ImageLoaded { store: ObjectStore, root: ObjectId }
+  | ImageRefused { cause: ImageRefusal }
+
+data image_format_tag: String = "gunbc-scm-commit-closure-v1"
+
+// WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
+//
+// encode_image takes a store AND A ROOT, so what it represents is one commit's closure: a program,
+// identified. It therefore CANNOT represent an empty repository -- the state `gunbc init` creates --
+// because there is no root to designate and decode_image refuses a root that names no object. That
+// refusal is correct at this grain and must not be softened into an empty-store fallback, which
+// would be the empty-observation narrow DESIGN section 5 names: "no objects" and "could not tell
+// what the objects were" would become one state.
+//
+// The repository image is the LAYER ABOVE this one, and it is where optionality belongs: a current
+// commit that may be absent, a list of retained commits, a pending proposal, source projections.
+// Modeling that here by making the root optional would push a repository-lifecycle fact into the
+// commit-closure carrier and give this module two subjects.
+//
+// Not yet modeled, named so the omissions are declared rather than assumed absent:
+//   - REACHABILITY SCOPING. Every record the store holds is serialized, not just the closure
+//     reachable from retained subjects. That is correct while nothing produces unreachable objects,
+//     and it is the natural first garbage-collection rule once something does.
+//   - THE IDENTITY-RULE VERSION. image_format_tag versions the SCHEMA. It does not name the node
+//     identity protocol the reconstruction depends on, and those are separate axes: the schema could
+//     hold still while canonicalize_node_for_content_hash or the fnv1a64 folding changed, and every
+//     stored image would then silently reconstruct to different identities. Naming the rule in the
+//     image is what turns that from a silent reinterpretation into a refusal.
+
+// ---------------------------------------------------------------------------
+// Encoding
+// ---------------------------------------------------------------------------
+
+fn connective_tag(c: Connective) -> String {
+  match c {
+    Atom { identity: _ } => "atom"
+    Conj => "conj"
+    Disj => "disj"
+    Arrow => "arrow"
+    Cardinality => "cardinality"
+    Instantiation => "instantiation"
+  }
+}
+
+fn behavior_tag(b: Behavior) -> String {
+  match b {
+    Value => "value"
+    Transform => "transform"
+    Branch => "branch"
+    Loop => "loop"
+    Bind => "bind"
+    Match => "match"
+  }
+}
+
+// An Atom carries a Symbol and every other connective carries nothing, so the identity member is
+// present exactly when the tag is "atom". Encoding it as an absent member elsewhere -- rather than
+// an empty string -- is what lets the decoder refuse a hand-edited image that supplies one.
+fn encode_connective(c: Connective) -> List<JsonKeyValue> {
+  match c {
+    Atom { identity: id } =>
+      [
+        json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
+        json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
+      ]
+    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+  }
+}
+
+fn encode_kind(k: NodeKind) -> JsonValue {
+  match k {
+    TypeNode { connective: c } =>
+      json_object(
+        members: concat(
+          [json_kv(key: "kind", value: json_string(s: "type"))],
+          encode_connective(c: c)
+        )
+      )
+    ComputationNode { behavior: b } =>
+      json_object(
+        members: [
+          json_kv(key: "kind", value: json_string(s: "computation")),
+          json_kv(key: "behavior", value: json_string(s: behavior_tag(b: b))),
+        ]
+      )
+  }
+}
+
+fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
+  match l {
+    Named { name: n } =>
+      [
+        json_kv(key: "label", value: json_string(s: "named")),
+        json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+      ]
+    Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
+  }
+}
+
+// POSITIONS ARE KEYED, NOT SCANNED, AND THE COST SHAPE IS THE REASON.
+//
+// The first version carried a List and answered position_of by folding it, once per edge, while the
+// list itself grew by concat-at-end inside a fold. That is O(n^2) in accumulator copying and
+// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair DESIGN section 6
+// names under bare minimum cost, where the rule is that a proven cost shape is ALWAYS fixed
+// regardless of the realized n. An earlier revision of this module excused it on the grounds that
+// object_store already scans linearly, which is precisely the "n is small here" reasoning that rule
+// rejects: inheriting a defect is not a licence to add one.
+//
+// WHY A MAP IS ADMISSIBLE HERE WHEN object_store REFUSES ONE. That refusal is about TRAVERSAL: a
+// store whose iteration order leaked into a digest would hash one program two ways. Nothing here
+// iterates a map -- these are point lookups only, and the emitted order comes from
+// store_records_in_dependency_order, not from the map. The determinism hazard is absent because the
+// operation that carries it is absent.
+//
+// The key is the digest STRING rather than the ObjectId record, so lookup identity is exactly the
+// equality object_id_eq already defines, rather than whatever structural equality a record key would
+// impose.
+type EncodePositions {
+  by_identity: Map<String, String>
+  next: Int
+}
+
+fn position_reference(n: Int) -> String {
+  json_int_lexeme(n: n) as String
+}
+
+fn object_id_key(identity: ObjectId) -> String {
+  identity.digest as String
+}
+
+fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
+}
+
+// A missing position is UNREACHABLE rather than defended against, and the reason is worth stating
+// because the fallback would be invisible: store_records_in_dependency_order yields children before
+// parents, so by the time an edge is encoded its target already holds a position. Answering some
+// plausible reference here would emit an image that decodes to a DIFFERENT program, which is exactly
+// the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
+// decoder tolerates -- ImageEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
+// a typed refusal at load rather than as a silently wrong store.
+fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
+  let reference = match position_of(positions: positions, identity: e.target) {
+    Present { value: r } => r
+    Absent => ""
+  }
+  json_object(
+    members: concat(
+      encode_label(l: e.label),
+      [json_kv(key: "target", value: json_string(s: reference))]
+    )
+  )
+}
+
+fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "kind", value: encode_kind(k: record.kind)),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: map(record.children, e => encode_edge(positions: positions, e: e))
+        )
+      ),
+    ]
+  )
+}
+
+type EncodeAcc {
+  positions: EncodePositions
+  objects: List<JsonValue>
+}
+
+// OBJECTS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the corpus idiom (std.markdown, std.realization,
+// std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
+// accumulator on every step; prepending does not, so the emitted order is restored by one linear
+// reverse instead of being bought with a quadratic.
+fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
+  EncodeAcc {
+    positions: EncodePositions {
+      by_identity: map_insert(
+        m: acc.positions.by_identity,
+        key: object_id_key(identity: record.identity),
+        value: position_reference(n: acc.positions.next),
+      ),
+      next: acc.positions.next + 1,
+    },
+    objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
+  }
+}
+
+// THE OBJECT TABLE IS SEPARATE FROM WHATEVER DESIGNATES ROOTS IN IT, and that split is what lets a
+// repository hold SEVERAL commits over ONE node population. Embedding a complete closure per commit
+// would re-serialize every unchanged object once per commit -- the same duplication that backward
+// positions already refuse within a single closure, reintroduced one layer up. Encoding the store
+// once and letting each root be an ordinary reference into that table is the same move at the
+// repository's grain.
+//
+// encode_image below is now one caller of this: the single-root case.
+fn encode_object_table(store: ObjectStore) -> EncodeAcc {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: EncodeAcc { positions: EncodePositions { by_identity: empty_map(), next: 0 }, objects: [] },
+    f: fn(acc, record) { encode_step(acc: acc, record: record) }
+  ) {
+    EncodeAcc { positions: positions, objects: reversed } =>
+      EncodeAcc { positions: positions, objects: reverse(reversed) }
+  }
+}
+
+// A root that names no object in the table yields the empty reference, which decode refuses as
+// ImageRootUnresolved. It is never silently omitted from the commit list.
+fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
+  match position_of(positions: acc.positions, identity: root) {
+    Present { value: r } => r
+    Absent => ""
+  }
+}
+
+// ENCODING CAN REFUSE, AND IT MUST, because the alternative is a write that reports success for
+// bytes that cannot be loaded.
+//
+// The empty-string reference below is what an unresolvable root or edge target encodes to, and
+// decode refuses it. That is correct at the DECODER but it arrives too late: encode_image returned an
+// ordinary JsonValue, commit_closure_save wrote it, the filesystem write succeeded, and save answered
+// CommitClosureSaved. The user is told their repository is saved; the very next load refuses it.
+// That is the fabricated-plausible-output failure DESIGN section 5 forbids, reached through a
+// success report rather than through a value.
+//
+// The state is REACHABLE, not theoretical: object_store deliberately supports building an INCOMPLETE
+// closure through copy_object -- a root grafted without its children -- and that is a feature, not a
+// defect, so the encoder cannot assume completeness. It must check and refuse.
+//
+// The refusal is computed from the SAME position table the encoding uses, so there is no second
+// notion of "resolvable" that could drift from the one decode enforces.
+type ImageEncodeOutcome
+  = ImageEncoded { value: JsonValue }
+  | ImageEncodeRefused { cause: ImageRefusal }
+
+fn encode_image_checked(store: ObjectStore, root: ObjectId) -> ImageEncodeOutcome {
+  let acc = encode_object_table(store: store)
+  let root_reference = encoded_root_reference(acc: acc, root: root)
+  if root_reference == "" {
+    ImageEncodeRefused { cause: ImageRootUnresolved { reference: object_id_key(identity: root) } }
+  } else {
+    match unresolved_edge_reference(acc: acc, store: store) {
+      Present { value: reference } =>
+        ImageEncodeRefused { cause: ImageEdgeTargetUnresolved { reference: reference } }
+      Absent => ImageEncoded { value: encode_image(store: store, root: root) }
+    }
+  }
+}
+
+// A child an edge names that the table does not contain. store_records_in_dependency_order yields
+// children before parents for any closure store_node built, so this is empty for every complete
+// store -- it is the INCOMPLETE ones, which copy_object can legitimately produce, that it catches.
+fn unresolved_edge_reference(acc: EncodeAcc, store: ObjectStore) -> String? {
+  fold(store_records_in_dependency_order(store: store), init: none, f: fn(outer, record) {
+    match outer {
+      Present { value: _ } => outer
+      Absent => unresolved_edge_in_record(acc: acc, record: record)
+    }
+  })
+}
+
+fn unresolved_edge_in_record(acc: EncodeAcc, record: ObjectRecord) -> String? {
+  fold(record.children, init: none, f: fn(inner, stored) {
+    match inner {
+      Present { value: _ } => inner
+      Absent =>
+        match position_of(positions: acc.positions, identity: stored.target) {
+          Present { value: _ } => none
+          Absent => Present { value: object_id_key(identity: stored.target) }
+        }
+    }
+  })
+}
+
+fn encode_image(store: ObjectStore, root: ObjectId) -> JsonValue {
+  let acc = encode_object_table(store: store)
+  let root_reference = encoded_root_reference(acc: acc, root: root)
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: image_format_tag)),
+      json_kv(key: "objects", value: json_array(elements: acc.objects)),
+      json_kv(key: "root", value: json_string(s: root_reference)),
+    ]
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decoding
+// ---------------------------------------------------------------------------
+
+// Every member read goes through this, so a missing member, a duplicated member and a non-object
+// subject are three DIFFERENT typed refusals rather than one absent value. json_object_unique_member
+// already separates them; collapsing them here into an Optional would be the state-space conflation
+// DESIGN section 5 names -- and the duplicate arm matters specifically, because a JSON object with
+// the key twice is the shape a naive last-wins reader accepts while carrying two answers.
+type MemberRead
+  = MemberString { value: String }
+  | MemberArray { elements: List<JsonValue> }
+  | MemberObject { value: JsonValue }
+  | MemberFailed { cause: ImageRefusal }
+
+fn read_member(v: JsonValue, key: String) -> MemberRead {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => MemberFailed { cause: ImageMemberMissing { key: key } }
+    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ImageMemberDuplicated { key: key } }
+    JsonMemberNotAnObject => MemberFailed { cause: ImageNotAnObject }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } => MemberString { value: s }
+        JsonArray { elements: es } => MemberArray { elements: es }
+        JsonObject { members: _ } => MemberObject { value: found }
+        JsonNull => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+        JsonBool { value: _ } => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+        JsonNumber { lexeme: _ } => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+      }
+  }
+}
+
+fn read_string_member(v: JsonValue, key: String) -> MemberRead {
+  match read_member(v: v, key: key) {
+    MemberString { value: s } => MemberString { value: s }
+    MemberFailed { cause: c } => MemberFailed { cause: c }
+    _ => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+  }
+}
+
+type ConnectiveDecode
+  = ConnectiveDecoded { connective: Connective }
+  | ConnectiveDecodeFailed { cause: ImageRefusal }
+
+// The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
+// that supplies one is not silently carrying an ignored field into a program whose identity does not
+// depend on it -- the unknown-tag arm below is the only way a connective name enters at all.
+fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
+  if tag == "atom" {
+    match read_string_member(v: kind_value, key: "identity") {
+      MemberString { value: lexeme } =>
+        ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: c }
+      _ => ConnectiveDecodeFailed { cause: ImageMemberWrongShape { key: "identity" } }
+    }
+  } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
+  else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
+  else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
+  else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
+  else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
+  else { ConnectiveDecodeFailed { cause: ImageUnknownConnectiveTag { found: tag } } }
+}
+
+type BehaviorDecode
+  = BehaviorDecoded { behavior: Behavior }
+  | BehaviorDecodeFailed { cause: ImageRefusal }
+
+fn decode_behavior(tag: String) -> BehaviorDecode {
+  if tag == "value" { BehaviorDecoded { behavior: Value } }
+  else if tag == "transform" { BehaviorDecoded { behavior: Transform } }
+  else if tag == "branch" { BehaviorDecoded { behavior: Branch } }
+  else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
+  else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
+  else if tag == "match" { BehaviorDecoded { behavior: Match } }
+  else { BehaviorDecodeFailed { cause: ImageUnknownBehaviorTag { found: tag } } }
+}
+
+type KindDecode
+  = KindDecoded { kind: NodeKind }
+  | KindDecodeFailed { cause: ImageRefusal }
+
+fn decode_kind(kind_value: JsonValue) -> KindDecode {
+  match read_string_member(v: kind_value, key: "kind") {
+    MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+    MemberString { value: tag } =>
+      if tag == "type" {
+        match read_string_member(v: kind_value, key: "connective") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberString { value: ctag } =>
+            match decode_connective(kind_value: kind_value, tag: ctag) {
+              ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+              ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
+            }
+          _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "connective" } }
+        }
+      } else if tag == "computation" {
+        match read_string_member(v: kind_value, key: "behavior") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberString { value: btag } =>
+            match decode_behavior(tag: btag) {
+              BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+              BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
+            }
+          _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "behavior" } }
+        }
+      } else {
+        KindDecodeFailed { cause: ImageUnknownKindTag { found: tag } }
+      }
+    _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "kind" } }
+  }
+}
+
+// THE DECODE SIDE CARRIES THE SAME KEYED SHAPE FOR THE SAME REASON. Growing a List by
+// concat-at-end per object and folding it once per edge made load O(objects x edges) for work that
+// is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
+// against positions already decoded -- the map is populated in the same forward order the list was,
+// so a forward or fabricated reference is still absent and still refuses.
+type DecodePositions = Map<String, ObjectId>
+
+fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId? {
+  map_lookup(m: positions, key: reference)
+}
+
+type LabelDecode
+  = LabelDecoded { label: EdgeLabel }
+  | LabelDecodeFailed { cause: ImageRefusal }
+
+fn decode_label(edge_value: JsonValue) -> LabelDecode {
+  match read_string_member(v: edge_value, key: "label") {
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+    MemberString { value: tag } =>
+      if tag == "named" {
+        match read_string_member(v: edge_value, key: "name") {
+          MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+          MemberString { value: lexeme } =>
+            LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+          _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "name" } }
+        }
+      } else if tag == "positional" {
+        LabelDecoded { label: Positional }
+      } else {
+        LabelDecodeFailed { cause: ImageUnknownLabelTag { found: tag } }
+      }
+    _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "label" } }
+  }
+}
+
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER, and here the order is not
+// merely cosmetic: this list is handed to insert_from_structure, which feeds it to
+// content_hash_of_children. A dropped or doubled reverse would change every derived ObjectId
+// silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
+// claims, not inspection, are what establish this is right.
+type EdgeAcc {
+  edges: List<StoredEdge>
+  refusal: ImageRefusal?
+}
+
+// THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
+// because a reference that names nothing already decoded REFUSES here rather than resolving to some
+// nearby object. Only earlier positions are in scope -- the accumulator holds exactly what has been
+// decoded so far -- so a forward reference and a fabricated one are the same refusal, and neither
+// can quietly bind to whatever happens to sit at that index later.
+fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match decode_label(edge_value: edge_value) {
+        LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+        LabelDecoded { label: label } =>
+          match read_string_member(v: edge_value, key: "target") {
+            MemberFailed { cause: c } =>
+              EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+            MemberString { value: reference } =>
+              match resolve_reference(positions: positions, reference: reference) {
+                Absent =>
+                  EdgeAcc {
+                    edges: acc.edges,
+                    refusal: Present {
+                      value: ImageEdgeTargetUnresolved { reference: reference }
+                    },
+                  }
+                Present { value: identity } =>
+                  EdgeAcc {
+                    edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                    refusal: acc.refusal,
+                  }
+              }
+            _ =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ImageMemberWrongShape { key: "target" } },
+              }
+          }
+      }
+  }
+}
+
+type DecodeAcc {
+  store: ObjectStore
+  positions: DecodePositions
+  next: Int
+  refusal: ImageRefusal?
+}
+
+fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_member(v: object_value, key: "kind") {
+        MemberFailed { cause: c } =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+        MemberObject { value: kind_value } =>
+          match decode_kind(kind_value: kind_value) {
+            KindDecodeFailed { cause: c } =>
+              DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+            KindDecoded { kind: kind } =>
+              match read_member(v: object_value, key: "children") {
+                MemberFailed { cause: c } =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                MemberArray { elements: child_values } =>
+                  match fold(
+                    child_values,
+                    init: EdgeAcc { edges: [], refusal: none },
+                    f: fn(edge_acc, edge_value) {
+                      decode_edge_step(positions: acc.positions, acc: edge_acc, edge_value: edge_value)
+                    }
+                  ) {
+                    EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+                      match edge_refusal {
+                        Present { value: c } =>
+                          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                        Absent =>
+                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                            LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                              DecodeAcc {
+                                store: acc.store,
+                                positions: acc.positions,
+                                next: acc.next,
+                                refusal: Present { value: ImageObjectCollision { identity: i } },
+                              }
+                            Stored { store: next_store, identity: identity } =>
+                              DecodeAcc {
+                                store: next_store,
+                                positions: map_insert(
+                                  m: acc.positions,
+                                  key: position_reference(n: acc.next),
+                                  value: identity,
+                                ),
+                                next: acc.next + 1,
+                                refusal: acc.refusal,
+                              }
+                          }
+                      }
+                  }
+                _ =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ImageMemberWrongShape { key: "children" } } }
+              }
+          }
+        _ =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ImageMemberWrongShape { key: "kind" } } }
+      }
+  }
+}
+
+// THE TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
+// roots against one decoded population. Returning the accumulator rather than a finished store means
+// the caller keeps the position-to-identity map it needs to resolve those roots, which a
+// store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
+fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
+  fold(
+    object_values,
+    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
+  )
+}
+
+// The format tag is checked BEFORE any object is decoded, so a file from a future format refuses as
+// a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
+fn decode_image(v: JsonValue) -> ImageLoadOutcome {
+  match read_string_member(v: v, key: "format") {
+    MemberFailed { cause: c } => ImageRefused { cause: c }
+    MemberString { value: format } =>
+      if format != image_format_tag {
+        ImageRefused { cause: ImageFormatUnrecognized { found: format } }
+      } else {
+        match read_member(v: v, key: "objects") {
+          MemberFailed { cause: c } => ImageRefused { cause: c }
+          MemberArray { elements: object_values } =>
+            match decode_object_table(object_values: object_values) {
+              DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
+                match refusal {
+                  Present { value: c } => ImageRefused { cause: c }
+                  Absent =>
+                    match read_string_member(v: v, key: "root") {
+                      MemberFailed { cause: c } => ImageRefused { cause: c }
+                      MemberString { value: root_reference } =>
+                        match resolve_reference(positions: positions, reference: root_reference) {
+                          Absent =>
+                            ImageRefused { cause: ImageRootUnresolved { reference: root_reference } }
+                          Present { value: root } => ImageLoaded { store: store, root: root }
+                        }
+                      _ => ImageRefused { cause: ImageMemberWrongShape { key: "root" } }
+                    }
+                }
+            }
+          _ => ImageRefused { cause: ImageMemberWrongShape { key: "objects" } }
+        }
+      }
+    _ => ImageRefused { cause: ImageMemberWrongShape { key: "format" } }
+  }
+}
