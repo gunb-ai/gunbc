@@ -31,6 +31,7 @@ import extdeps.languages.json.emit {
 import extdeps.languages.json.parse { parse_json }
 
 import v2.std.node {
+  Cardinality,
   Node,
   Edge,
   EdgeLabel,
@@ -57,6 +58,13 @@ import gunbc.scm.object_store {
   object_id_eq,
   store_node,
   store_object_count,
+  CopyOutcome,
+  Copied,
+  CopySourceAbsent,
+  CopyLocatorCollision,
+  copy_object,
+  StoredEdge,
+  insert_from_structure,
 }
 import gunbc.scm.checkout {
   Commit,
@@ -78,6 +86,10 @@ import gunbc.scm.image {
   ImageUnknownConnectiveTag,
   encode_image,
   decode_image,
+  ImageEncodeOutcome,
+  ImageEncoded,
+  ImageEncodeRefused,
+  encode_image_checked,
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -450,4 +462,152 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
     ),
     expected: scm_image_atom(identity: ^A),
   )
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CHECKED ENCODER. encode_image cannot refuse -- it returns a JsonValue -- so an incomplete
+// closure encodes to a document carrying the empty reference, which decode rejects. That is correct
+// and it is too late for any writer: the adjudication has to happen BEFORE bytes exist, or a
+// successful write reports success over content that will never load.
+//
+// copy_object copies ONE record without its children, so it is the sanctioned way to build the
+// incomplete closure these claims need -- no hand-authored broken store, no representation reach.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_encode_refused(outcome: ImageEncodeOutcome) -> Bool {
+  match outcome {
+    ImageEncodeRefused { cause: _ } => true
+    ImageEncoded { value: _ } => false
+  }
+}
+
+fn scm_image_orphan_parent_store() -> ScmImagePut {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
+    Copied { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    CopySourceAbsent { identity: _ } => ScmImagePut { store: empty_store(), identity: full.identity }
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmImagePut { store: empty_store(), identity: full.identity }
+  }
+}
+
+test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  scm_image_encode_refused(
+    outcome: encode_image_checked(store: empty_store(), root: full.identity)
+  )
+}
+
+test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
+  let orphan = scm_image_orphan_parent_store()
+  scm_image_encode_refused(
+    outcome: encode_image_checked(store: orphan.store, root: orphan.identity)
+  )
+}
+
+// THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
+// everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
+test fn scm_image_a_complete_closure_encodes() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  match encode_image_checked(store: full.store, root: full.identity) {
+    ImageEncoded { value: v } =>
+      serialize_json(v: v) == serialize_json(v: encode_image(store: full.store, root: full.identity))
+    ImageEncodeRefused { cause: _ } => false
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE NODE IDENTITY PROTOCOL, ACROSS A PERMUTED WIRE ORDER.
+//
+// A decoded image supplies child order from a document nobody in this process authored, and
+// insert_from_structure hands that order to content_hash_of_children. Until content_hash_of_children
+// canonicalized its own input, a hand-edited image listing `beta` before `alpha` minted an ObjectId
+// under the fold of `beta, alpha`, while the SAME reconstructed node's ordinary content_hash folds
+// `alpha, beta` -- so find_object(H1) could answer a node whose content_hash is H2, which is not a
+// stale document or a lossy round trip but a break in the meaning of ObjectId = v2.std.node.Hash.
+//
+// The pair below is what makes the repair falsifiable, and it has to be a PAIR: canonicalizing
+// everything would satisfy the named claim while silently destroying positional structure, where
+// order IS the meaning. Revert the canonicalization in content_hash_of_children and the named claim
+// goes red; canonicalize positional children too and the positional claim goes red.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_identity_of(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+  match outcome {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+type ScmImageTwoAtoms { store: ObjectStore, first: ObjectId, second: ObjectId }
+
+fn scm_image_two_atoms() -> ScmImageTwoAtoms {
+  let a = scm_image_put(store: empty_store(), n: scm_image_atom(identity: ^A))
+  let b = scm_image_put(store: a.store, n: scm_image_atom(identity: ^B))
+  ScmImageTwoAtoms { store: b.store, first: a.identity, second: b.identity }
+}
+
+fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: ObjectId) -> ObjectId {
+  scm_image_identity_of(
+    outcome: insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
+    fallback: fallback
+  )
+}
+
+fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Named { name: name }, target: target }
+}
+
+fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Positional, target: target }
+}
+
+// NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
+// the assembled node derives -- asserting the two inserts merely agree with EACH OTHER would be
+// satisfied by any consistent wrong rule, including one that hashes wire order on both sides.
+test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let canonical = content_hash(n: scm_image_program())
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) && object_id_eq(left: forward, right: canonical)
+}
+
+// POSITIONAL children permuted: a DIFFERENT identity. Under a positional discipline the order is the
+// content, so a canonicalizer that sorted here would fuse `f(x, y)` with `f(y, x)`.
+test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.first),
+      scm_image_positional_stored(target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.second),
+      scm_image_positional_stored(target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) == false
 }

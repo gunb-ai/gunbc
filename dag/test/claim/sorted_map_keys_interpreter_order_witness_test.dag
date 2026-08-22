@@ -1,0 +1,45 @@
+module test.claim.sorted_map_keys_interpreter_order_witness_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sorted_map_keys_order_contract_note: String = "sorted_map_keys HAD NO INTERPRETER ARM. It was declared in std.primitives, typed in 04_method/04_infer, registered as a Rust emit bridge, and realized in v1_rt -- but eval_builtin_inner and eval_algebra_method_inner had no handler, so the primitive existed in every realization except the one that runs .dag directly. The arm now exists (free_call.sorted_map_keys and method_call.sorted_map_keys in gunbc.v1_interpreter_primitive_surface).\n\nEXISTING IS NOT THE BAR; THE ORDER IS. Two realizations of one primitive that disagree on order are worse than one missing realization: sorted_map_keys is called precisely to make a fold deterministic (04_types container_template_alias_rows, 05_emit_rust's export and field folds), so a different-but-plausible permutation produces a stable WRONG artifact instead of a loud refusal -- the fabricated-plausible-output failure of DESIGN.md section 5.\n\nWHAT THE EMITTED REALIZATION DOES, exactly: v1_rt::sorted_map_keys<K: Ord + Clone, V> is map_keys(m) followed by Vec::sort(), i.e. K's own Ord. For the String keys every corpus call site uses, that is UTF-8 byte-lexicographic order. The expected list below is that order and nothing else, and each adjacent pair separates it from an order a 'sorted' implementation could plausibly produce instead: B before a reds under case-insensitive collation, Z10 before Z9 reds under natural/numeric sorting, and the two-byte code point last reds under a Unicode collation that files it next to e. An arm that merely returns something sorted does not pass this.\n\nTHE WITNESS IS GATED ON THE ARM, MEASURED RATHER THAN ASSUMED. Deleting the two sorted_map_keys routing lines from the generated dispatch (observed before=2 after=0) and rebuilding turns this witness into NoSuchFunction { name: sorted_map_keys } -- so its green is CAUSED by the arm, not merely coincident with it. The same mutation left claim_executor --required-regen passing unchanged (first_generation_equal=true, planned=132 executed=132), which is the useful negative: the required regen phase does NOT reach any sorted_map_keys call site, so it is not evidence for this primitive and is not cited as such. This witness is.\n\nINSERTION ORDER IS NOT AN INPUT. The output must be a function of the key SET alone -- map iteration order is unspecified in both realizations -- so the same seven keys are also inserted in reverse and must yield the identical list. Without that control, an arm that returned the map traversal unchanged could pass on whichever insertion order the author happened to write.\n\nTHIS WITNESS RUNS IN THE INTERPRETER, so it pins the interpreter side of that agreement. The other side is pinned where the two implementations can actually be compared in one process: sorted_map_keys_order_tests in src/v1/stage0/src/v1_interpreter.rs asserts this arm's output EQUALS v1_rt::sorted_map_keys on the same key set -- the emitted function itself as the oracle, not a transcribed golden -- and carries the refusal controls for the key kinds that have no emitted ordering to agree with (Float, whose f64 has no Ord at all, and a mixed key set, for which no single emitted K exists)."
+
+fn discriminating_key_map() -> Map<String, Int> {
+  empty_map()
+    |> map_insert("b", 1)
+    |> map_insert("B", 2)
+    |> map_insert("Z9", 3)
+    |> map_insert("Z10", 4)
+    |> map_insert(from_code_point(233), 5)
+    |> map_insert("z", 6)
+    |> map_insert("a", 7)
+}
+
+fn reverse_insertion_key_map() -> Map<String, Int> {
+  empty_map()
+    |> map_insert("a", 7)
+    |> map_insert("z", 6)
+    |> map_insert(from_code_point(233), 5)
+    |> map_insert("Z10", 4)
+    |> map_insert("Z9", 3)
+    |> map_insert("B", 2)
+    |> map_insert("b", 1)
+}
+
+fn expected_utf8_byte_order() -> List<String> {
+  ["B", "Z10", "Z9", "a", "b", "z", from_code_point(233)]
+}
+
+test fn sorted_map_keys_free_call_orders_as_emitted_rust_does() -> Bool {
+  sorted_map_keys(discriminating_key_map()) == expected_utf8_byte_order()
+}
+
+test fn sorted_map_keys_method_call_orders_as_emitted_rust_does() -> Bool {
+  (discriminating_key_map() |> sorted_map_keys()) == expected_utf8_byte_order()
+}
+
+test fn sorted_map_keys_is_independent_of_insertion_order() -> Bool {
+  sorted_map_keys(reverse_insertion_key_map()) == expected_utf8_byte_order()
+    && sorted_map_keys(reverse_insertion_key_map()) == sorted_map_keys(discriminating_key_map())
+}

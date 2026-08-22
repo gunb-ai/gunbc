@@ -84,13 +84,13 @@ pub use crate::v1_std_core::{
     expr_call_func_at, expr_field_access_summary, expr_method_call_semantics, expr_method_name_at,
     expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
     field_init_node_value, foreach_body, foreach_collection, foreach_variable_at, if_condition,
-    if_else_branch, if_then_branch, import_is_all, index_base, index_expr, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body, let_value,
-    make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, param_node_name_at, param_node_type_expr,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
-    transport_headers, with_required_cardinality,
+    if_else_branch, if_then_branch, import_is_all, index_base, index_expr, is_rest_transport,
+    is_shell_transport, lambda_body, let_binding_name_at, let_body, let_value, make_expr_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    transport_auth_header_name, transport_env, transport_has_auth, transport_headers,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
@@ -1425,7 +1425,6 @@ pub fn emit_go_transport_body(
         RenderTarget::Go,
         |n, t, d, si| emit_go_rest_call(n.clone(), t.clone(), d.clone(), si.clone()),
         |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
-        |n, d| emit_go_file_call(n.clone(), d.clone()),
         |n, d| emit_go_local_call(n.clone(), d.clone()),
     )
 }
@@ -1677,29 +1676,6 @@ pub fn emit_go_shell_call(
             Rc::new(vec![run_lines.clone()]),
         );
         all_lines.clone().join(&"\n".to_string())
-    }
-}
-
-pub fn emit_go_file_call(op_name: String, depth: i64) -> String {
-    {
-        let prefix = make_indent(depth.clone());
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(prefix.clone(), "path := fmt.Sprintf(\"%s/".to_string()),
-                            to_snake(op_name.clone()),
-                        ),
-                        "\", c.BasePath)\n".to_string(),
-                    ),
-                    "data, err := os.ReadFile(path)\n".to_string(),
-                ),
-                "if err != nil {\n\treturn \"\", fmt.Errorf(\"reading file: %w\", err)\n}\n"
-                    .to_string(),
-            ),
-            "return string(data), nil".to_string(),
-        )
     }
 }
 
