@@ -12,25 +12,28 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data value_grain_witness_doc: String = "WHAT THESE WITNESSES COVER, given the carrier records a residue rather than repairing one. Two of the three claims in that carrier are unenforceable by construction and the file says so rather than faking coverage: the byte-form loss is LATENT -- every producer emits a plain count today, so there is no wrong state to detect -- and the five unmodeled sccache variable names cannot be checked without spelling the same literals a second time, which would pass by construction and prove nothing.\n\nWhat CAN be checked is the modeled half: the three variables whose names are rows in extdeps.cache.sccache must actually appear in the assignments that module composes. That is an identity join between two facts one authority holds, so it reds if a name row is renamed without its composer following, and it reds if a composer is rewritten to spell the name inline -- which is precisely the direction the finding says the other five already went."
-
-// THE CLAIM IS ABOUT THE SPLIT, NOT ABOUT EITHER SIDE OF IT.
+// WHAT THESE WITNESSES COVER, given the carrier records a residue rather than repairing one.
 //
-// An earlier version of this file asserted that each modeled variable name appears in the
+// Two of the carrier's three findings are unenforceable by construction, and this file says so
+// rather than faking coverage. The byte-form loss is LATENT -- every producer emits a plain count
+// today, so there is no wrong state to detect. The five unmodeled sccache variable names cannot be
+// checked without spelling the same literals a second time, which would pass by construction and
+// prove nothing.
+//
+// What CAN be asserted is the SPLIT: that one upstream interface is currently named by two
+// authorities. That reds when the split closes, which is the dissolution event, and it reds if the
+// roster is collapsed to one side without the underlying work being done.
+//
+// An earlier version of this file asserted instead that each modeled variable name appears in the
 // assignment composed from it. That check could not fail -- the composer builds the assignment FROM
 // the row, so both sides move together -- and it was caught by mutating the row and watching the
-// witness stay green. The carrier's the_join_i_tried_first_was_vacuous_note carries the receipt.
-//
-// This asserts instead that both authorities are currently inhabited: at least one variable named
-// upstream and at least one named in the consumer. It reds when the split closes, which is the
-// dissolution event, and it reds if the roster is ever collapsed to one side without the underlying
-// work being done.
+// witness stay green. The carrier's own annotation carries that receipt.
 test fn one_upstream_interface_is_named_by_two_authorities() -> Bool {
   environment_name_authority_is_split()
 }
 
-// THE DISCRIMINATING CONTROL FOR THE PREDICATE ITSELF. Inhabitance predicates are easy to write in a
-// form that returns true for any non-empty list, so the roster is asserted to actually contain both
+// THE DISCRIMINATING CONTROL FOR THE PREDICATE ITSELF. Inhabitance predicates are easy to write in
+// a form that returns true for any non-empty list, so the roster is asserted to actually carry both
 // tags at named members. Without this, environment_name_authority_is_split could be satisfied by a
 // roster where every row carried the same authority and the predicate had a bug in one arm.
 test fn the_roster_carries_both_authorities_at_named_members() -> Bool {
@@ -41,7 +44,6 @@ test fn the_roster_carries_both_authorities_at_named_members() -> Bool {
           |> any(v => (v.name as String) == "SCCACHE_DIR"
                         && match v.authority { ModeledUpstream => false SpelledInConsumer => true }))
 }
-
 
 // THE TRIGGER MUST STAY UNBOUND, and this is asserted rather than left to prose because the
 // pressure to bind it is real: a bound trigger looks more rigorous and every reviewer reads a

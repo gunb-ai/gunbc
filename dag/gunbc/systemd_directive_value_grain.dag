@@ -4,36 +4,63 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data systemd_directive_value_grain_scope: Disposition = SingleAuthority
-
 // WHAT THIS CARRIER IS FOR, AND WHY IT IS A FILING RATHER THAN A REPAIR.
 //
 // The systemd unit grammar in extdeps.systemd.unit_file models WHICH directive goes in WHICH
 // section as structure -- Slice= cannot be written into [Unit], WantedBy= cannot be written into
 // [Service] -- and models every directive's VALUE as a string. That is the correct boundary for a
-// cited transport: systemd's own directive syntax is textual and admits several spellings per
-// axis, so a grammar that refused everything but one form would be modeling a choice upstream did
-// not make. The residue this row files is not that the wire is text. It is that two specific values
+// cited transport: systemd's own directive syntax is textual and admits several spellings per axis,
+// so a grammar that refused everything but one form would be modeling a choice upstream did not
+// make. The residue this module files is not that the wire is text. It is that two specific values
 // arrive at that boundary having ALREADY LOST structure the tree was holding one call earlier.
 //
 // Filed rather than repaired because the repair is a decomposition of the directive vocabulary --
-// a grammar change to a module whose byte-exact witnesses pin a live fleet timer's deployed bytes --
-// and #8827 was a renderer migration. A contract change smuggled inside a migration is read by
+// a grammar change to a module whose byte-exact witnesses pin a live fleet timer's deployed bytes
+// -- and #8827 was a renderer migration. A contract change smuggled inside a migration is read by
 // reviewers who came for the migration.
-
-data byte_size_survives_until_the_directive_note: String = "THE ByteSize AUTHORITY IS INTACT AND IS SPENT AT EXACTLY ONE LINE, which is the difference between this row and a general complaint about stringly values. gunbc.build_cache_unit compile_pool_slice_unit_file receives a ByteSize and calls to_string(byte_size_count(b: sized)) to fill SliceMemoryMax and SliceMemoryHigh. So the magnitude is modeled all the way down to the constructor argument and flattened there, not carried as text through the vertical -- a reviewer checking whether a flat scalar propagates INWARD will correctly find that it does not.\n\nWHAT IS ACTUALLY LOST is narrower and worth naming precisely: systemd.resource-control(5) accepts MemoryMax as a plain byte count OR with a K/M/G/T suffix OR as a percentage of installed memory, and the directive type cannot say which of those a given value is. Today every producer emits the plain count, so the loss is latent rather than live -- there is no defect to point at, which is exactly why it is filed rather than fixed. It becomes live the first time a producer wants a percentage, at which point a second producer emitting a count and a first emitting a percentage are indistinguishable to any consumer reading the directive back.\n\nSTATED AS A RUNG (DESIGN section 4b): this sits at MITIGATABLE and its ceiling is structurally impossible, because membership is decidable -- the accepted forms are a closed, cited set. It is not a ratchet."
-
-data environment_fuses_a_key_and_a_value_note: String = "Environment { assignment: NonEmptyStr } CARRIES A KEY=VALUE PAIR AS ONE OPAQUE STRING, and the fusion is what makes the finding below invisible rather than being the finding itself. A directive type that held the variable NAME and its VALUE as two fields would make the name a thing the tree can be asked about; fused, the name is a substring nobody can join on.\n\nWHAT THE FUSION IS HIDING, MEASURED ON THIS TREE RATHER THAN ASSERTED. gunbc.build_cache_unit constructs eight Environment directives for one upstream tool's variables. THREE of them route through extdeps.cache.sccache functions built from modeled name rows -- sccache_start_server_env_var, sccache_no_daemon_env_var, sccache_idle_timeout_env_var. The other FIVE spell the upstream variable's name as a bare literal inside gunbc: SCCACHE_DIR=, SCCACHE_ERROR_LOG=, SCCACHE_CACHE_SIZE=, SCCACHE_SERVER_UDS=, SCCACHE_SERVER_PORT=. One upstream tool's environment interface, named in two places by two different rules, with the split falling where it happens to have fallen rather than on any distinction between the variables.\n\nTHAT IS THE DESIGN SECTION 3 FINDING, and it is sharper than the grammar-level one above because it is live rather than latent: five names of a cited dependency's interface are authored in a consumer. It is also the one a reader would not reach from the directive type, since the type shows a single NonEmptyStr and says nothing about who composed it.\n\nWHY IT IS NOT REPAIRED IN THIS ROW: moving five names into extdeps.cache.sccache is an edit to the cited authority and belongs with the same decomposition that gives Environment its two fields -- doing the name move alone would leave five rows whose only consumer still concatenates them by hand, which is the smaller half of the fix wearing the shape of the whole."
-
-data the_join_i_tried_first_was_vacuous_note: String = "A CHECK THAT COULD NOT FAIL WAS WRITTEN HERE FIRST, AND IT IS RECORDED RATHER THAN QUIETLY REPLACED. The first version of this module asserted that each modeled variable name appears in the assignment extdeps.cache.sccache composes -- sccache_start_server_env_assignment().contains(sccache_start_server_env_var) and its two siblings -- and called it an identity join between two facts one authority holds.\n\nIT IS NOT A JOIN. The composer BUILDS the assignment from the row: join([sccache_start_server_env_var, \"=1\"], \"\"). Both sides of the comparison are the same value, so the assertion is x.contains(x) and is true for every possible tree. Established by MUTATION rather than by rereading it: the name row was renamed to SCCACHE_RENAMED_BY_MUTATION and the witness still PASSED, because the rename moved both sides together.\n\nTHIS IS DESIGN'S OWN ORACLE RULE, in the shape it warns about -- a check that collapses to measure() == measure(). The correct reading of the green is not that the modeled half is verified but that the modeled half needs no verification: composing a value from its authority IS the construction, and a check restating it is the second representation section 5 says to prefer construction over. The three modeled variables are therefore at structurally guaranteed and have nothing to assert; the five unmodeled ones are the entire residue, and they cannot be asserted at all without respelling their literals, which would pass by construction for the same reason.\n\nWhat replaces it below is a claim about the SPLIT rather than about either side of it."
-
-// WHAT THE ROSTER IS, AND WHAT IT IS NOT.
 //
-// One row per environment variable this vertical writes into the unit, carrying where its NAME is
-// authored. It is not a check that the names are correct -- nothing here can establish that, and
-// the note above is why. It records that one upstream tool's environment interface is named in two
-// places by two rules, so the predicate below reds when that stops being true, which is the
-// dissolution event rather than a regression.
+// THE ByteSize AUTHORITY IS INTACT AND IS SPENT AT EXACTLY ONE LINE, which is the difference
+// between this filing and a general complaint about stringly values. gunbc.build_cache_unit
+// compile_pool_slice_unit_file receives a ByteSize and calls to_string(byte_size_count(b: sized))
+// to fill SliceMemoryMax and SliceMemoryHigh. So the magnitude is modeled all the way down to the
+// constructor argument and flattened there, not carried as text through the vertical -- a reviewer
+// checking whether a flat scalar propagates INWARD will correctly find that it does not.
+//
+// WHAT IS ACTUALLY LOST is narrower and worth naming precisely: systemd.resource-control(5) accepts
+// MemoryMax as a plain byte count OR with a K/M/G/T suffix OR as a percentage of installed memory,
+// and the directive type cannot say which of those a given value is. Today every producer emits the
+// plain count, so the loss is latent rather than live -- there is no defect to point at, which is
+// exactly why it is filed rather than fixed. It becomes live the first time a producer wants a
+// percentage, at which point a producer emitting a percentage and one emitting a count are
+// indistinguishable to any consumer reading the directive back.
+//
+// STATED AS A RUNG (DESIGN section 4b): that axis sits at MITIGATABLE and its ceiling is
+// structurally impossible, because membership is decidable -- the accepted forms are a closed,
+// cited set. It is not a ratchet.
+data systemd_directive_value_grain_scope: Disposition = SingleAuthority
+
+// Environment { assignment: NonEmptyStr } CARRIES A KEY=VALUE PAIR AS ONE OPAQUE STRING, and the
+// fusion is what makes the finding below invisible rather than being the finding itself. A
+// directive type holding the variable NAME and its VALUE as two fields would make the name a thing
+// the tree can be asked about; fused, the name is a substring nobody can join on.
+//
+// WHAT THE FUSION IS HIDING, MEASURED ON THIS TREE RATHER THAN ASSERTED. gunbc.build_cache_unit
+// constructs eight Environment directives for one upstream tool's variables. THREE of them route
+// through extdeps.cache.sccache functions built from modeled name rows -- sccache_start_server_env_var,
+// sccache_no_daemon_env_var, sccache_idle_timeout_env_var. The other FIVE spell the upstream
+// variable's name as a bare literal inside gunbc. One upstream tool's environment interface, named
+// in two places by two different rules, with the split falling where it happens to have fallen
+// rather than on any distinction between the variables.
+//
+// THAT IS THE DESIGN SECTION 3 FINDING, and it is sharper than the grammar-level one above because
+// it is live rather than latent: five names of a cited dependency's interface are authored in a
+// consumer. It is also the one a reader would not reach from the directive type, since the type
+// shows a single NonEmptyStr and says nothing about who composed it.
+//
+// WHY IT IS NOT REPAIRED HERE: moving five names into extdeps.cache.sccache is an edit to the cited
+// authority and belongs with the same decomposition that gives Environment its two fields -- doing
+// the name move alone would leave five rows whose only consumer still concatenates them by hand,
+// which is the smaller half of the fix wearing the shape of the whole.
 type EnvironmentNameAuthority
   = ModeledUpstream
   | SpelledInConsumer
@@ -43,6 +70,12 @@ type BuildCacheEnvironmentVariable {
   authority: EnvironmentNameAuthority
 }
 
+// ONE ROW PER ENVIRONMENT VARIABLE THIS VERTICAL WRITES INTO THE UNIT, carrying where its NAME is
+// authored. This is not a check that the names are correct -- nothing here can establish that. It
+// records that one upstream tool's environment interface is named in two places by two rules, so
+// the predicate below reds when that stops being true, which is the dissolution event rather than a
+// regression.
+//
 // RUNG, DECLARED (DESIGN section 4b): MITIGATABLE. This roster is hand-authored, so a ninth
 // Environment directive added to gunbc.build_cache_unit compiles clean and is simply absent here --
 // the same enumeration limit gunbc.systemd_property_directive_overlap declares over its own member
@@ -60,18 +93,33 @@ data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
   BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_PORT" as NonEmptyStr, authority: SpelledInConsumer },
 ]
 
-fn variable_is_modeled_upstream(v: BuildCacheEnvironmentVariable) -> Bool {
-  match v.authority {
-    ModeledUpstream => true
-    SpelledInConsumer => false
-  }
-}
-
+// A CHECK THAT COULD NOT FAIL WAS WRITTEN HERE FIRST, AND IT IS RECORDED RATHER THAN QUIETLY
+// REPLACED. The first version of this module asserted that each modeled variable name appears in
+// the assignment extdeps.cache.sccache composes -- sccache_start_server_env_assignment() contains
+// sccache_start_server_env_var, and its two siblings -- and called it an identity join between two
+// facts one authority holds.
+//
+// IT IS NOT A JOIN. The composer BUILDS the assignment from the row. Both sides of the comparison
+// are the same value, so the assertion is x.contains(x) and is true for every possible tree.
+// Established by MUTATION rather than by rereading it: the name row was renamed to
+// SCCACHE_RENAMED_BY_MUTATION and the witness still PASSED, because the rename moved both sides.
+//
+// THIS IS DESIGN'S OWN ORACLE RULE, in the shape it warns about -- a check that collapses to
+// measure() == measure(). The correct reading of the green is not that the modeled half is verified
+// but that it needs no verification: composing a value from its authority IS the construction, and
+// a check restating it is the second representation section 5 says to prefer construction over. The
+// three modeled variables are therefore at structurally guaranteed and have nothing to assert; the
+// five unmodeled ones are the entire residue, and they cannot be asserted at all without respelling
+// their literals, which would pass by construction for the same reason.
+//
+// So the claim is about the SPLIT rather than about either side of it: both authorities inhabited,
+// in one pass over the roster.
 fn environment_name_authority_is_split() -> Bool {
-  (build_cache_environment_variables |> any(v => variable_is_modeled_upstream(v: v)))
-    && (build_cache_environment_variables |> any(v => !variable_is_modeled_upstream(v: v)))
+  (build_cache_environment_variables
+     |> any(v => match v.authority { ModeledUpstream => true SpelledInConsumer => false }))
+    && (build_cache_environment_variables
+          |> any(v => match v.authority { ModeledUpstream => false SpelledInConsumer => true }))
 }
-
 
 // THE TRIGGER IS UNBOUND ON PURPOSE.
 //
