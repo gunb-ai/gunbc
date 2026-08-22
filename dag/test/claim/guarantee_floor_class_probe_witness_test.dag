@@ -7,14 +7,11 @@ import gunbc.guarantee_probe_corpus {
   v1_compile_harness_revision,
   synthetic_program_subject_revision,
   floor_closed_match_exhaustiveness_class,
-  floor_declared_conformance_v2_exemption_class,
   floor_field_through_generics_class,
   floor_generic_instantiation_class,
   floor_parse_list_separator_class,
   floor_record_field_completeness_class,
   floor_exhaustiveness_type_variable_hole_probe,
-  floor_conformance_v2_exemption_hole_probe,
-  floor_conformance_v2_exemption_control_probe,
   floor_field_through_generics_record_control_probe,
   floor_field_through_generics_green_probe,
   floor_field_through_generics_hole_probe,
@@ -57,9 +54,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data guarantee_floor_class_probe_execution_status_note: String = "READ THIS BEFORE THE SCOPE NOTE BELOW. THIS FILE DOES NOT RUN IN CI. It declares ReadsLiveTree -- truthfully, because compile_dag_diagnostic_census resolves its synthetic sources against the live checkout -- and the required floor DECLINES every ReadsLiveTree module before the fold sees it (v2.workflow.required_floor DeclinedLiveTree). So every probe here is AUTHORED evidence, green under a local gunbc run --claim-run on 2026-08-22 and executing nowhere else. That is strictly weaker than enrolment and the six gap-analysis rows it serves say so in line. The distinction is not pedantry in this file of all files: a witness that cannot execute is exactly the defect these probes exist to count, and it applies to them first. DISSOLVES with the DeclinedLiveTree arm deletion (gap analysis section 11 item 23), at which point these become executing evidence with no further authorship. Do NOT dissolve it by relabelling this file SubstrateInputsOnly."
 
-data guarantee_floor_class_probe_scope_note: String = "WHAT THIS FILE IS. Six floor classes in docs/plans/compiler-guarantee-recovery-gap-analysis.md carried rungs established by a ONE-OFF hand execution of compile_dag_diagnostic_census on 2026-08-01 (four of them said NOT ENROLLED in their own Evidence cell; the parse-separator row cited a session's throwaway probe; the v2-exemption row said no probe asserts the exemption's reach). Nothing re-ran any of them, so each rung was honest about the day it was measured and silent about today -- the shape DESIGN 4b meta-obligation 4 forbids. This file is the enrolment: every one of those measurements now executes on every required-floor run, and every one of them reds if the compiler's behaviour changes in either direction. FOUR OF THE SIX ARE BELOW-FLOOR HOLES AND THEIR PROBES ARE GREEN BY DESIGN. Do not read those greens as guarantees: they pin a DEFECT (ExpectSilentAcceptanceHole, whose note explains why it is a separate variant from ExpectZeroDiagnostics) and they flip RED on the day the wall lands, which is the signal to rewrite the row as ExpectBlockingRefusal rather than to delete the probe. PROBE ADEQUACY, per the operator-adopted 2026-08-01 mandate that every below-floor row carry closure AND shape evidence: each hole ships beside a control that DOES refuse on this same harness and this same run -- the monomorphic record for generic instantiation, the declared-record field access for field-through-generics, the doubled separator for the omitted one, the byte-identical source under a non-v2 module name for the v2 exemption -- so a zero on the hole is the compiler's silence and never the harness failing to reach the judgment. The exhaustiveness hole's adequacy control is not re-authored here: the coproduct-scrutinee arm is already enrolled and executing at test.claim.match_exhaustiveness_coproduct_witness w_missing_coproduct_arm_reports_one_non_exhaustive, on this same harness, and duplicating it would be a second authority for one fact."
+data guarantee_floor_class_probe_scope_note: String = "WHAT THIS FILE IS. Five floor classes in docs/plans/compiler-guarantee-recovery-gap-analysis.md carried rungs established by a ONE-OFF hand execution of compile_dag_diagnostic_census on 2026-08-01 (four of them said NOT ENROLLED in their own Evidence cell; the parse-separator row cited a session's throwaway probe). A SIXTH class was authored here and REMOVED before merge: the v2.-module direct-call argument-type exemption, which gunbc#8902 landed on main as direct_call_argument_type_class while this change was in flight. One concept, one authority (DESIGN 3) — that seam is theirs, this file carries no second name for it, and the gap-analysis row for it cites their rows. Nothing re-ran any of them, so each rung was honest about the day it was measured and silent about today -- the shape DESIGN 4b meta-obligation 4 forbids. This file is the enrolment: every one of those measurements now executes on every required-floor run, and every one of them reds if the compiler's behaviour changes in either direction. FOUR OF THE FIVE ARE BELOW-FLOOR HOLES AND THEIR PROBES ARE GREEN BY DESIGN. Do not read those greens as guarantees: they pin a DEFECT (ExpectSilentAcceptanceHole, whose note explains why it is a separate variant from ExpectZeroDiagnostics) and they flip RED on the day the wall lands, which is the signal to rewrite the row as ExpectBlockingRefusal rather than to delete the probe. PROBE ADEQUACY, per the operator-adopted 2026-08-01 mandate that every below-floor row carry closure AND shape evidence: each hole ships beside a control that DOES refuse on this same harness and this same run -- the monomorphic record for generic instantiation, the declared-record field access for field-through-generics, the doubled separator for the omitted one, so a zero on the hole is the compiler's silence and never the harness failing to reach the judgment. The exhaustiveness hole's adequacy control is not re-authored here: the coproduct-scrutinee arm is already enrolled and executing at test.claim.match_exhaustiveness_coproduct_witness w_missing_coproduct_arm_reports_one_non_exhaustive, on this same harness, and duplicating it would be a second authority for one fact."
 
-data guarantee_floor_class_probe_measurement_note: String = "MEASURED 2026-08-22 on this harness, full dag + src/v2 pool, before these probes were authored -- the numbers the rows below encode. generic-instantiation hole 0 rows; monomorphic control 1 blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows; doubled-separator control 1 blocking ParseError; green 0. v2-exemption hole 0 rows; byte-identical non-v2 control 1 blocking TypeMismatch. THE InternalError ROW IS PINNED AS OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, which is the property the control exists to establish, but it refuses under a class name that says nothing about what went wrong. That is its own diagnostic-quality defect and it is recorded here rather than laundered into a nicer-sounding assertion; improving the class is a change that reds this probe, which is the correct place for the conversation to happen."
+data guarantee_floor_class_probe_measurement_note: String = "MEASURED 2026-08-22 on this harness, full dag + src/v2 pool, before these probes were authored -- the numbers the rows below encode. generic-instantiation hole 0 rows; monomorphic control 1 blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows; doubled-separator control 1 blocking ParseError; green 0. THE InternalError ROW IS PINNED AS OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, which is the property the control exists to establish, but it refuses under a class name that says nothing about what went wrong. That is its own diagnostic-quality defect and it is recorded here rather than laundered into a nicer-sounding assertion; improving the class is a change that reds this probe, which is the correct place for the conversation to happen."
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -146,8 +143,6 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
-data conformance_v2_exemption_hole_source: String = "module v2.probe_floor_conformance_exempt\nfn takes_int(a: Int) -> Int { a }\nfn f() -> Int { takes_int(a: \"a string\") }\n"
-data conformance_v2_exemption_control_source: String = "module probe_floor_conformance_plain\nfn takes_int(a: Int) -> Int { a }\nfn f() -> Int { takes_int(a: \"a string\") }\n"
 
 test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
   silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
@@ -215,27 +210,6 @@ test fn floor_parse_list_separator_green_control_is_clean() -> Bool {
     && total_row_count_is_zero(census: census_of(source: parse_list_separator_green_source))
 }
 
-test fn floor_v2_module_exemption_silences_the_direct_call_argument_judgment() -> Bool {
-  silent_hole_holds(probe: floor_conformance_v2_exemption_hole_probe, source: conformance_v2_exemption_hole_source)
-    && blocking_count(source: conformance_v2_exemption_hole_source, wanted: "TypeMismatch") == 0
-}
-
-test fn floor_v2_module_exemption_control_outside_v2_refuses_the_same_source() -> Bool {
-  row_holds(probe: floor_conformance_v2_exemption_control_probe, source: conformance_v2_exemption_control_source)
-    && blocking_count(source: conformance_v2_exemption_control_source, wanted: "TypeMismatch") == 1
-}
-
-test fn floor_v2_module_exemption_pair_differs_only_in_the_caller_module_name() -> Bool {
-  match census_any_count_for_class(census: census_of(source: conformance_v2_exemption_hole_source), wanted: "TypeMismatch") {
-    Present { value: exempt_any } =>
-      match census_any_count_for_class(census: census_of(source: conformance_v2_exemption_control_source), wanted: "TypeMismatch") {
-        Present { value: plain_any } => exempt_any == 0 && plain_any == 1
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
 test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
   match active_v1_compile_probe_row(probe: floor_record_completeness_red_probe) {
     Present { value: row } =>
@@ -269,10 +243,9 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
-test fn every_below_floor_hole_row_is_one_of_the_five_declared_holes() -> Bool {
+test fn every_below_floor_hole_row_is_one_of_the_four_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_conformance_v2_exemption_hole_probe as String,
     floor_field_through_generics_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
@@ -288,7 +261,6 @@ test fn every_below_floor_hole_row_is_one_of_the_five_declared_holes() -> Bool {
 test fn every_declared_floor_class_has_registry_rows() -> Bool {
   let classes = [
     floor_closed_match_exhaustiveness_class as String,
-    floor_declared_conformance_v2_exemption_class as String,
     floor_field_through_generics_class as String,
     floor_generic_instantiation_class as String,
     floor_parse_list_separator_class as String,
