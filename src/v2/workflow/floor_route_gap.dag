@@ -7,14 +7,33 @@ import v2.std.text { String }
 // THE ROUTE-GAP ROSTER: identities the required floor EXECUTES, that reach a host effect the
 // hermetic route has no arm for, enrolled by exact qualified name.
 //
-// WHY IT EXISTS, and why it is not the decline it replaces. Until 2026-08-20 the floor answered
-// this class by never planning the population at all: a file declaring
-// `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree` had every one of its
-// identities declined (`RequiredFloorDisposition.DeclinedLiveTree`), 778 of them across 112
-// files, and since `claim_executor --required-floor` is the only witness-executing consumer in
-// the tree, none of them ran anywhere. That arm is deleted. Every discovered identity is now
-// routed and executed, which turns a population that was invisible by construction into one
-// that is observed per identity, every run, by the interpreter's own typed refusal.
+// WHY IT EXISTS. A file declaring `data live_tree_disposition: LiveTreeDisposition =
+// ReadsLiveTree` had every one of its identities declined before execution
+// (`RequiredFloorDisposition.DeclinedLiveTree`) -- 778 of them across 112 files when that was
+// measured -- and since `claim_executor --required-floor` is the only witness-executing
+// consumer in the tree, a declined identity ran nowhere at all. This roster exists to observe
+// the complementary class: identities that ARE planned and executed, and whose execution then
+// reaches a host effect the hermetic route has no arm for, surfaced per identity, every run,
+// by the interpreter's own typed refusal.
+//
+// WHAT THIS ROSTER DOES NOT ESTABLISH, stated because an earlier revision of this header
+// asserted exactly the opposite: it does NOT establish that every discovered identity is
+// planned, and it does NOT establish whether `RequiredFloorDisposition.DeclinedLiveTree`
+// exists. That revision claimed the arm was deleted and that "every discovered identity is now
+// routed and executed". Both halves were false when written, falsified by any floor run whose
+// receipt reports a nonzero pre-execution decline. It was rung inflation on the very axis the
+// sibling authority corrects ITSELF for (`required_floor`, review 54035) -- one carrier
+// narrating another's behaviour instead of reading it.
+//
+// THE JURISDICTION, written as a boundary rather than as a count so that no future revision has
+// a place to restate the same class of claim: `required_floor` owns PRE-EXECUTION PLANNING --
+// which discovered identities are declined, and why. `floor_route_gap` classifies ONE EXECUTED
+// OUTCOME. A roster of executed refusals is structurally incapable of proving planning
+// completeness, because every identity it can see has already been planned. So the planner's
+// population is read from `v2.workflow.required_floor` and its per-identity receipt, never
+// copied here -- a copy is what drifted last time, and it would drift again in the same
+// direction. This paragraph stays true both before and after `DeclinedLiveTree` is deleted,
+// which is the property the sentence it replaces did not have.
 //
 // SO THIS ROSTER IS NOT A SKIP LIST, for exactly the reason `floor_expected_red` is not one:
 // every identity here EXECUTES and its outcome is still asserted. What enrollment changes is

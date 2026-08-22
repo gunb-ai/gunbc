@@ -1,0 +1,129 @@
+module test.claim.emit_summary_map_consumer_partition_test
+
+import std.types { Bool, Int }
+import gunbc.emit_summary_map_consumer_partition {
+  emit_summary_map_consumers,
+  consumer_holds_node_at_ask,
+  consumer_ask_is_spelling_only,
+  consumer_severance_is_rostered,
+  consumer_ask_is_composite,
+  consumer_ask_is_scan,
+  consumer_use_is_terminal,
+  partition_member_count,
+  partition_lookup_expression_total,
+  partition_holds_node_count,
+  partition_spelling_only_count,
+  partition_composite_count,
+  partition_scan_count,
+  partition_terminal_use_count,
+  partition_holds_node_but_rekeys,
+  partition_repaired_by_rekey_alone,
+  whole_tree_collision_upper_bound,
+  largest_measured_pool_collision_count,
+  measured_pool_row_count,
+  emit_summary_map_guard_rows,
+  guard_row_count,
+  guards_written_correctly_but_unable_to_fire,
+  guards_preserving_their_trigger
+}
+
+// WHAT THIS WITNESS IS NOT. It does not measure the emitter and cannot: the roster it guards is a
+// hand sweep of a mechanical selector, and no assertion here moves if a new lookup is authored
+// tomorrow. Saying that first matters, because a green witness beside a census is the artifact a
+// reader mistakes for the census being verified.
+//
+// NO COUNT IS COMPARED TO A LITERAL. Every number below is a fold over the rows compared against
+// another fold over the same rows, so adding a row cannot make this file stale and no assertion can
+// be silenced by editing a number.
+
+// THE ASK COLUMN IS A PARTITION, NOT A SET OF TAGS. Every row sits in exactly one of the four ask
+// arms, so the four counts must sum to the member count. RED case: add a fifth ask arm and file a
+// row in it without extending the histogram, and this sum breaks.
+fn ask_column_partitions_every_member() -> Bool {
+  partition_holds_node_count() + partition_spelling_only_count() + partition_composite_count() + partition_scan_count() == partition_member_count()
+}
+
+// THE TWO COLUMNS ARE INDEPENDENT, AND THE CELL THAT PROVES IT MUST NOT BE EMPTY.
+//
+// This is the assertion the lane exists for. If every node-holding site were also terminal, scoring
+// the ask alone would have been sufficient and the second column would be ceremony. RED case: file
+// the roster with the use column collapsed so that holding a node implies terminal use -- this goes
+// red, which is exactly the finding it guards.
+fn holding_a_node_does_not_imply_a_terminal_use() -> Bool {
+  (partition_holds_node_but_rekeys() |> count) > 0
+}
+
+// THE MEASURED FINDING, ASSERTED RATHER THAN NARRATED: the set an identity-keyed map repairs by
+// itself is EMPTY. No row both obtains identity at the ask and consumes the summary without a
+// spelling leaving the site. This is the number the sizing rests on, so it is carried by an
+// executing assertion and not by prose. RED case: any row filed with NodeHeldAtAsk and
+// TerminalAtSite -- at which point the sizing changed and this witness says so.
+fn rekey_alone_repairs_nothing_on_this_roster() -> Bool {
+  (partition_repaired_by_rekey_alone() |> count) == 0
+}
+
+// A SPELLING-ONLY ROW MUST NAME THE FOLD THAT SEVERED IT, AND THAT FOLD MUST BE ON THE SEVERANCE
+// ROSTER. Otherwise a row could file "the identity is gone" without saying where it went, which is
+// the claim a reader most needs to check and the one an author is most tempted to assume. RED case:
+// file a spelling-only row naming a fold absent from emit_summary_map_severance_points.
+fn every_severance_fold_named_is_rostered() -> Bool {
+  emit_summary_map_consumers |> all(c =>
+    if consumer_ask_is_spelling_only(c: c) {
+      consumer_severance_is_rostered(c: c)
+    } else { true }
+  )
+}
+
+// EVERY MEMBER READS THE MAP AT LEAST ONCE. lookup_expression_count is the only field saying how
+// much of the map each row actually decides from; a zero would admit a row contributing nothing a
+// reader could go and look at. RED case: file a row with a count of zero.
+fn every_member_reads_the_map() -> Bool {
+  emit_summary_map_consumers |> all(c => c.lookup_expression_count > 0)
+}
+
+// THE LOOKUP TOTAL IS AT LEAST THE MEMBER COUNT, given the assertion above. This is the arithmetic
+// tie between the two derived numbers a reader compares; it goes red if either fold is rewritten to
+// count something else.
+fn lookup_total_covers_every_member() -> Bool {
+  partition_lookup_expression_total() >= partition_member_count()
+}
+
+// EVERY COLUMN COUNT LIES INSIDE THE ROSTER IT IS DERIVED FROM.
+fn derived_counts_lie_within_the_roster() -> Bool {
+  partition_terminal_use_count() <= partition_member_count()
+    && partition_holds_node_count() <= partition_member_count()
+    && partition_member_count() > 0
+}
+
+// A POOL IS A SUBSET OF THE TREE, so no closure-grain collision count may exceed the
+// corpus-wide bound. The two figures came from different walks over different populations, so this
+// ties them rather than restating one. RED case: file a closure row whose collision count exceeds
+// the corpus bound, which is what a mis-scoped closure walk would produce.
+fn no_pool_collides_more_than_the_whole_tree_bound() -> Bool {
+  largest_measured_pool_collision_count() <= whole_tree_collision_upper_bound()
+}
+
+// THE CORPUS BOUND IS NOT CARRIED ALONE. A collision population reporting only the upper bound is
+// the shape the sequencing rule forbids -- it cannot size a refusal. RED case: delete the closure
+// rows and keep the corpus row.
+fn the_collision_population_is_measured_at_pool_grain() -> Bool {
+  measured_pool_row_count() > 0
+}
+
+// A CORRECTLY WRITTEN GUARD THAT CANNOT SEE ITS OWN TRIGGER IS THE FINDING, so it is asserted.
+// If this set were empty the two-part test would be carrying no information here and the roster
+// would collapse back into "is the check well written". RED case: file every guard row as
+// preserving its trigger.
+fn some_guard_is_correct_and_unable_to_fire() -> Bool {
+  (guards_written_correctly_but_unable_to_fire() |> count) > 0
+}
+
+// AND AT LEAST ONE GUARD MUST PRESERVE ITS TRIGGER, or the roster has no contrast row and the
+// column cannot be read as discriminating. RED case: drop build_qualified_item_registry.
+fn some_guard_preserves_its_trigger() -> Bool {
+  (guards_preserving_their_trigger() |> count) > 0
+}
+
+fn every_guard_row_is_counted() -> Bool {
+  guard_row_count() == (emit_summary_map_guard_rows |> count)
+}

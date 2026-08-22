@@ -112,9 +112,11 @@ import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark.serving_boot_provenance {
   spark_serving_active_enter_probe_argv,
+  spark_serving_default_target_enter_probe_argv,
   spark_serving_uptime_probe_argv,
   spark_serving_classify_boot_provenance,
   spark_serving_boot_provenance_wire,
+  spark_serving_boot_provenance_establishes_durability,
   SparkServingBootProvenance,
   BootProvenanceUnobserved,
 }
@@ -526,6 +528,7 @@ fn spark_serving_observe_host_via_locus(
     nvidia_driver: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
     runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_materialization_receipt_probe_argv()),
     active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
+    default_target_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_default_target_enter_probe_argv()),
     uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
     grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
   )
@@ -703,6 +706,7 @@ fn spark_serving_readback_from_probe_results(
   nvidia_driver: SshSessionExecResult?,
   runtime_receipt: SshSessionExecResult?,
   active_enter: SshSessionExecResult?,
+  default_target_enter: SshSessionExecResult?,
   uptime: SshSessionExecResult?,
   grants: SshSessionExecResult?,
 ) -> SparkServingReadback {
@@ -720,7 +724,11 @@ fn spark_serving_readback_from_probe_results(
     model_manifest_digest: tags_fields.model_manifest_digest,
     nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
     bind_address: SparkServingReadbackAbsent,
-    boot_provenance: spark_serving_boot_provenance_from_probes(active_enter: active_enter, uptime: uptime),
+    boot_provenance: spark_serving_boot_provenance_from_probes(
+      active_enter: active_enter,
+      default_target_enter: default_target_enter,
+      uptime: uptime,
+    ),
     grants: spark_serving_grant_outcome_from_probe(probe: grants),
   }
 }
@@ -730,14 +738,24 @@ fn spark_serving_readback_from_probe_results(
 // observation exists to report honestly.
 fn spark_serving_boot_provenance_from_probes(
   active_enter: SshSessionExecResult?,
+  default_target_enter: SshSessionExecResult?,
   uptime: SshSessionExecResult?,
 ) -> SparkServingBootProvenance {
   match active_enter {
     Absent => BootProvenanceUnobserved { cause: "ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
     Present { value: enter } =>
-      match uptime {
-        Absent => BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as NonEmptyStr }
-        Present { value: up } => spark_serving_classify_boot_provenance(active_enter: enter, uptime: up)
+      match default_target_enter {
+        Absent => BootProvenanceUnobserved { cause: "default.target ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
+        Present { value: target } =>
+          match uptime {
+            Absent => BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as NonEmptyStr }
+            Present { value: up } =>
+              spark_serving_classify_boot_provenance(
+                active_enter: enter,
+                default_target_enter: target,
+                uptime: up,
+              )
+          }
       }
   }
 }
@@ -794,6 +812,7 @@ fn spark_serving_observe_host(
     raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
   )
   let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
+  let default_target_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_default_target_enter_probe_argv())
   let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
   let grants = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_grant_probe_words)
   let readback = spark_serving_readback_from_probe_results(
@@ -805,6 +824,7 @@ fn spark_serving_observe_host(
     nvidia_driver: nvidia_driver,
     runtime_receipt: runtime_receipt,
     active_enter: active_enter,
+    default_target_enter: default_target_enter,
     uptime: uptime,
     grants: grants,
   )
@@ -861,6 +881,33 @@ fn spark_serving_observe_with_context(
 // adding a line to one left the other silently short -- and the CI entry is the one that actually
 // runs against the fleet. A second copy of a rendering is the section 3 fork; it was found by
 // executing the path rather than by reading it, which is the whole argument for running the thing.
+// ONE RENDERER FOR THE BODY OF A REPORT, and the previous fix on this exact seam is why this one
+// exists. Extracting spark_serving_host_observation_lines unified the PER-HOST join and left the
+// REPORT-LEVEL assembly still forked in two places -- so the fleet standing, which is a
+// report-level fact, was derived correctly, rendered by spark_serving_observation_report_text, and
+// silently absent from the receipt the CI entry actually writes. Found by running it, again.
+//
+// The lesson the first fix missed: unifying the inner join does not unify the outer one. A fork is
+// closed at the grain of the fact being added, and a report-level fact needs the report-level
+// assembly to have a single owner. Both callers now prepend their own header -- which genuinely
+// differ, one carrying a materialization receipt and the other a credential locus -- to this one
+// body.
+fn spark_serving_report_body_lines(report: SparkServingObservationReport) -> String {
+  join(
+    concat(
+      match report {
+        SparkServingObservationReportRefused { cause: _ } => []
+        SparkServingObservationsProduced { first: f, more: m } =>
+          map(concat([f], m), ho => spark_serving_host_observation_lines(ho: ho))
+      },
+      [spark_serving_current_boot_durability_line(
+        standing: spark_serving_current_boot_durability_standing(report: report),
+      )],
+    ),
+    "",
+  )
+}
+
 fn spark_serving_host_observation_lines(ho: SparkServingHostObservation) -> String {
   join([
     spark_serving_readback_line(readback: ho.readback),
@@ -869,6 +916,110 @@ fn spark_serving_host_observation_lines(ho: SparkServingHostObservation) -> Stri
   ], "")
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// CURRENT-BOOT DURABILITY STANDING
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// WHAT THIS ANSWERS, and it is narrower than "is the fleet durable": does THIS BOOT, on the
+// hosts we just observed, exhibit the auto-start property. Nothing here remembers a past
+// proof; remembering one needs a receipt that outlives its run, and no such carrier exists
+// (the durability receipt is written under target/, which is gitignored and worktree-local).
+// That half is deliberately not built rather than faked with a field.
+//
+// WHY THERE IS NO PER-HOST STANDING TYPE, because the obvious design is a nickname. A
+// four-state per-host coproduct -- exhibited / not-exhibited / unit-not-active / unobserved --
+// maps ONE-TO-ONE onto SparkServingBootProvenance's four variants. That is a second name for
+// one concept, which DESIGN section 3 forbids and which costs twice over because everything
+// derived from it forks too. The per-host fact already has an authority and a wire rendering;
+// what did NOT exist is the FLEET aggregate, and an aggregate over N hosts is genuinely new
+// information rather than a rename of one host's state.
+//
+// IT ALSO GIVES AN ORPHANED ORACLE ITS FIRST CONSUMER.
+// spark_serving_boot_provenance_establishes_durability had zero production callers -- only its
+// own witness imported it. A predicate nothing asks is a verdict with no consumer: it can be
+// correct forever and change nothing, and it cannot rot loudly because nothing depends on it.
+// This routes the fleet verdict through it rather than re-deciding which provenance states
+// count, so the "only UnitStartedByManagerAtBoot establishes durability" rule stays in one
+// place.
+//
+// THE THREE STATES ARE NOT THREE FLAVOURS OF FAILURE. Exhibited-on-every-observed-host,
+// measured-and-some-do-not, and nothing-observed have different remedies: the second is a real
+// property of this boot, the third is a coverage gap. Collapsing them is the state-space
+// conflation that has cost this lane a module already. And NotExhibited does NOT mean durability
+// FAILED -- a unit started after boot is most likely one our own convergence run started, so the
+// auto-start property is not disproven, it is simply not exercised by this boot. The variant is
+// named for what was measured, not for a verdict it cannot support.
+//
+// THAT CAUTION IS NOT HYPOTHETICAL. Measured 2026-08-22 (run 32543249175), both converged hosts
+// classify UnitStartedAfterBoot because they entered active ~10.6s into a boot 28 HOURS old,
+// against a fitted 10s window -- 6% over, on two independent hosts, which is a wrong constant
+// rather than two hand starts. So this standing will report not-exhibited on a fleet whose real
+// durability is UNDETERMINED. That is honest only because the variant and its wire both say what
+// the probe failed to establish rather than what the fleet failed to do; the underlying
+// classification is fixed by replacing the window constant with a relation, which is separate
+// work and is not done here.
+type SparkServingCurrentBootDurabilityStanding
+  = CurrentBootDurabilityExhibitedFleetWide { observed_hosts: Int }
+  | CurrentBootDurabilityNotExhibited { exhibiting: Int, observed_hosts: Int }
+  | CurrentBootDurabilityUnobserved { cause: NonEmptyStr }
+
+fn spark_serving_host_exhibits_current_boot_durability(ho: SparkServingHostObservation) -> Bool {
+  spark_serving_boot_provenance_establishes_durability(p: ho.readback.boot_provenance)
+}
+
+fn spark_serving_current_boot_durability_standing(
+  report: SparkServingObservationReport,
+) -> SparkServingCurrentBootDurabilityStanding {
+  match report {
+    SparkServingObservationReportRefused { cause: c } =>
+      CurrentBootDurabilityUnobserved { cause: c }
+    SparkServingObservationsProduced { first: f, more: m } => {
+      let hosts = concat([f], m)
+      let observed = length(hosts)
+      let exhibiting = fold(hosts, init: 0, f: fn(acc, ho) {
+        if spark_serving_host_exhibits_current_boot_durability(ho: ho) { acc + 1 } else { acc }
+      })
+      if exhibiting == observed {
+        CurrentBootDurabilityExhibitedFleetWide { observed_hosts: observed }
+      } else {
+        CurrentBootDurabilityNotExhibited { exhibiting: exhibiting, observed_hosts: observed }
+      }
+    }
+  }
+}
+
+// THE WIRE SAYS "not-exhibited-this-boot", never "failed". A reader who sees this line in a
+// receipt and reports "durability failed on srv6" would be asserting something the measurement
+// does not support, and that mis-reading is exactly what this standing exists to stop.
+fn spark_serving_current_boot_durability_line(
+  standing: SparkServingCurrentBootDurabilityStanding,
+) -> String {
+  match standing {
+    CurrentBootDurabilityExhibitedFleetWide { observed_hosts: n } =>
+      join([
+        "current-boot-durability=exhibited observed_hosts=", to_string(n),
+        " -- every observed host's unit came up WITH this boot\n",
+      ], "")
+    CurrentBootDurabilityNotExhibited { exhibiting: e, observed_hosts: n } =>
+      join([
+        "current-boot-durability=not-exhibited-this-boot exhibiting=", to_string(e),
+        " observed_hosts=", to_string(n),
+        " -- this probe does not establish auto-start on every observed host; NOT a finding that durability failed\n",
+      ], "")
+    CurrentBootDurabilityUnobserved { cause: c } =>
+      join([
+        "current-boot-durability=unobserved cause=", c as String,
+        " -- nobody looked; this is a coverage gap, not a property of the fleet\n",
+      ], "")
+  }
+}
+
+// THE STANDING IS RENDERED ON BOTH ARMS, not merely derivable, and both halves of that are
+// deliberate. A verdict nothing prints is the orphaned-oracle shape this standing exists to fix
+// one level down -- it would be a poor joke to reproduce it here. And the REFUSED arm carries it
+// too, because "nobody looked" is a STATE of the standing rather than the absence of one:
+// printing the line only on the success path would leave an unobserved fleet silently
+// indistinguishable from one nobody had asked about, which is the empty-observation narrow.
 fn spark_serving_observation_report_text(
   report: SparkServingObservationReport,
   probed_at: String,
@@ -882,13 +1033,14 @@ fn spark_serving_observation_report_text(
         " attempt_raw=", attempt_raw, "\n",
         materialization_receipt,
         "REFUSED: ", c as String, "\n",
+        spark_serving_report_body_lines(report: report),
       ], "")
-    SparkServingObservationsProduced { first: f, more: m } =>
-      join(concat([
-        [join(["spark serving observe probed_at=", probed_at, " attempt_raw=", attempt_raw, "\n"], "")],
-        [materialization_receipt],
-        map(concat([f], m), ho => spark_serving_host_observation_lines(ho: ho)),
-      ], []), "")
+    SparkServingObservationsProduced { first: _, more: _ } =>
+      join([
+        join(["spark serving observe probed_at=", probed_at, " attempt_raw=", attempt_raw, "\n"], ""),
+        materialization_receipt,
+        spark_serving_report_body_lines(report: report),
+      ], "")
   }
 }
 
@@ -1047,17 +1199,6 @@ func spark_serving_observe_ci_with_context(
     spark_serving_desired_hosts,
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
-  let body = join(
-    concat(
-      [
-        join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
-        join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
-        context_receipt,
-      ],
-      map(observations, o => spark_serving_host_observation_lines(ho: o)),
-    ),
-    "",
-  )
   let report = match spark_serving_observation_report_from_observations(observations: observations) {
     Absent =>
       SparkServingObservationReportRefused {
@@ -1065,6 +1206,12 @@ func spark_serving_observe_ci_with_context(
       }
     Present { value: r } => r
   }
+  let body = join([
+    join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
+    join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
+    context_receipt,
+    spark_serving_report_body_lines(report: report),
+  ], "")
   let w = Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
   if w.success == false {
     exit_failure(reason: join(["receipt write failed: ", w.error], ""))
