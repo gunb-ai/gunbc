@@ -12,6 +12,7 @@ import gunbc.observation_emit_census {
   CountedFrontierSite,
   observation_emit_roster,
   emit_site_is_frontier,
+  witness_row_cost_site,
   emit_site_dissolve_on,
   floor_memory_site,
   gantt_site,
@@ -121,7 +122,7 @@ test fn w_witness_claim_result_has_migrated() -> Bool {
 }
 
 
-data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags, #7284 witness-row-cost / witness-row-cost-drift, and the migration-disclosure gate's own [witness-row-cost-migration-disclosure] marker.\n\nA [compile-clean-cost-drift] row was added here on 2026-08-11 and RETIRED hours later in the same lane, when that tag's emit was deleted outright rather than gated — so the row is gone and this list is shorter, not longer. The WAY the hole was found is still the finding: it was not caught by this test, because a manually enumerated conjunction can only assert the rows somebody remembered to write down. [compile-clean-cost-drift] and [compile-clean-cost] had been live in the seed and absent from the roster since they were introduced, so the bidirectional rule was stated but not enforced for them — an unrostered tag is invisible to a check whose subject list IS the roster. That makes this test's own shape the residue: the durable fix is a source-level census that DISCOVERS print markers in the seed and joins them against the roster, at which point a new tag cannot escape by not being remembered. Until that lands, this conjunction is a hand-maintained approximation of a discovery it cannot perform, and every row added to it is evidence of the gap rather than closure of it."
+data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags. It covered #7284's witness-row-cost and witness-row-cost-drift and the migration-disclosure gate's own [witness-row-cost-migration-disclosure] marker. On 2026-08-22 the batch-fed materialization was deleted at the root and witness-row-cost-drift and witness-row-cost-migration-disclosure went with it, so those two rows are gone. WITNESS-ROW-COST DID NOT GO, and this file is the receipt for why that matters: its assertion was removed in that same change on the premise that the marker was gone, and a live eprintln survives in claim_executor discovery_claim_result on a path with production callers. The assertion is restored above. The removal was reviewed and the review agreed the marker was gone -- so the only mechanism that could have caught it was this conjunction, which the same diff had deleted. That is the sharpest possible illustration of the gap this note already describes: a hand-maintained conjunction cannot object to its own deletion, so removing an assertion and removing the fact it protected look identical in the diff. The durable fix is unchanged and is now better motivated -- a source-level census that DISCOVERS print markers in the seed and joins them against the roster would have refused this edit without anyone remembering the tag.\n\nA [compile-clean-cost-drift] row was added here on 2026-08-11 and RETIRED hours later in the same lane, when that tag's emit was deleted outright rather than gated — so the row is gone and this list is shorter, not longer. The WAY the hole was found is still the finding: it was not caught by this test, because a manually enumerated conjunction can only assert the rows somebody remembered to write down. [compile-clean-cost-drift] and [compile-clean-cost] had been live in the seed and absent from the roster since they were introduced, so the bidirectional rule was stated but not enforced for them — an unrostered tag is invisible to a check whose subject list IS the roster. That makes this test's own shape the residue: the durable fix is a source-level census that DISCOVERS print markers in the seed and joins them against the roster, at which point a new tag cannot escape by not being remembered. Until that lands, this conjunction is a hand-maintained approximation of a discovery it cannot perform, and every row added to it is evidence of the gap rather than closure of it."
 
 test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: floor_drain_site) &&
@@ -133,7 +134,9 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: resolve_split_site) &&
   emit_site_is_frontier(site: resolve_split_site) &&
   census_marker_present(site: assembly_split_site) &&
-  emit_site_is_frontier(site: assembly_split_site)
+  emit_site_is_frontier(site: assembly_split_site) &&
+  census_marker_present(site: witness_row_cost_site) &&
+  emit_site_is_frontier(site: witness_row_cost_site)
 }
 
 test fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {
