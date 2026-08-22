@@ -241,7 +241,6 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-data converged_seven_roster_observed_on: NonEmptyStr = "converged-seven-fixture" as NonEmptyStr
 
 fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
   join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
@@ -294,46 +293,13 @@ fn count_host_online_at_width(
   )
 }
 
-fn roster_is_converged_seven_fixture(roster: OrganizationRunnerRosterEvidence) -> Bool {
-  match roster {
-    RosterObserved { observed_on: observed_on, registrations: _ } =>
-      (observed_on as String) == (converged_seven_roster_observed_on as String)
-    RosterReadUnavailable { reason: _ } => false
-  }
-}
-
-data converged_seven_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 101, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 102, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 103, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 104, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 105, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 106, name: "srv3-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 107, name: "srv3-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data converged_seven_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 201, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 202, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 203, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 204, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 205, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 206, name: "srv4-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 207, name: "srv4-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data converged_seven_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
-  converged_seven_srv3_registrations,
-  converged_seven_srv4_registrations,
-)
-
-fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRosterEvidence {
-  RosterObserved {
-    observed_on: converged_seven_roster_observed_on,
-    registrations: converged_seven_managed_registrations,
-  }
-}
-
+// THE CONVERGED-SEVEN FIXTURE CLUSTER IS DELETED HERE -- six declarations, all dead. It described
+// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are decoded
+// against the committed population rather than counted, srv3-07 resolves to no committed slot at all,
+// so the planner refused it. Its last consumer was retargeted onto the roster below, which is the
+// same concept authored once: both managed hosts registered 01-05 and online, converged at the
+// materialized width. Keeping the seven-wide rows beside it would have been a second name for a
+// fleet state, and a test fixture is not exempt from that.
 data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
   incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
