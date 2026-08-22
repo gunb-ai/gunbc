@@ -2669,6 +2669,84 @@ enforces end to end.
    binary, including a boundary control written specifically to catch over-peeling. The corpus was
    the only instrument that detected any of this.
 
+28. **A symbol name in PROSE is unreachable by any lens by construction, so three real dependents
+   survived a deletion with nothing able to refuse them** (opened 2026-08-22, session proud-ant-819,
+   found by executing the cut B deletion of `v1.compiler.infer` `module_skips_direct_call_arg_check`.
+   **This row is narrower than its first draft, and the narrowing is recorded below because the
+   overstatement was mine.**)
+
+   INVALID STATE. DESIGN §3's replacement-migration doctrine rests on a mechanism: *in a fail-closed
+   substrate the deletion IS the census — every real dependent refuses loudly.* A citation living in
+   PROSE — a `String` whose content is commentary, or a §4c source annotation — cannot participate in
+   that census, and not for want of a lens: **§4c states that no `Accepted` program can read an
+   annotation at all**, and a commentary `String` has no row type for a lens to enumerate. The
+   deletion completes; the citation stays; nothing anywhere can notice.
+
+   DISTINGUISHING FACTS, measured by executing the deletion. The symbol was removed from both
+   authorities; **zero** symbol references remain. Five live sites still name it, and they split
+   **two ways, not one**:
+
+   | site | carrier | can anything refuse it? |
+   |---|---|---|
+   | `gunbc.doc_graph_roots` | `HandAuthoredDocBind` → `DeclarationRef { decl_name: … }` | **YES** — the cited-symbol resolver enumerates these rows and answers `REFUSED DECLARATION-ABSENT` |
+   | `test.claim.doc_reachability_witness_test` | string comparison, but **joined to the bind** | **YES, indirectly** — reds when the bind is repointed |
+   | `gunbc.roadmap_authority` | headline / boundary prose | no |
+   | `gunbc.guarantee_probe_corpus` | §4c source annotation | no |
+   | `v2.compiler.02_parse` | §4c source annotation | no |
+
+   So the population is **three**, not five.
+
+   WHAT I GOT WRONG, kept because a corrected row is only trustworthy if the correction is visible.
+   The first draft of this row claimed all five were invisible, reasoning that *a name carried inside
+   a `String` is not reachable from the `Node` tree, so nothing can resolve it.* **That reasoning is
+   false**, and the `doc_graph_roots` row is the counterexample: `decl_name` IS a `String` field, and
+   the citation IS machine-checkable anyway, because the row's TYPE is known and enrolled — a lens
+   enumerates `HandAuthoredDocBind` rows and resolves the `(module_path, decl_name)` pair against the
+   namespace. A planted mutation (`…_MUTANT`) produces `REFUSED DECLARATION-ABSENT` and
+   `FAIL 1 authored reference(s) do not resolve`, verified on `session/quiet-lark-881-phase`. **The
+   discriminating axis is not String-versus-symbol; it is whether the citation sits in a TYPED ROW a
+   lens can enumerate, or in free text nothing can.** My axis was wrong and it happened to be wrong
+   about the one row that disproves the sweeping claim.
+
+   HARM. For the three prose sites: a reader is directed to a symbol that does not exist, and no
+   mechanism can ever tell them. This is §3's positional-citation decay class — the reason the
+   standing rule is *cite the symbol, not the position* — arriving through a carrier the rule does not
+   cover, because a symbol named in prose satisfies "cite the symbol" in appearance while being
+   exactly as unreachable as a `file:line`.
+
+   RUNG FOUND AT: *mitigatable*. The three sites are stale prose discoverable by grep; they mislead a
+   reader rather than passing a gate. Explicitly NOT below-floor — nothing green certifies them,
+   because nothing reads them at all.
+
+   CEILING: **outside the modeled guarantee**, and this is the honest answer rather than a low one.
+   §4c makes annotation content unreadable by any `Accepted` program *by construction*, which is a
+   property the repository chose deliberately; a lens that could refuse a stale name in an annotation
+   would be a lens reading annotations, which §4c forbids. So this class does not climb by building a
+   check. It climbs only by MOVING the citation into a typed carrier — at which point it becomes the
+   `doc_graph_roots` case, which already works.
+
+   NEXT TRIGGER: not a mechanism but a migration — any prose citation of a symbol that a typed carrier
+   could hold instead should move to one, exactly as §3's positional-citation rule says the cheap
+   construction move is to stop writing positions rather than to build a checker for them. The three
+   sites named above are the current bounded population.
+
+   ### DECLARED RUNG DROP (§4b(3)) — CONDITIONAL, and it may not be needed at land time
+
+   The `doc_graph_roots` bind **refuses loudly** on this deletion — but only once the cited-symbol
+   resolver runs **as a required check**, which is gunbc#8800. Until that merges, the refusal exists
+   as a mode nothing invokes.
+
+   - **IF gunbc#8800 HAS MERGED at land time:** no drop is declared. The bind refuses, its owning lane
+     (`session/quiet-lark-881-phase`) repoints it, and the joined witness reds with it. **Correct order
+     is this deletion FIRST, the repair SECOND** — pre-updating the citation would make the row false
+     in the other direction (naming a symbol that still exists) for as long as this PR takes.
+   - **IF gunbc#8800 HAS NOT MERGED:** this deletion lands with a declared bounded drop for that window
+     only. PREVIOUS RUNG mechanically preventable (the resolver would refuse). TEMPORARY RUNG
+     mitigatable (the stale citation is grep-discoverable, and the joined witness still passes because
+     its assertion is a string comparison). BOUNDED POPULATION one bind row plus its joined witness.
+     RESTORATION TRIGGER gunbc#8800 merging, after which the resolver refuses and the owning lane
+     repairs.
+   - **Check gunbc#8800's state at land time rather than assuming this evening's answer.**
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
