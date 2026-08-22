@@ -78,10 +78,10 @@ fn host_fabric_control_plane_claim(host: HostIdentity) -> HostFabricControlPlane
 // So the consumer matches the claim itself and refuses on the unmeasured arm. That is construction
 // rather than validation: with no projection to call, "charge the control plane" has no spelling
 // that skips the refusal, instead of having one that a reviewer must notice.
-fn control_plane_claim_is_unmeasured(claim: HostFabricControlPlaneClaim) -> Bool {
-  match claim {
-    ControlPlaneClaimUnmeasured { cause: _ } => true
-    ControlPlaneNotPlaced => false
-    ControlPlaneClaimResolved { memory: _ } => false
-  }
-}
+//
+// AND THE FIRST VERSION OF THIS MODULE SHIPPED A Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
+// control_plane_claim_is_unmeasured returned true for one arm and false for the others, had zero
+// call sites anywhere in the tree, and existed three lines below a comment explaining why no such
+// projection should exist. The point of having no projection is that the coproduct must be matched;
+// shipping an unconsumed Bool view of it reopens exactly the spelling the paragraph forbids, and
+// leaves a reader unsure which of the two the module actually means. Deleted (review 54686).
