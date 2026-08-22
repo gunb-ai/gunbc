@@ -161,38 +161,47 @@ module the fold reached last, and `is_known_variant`, `derive_variant_to_enum` a
 pair as the specimen where a bare-name rule realizes the wrong declaration. They are refused as a
 body or not at all, which puts the refusal downstream of the two-tree migration.
 
-### A second specimen, and a second failure mode: the miss, with no collision in it
+### A second specimen was offered and is withdrawn: the observation survives, the attribution does not
 
-`Connective` is a **wrong** answer from two declarations collapsing into one entry. This one is a
-**missing** answer from a key that was never going to match — no homonym involved. The map's
-exposure is therefore not exclusively about collisions.
+This section previously filed 13 rustc E0063 `missing field _phantom` on the namespace-cut branch as
+a *second failure mode of this map* — a missing answer from a bare key that could never match a
+qualified spelling. **That explanation was falsified by its own repair**, by the lane that offered
+it. It is corrected here rather than deleted, because receipts were landed citing it.
 
-Path (`emit_typed_record_lit`, this roster's row): `tn_is_known_struct` is
-`map_contains_key(emit_info.type_summaries, tn)`, the map is keyed bare, the namespace-cut corpus
-spells every construction qualified — so the test misses, `ctor_name` takes the resolve fallback, and
-the phantom lookup answers `Absent`, **whose arm emits nothing rather than refusing**. 13 rustc
-E0063 `missing field _phantom` at that head: emitted structs declaring the field beside emitted
-literals that never set it.
+**The falsifier.** They leaf-reduced the phantom lookup's key — exactly the move that worked for
+`shared_types` — bootstrapped, re-emitted, and measured **zero change**: 13 E0063 before and after,
+382 total before and after, 0 `_phantom` lines either way. If the key were the defect, keying it
+correctly would have moved something.
 
-**The two-arm control, which that lane could not build (with imports deleted, a bare cross-module
-spelling does not resolve at all) — main is the other arm.** `TargetCapabilityShapeRow` on main: 8
-construction sites, **all bare**, zero qualified; its committed mirror
-`extdeps_languages_rust_capabilities.rs` carries 8 emitted literals and 9 `_phantom` lines (8 rows +
-the enclosing table). Their branch: same type, 8 sites, **all qualified**, 8 E0063. Same type, same
-emitter path, opposite spelling, opposite outcome.
+**The discriminator is module locality, not key spelling.** The phantom lookup is
+`lookup_type_by_name(env: scope.type_env, …)` — the module-local type env, not this map. Counted by
+whether the constructing module is the declaring one, all six failing types are **exclusively
+foreign-constructed** (`TargetCapabilityShapeRow` 0 same-module / 8 foreign, likewise the other
+five), while `Measure` — whose phantom fields *do* emit, 50 lines in `std_measure.rs` — is 48
+same-module against 31 foreign. **No production instance of this map's harm is established by this
+specimen**, and it is not counted as one.
 
-**Population, in two steps, because the miss is far wider than the diagnostic.** Every qualified
-record literal misses the bare membership test — **1341 sites over 101 types on main today**. Only a
-*phantom-bearing* type turns that miss into E0063, and main has 36 such struct types in its mirror,
-of which **zero** are ever constructed qualified. Main is population-conditionally correct here on a
-*second* unenforced premise — everything is spelled bare — which the cut branch violated for six
-types.
+**What still stands, because it was measured rather than explained.** The two-arm control is
+untouched: `TargetCapabilityShapeRow` on main, 8 sites all **bare**, mirror carrying 8 literals and 9
+`_phantom` lines; the cut branch, same 8 sites **qualified**, none emitted. What was wrong is reading
+the *spelling* as the cause — spelling and import co-varied there, and only one was operative. By
+code read (not execution, and offered as direction rather than proof): the binding table
+`lookup_type_by_name` consults carries an **ancestry layer built from import ancestry**
+(`04_env`'s `ancestry_str_bindings`, whose union note speaks of names reachable from two *peer
+imports*), consistent with imports being what populates it. The executed two-arm test for that is
+still missing.
 
-**One false positive of my own, recorded because it is this carrier's subject turned on its author.**
-My first intersection joined those sets on the **leaf name** and returned one exposed type, `Group`.
-It isn't: the phantom-bearing one is `std.algebra.Group`, the qualified construction is
-`std.render.Group` — a different declaration sharing a leaf. Joining on a spelling produced a wrong
-answer inside a measurement about joining on a spelling. Corrected count: zero.
+**My own measurements from that round are unaffected**, being about the membership test rather than
+the phantom lookup: every qualified record literal misses `map_contains_key(type_summaries, tn)` —
+**1341 sites over 101 types on main** — and of the **36** phantom-bearing struct types in main's
+mirror, **zero** are ever constructed qualified. The membership miss is real and corpus-wide; **its
+consequence is unmeasured**, and this document says so rather than borrowing a consequence from a
+retracted attribution.
+
+**One false positive of my own from the same round**, kept because it is this carrier's subject
+turned on its author: my first intersection joined those sets on the **leaf name** and reported one
+exposed type, `Group`. It isn't — the phantom-bearing one is `std.algebra.Group`, the qualified
+construction is `std.render.Group`. Corrected count: zero.
 
 ### The `Connective` specimen: pool named, and it is a third root
 
