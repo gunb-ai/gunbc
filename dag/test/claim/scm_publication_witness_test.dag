@@ -1,0 +1,135 @@
+module test.claim.scm_publication_witness
+
+// THE DISCRIMINATING QUESTION IS NOT "DOES THE FOLD RETURN SOMETHING" -- a total function over a
+// closed coproduct always does. It is whether the fold SEPARATES causes that need different
+// remedies, and the only way to fail that is to route two such causes to one arm.
+//
+// So each test below pairs a cause with a cause that MUST land elsewhere. A fold that collapsed
+// everything onto one disposition would satisfy any single-arm assertion and would be caught here
+// and only here.
+
+import std.types { Bool }
+import gunbc.scm.image {
+  ImageRefusal,
+  ImageNotAnObject,
+  ImageMemberMissing,
+  ImageMemberDuplicated,
+  ImageMemberWrongShape,
+  ImageFormatUnrecognized,
+  ImageUnknownKindTag,
+  ImageUnknownConnectiveTag,
+  ImageUnknownBehaviorTag,
+  ImageUnknownLabelTag,
+  ImageEdgeTargetUnresolved,
+  ImageRootUnresolved,
+  ImageObjectCollision,
+  ImageUnexpectedMember,
+  ImageEnvelopeMembers,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryDecodeRefusal,
+  RepositoryDecodeImageRefusal,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryCommitRootReferenceUnresolved,
+  RepositoryCheckoutReferenceUnresolved,
+  RepositoryUnexpectedMember,
+  RepositoryEnvelopeMembers,
+}
+import gunbc.scm.publication {
+  RepositoryLoadDisposition,
+  RepositoryLoadNeedsCompatibleReader,
+  RepositoryLoadClosureIncomplete,
+  RepositoryLoadDocumentMalformed,
+  repository_load_disposition,
+  may_supersede_generation,
+}
+
+fn is_needs_reader(d: RepositoryLoadDisposition) -> Bool {
+  match d {
+    RepositoryLoadNeedsCompatibleReader { cause: _ } => true
+    RepositoryLoadClosureIncomplete { cause: _ } => false
+    RepositoryLoadDocumentMalformed { cause: _ } => false
+  }
+}
+
+fn is_closure_incomplete(d: RepositoryLoadDisposition) -> Bool {
+  match d {
+    RepositoryLoadClosureIncomplete { cause: _ } => true
+    RepositoryLoadNeedsCompatibleReader { cause: _ } => false
+    RepositoryLoadDocumentMalformed { cause: _ } => false
+  }
+}
+
+fn is_malformed(d: RepositoryLoadDisposition) -> Bool {
+  match d {
+    RepositoryLoadDocumentMalformed { cause: _ } => true
+    RepositoryLoadNeedsCompatibleReader { cause: _ } => false
+    RepositoryLoadClosureIncomplete { cause: _ } => false
+  }
+}
+
+fn image_disposition(inner: ImageRefusal) -> RepositoryLoadDisposition {
+  repository_load_disposition(cause: RepositoryDecodeImageRefusal { cause: inner })
+}
+
+// A NEWER WRITER IS NOT A DAMAGED FILE. Every arm here is a document this build cannot interpret,
+// and each one must forbid supersession -- an older reader overwriting a newer writer's head is data
+// loss caused by the reader's own limitation.
+test fn unreadable_by_this_build_never_supersedes() -> Bool {
+  let a = image_disposition(inner: ImageFormatUnrecognized { found: "gunbc-scm-commit-closure-v2" })
+  let b = image_disposition(inner: ImageUnknownKindTag { found: "quantum" })
+  let c = image_disposition(inner: ImageUnknownConnectiveTag { found: "tensor" })
+  let d = image_disposition(inner: ImageUnknownBehaviorTag { found: "resume" })
+  let e = image_disposition(inner: ImageUnknownLabelTag { found: "keyword" })
+  let f = image_disposition(inner: ImageUnexpectedMember { context: ImageEnvelopeMembers, key: "provenance" })
+  let g = repository_load_disposition(cause: RepositoryIdentityRuleUnrecognized { found: "sha256-structural" })
+  let h = repository_load_disposition(cause: RepositoryUnexpectedMember { context: RepositoryEnvelopeMembers, key: "signed_by" })
+  is_needs_reader(d: a) && is_needs_reader(d: b) && is_needs_reader(d: c) && is_needs_reader(d: d)
+    && is_needs_reader(d: e) && is_needs_reader(d: f) && is_needs_reader(d: g) && is_needs_reader(d: h)
+    && !may_supersede_generation(disposition: a) && !may_supersede_generation(disposition: e)
+    && !may_supersede_generation(disposition: f) && !may_supersede_generation(disposition: g)
+    && !may_supersede_generation(disposition: h)
+}
+
+// AN ABSENT OBJECT IS NOT A BAD DOCUMENT. The manifest is correct and something it names is missing,
+// so replacing the manifest discards a correct document and loses the record of what was expected.
+test fn unresolved_references_are_closure_incomplete_and_never_supersede() -> Bool {
+  let a = image_disposition(inner: ImageEdgeTargetUnresolved { reference: "7" })
+  let b = image_disposition(inner: ImageRootUnresolved { reference: "0" })
+  let c = repository_load_disposition(cause: RepositoryCommitRootReferenceUnresolved { reference: "3" })
+  let d = repository_load_disposition(cause: RepositoryCheckoutReferenceUnresolved { reference: "9" })
+  is_closure_incomplete(d: a) && is_closure_incomplete(d: b)
+    && is_closure_incomplete(d: c) && is_closure_incomplete(d: d)
+    && !may_supersede_generation(disposition: a) && !may_supersede_generation(disposition: b)
+    && !may_supersede_generation(disposition: c) && !may_supersede_generation(disposition: d)
+}
+
+// THE ONLY ARM THAT MAY SUPERSEDE. Nothing is recoverable from these bytes, so the other head slot
+// is the answer -- and this is the sole route to a `true`, which is what makes the two tests above
+// discriminating rather than decorative.
+test fn malformed_bytes_are_the_only_supersedable_state() -> Bool {
+  let a = image_disposition(inner: ImageNotAnObject)
+  let b = image_disposition(inner: ImageMemberMissing { key: "objects" })
+  let c = image_disposition(inner: ImageMemberDuplicated { key: "root" })
+  let d = image_disposition(inner: ImageMemberWrongShape { key: "format" })
+  let e = image_disposition(inner: ImageObjectCollision { identity: 4 })
+  is_malformed(d: a) && is_malformed(d: b) && is_malformed(d: c) && is_malformed(d: d)
+    && is_malformed(d: e)
+    && may_supersede_generation(disposition: a) && may_supersede_generation(disposition: b)
+    && may_supersede_generation(disposition: c) && may_supersede_generation(disposition: d)
+    && may_supersede_generation(disposition: e)
+}
+
+// THE DESCENT IS LOAD-BEARING, AND THIS IS THE TEST THAT WOULD GO RED IF IT WERE REMOVED. All three
+// causes arrive through ONE outer arm, `RepositoryDecodeImageRefusal`. An outer-only match routes
+// them to one disposition and fails here; nothing else in this file distinguishes descending from
+// not descending.
+test fn one_outer_arm_yields_three_distinct_remedies() -> Bool {
+  let reader = image_disposition(inner: ImageFormatUnrecognized { found: "v2" })
+  let absent = image_disposition(inner: ImageRootUnresolved { reference: "0" })
+  let broken = image_disposition(inner: ImageNotAnObject)
+  is_needs_reader(d: reader) && is_closure_incomplete(d: absent) && is_malformed(d: broken)
+    && !may_supersede_generation(disposition: reader)
+    && !may_supersede_generation(disposition: absent)
+    && may_supersede_generation(disposition: broken)
+}

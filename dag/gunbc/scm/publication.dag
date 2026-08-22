@@ -1,0 +1,109 @@
+module gunbc.scm.publication
+
+// WHAT A FAILED LOAD MEANS, AS A TOTAL FUNCTION FROM CAUSE TO REMEDY.
+//
+// `decode_repository` already answers WHAT WENT WRONG. This module answers the only question a
+// publication boundary actually has to act on: WHAT MAY THE LOADER DO NEXT. Those are different
+// questions with different vocabularies, and fusing them would put a policy decision inside the
+// codec -- `decode_repository` would have to know whether a damaged generation may be superseded,
+// which is a fact about head slots and not about JSON.
+//
+// THE THREE REMEDIES ARE DISJOINT AND EACH FORBIDS SOMETHING THE OTHERS ALLOW:
+//
+//   - NeedsCompatibleReader: the writer stated something this build does not understand. The bytes
+//     may be perfectly good and the WRITER MAY BE NEWER THAN THE READER. Overwriting here destroys a
+//     document this build simply could not read, so this arm forbids supersession outright.
+//   - ClosureIncomplete: the document is well-formed and this build understands it, but it names
+//     objects that are absent. The remedy is to SUPPLY THE MISSING OBJECTS; the document is not the
+//     damaged party and replacing it would discard a correct manifest.
+//   - DocumentMalformed: the bytes are not a well-formed document at all. Nothing can be recovered
+//     FROM THIS GENERATION, so this is the only arm where the other head slot is the answer.
+//
+// The distinction between the first and the third is the load-bearing one, and it is exactly the
+// distinction a `catch`-shaped loader loses: "I cannot read this" and "this is not readable" have
+// opposite remedies, and collapsing them means a newer writer's document gets treated as corruption
+// and overwritten by an older reader. That is data loss produced by a reader's own limitation, and
+// it is the fabricated-plausible-output failure of DESIGN section 5 applied to a repair path.
+//
+// THE ORIGINAL CAUSE IS RETAINED ON EVERY ARM, so two causes may share a remedy without becoming
+// indistinguishable. A disposition that dropped its cause would answer "what may I do" while
+// destroying "why", and the operator reading a refused load needs both.
+
+import std.types { Bool }
+import gunbc.scm.image { ImageRefusal }
+import gunbc.scm.repository_envelope { RepositoryDecodeRefusal }
+
+type RepositoryLoadDisposition
+  = RepositoryLoadNeedsCompatibleReader { cause: RepositoryDecodeRefusal }
+  | RepositoryLoadClosureIncomplete { cause: RepositoryDecodeRefusal }
+  | RepositoryLoadDocumentMalformed { cause: RepositoryDecodeRefusal }
+
+// THE FOLD DESCENDS INTO `ImageRefusal` RATHER THAN MATCHING THE OUTER ARM WHOLE, and that was a
+// measured decision rather than a default. An outer-only match --
+// `RepositoryDecodeImageRefusal { cause: _ } => ...` -- is exhaustive over `RepositoryDecodeRefusal`
+// and would compile, but it is honest ONLY IF every image-level cause shares one publication remedy.
+//
+// Measured against the live coproduct, they do not: `ImageFormatUnrecognized` and the four
+// `ImageUnknown*Tag` arms are a READER limitation, `ImageEdgeTargetUnresolved` and
+// `ImageRootUnresolved` are an ABSENT-OBJECT problem over a well-formed document, and
+// `ImageNotAnObject` / `ImageMemberMissing` / `ImageMemberDuplicated` / `ImageMemberWrongShape` /
+// `ImageObjectCollision` are MALFORMED BYTES. Three remedies, one outer arm. Matching the outer arm
+// whole would have routed a newer writer's document to the same remedy as a truncated file.
+//
+// The cost of descending is the point of descending: a new `ImageRefusal` arm now fails to compile
+// HERE, forcing publication to decide its remedy, instead of silently inheriting whichever remedy
+// the outer arm happened to name.
+fn image_load_disposition(
+  inner: ImageRefusal,
+  original: RepositoryDecodeRefusal
+) -> RepositoryLoadDisposition {
+  match inner {
+    ImageFormatUnrecognized { found: _ } => RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageUnknownKindTag { found: _ } => RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageUnknownConnectiveTag { found: _ } => RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageUnknownBehaviorTag { found: _ } => RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageUnknownLabelTag { found: _ } => RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageUnexpectedMember { context: _, key: _ } =>
+      RepositoryLoadNeedsCompatibleReader { cause: original }
+    ImageEdgeTargetUnresolved { reference: _ } => RepositoryLoadClosureIncomplete { cause: original }
+    ImageRootUnresolved { reference: _ } => RepositoryLoadClosureIncomplete { cause: original }
+    ImageNotAnObject => RepositoryLoadDocumentMalformed { cause: original }
+    ImageMemberMissing { key: _ } => RepositoryLoadDocumentMalformed { cause: original }
+    ImageMemberDuplicated { key: _ } => RepositoryLoadDocumentMalformed { cause: original }
+    ImageMemberWrongShape { key: _ } => RepositoryLoadDocumentMalformed { cause: original }
+    ImageObjectCollision { identity: _ } => RepositoryLoadDocumentMalformed { cause: original }
+  }
+}
+
+// WILDCARD-FREE IS THE WHOLE MECHANISM, not a style preference. The wall this module is supposed to
+// be exists only because adding a decode arm makes THIS FUNCTION stop compiling: the author of the
+// new refusal is forced to state its remedy at the moment they invent it, when they know what it
+// means, rather than leaving it to be inferred later by whoever hits it in production.
+//
+// A `_ =>` arm here would make every future refusal silently inherit one remedy and would make this
+// module a decoration -- permanently total, never consulted, cited as coverage.
+fn repository_load_disposition(cause: RepositoryDecodeRefusal) -> RepositoryLoadDisposition {
+  match cause {
+    RepositoryDecodeImageRefusal { cause: inner } =>
+      image_load_disposition(inner: inner, original: cause)
+    RepositoryIdentityRuleUnrecognized { found: _ } =>
+      RepositoryLoadNeedsCompatibleReader { cause: cause }
+    RepositoryUnexpectedMember { context: _, key: _ } =>
+      RepositoryLoadNeedsCompatibleReader { cause: cause }
+    RepositoryCommitRootReferenceUnresolved { reference: _ } =>
+      RepositoryLoadClosureIncomplete { cause: cause }
+    RepositoryCheckoutReferenceUnresolved { reference: _ } =>
+      RepositoryLoadClosureIncomplete { cause: cause }
+  }
+}
+
+// SUPERSESSION IS DERIVED FROM THE REMEDY, NEVER DECIDED BESIDE IT. One function owns the question
+// "may this generation be replaced", so the answer cannot drift away from the disposition that
+// justifies it -- and it is total over the disposition, so a fourth remedy must answer it too.
+fn may_supersede_generation(disposition: RepositoryLoadDisposition) -> Bool {
+  match disposition {
+    RepositoryLoadDocumentMalformed { cause: _ } => true
+    RepositoryLoadNeedsCompatibleReader { cause: _ } => false
+    RepositoryLoadClosureIncomplete { cause: _ } => false
+  }
+}
