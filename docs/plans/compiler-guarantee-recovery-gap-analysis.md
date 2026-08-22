@@ -2671,6 +2671,71 @@ enforces end to end.
    binary, including a boundary control written specifically to catch over-peeling. The corpus was
    the only instrument that detected any of this.
 
+30. **A FUNCTION name resolves order-dependently across the whole corpus: adding one import edge
+   to a hub module silently re-typechecked three files nobody touched.** Measured 2026-08-22 by
+   `quick-newt-661` while sealing `ArgvCommand`; filed here with the narrower claim that session
+   insisted on, not the broader one this document was initially tempted toward.
+
+   THE CONTROL IS THE FINDING. main at `abf7194` — the branch's exact merge base — is GREEN:
+   `strict-preparation state=completed modules_resolved=3874`, `required-floor: planned=10550
+   executed=10550 passed=10241 known_red_held=208 failed=0`. The branch at that same base REFUSES
+   preparation with nine diagnostics. Same base, same corpus, opposite verdicts.
+
+   ORDER CHANGED, NOT REACHABILITY, and this is the part that makes it a resolution defect rather
+   than an ordinary breakage: `modules_resolved` moves 3874 → 3882 against exactly 8 added module
+   files. Nothing new entered the resolved set — `v2.std.collection` was already present on green
+   main. The single causal edge is one line: `dag/extdeps/exec/command.dag` gains
+   `import v2.std.orchestration { EnvSet }`, `v2.std.orchestration` imports `v2.std.collection`
+   at its head, and `command.dag` is a hub that ~20 modules import. One import edge re-orders the
+   traversal for the entire corpus.
+
+   THE AFFECTED FILES DO NOT IMPORT THE MODULE IN QUESTION. Neither `extdeps.git.object_store` nor
+   `v2.workflow.floor_preparation` imports `v2.std.collection` at all. That is what establishes
+   the resolution is GLOBAL rather than import-bound, and it is the most alarming single fact in
+   the report: an unchanged file with no import relationship to the perturbation began
+   typechecking differently.
+
+   AUTHORSHIP SEPARATED FROM CAUSATION. `git diff --numstat origin/main HEAD` returns ZERO ENTRIES
+   for all three files — they do not appear in the diff at all. The branch did not author the
+   matches; it caused them to be typechecked differently. Both facts must be reported, and they
+   answer different questions.
+
+   THE AMBIGUITY IS REAL AND PRE-EXISTING: `v2.std.collection` `map_get` returns
+   `Outcome<Optional<V>>`, while a `map_get` builtin (`v1.compiler.04_method`, contract at
+   `std.primitives` `map_get_contract`) returns `Optional`. The three sites call positionally and
+   match `Present`/`Absent`, which typechecks against the builtin and not against the `fn`. Which
+   one wins is decided by traversal order, silently, with no diagnostic either way.
+
+   NOT THE SAME ROW AS THE CENSUS-AMBIGUOUS TYPE NAME, and the distinction is deliberate. §4b
+   records a confirmed hole where a census-AMBIGUOUS TYPE NAME resolves by silent last-import-wins,
+   claiming "0 live exposure today by targeted grep". This specimen is a FUNCTION/BUILTIN name —
+   the same family and the same silence, but not that row. **That clause is NOT falsified by this
+   finding and must not be cited as if it were.** The measuring session narrowed its own claim to
+   this scope unprompted; an inflated claim gets discounted whole, a precise one gets acted on.
+
+   RUNG: outside the ladder — silent wrongness. The corpus reports green, and a subsequent
+   unrelated change flips innocent files to a typecheck error. No mechanism observes the ordering.
+
+   CEILING: *structurally guaranteed*. Ambiguous resolution of a name with two authorities is
+   decidable at the point of resolution; the fix is to REFUSE the ambiguity with a typed, located
+   diagnostic naming both candidates, rather than to pick one by traversal order.
+
+   NEXT-RUNG TRIGGER: refuse a name that resolves to more than one authority, at resolution,
+   naming the candidates. Until then every added module is an untracked perturbation of every
+   other module's typechecking.
+
+   NOT THE REPAIR OF THE SPECIMEN, which is separate and prescribed by the authority itself:
+   `v2.std.collection`'s own module note says the total `map_lookup` is the primitive and the
+   `Outcome`-wrapped `map_get` is a projection of it (`map_get` is `outcome_accepted`
+   unconditionally and can never return `Rejected`), warning that "a caller reaching for `map_get`
+   must match a `Rejected` arm that no producer can construct… the unreachable arm gets bound to
+   whichever domain answer is nearest, and a substrate failure would report as a domain fact."
+   The three sites want `map_lookup`. Rewriting them is correct independently of this row and
+   would have been correct had no flip ever occurred — but it repairs THREE SITES, not the class.
+
+   NOT CLAIMED: that any other file in the corpus is currently mis-resolved. No instrument can
+   answer that today, which is the row's point. It records a mechanism and one live specimen.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
