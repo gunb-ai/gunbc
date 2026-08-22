@@ -410,6 +410,36 @@ deletion set in §4d, so the pin's row is correct again and the literals return 
 The finding is filed on its own merits, which is where it always belonged -- it is a property
 of the pin, not of this deletion.
 
+## 4i. The floor's second refusal, and it is the same module telling the truth again
+
+The required floor refused a second time, on one witness:
+`v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_no_unrostered_or_stale`. The cause
+is real, it is caused by this change, and it is the census working rather than a defect.
+
+Deleting `v2.test.workflow.host_discovered_owned_data_manifest` (§4c — the committed copy of a
+`DO NOT COMMIT` ephemeral artifact) removed the **only non-test reference** to
+`OwnedDataDiscoveryReceipt`, declared in `v2.compiler.discovery_enumeration`. Verified
+directly rather than through any re-implementation: before the cut that carrier had two
+non-test `.dag` references, its own declaration and that manifest's construction of it; after,
+only its own declaration. It is self-tested by `discovery_enumeration_test`. Declared once,
+self-tested, zero consumers outside its own block is exactly the inert-carrier definition, so
+the carrier became inert and unrostered and the lens refused.
+
+**Fixed by rostering it, not by restoring the module.** The roster is the declared frontier for
+precisely this state, and the honest reason is worth the row: the carrier's real consumer is
+*generated at runtime and deliberately never committed*, so in the committed corpus it is inert
+**by construction** and no corpus scan can ever see otherwise. Restoring the deleted module
+would have re-committed a file its own generator stamps `DO NOT COMMIT` in order to satisfy a
+hygiene lens — the tail wagging the dog.
+
+**A note on how this was diagnosed, because the first attempt was the error this document keeps
+recording.** I re-implemented the inert-carrier rule from the Rust to locate the moved name.
+That re-implementation was **not faithful** — its absolute output shared *zero* names with the
+live roster, twice, under two different test-predicate readings. Its *delta* was stable across
+both, which is suggestive and is not evidence. The claim above rests instead on a direct,
+checkable observation about one symbol's references before and after. An unfaithful instrument
+does not become trustworthy because its delta looks stable.
+
 ## 5. The 56 deleted
 
 | module | path | bucket |
