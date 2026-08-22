@@ -169,12 +169,27 @@ main emits `use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective
 path runs on main and **answers correctly**. Nothing suppressed it; only one `Connective` was in the
 pool.
 
-**The settled account is co-residency**, and on the namespace-cut branch it is caused by `src/v2`
-being added to `regen_source_roots`. Worth flagging to whoever owns that branch: this tree records
-that root list as a standing invariant in the other direction — *"src/v2 is not a regen root and
-never will be, because stage0 IS the v1 seed and a seed that reached into src/v2 would depend on the
-successor it bootstraps toward"* — so the unmasking mechanism is itself a seed-closure violation, not
-a neutral configuration difference.
+**The settled account is co-residency**, and on the namespace-cut branch it was caused by `src/v2`
+being added to `regen_source_roots` — which this tree records as a standing invariant in the other
+direction (*"src/v2 is not a regen root and never will be, because stage0 IS the v1 seed and a seed
+that reached into src/v2 would depend on the successor it bootstraps toward"*).
+
+**That branch then found its root cause, and it is worth recording here because it prices the whole
+class.** The root list was step 3 of a cascade: four references in `src/v1/05_emit_rust.dag` were
+qualified to `v2.std.node` by a bulk qualification pass, when `v1.std.core` declares those same names
+(`Arrow`, `Bind`) and main spells all four **bare**. Those four pulled `v2.std.node` into the seed
+closure; regen then refused with `undefined variable 'v2'`; the root was added to make the refusal go
+away; that made the two declarations co-resident; the bare-keyed registry answered last-write-wins;
+26 mirrors got a wrong `pub use`; **10,334 of 10,821 errors (95.5%) sit in those 26 files.** The
+refusal at step 3 was the fail-closed boundary working, read as an obstacle — DESIGN §5's
+author-side absorbing fallback, arrived at honestly.
+
+**What that does and does not say about the emitter.** It does *not* say the emitter is fine: the
+bare-keyed registry answers last-write-wins with no way for a caller to distinguish that from a
+unique answer, and it detonates for anyone who puts a homonym in a pool **by any route**. What the
+episode measures is *how cheaply that condition is met* — one element appended to a `Vec`, by an
+author who believed he was fixing a resolution error. That is a reach fact about this whole census,
+not only about that row.
 
 **Reach therefore rests on the collision half, which is unaffected.** `Refused` (three coproducts)
 and `Unknown` (three more) are co-resident in `dag` + `src/v2`, the pool the floor resolves on every
