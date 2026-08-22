@@ -143,7 +143,13 @@ import v1.compiler.emit {
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
-  emit_typed_let_shared, emit_unmodeled_file_transport_refusal
+  emit_typed_let_shared, emit_unmodeled_file_transport_refusal,
+  child_from_key, unwrap_single_field_product,
+  BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
+  bind_operation_transport, transport_binding_refusal_reason, file_verb_name,
+  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileDelete, FileList,
+  FileResultField, FileResultChannel, FileChanSuccess, FileChanBytesWritten,
+  FileChanPath, FileChanError, FileChanContent
 }
 import v1.compiler.languages {
   wrap_shared_type,
@@ -10748,7 +10754,8 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
+  let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
+  let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
   let body = concat(
@@ -10843,11 +10850,137 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
-  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_unmodeled_file_transport_refusal(op_name: op_name, target: Rust) }
-  else { emit_local_call(op_name: op_name) }
+// Target selection, and ONLY target selection. The transport was classified and
+// its meaning bound once, target-neutrally, by `bind_operation_transport`; this
+// function no longer asks what the operation IS, only how Rust spells it.
+fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+  match bound {
+    RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
+    ShellBound { transport: t } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices)
+    FileBound { verb: v, path_template: p, content_param: cp, result_fields: fs, single_field: sf } =>
+      emit_file_call(verb: v, path_template: p, content_param: cp, result_fields: fs, single_field: sf, op_node: op_node, source_indices: source_indices)
+    LocalBound => emit_local_call(op_name: op_name)
+    BindingRefused { cause: cz } =>
+      emit_error_expr(message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_reason(cause: cz)), target: Rust)
+  }
+}
+
+// The Rust realization of a bound file operation.
+//
+// Every fact this renders was decided by the binding, not inferred here: the
+// verb, the path template, the payload input and the declared result
+// projection. That is the whole point of the consolidation -- the three
+// renderers #8858 deleted each re-derived all of it, and each got it wrong the
+// same way. This function cannot pick the wrong operation because it is not the
+// thing that picks.
+//
+// The realization mirrors the interpreter's `dispatch_file`, which is the
+// working one and stays the authority for what each verb MEANS; this is that
+// same meaning spelled in emitted Rust rather than a second decision about it.
+fn emit_file_path_expr(path_template: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_simple_expr(expr: path_template, target: Rust, source_indices: source_indices)
+}
+
+// The host-side value each declared result channel reads from, per verb. The
+// `let` bindings these name are established by emit_file_verb_body below.
+fn emit_file_channel_expr(channel: FileResultChannel, optional: Bool) -> String {
+  let raw = match channel {
+    FileChanSuccess      => "__file_success"
+    FileChanBytesWritten => "__file_bytes_written"
+    FileChanPath         => emit_rust_host_to_dag_string_via_seam(host_expr: "__file_path")
+    FileChanError        => emit_rust_host_to_dag_string_via_seam(host_expr: "__file_error")
+    FileChanContent      => emit_rust_host_to_dag_string_via_seam(host_expr: "__file_content")
+  }
+  if optional { concat("Some(", raw, ")") } else { raw }
+}
+
+fn emit_file_return(result_fields: List<FileResultField>, single_field: Bool) -> String {
+  let exprs = result_fields |> map(f => emit_file_channel_expr(channel: f.channel, optional: f.optional))
+  if single_field {
+    match exprs |> first {
+      Present { value: e } => concat("Ok(", e, ")")
+      Absent => "Ok(())"
+    }
+  } else {
+    concat("Ok((", exprs |> join(separator: ", "), "))")
+  }
+}
+
+// Owner-only creation is NOT an alias for write: the declared realization is
+// create-new (O_EXCL) at mode 0600, so an existing file is an error rather than
+// a truncation. A non-Unix host has no such mode and REFUSES at compile time
+// rather than degrading to an unmodeled plain write -- which is what silently
+// dropping the mode would be.
+//
+// Each verb establishes the same five host bindings, so the result projection
+// above is one rule rather than one per verb. A verb that cannot produce a
+// channel binds its declared-absent value (empty string, zero) rather than
+// omitting the binding, because the projection is chosen by the DECLARATION and
+// must compile for whatever the author declared.
+fn emit_file_verb_body(verb: FileVerb, path_expr: String, content_param: String?) -> String {
+  let content_expr = match content_param {
+    Present { value: name } => emit_ident(name: name, target: Rust)
+    Absent => "\"\""
+  }
+  let prelude = concat("let __file_path: String = ", path_expr, ";\n")
+  match verb {
+    FileRead => concat(prelude,
+      "let (__file_success, __file_content, __file_error) = match std::fs::read_to_string(&__file_path) {\n",
+      "    Ok(__c) => (true, __c, String::new()),\n",
+      "    Err(__e) => (false, String::new(), format!(\"{}\", __e)),\n",
+      "};\n",
+      "let __file_bytes_written: i64 = __file_content.len() as i64;")
+    FileWrite => concat(prelude,
+      "let __file_body: String = ", content_expr, ".to_string();\n",
+      "let (__file_success, __file_error) = match std::fs::write(&__file_path, __file_body.as_bytes()) {\n",
+      "    Ok(()) => (true, String::new()),\n",
+      "    Err(__e) => (false, format!(\"{}\", __e)),\n",
+      "};\n",
+      "let __file_bytes_written: i64 = if __file_success { __file_body.len() as i64 } else { 0 };\n",
+      "let __file_content: String = String::new();")
+    FileWriteOwnerOnly => concat(prelude,
+      "let __file_body: String = ", content_expr, ".to_string();\n",
+      "#[cfg(unix)]\n",
+      "let (__file_success, __file_error) = {\n",
+      "    use std::io::Write;\n",
+      "    use std::os::unix::fs::OpenOptionsExt;\n",
+      "    match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&__file_path) {\n",
+      "        Ok(mut __f) => match __f.write_all(__file_body.as_bytes()) {\n",
+      "            Ok(()) => (true, String::new()),\n",
+      "            Err(__e) => (false, format!(\"{}\", __e)),\n",
+      "        },\n",
+      "        Err(__e) => (false, format!(\"{}\", __e)),\n",
+      "    }\n",
+      "};\n",
+      "#[cfg(not(unix))]\n",
+      "let (__file_success, __file_error): (bool, String) = compile_error!(\"write_owner_only requires Unix mode 0600 create-new semantics; this host cannot provide them and must not degrade to a plain write\");\n",
+      "let __file_bytes_written: i64 = if __file_success { __file_body.len() as i64 } else { 0 };\n",
+      "let __file_content: String = String::new();")
+    FileDelete => concat(prelude,
+      "let (__file_success, __file_error) = match std::fs::remove_file(&__file_path) {\n",
+      "    Ok(()) => (true, String::new()),\n",
+      "    Err(__e) => (false, format!(\"{}\", __e)),\n",
+      "};\n",
+      "let __file_bytes_written: i64 = 0;\n",
+      "let __file_content: String = String::new();")
+    FileList => concat(prelude,
+      "let (__file_success, __file_content, __file_error) = match std::fs::read_dir(&__file_path) {\n",
+      "    Ok(__entries) => {\n",
+      "        let mut __names: std::vec::Vec<String> = __entries.filter_map(|__e| __e.ok()).filter_map(|__e| __e.file_name().into_string().ok()).collect();\n",
+      "        __names.sort();\n",
+      "        (true, __names.join(\"\\n\"), String::new())\n",
+      "    }\n",
+      "    Err(__e) => (false, String::new(), format!(\"{}\", __e)),\n",
+      "};\n",
+      "let __file_bytes_written: i64 = __file_content.len() as i64;")
+  }
+}
+
+fn emit_file_call(verb: FileVerb, path_template: Node, content_param: String?, result_fields: List<FileResultField>, single_field: Bool, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let path_expr = emit_file_path_expr(path_template: path_template, source_indices: source_indices)
+  concat("// file transport: ", file_verb_name(v: verb), "\n",
+    emit_file_verb_body(verb: verb, path_expr: path_expr, content_param: content_param), "\n",
+    emit_file_return(result_fields: result_fields, single_field: single_field))
 }
 
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
@@ -11070,16 +11203,6 @@ fn emit_rest_body_line(transport: Node, source_indices: Map<String, NewlineIndex
 fn has_response_prefix(name: String) -> Bool {
   if string_length(s: name) < 9 { false }
   else { substring(s: name, start: 0, end: 9) == "response_" }
-}
-
-fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
-    Present { value: prop } => match field_init_node_value(n: prop).expr_data {
-      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
-      _ => none
-    }
-    Absent => none
-  }
 }
 
 fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -11514,16 +11637,6 @@ fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
     }
     else { "stdout.clone()" }
   if is_optional { concat("Some(", base, ")") } else { base }
-}
-
-fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = is_product_type(n: n)
-  if is_product && n.ident_span == none && n.children |> count == 1 {
-    match n.children |> first {
-      Present { value: field_node } => resolved_type(n: field_node)
-      Absent => n
-    }
-  } else { n }
 }
 
 fn emit_local_call(op_name: String) -> String {

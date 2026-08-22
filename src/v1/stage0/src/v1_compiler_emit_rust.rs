@@ -43,23 +43,34 @@ pub use crate::v1_compiler_coercion::{
     type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::BoundOperation::{
+    BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
+};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
-pub use crate::v1_compiler_emit::{
-    compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
-    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    emit_unmodeled_file_transport_refusal, escape_rust_interp_text, extract_modifier_names,
-    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
-    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
-    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, tco_reassign_core, typed_named_arg_matches,
+use crate::v1_compiler_emit::FileResultChannel::{
+    FileChanBytesWritten, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
+};
+use crate::v1_compiler_emit::FileVerb::{
+    FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    bind_operation_transport, child_from_key, compute_service_fields,
+    effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
+    emit_error_expr, emit_ident, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
+    emit_let_binding_annotated, emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type,
+    emit_null_coalesce, emit_return, emit_shared_expr, emit_shared_tco_expr, emit_simple_expr,
+    emit_string_literal, emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared,
+    emit_unary_op, emit_unmodeled_file_transport_refusal, escape_rust_interp_text,
+    extract_modifier_names, file_verb_name, has_nested_records_node, has_service_items,
+    is_null_coalesce, is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
+    module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
+    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, tco_reassign_core, transport_binding_refusal_reason,
+    typed_named_arg_matches, unwrap_single_field_product,
+};
+pub use crate::v1_compiler_emit::{
+    BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
+    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -28576,8 +28587,13 @@ pub fn emit_operation_method(
         );
         let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
         let op_inferred = resolved_type(op_node.clone());
-        let real_body = emit_transport_call(
+        let bound = bind_operation_transport(
             eff_transport.clone(),
+            op_node.clone(),
+            env.source_indices.clone(),
+        );
+        let real_body = emit_transport_call(
+            bound.clone(),
             op_text.clone(),
             registry.clone(),
             (depth.clone() + 2),
@@ -28786,7 +28802,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 }
 
 pub fn emit_transport_call(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
@@ -28797,10 +28813,10 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        emit_rest_call(
+    match (*bound.clone()).clone() {
+        BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
             op_name.clone(),
-            transport.clone(),
+            t.clone(),
             registry.clone(),
             depth.clone(),
             service_item.clone(),
@@ -28808,25 +28824,165 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(
-                op_name.clone(),
-                transport.clone(),
-                registry.clone(),
-                depth.clone(),
-                inferred.clone(),
-                op_node.clone(),
-                source_indices.clone(),
+        ),
+        BoundOperation::ShellBound { transport: t, .. } => emit_shell_call(
+            op_name.clone(),
+            t.clone(),
+            registry.clone(),
+            depth.clone(),
+            inferred.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        BoundOperation::FileBound {
+            verb: v,
+            path_template: p,
+            content_param: cp,
+            result_fields: fs,
+            single_field: sf,
+            ..
+        } => emit_file_call(
+            v.clone(),
+            p.clone(),
+            cp.clone(),
+            fs.clone(),
+            sf.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        BoundOperation::LocalBound => emit_local_call(op_name.clone()),
+        BoundOperation::BindingRefused { cause: cz, .. } => emit_error_expr(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "transport binding refused for operation '".to_string(),
+                        op_name.clone(),
+                    ),
+                    "': ".to_string(),
+                ),
+                transport_binding_refusal_reason(cz.clone()),
+            ),
+            RenderTarget::Rust,
+        ),
+    }
+}
+
+pub fn emit_file_path_expr(
+    path_template: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    emit_simple_expr(
+        path_template.clone(),
+        RenderTarget::Rust,
+        source_indices.clone(),
+    )
+}
+
+pub fn emit_file_channel_expr(channel: FileResultChannel, optional: bool) -> String {
+    {
+        let raw = match channel.clone() {
+            FileResultChannel::FileChanSuccess => "__file_success".to_string(),
+            FileResultChannel::FileChanBytesWritten => "__file_bytes_written".to_string(),
+            FileResultChannel::FileChanPath => {
+                emit_rust_host_to_dag_string_via_seam("__file_path".to_string())
+            }
+            FileResultChannel::FileChanError => {
+                emit_rust_host_to_dag_string_via_seam("__file_error".to_string())
+            }
+            FileResultChannel::FileChanContent => {
+                emit_rust_host_to_dag_string_via_seam("__file_content".to_string())
+            }
+        };
+        if optional.clone() {
+            v1_rt::concat(
+                v1_rt::concat("Some(".to_string(), raw.clone()),
+                ")".to_string(),
             )
         } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), RenderTarget::Rust)
-            } else {
-                emit_local_call(op_name.clone())
-            }
+            raw.clone()
         }
+    }
+}
+
+pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>, single_field: bool) -> String {
+    {
+        let exprs = Rc::new({
+            let mut __result = Vec::new();
+            for f in result_fields.clone().iter().cloned() {
+                __result.push(emit_file_channel_expr(
+                    f.channel.clone(),
+                    f.optional.clone(),
+                ));
+            }
+            __result
+        });
+        if single_field.clone() {
+            match exprs.clone().first().cloned() {
+                Some(e) => {
+                    v1_rt::concat(v1_rt::concat("Ok(".to_string(), e.clone()), ")".to_string())
+                }
+                None => "Ok(())".to_string(),
+            }
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("Ok((".to_string(), exprs.clone().join(&", ".to_string())),
+                "))".to_string(),
+            )
+        }
+    }
+}
+
+pub fn emit_file_verb_body(
+    verb: FileVerb,
+    path_expr: String,
+    content_param: Option<String>,
+) -> String {
+    {
+        let content_expr = match content_param.clone() {
+            Some(name) => emit_ident(name.clone(), RenderTarget::Rust),
+            None => "\"\"".to_string(),
+        };
+        let prelude = v1_rt::concat(
+            v1_rt::concat("let __file_path: String = ".to_string(), path_expr.clone()),
+            ";\n".to_string(),
+        );
+        match verb.clone() {
+    FileVerb::FileRead => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prelude.clone(), "let (__file_success, __file_content, __file_error) = match std::fs::read_to_string(&__file_path) {\n".to_string()), "    Ok(__c) => (true, __c, String::new()),\n".to_string()), "    Err(__e) => (false, String::new(), format!(\"{}\", __e)),\n".to_string()), "};\n".to_string()), "let __file_bytes_written: i64 = __file_content.len() as i64;".to_string()),
+    FileVerb::FileWrite => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prelude.clone(), "let __file_body: String = ".to_string()), content_expr.clone()), ".to_string();\n".to_string()), "let (__file_success, __file_error) = match std::fs::write(&__file_path, __file_body.as_bytes()) {\n".to_string()), "    Ok(()) => (true, String::new()),\n".to_string()), "    Err(__e) => (false, format!(\"{}\", __e)),\n".to_string()), "};\n".to_string()), "let __file_bytes_written: i64 = if __file_success { __file_body.len() as i64 } else { 0 };\n".to_string()), "let __file_content: String = String::new();".to_string()),
+    FileVerb::FileWriteOwnerOnly => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prelude.clone(), "let __file_body: String = ".to_string()), content_expr.clone()), ".to_string();\n".to_string()), "#[cfg(unix)]\n".to_string()), "let (__file_success, __file_error) = {\n".to_string()), "    use std::io::Write;\n".to_string()), "    use std::os::unix::fs::OpenOptionsExt;\n".to_string()), "    match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&__file_path) {\n".to_string()), "        Ok(mut __f) => match __f.write_all(__file_body.as_bytes()) {\n".to_string()), "            Ok(()) => (true, String::new()),\n".to_string()), "            Err(__e) => (false, format!(\"{}\", __e)),\n".to_string()), "        },\n".to_string()), "        Err(__e) => (false, format!(\"{}\", __e)),\n".to_string()), "    }\n".to_string()), "};\n".to_string()), "#[cfg(not(unix))]\n".to_string()), "let (__file_success, __file_error): (bool, String) = compile_error!(\"write_owner_only requires Unix mode 0600 create-new semantics; this host cannot provide them and must not degrade to a plain write\");\n".to_string()), "let __file_bytes_written: i64 = if __file_success { __file_body.len() as i64 } else { 0 };\n".to_string()), "let __file_content: String = String::new();".to_string()),
+    FileVerb::FileDelete => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prelude.clone(), "let (__file_success, __file_error) = match std::fs::remove_file(&__file_path) {\n".to_string()), "    Ok(()) => (true, String::new()),\n".to_string()), "    Err(__e) => (false, format!(\"{}\", __e)),\n".to_string()), "};\n".to_string()), "let __file_bytes_written: i64 = 0;\n".to_string()), "let __file_content: String = String::new();".to_string()),
+    FileVerb::FileList => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(prelude.clone(), "let (__file_success, __file_content, __file_error) = match std::fs::read_dir(&__file_path) {\n".to_string()), "    Ok(__entries) => {\n".to_string()), "        let mut __names: std::vec::Vec<String> = __entries.filter_map(|__e| __e.ok()).filter_map(|__e| __e.file_name().into_string().ok()).collect();\n".to_string()), "        __names.sort();\n".to_string()), "        (true, __names.join(\"\\n\"), String::new())\n".to_string()), "    }\n".to_string()), "    Err(__e) => (false, String::new(), format!(\"{}\", __e)),\n".to_string()), "};\n".to_string()), "let __file_bytes_written: i64 = __file_content.len() as i64;".to_string()),
+}
+    }
+}
+
+pub fn emit_file_call(
+    verb: FileVerb,
+    path_template: Rc<Node>,
+    content_param: Option<String>,
+    result_fields: Rc<Vec<Rc<FileResultField>>>,
+    single_field: bool,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let path_expr = emit_file_path_expr(path_template.clone(), source_indices.clone());
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "// file transport: ".to_string(),
+                            file_verb_name(verb.clone()),
+                        ),
+                        "\n".to_string(),
+                    ),
+                    emit_file_verb_body(verb.clone(), path_expr.clone(), content_param.clone()),
+                ),
+                "\n".to_string(),
+            ),
+            emit_file_return(result_fields.clone(), single_field.clone()),
+        )
     }
 }
 
@@ -29376,39 +29532,6 @@ pub fn has_response_prefix(name: String) -> bool {
         false
     } else {
         (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
-pub fn child_from_key(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for p in ch.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "from_key".to_string())
-            {
-                __result.push(p);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
-            _ => None,
-        },
-        None => None,
     }
 }
 
@@ -30655,22 +30778,6 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
             )
         } else {
             base.clone()
-        }
-    }
-}
-
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_product = is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => resolved_type(field_node.clone()),
-                None => n.clone(),
-            }
-        } else {
-            n.clone()
         }
     }
 }

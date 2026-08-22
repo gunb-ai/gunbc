@@ -23,14 +23,15 @@ import v1.std.core {
   expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
   is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, CardOptional
+  Connective, Conj, Disj, NoConnective, Arrow, CardOptional,
+  transport_base_path, find_property_string, expr_literal_string_optional
 }
 
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState, empty_symbol_index }
 
 import std.induction { InductiveField, SubValueUnknown }
 
-import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
+import v1.compiler.infer_types { is_product_type, resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
 import std.types { is_container_type }
 
@@ -928,8 +929,312 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
   result
 }
 
+// Moved here from the Rust backend by the transport-binding consolidation: the
+// binding reads the declared output projection target-neutrally, so these two
+// readers are shared rather than forked per target (DESIGN section 3).
+fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
+    Present { value: prop } => match field_init_node_value(n: prop).expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      _ => none
+    }
+    Absent => none
+  }
+}
+
+fn unwrap_single_field_product(n: Node) -> Node {
+  let is_product = is_product_type(n: n)
+  if is_product && n.ident_span == none && n.children |> count == 1 {
+    match n.children |> first {
+      Present { value: field_node } => resolved_type(n: field_node)
+      Absent => n
+    }
+  } else { n }
+}
+
+
+// ---------------------------------------------------------------------------
+// The target-neutral semantic binding for the four transports.
+//
+// WHAT THIS FIXES. Before this, transport selection happened once per TARGET:
+// `emit_unified_transport_dispatch` (Go, Python) and `emit_transport_call`
+// (Rust) each classified the transport themselves and then handed a per-target
+// renderer whatever they happened to have. Rest and shell received the raw
+// transport node and re-derived its meaning; local received only a name and an
+// indent depth; file was refused outright. Three targets independently deciding
+// what an operation MEANS is the N x M adapter trap DESIGN section 3 names --
+// and it is what #8858 measured, when three copies of a file renderer each
+// fabricated a read for every operation.
+//
+// The repair is section 3's: interface shape and transport are two facts. The
+// operation's MEANING is bound exactly once, here, from the declaration; only
+// then does target selection happen. Per-target RENDERING stays -- Rust, Python
+// and Go have different syntax -- but no target classifies a transport again.
+//
+// #8858's landed source names this as the file class's next-rung trigger and
+// explicitly prohibits the alternative: "the emitters bind a realization
+// handler rather than each inlining one -- and NOT a fourth per-target
+// renderer". This is that handler.
+//
+// This is a CLOSED TOTAL FUNCTION over the built-in transport population, not a
+// handler roster. A roster would be warranted only if independently declared
+// handlers needed open registration; nothing declares one, so minting one would
+// be a growth surface with no consumer (DESIGN section 6).
+
+// The declared file action. Distinct from `std.effects.EffectShape`, which
+// distinguishes broad effects and may one day be one FIELD of this, but carries
+// no path substitution, payload mapping, result construction or owner-only
+// creation: reusing it as the whole answer would be a carrier claiming more
+// than its constructors entail.
+type FileVerb
+  = FileRead
+  | FileWrite
+  | FileWriteOwnerOnly
+  | FileDelete
+  | FileList
+
+// The declared output projection, at the grain the file realization actually
+// produces. Every `from "..."` key on an operation's output must name one of
+// these; an unrecognized key refuses rather than defaulting, because defaulting
+// is exactly how the deleted renderers returned a String against a declared
+// Bool.
+type FileResultChannel
+  = FileChanSuccess
+  | FileChanBytesWritten
+  | FileChanPath
+  | FileChanError
+  | FileChanContent
+
+type FileResultField {
+  channel: FileResultChannel
+  optional: Bool
+}
+
+// Why a binding can refuse. Each arm is a distinct, located cause: DESIGN
+// section 5 forbids a failure arm that widens, so there is no "unsupported"
+// catch-all that would absorb an unrecognized shape into a silent local call.
+type TransportBindingRefusal
+  = UnrecognizedTransportShape
+  | FileTransportMissingPath
+  | FileTransportUnknownVerb { verb: String }
+  | FileTransportWriteMissingContent
+  | FileTransportUnknownResultChannel { channel: String }
+  | FileTransportUndeclaredResultChannel
+
+type BoundOperation
+  = RestBound { transport: Node }
+  | ShellBound { transport: Node }
+  | LocalBound
+  | FileBound {
+      verb: FileVerb
+      path_template: Node
+      content_param: String?
+      result_fields: List<FileResultField>
+      single_field: Bool
+    }
+  | BindingRefused { cause: TransportBindingRefusal }
+
+fn file_verb_name(v: FileVerb) -> String {
+  match v {
+    FileRead           => "read"
+    FileWrite          => "write"
+    FileWriteOwnerOnly => "write_owner_only"
+    FileDelete         => "delete"
+    FileList           => "list"
+  }
+}
+
+fn transport_binding_refusal_reason(cause: TransportBindingRefusal) -> String {
+  match cause {
+    UnrecognizedTransportShape => "the transport declaration is nonempty but is not a rest, shell or file transport"
+    FileTransportMissingPath => "the file transport declares no `path:` template, so no operation could name a file"
+    FileTransportUnknownVerb { verb: v } => concat("the file transport declares verb \"", v, "\", which is not one of read, write, write_owner_only, delete, list")
+    FileTransportWriteMissingContent => "the file transport declares a write verb but the operation declares no `content` input to write"
+    FileTransportUnknownResultChannel { channel: c } => concat("an output field reads from \"", c, "\", which the file realization does not produce")
+    FileTransportUndeclaredResultChannel => "an output field declares no `from` key, so no file result could be projected into it"
+  }
+}
+
+// The path template must be present AND nonempty. `parse_file_fields`
+// fabricates an empty string literal when no `path:` row was authored, so
+// "present" alone does not establish that the author named one -- checking only
+// presence would bind a transport that names no file at all.
+fn file_transport_path_template(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match transport_base_path(t: t, source_indices: source_indices) {
+    Present { value: p } =>
+      match expr_literal_string_optional(expr: p) {
+        Present { value: "" } => none
+        _ => Present { value: p }
+      }
+    Absent => none
+  }
+}
+
+fn operation_has_param(op_node: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.params |> any(p => param_node_name_at(n: p, source_indices: source_indices) == name)
+}
+
+// Verb resolution combines BOTH declaration facts, because neither alone
+// determines the operation. `Write` and `Read` both carry a file transport with
+// no explicit verb, so the transport does not decide; `Read`/`Write`/`List`/
+// `Delete` are common spellings, so the name does not decide either. Absent an
+// explicit verb the content-param convention decides, which is exactly what the
+// working interpreter realization (v1_interpreter dispatch_file) does -- one
+// authority for the rule, read by both realizations.
+type FileVerbResult
+  = FileVerbBound { verb: FileVerb }
+  | FileVerbUnbound { cause: TransportBindingRefusal }
+
+fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileVerbResult {
+  match find_property_string(props: t.properties, prop_name: "verb", source_indices: source_indices) {
+    Present { value: v } =>
+      if v == "read" { FileVerbBound { verb: FileRead } }
+      else if v == "write" { FileVerbBound { verb: FileWrite } }
+      else if v == "write_owner_only" { FileVerbBound { verb: FileWriteOwnerOnly } }
+      else if v == "delete" { FileVerbBound { verb: FileDelete } }
+      else if v == "list" { FileVerbBound { verb: FileList } }
+      else { FileVerbUnbound { cause: FileTransportUnknownVerb { verb: v } } }
+    Absent =>
+      if operation_has_param(op_node: op_node, name: "content", source_indices: source_indices) {
+        FileVerbBound { verb: FileWrite }
+      } else {
+        FileVerbBound { verb: FileRead }
+      }
+  }
+}
+
+fn file_verb_writes_content(v: FileVerb) -> Bool {
+  match v {
+    FileWrite          => true
+    FileWriteOwnerOnly => true
+    FileRead           => false
+    FileDelete         => false
+    FileList           => false
+  }
+}
+
+type FileResultChannelResult
+  = FileChanBound { channel: FileResultChannel }
+  | FileChanUnbound { cause: TransportBindingRefusal }
+
+fn bind_file_result_channel(key: String) -> FileResultChannelResult {
+  if key == "write_success" { FileChanBound { channel: FileChanSuccess } }
+  else if key == "bytes_written" { FileChanBound { channel: FileChanBytesWritten } }
+  else if key == "path" { FileChanBound { channel: FileChanPath } }
+  else if key == "error" { FileChanBound { channel: FileChanError } }
+  else if key == "content" { FileChanBound { channel: FileChanContent } }
+  else { FileChanUnbound { cause: FileTransportUnknownResultChannel { channel: key } } }
+}
+
+type FileResultFieldsResult
+  = FileFieldsBound { fields: List<FileResultField>, single_field: Bool }
+  | FileFieldsUnbound { cause: TransportBindingRefusal }
+
+type FileResultFieldResult
+  = FileFieldBound { field: FileResultField }
+  | FileFieldUnbound { cause: TransportBindingRefusal }
+
+fn bind_file_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> FileResultFieldResult {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Absent => FileFieldUnbound { cause: FileTransportUndeclaredResultChannel }
+    Present { value: key } =>
+      match bind_file_result_channel(key: key) {
+        FileChanUnbound { cause: cz } => FileFieldUnbound { cause: cz }
+        FileChanBound { channel: c } =>
+          FileFieldBound { field: FileResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
+      }
+  }
+}
+
+// A file operation whose declared output is not a product of `from`-keyed
+// fields has no projection to build, and refuses rather than defaulting to a
+// channel: picking one here is precisely the fabrication #8858 deleted.
+//
+// Mirrors emit_shell_return's shape reading exactly -- a single-field product
+// projects one expression, a multi-field product projects a tuple in
+// declaration order -- so the file and shell projections read the declared
+// output through ONE rule rather than two that agree by coincidence.
+fn bind_file_result_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileResultFieldsResult {
+  let effective = unwrap_single_field_product(n: resolved_type(n: op_node))
+  let children = if is_product_type(n: effective) { effective.children } else { [] }
+  if children |> count == 0 {
+    FileFieldsUnbound { cause: FileTransportUndeclaredResultChannel }
+  } else {
+    let bound = children |> map(ch => bind_file_result_field(ch: ch, source_indices: source_indices))
+    let refusals = bound |> flat_map(b => match b { FileFieldUnbound { cause: cz } => [cz]  FileFieldBound { field: _ } => [] })
+    match refusals |> first {
+      Present { value: cz } => FileFieldsUnbound { cause: cz }
+      Absent => FileFieldsBound {
+        fields: bound |> flat_map(b => match b { FileFieldBound { field: f } => [f]  FileFieldUnbound { cause: _ } => [] }),
+        single_field: children |> count == 1
+      }
+    }
+  }
+}
+
+fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
+  match file_transport_path_template(t: t, source_indices: source_indices) {
+    Absent => BindingRefused { cause: FileTransportMissingPath }
+    Present { value: path_tpl } =>
+      match bind_file_verb(t: t, op_node: op_node, source_indices: source_indices) {
+        FileVerbUnbound { cause: cz } => BindingRefused { cause: cz }
+        FileVerbBound { verb: v } =>
+          let has_content = operation_has_param(op_node: op_node, name: "content", source_indices: source_indices)
+          if file_verb_writes_content(v: v) && !has_content {
+            BindingRefused { cause: FileTransportWriteMissingContent }
+          } else {
+            match bind_file_result_fields(op_node: op_node, source_indices: source_indices) {
+              FileFieldsUnbound { cause: cz } => BindingRefused { cause: cz }
+              FileFieldsBound { fields: fs, single_field: sf } =>
+                FileBound {
+                  verb: v,
+                  path_template: path_tpl,
+                  content_param: if has_content { Present { value: "content" } } else { none },
+                  result_fields: fs,
+                  single_field: sf
+                }
+            }
+          }
+      }
+  }
+}
+
+// The single classification point. Precedence is rest, then shell, then file --
+// the same order both dispatchers used, kept here so a transport carrying more
+// than one key is claimed by exactly one arm by construction rather than by two
+// authorities agreeing coincidentally.
+//
+// THE LOCAL ARM IS NOW POSITIVE. `is_local_transport` is defined negatively
+// ("not rest, not shell, not file"), so before this an unrecognized or
+// malformed transport BECAME local and emitted a direct function call by
+// omission -- a fail-open that also made both dispatchers' "unrecognized
+// transport kind" arm unreachable by construction, so the check that existed to
+// catch this could never fire. Here a transport binds LocalBound only when it
+// is canonically empty (which is what `local_transport_node` builds when no
+// transport is authored at all); anything nonempty that no arm claims is a
+// located refusal.
+fn transport_is_canonically_empty(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0 && t.body == none
+}
+
+fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
+  if is_rest_transport(t: t, source_indices: source_indices) { RestBound { transport: t } }
+  else if is_shell_transport(t: t) { ShellBound { transport: t } }
+  else if is_file_transport(t: t, source_indices: source_indices) { bind_file_operation(t: t, op_node: op_node, source_indices: source_indices) }
+  else if transport_is_canonically_empty(t: t) { LocalBound }
+  else { BindingRefused { cause: UnrecognizedTransportShape } }
+}
+
+// Target selection, and ONLY target selection -- the Go/Python twin of the Rust
+// `emit_transport_call`. Both now consume a BoundOperation that was decided
+// once; neither classifies a transport any more.
+//
+// Go and Python have no file renderer. That is a BACKEND CAPABILITY GAP, and it
+// refuses as one: a typed, counted TransportEmissionNotModeled minted by the
+// wall in emit_artifact, with this arm as its floor. It is deliberately NOT a
+// fallback to the deleted renderers, and deliberately not silence.
 fn emit_unified_transport_dispatch(
-  transport: Node,
+  bound: BoundOperation,
   op_name: String,
   source_indices: Map<String, NewlineIndex>,
   depth: Int,
@@ -938,13 +1243,20 @@ fn emit_unified_transport_dispatch(
   render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
   render_local: fn(String, Int) -> String
 ) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { render_rest(op_name, transport, depth, source_indices) }
-  else if is_shell_transport(t: transport) { render_shell(op_name, transport, depth, source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_unmodeled_file_transport_refusal(op_name: op_name, target: target) }
-  else if is_local_transport(t: transport, source_indices: source_indices) { render_local(op_name, depth) }
-  else { emit_error_expr(message: "unrecognized transport kind", target: target) }
+  match bound {
+    RestBound { transport: t } => render_rest(op_name, t, depth, source_indices)
+    ShellBound { transport: t } => render_shell(op_name, t, depth, source_indices)
+    LocalBound => render_local(op_name, depth)
+    FileBound { verb: _, path_template: __pt, content_param: __cp, result_fields: __rf, single_field: __sf } =>
+      emit_unmodeled_file_transport_refusal(op_name: op_name, target: target)
+    BindingRefused { cause: cz } =>
+      emit_error_expr(message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_reason(cause: cz)), target: target)
+  }
 }
 
+// Binds BEFORE the operation node is narrowed into a name and a depth. This is
+// the frame that still holds the declaration; one line lower it is gone, and
+// that loss is what every target then had to guess its way back out of.
 fn emit_unified_operation_method(
   service_name: String,
   fallback_transport: Node,
@@ -952,7 +1264,7 @@ fn emit_unified_operation_method(
   target: RenderTarget,
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
-  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(BoundOperation, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let si = env.source_indices
@@ -971,7 +1283,8 @@ fn emit_unified_operation_method(
     _ => emit_ident(name: op_text, target: target)
   }
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: fallback_transport)
-  let body = render_transport_body(eff_transport, op_text, si, method_depth + 1)
+  let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: si)
+  let body = render_transport_body(bound, op_text, si, method_depth + 1)
   let sig = concat(spec.items.async_prefix, spec.items.func_keyword, " ", receiver_str, method_name,
     "(", all_params, ")", ret_str)
   if spec.block_syntax.significant_whitespace {
@@ -989,7 +1302,7 @@ fn emit_unified_service_def(
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
   render_service_fields: fn(String, Node, List<Node>, Map<String, NewlineIndex>) -> String,
-  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(BoundOperation, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
@@ -1737,49 +2050,45 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
   apply_type_template1(template: spec.error_expr_template, arg0: msg)
 }
 
-// `transport file` has no emitted realization. The defect this replaces was not a renderer bug
-// and not primarily a binding gap: it is SEMANTIC INFORMATION LOSS AT THE DISPATCH BOUNDARY.
-// The declaration carries a verb, a path template, input bindings and an output contract; this
-// dispatch handed the renderer a name and an indent depth; the renderer could observe none of it.
-// The three target renderers that stood here were therefore downstream of one defect rather than
-// three peers, which is why all three are deleted rather than the Rust one repaired.
+// THE #8858 TRIGGER HAS FIRED, AND THIS IS THE STATE AFTER IT.
 //
-// What they did: Rust emit_file_call, Python emit_py_file_call and Go emit_go_file_call each
-// fabricated `read(base_path + "/" + op_name)` for EVERY operation, so a declared Write emitted a
-// read of a path the declaration never named, dropped its `content` argument, and returned a
-// String against a declared bool. None of the three produced output that compiles. That is
-// DESIGN §5's fabricated plausible output -- below the ladder, not a low rung on it -- so
-// refusing is a climb and costs no capability: there was never a working file emission to remove.
+// #8858 deleted three per-target file renderers that each fabricated a read of
+// `base_path + "/" + operation_name` for EVERY operation, and replaced them with
+// a typed, located, counted refusal. It named the next rung precisely: the class
+// climbs when a real consumer needs a file transport emitted, the repair is
+// section 3's -- bind a realization handler -- and NOT a fourth per-target
+// renderer. It warned that threading the path alone would not close it, because
+// the deleted renderers also dropped `content` and returned a String against a
+// declared bool.
 //
-// The refusal is minted ONCE, before any target-specific rendering, by
-// unmodeled_file_transport_diagnostics via emit_artifact: a module declaring a file-transport
-// operation emits NO file and yields a typed, located, counted TransportEmissionNotModeled.
-// One refusal serves all targets rather than three saying the same thing. Counted is the point
-// (DESIGN §5): a refusal whose frequency is observable is how we learn a real consumer arrived,
-// and its absence is how this decayed unnoticed until someone happened to look.
+// The consumer arrived: `src/v2/compiler/03_ingest.dag`'s closure reaches
+// `extdeps.filesystem.filesystem_io`, so the whole Rust self-host board sat
+// behind these five refusals -- emit exit=1, zero files.
 //
-// emit_unmodeled_file_transport_refusal below is the FLOOR beneath that wall, in the dispatch arm
-// itself. It is unreachable while the wall stands and is still required: is_local_transport is
-// DEFINED as "not rest, not shell, not file", so deleting the file arm would route a file
-// transport into render_local and fabricate a direct function call by omission.
+// What landed instead of a renderer: `bind_operation_transport` above binds the
+// operation's MEANING once, target-neutrally, from the declaration -- the verb,
+// the resolved path template, the payload input, and the declared result
+// projection -- and every target now consumes that binding rather than
+// re-deriving it. Rust renders it; Go and Python do not yet, and refuse below as
+// the backend capability gap they are.
 //
-// NEXT-RUNG TRIGGER (DESIGN §4b(2) -- waiting on a named event, not stalled): this class climbs
-// when a real consumer needs a file transport emitted. The repair is then the §3 one -- interface
-// shape and transport are two facts, so the emitters bind a realization handler rather than each
-// inlining one -- and NOT a fourth per-target renderer. THREADING THE PATH ALONE DOES NOT CLOSE
-// IT, and the trigger says so in its own text because a narrow reading solves a third of the
-// problem and looks finished: the deleted renderers also dropped `content` and returned a String
-// against a declared bool, and neither is a path problem. The interface must carry the verb, the
-// resolved path template, the operation input bindings, the payload/content input, the declared
-// output type, and the failure/effect semantics.
+// WHAT THIS DIAGNOSTIC STILL COVERS, so the class is not quietly retired:
+//   - a target with no file renderer (Go, Python, Dag today), and
+//   - an operation the binding REFUSES on any target -- an unknown verb, a
+//     missing path template, a write with no `content` input, an output field
+//     reading a channel the file realization does not produce.
+// Both remain typed, located and counted; the second carries the exact binding
+// cause rather than one generic sentence, so a refusal now says which fact was
+// missing instead of that some fact was.
 //
-// Deliberately unbuilt today (DESIGN §6 -- work is priced in displaced cost): six operations
-// across two modules, no production consumer. Building the full binding for a surface nobody
-// reaches is the purity trap the design document names.
+// emit_unmodeled_file_transport_refusal below remains the FLOOR beneath the wall,
+// in the Go/Python dispatch arm. It is unreachable while the wall stands and is
+// still required.
 //
-// The interpreter realization (v1_interpreter dispatch_file) is unaffected and remains the
-// working one: it reads the same declaration correctly, substituting the path template and
-// dispatching on `verb`. Nothing here changes an interpreted effect.
+// The interpreter realization (v1_interpreter dispatch_file) is unaffected and
+// remains the authority for what each verb MEANS; the Rust renderer spells that
+// same meaning rather than deciding it a second time. Nothing here changes an
+// interpreted effect.
 fn render_target_name(target: RenderTarget) -> String {
   match target {
     Rust   => "rust"
@@ -1789,9 +2098,10 @@ fn render_target_name(target: RenderTarget) -> String {
   }
 }
 
-// The semantic the dispatch could not supply. Stated as the work rather than as a shrug, so the
-// person who eventually fires the trigger reads the shape of the job off the diagnostic itself.
-data unmodeled_file_transport_missing_fact: String = "the file transport dispatch supplies only the operation name and an indent depth; emitting this operation requires the declared verb, the resolved path template, the operation input bindings, the payload/content input, the declared output type, and the failure/effect semantics"
+// The backend-capability half of the refusal. The binding-refusal half does not
+// use this string: it carries `transport_binding_refusal_reason` instead, so the
+// diagnostic names the exact missing fact rather than a generic one.
+data unmodeled_file_transport_missing_fact: String = "this target has no file-transport renderer; the operation binds target-neutrally but only the Rust backend consumes a FileBound today, and a target without one refuses rather than falling back to the per-target renderers deleted in #8858"
 
 // Mirrors emit_unified_transport_dispatch's precedence rather than testing is_file_transport
 // alone: the dispatch tries rest, then shell, then file, so a transport carrying more than one key
@@ -1804,6 +2114,34 @@ fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<Stri
   else { is_file_transport(t: t, source_indices: source_indices) }
 }
 
+// Which targets have a file renderer. Rust does, as of the transport-binding
+// consolidation; Go and Python do not, and refuse as the backend-capability gap
+// they are rather than falling back to the renderers #8858 deleted. `Dag`
+// re-serializes source and is listed here as refusing to preserve the standing
+// behavior exactly -- it was refused before this change and is not silently
+// admitted by it.
+fn target_renders_file_transport(target: RenderTarget) -> Bool {
+  match target {
+    Rust   => true
+    Python => false
+    Go     => false
+    Dag    => false
+  }
+}
+
+// The wall, now consulting the binding instead of refusing the whole transport
+// kind. Three outcomes, and the SECOND is the one that keeps this honest:
+//
+//   - the target has no file renderer         -> refuse, backend capability gap
+//   - the target renders, but the binding
+//     refused this operation                  -> refuse, carrying the EXACT cause
+//   - the target renders and the operation
+//     bound                                   -> no diagnostic; it emits
+//
+// The diagnostic CLASS is retained deliberately (#8858's next-rung trigger says
+// TransportEmissionNotModeled stays for any operation lacking a binding), so the
+// permanent regression control that class carries keeps executing rather than
+// being replaced by a fresh one that has never gone red.
 fn unmodeled_file_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget) -> List<ErrorNode> {
   let env = tm.type_env
   let si = env.source_indices
@@ -1812,19 +2150,35 @@ fn unmodeled_file_transport_operation_diagnostics(tm: TypedModule, item: Node, t
   let fallback = service_fallback_transport(item: item)
   item.children |> flat_map(op_node => {
     let t = effective_operation_transport(op_node: op_node, fallback: fallback)
-    if is_file_transport_after_dispatch_precedence(t: t, source_indices: si) {
-      [make_error_node(
-        diagnostic: TransportEmissionNotModeled {
-          transport_kind: "file",
-          service: service_name,
-          operation: authored_name(env: env, node: op_node),
-          declaring_module: module_name,
-          target: render_target_name(target: target),
-          missing_realization_fact: unmodeled_file_transport_missing_fact,
-          span: op_node.span
-        },
-        module_name: module_name)]
-    } else { [] }
+    if !is_file_transport_after_dispatch_precedence(t: t, source_indices: si) { [] }
+    else {
+      let missing = if !target_renders_file_transport(target: target) {
+        Present { value: unmodeled_file_transport_missing_fact }
+      } else {
+        match bind_operation_transport(t: t, op_node: op_node, source_indices: si) {
+          BindingRefused { cause: cz } => Present { value: transport_binding_refusal_reason(cause: cz) }
+          RestBound { transport: _ } => none
+          ShellBound { transport: _ } => none
+          LocalBound => none
+          FileBound { verb: _, path_template: __pt, content_param: __cp, result_fields: __rf, single_field: __sf } => none
+        }
+      }
+      match missing {
+        Absent => []
+        Present { value: fact } =>
+          [make_error_node(
+            diagnostic: TransportEmissionNotModeled {
+              transport_kind: "file",
+              service: service_name,
+              operation: authored_name(env: env, node: op_node),
+              declaring_module: module_name,
+              target: render_target_name(target: target),
+              missing_realization_fact: fact,
+              span: op_node.span
+            },
+            module_name: module_name)]
+      }
+    }
   })
 }
 
