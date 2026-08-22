@@ -136,6 +136,22 @@ generated line numbers — which is the only thing a pure `pub use` reordering c
 is still required, because that argument covers the characterised class and not the uncharacterised
 remainder.
 
+## The baseline arm must be re-taken at the repair's parent (2026-08-22)
+
+Registered here as soon as it became true, and before any repair exists, because it is the kind of
+thing that is cheap now and unrecoverable later. **The A arm published above is at
+`967b5bc1b92`, and main has since moved.** It remains the *mechanism* baseline — what the mask is,
+and why — but it is **not a valid comparison arm** for the repair when that lands.
+
+The A/B needs its two arms **one variable apart**. So the baseline is re-taken at the **repair
+commit's own parent**, and the B arm at the repair commit. Comparing a post-repair board against
+`967b5bc1b92` would put every unrelated landing in between inside the delta, and the join would
+attribute other lanes' work to the repair — a difference that is real, arrives with a plausible
+story, and is entirely an artifact of the two arms being several refs apart.
+
+Nothing else about the registration changes: the population, the prediction and the join rule are
+fixed, and the arms simply move together to the repair's own ref pair.
+
 ## Status: PARKED at the B arm
 
 The unmask was re-scoped out of this lane by `smart-ram-730` and dispatched as a v1 inference repair
