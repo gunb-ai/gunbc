@@ -29,6 +29,10 @@ import gunbc.scm.repository_envelope {
   RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_node_identity_rule_tag,
+  RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
+  RepositoryRefusal, RepositoryImageRefusal, RepositoryCommitRootUnresolved,
+  RepositoryCheckedOutUnresolved, RepositoryIdentityRuleUnrecognized,
+  encode_repository_checked,
 }
 
 fn scm_env_atom(identity: Symbol) -> Node {
@@ -156,14 +160,58 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
   scm_env_root_signature(commits: reversed.commits) != scm_env_root_signature(commits: original.commits)
 }
 
-// ONE SHARED NODE POPULATION. Two commits over a shared subtree reconstruct into FOUR objects --
-// the shared atom, the extra atom, and the two distinct roots -- not the six that embedding one
-// closure per commit would produce.
-test fn scm_env_two_commits_share_one_object_population() -> Bool {
-  match scm_env_reloaded(repo: scm_env_two_commit_repository()) {
-    RepositoryDecodeRefused { cause: _ } => false
-    RepositoryDecoded { envelope: e } => store_object_count(store: e.store) == 4
+// ONE SHARED NODE POPULATION, MEASURED ON THE WIRE -- AND THE FIRST VERSION OF THIS CLAIM COULD NOT
+// FAIL.
+//
+// It counted objects in the DECODED store and asserted 4. That observation cannot distinguish one
+// shared table of 4 entries from two complete per-commit closures of 6 entries, because
+// decode_object_table routes every entry through insert_from_structure and insert_derived answers
+// the idempotent arm for a record already held. Both encodings decode to 4. The claim measured the
+// deduplicator, not the encoding it names.
+//
+// This is the THIRD time this stack has shipped an observation structurally incapable of producing
+// its own negative, and the second time the identical defect was fixed one layer down and then
+// reintroduced one layer up -- image.dag's sharing claim had exactly this shape and exactly this
+// repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
+// whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
+// downstream count agree with itself.
+fn scm_env_encoded_object_count(v: JsonValue) -> Int {
+  scm_env_count_named_array(members: scm_env_members(v: v), key: "objects")
+}
+
+fn scm_env_count_named_array(members: List<JsonKeyValue>, key: String) -> Int {
+  fold(members, init: 0, f: fn(acc, m) { scm_env_array_len_if_key(acc: acc, m: m, key: key) })
+}
+
+fn scm_env_array_len_if_key(acc: Int, m: JsonKeyValue, key: String) -> Int {
+  if m.key == key {
+    match m.value {
+      JsonArray { elements: es } => count(es)
+      _ => acc
+    }
+  } else {
+    acc
   }
+}
+
+test fn scm_env_two_commits_share_one_object_population() -> Bool {
+  scm_env_encoded_object_count(v: encode_repository(repo: scm_env_two_commit_repository())) == 4
+}
+
+// CONTROL: the encoded counter must report something other than 4, or the claim above is satisfied
+// by a function that always answers 4. A one-commit repository over program_one has two objects --
+// the shared atom and its root.
+test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool {
+  let only = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  scm_env_encoded_object_count(
+    v: encode_repository(
+      repo: RepositoryEnvelope {
+        store: only.store,
+        commits: [RepositoryCommit { root: only.identity, message: "only" }],
+        checked_out: none,
+      }
+    )
+  ) == 2
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -309,4 +357,112 @@ test fn scm_env_the_byte_comparison_distinguishes_a_message_change() -> Bool {
     checked_out: original.checked_out,
   }
   serialize_json(v: encode_repository(repo: relabelled)) != serialize_json(v: encode_repository(repo: original))
+}
+
+// A CHECKOUT NAMING A VALID OBJECT THAT IS NOT A COMMIT REFUSES.
+//
+// This is the claim that pins the construction change, and it is worth stating what it caught: the
+// first version resolved checked_out against the OBJECT TABLE, so "0" -- a perfectly real object,
+// the first entry in the table -- was accepted as a checkout even though no commit has it as a root.
+// The repository loaded cleanly and positioned the user at an interior node. Resolving against the
+// COMMIT LIST instead means that document cannot be built, and this claim goes red if anyone
+// resolves it against the table again.
+//
+// The two-commit fixture has FOUR objects and TWO commits, so "3" is a valid object position and an
+// out-of-range commit reference -- which is exactly the discriminating input.
+test fn scm_env_a_checkout_naming_a_non_commit_object_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "checked_out",
+        value: json_string(s: "3")
+      )
+    )
+  )
+}
+
+// CONTROL: a valid commit reference must still load, or the claim above would hold for a decoder
+// that refused every checkout. "1" is the second commit.
+test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
+  match decode_repository(
+    v: scm_env_with(
+      v: encode_repository(repo: scm_env_two_commit_repository()),
+      key: "checked_out",
+      value: json_string(s: "1")
+    )
+  ) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } =>
+      match e.checked_out {
+        Absent => false
+        Present { value: identity } => scm_env_second_root_is(identity: identity)
+      }
+  }
+}
+
+fn scm_env_second_root_is(identity: ObjectId) -> Bool {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  object_id_eq(left: identity, right: second.identity)
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CHECKED ENCODER, with one claim per cause rather than one claim that "it refuses". The three
+// causes have different remedies -- an incomplete object table, a commit naming a missing object, a
+// checkout naming a non-commit -- so a single boolean would let any two of them regress silently
+// while the third kept the claim green.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
+  match outcome {
+    RepositoryEncoded { value: _ } => "encoded"
+    RepositoryEncodeRefused { cause: cause } =>
+      match cause {
+        RepositoryImageRefusal { cause: _ } => "image"
+        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
+        RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
+        RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
+      }
+  }
+}
+
+// A commit whose root is not in the store at all.
+fn scm_env_absent_root_repository() -> RepositoryEnvelope {
+  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [RepositoryCommit { root: orphan.identity, message: "dangling" }],
+    checked_out: none,
+  }
+}
+
+// A checkout naming an object that IS in the store but is NOT any commit's root.
+fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  RepositoryEnvelope {
+    store: second.store,
+    commits: [RepositoryCommit { root: first.identity, message: "first" }],
+    checked_out: Present { value: second.identity },
+  }
+}
+
+test fn scm_env_a_commit_root_absent_from_the_store_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_absent_root_repository())) == "commit_root"
+}
+
+test fn scm_env_a_checkout_naming_a_non_commit_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_non_commit_checkout_repository())) == "checked_out"
+}
+
+// THE POSITIVE CONTROL, and it asserts the encoded VALUE rather than only the arm: an encoder that
+// accepted the right repositories while emitting something else would satisfy an arm-only claim.
+test fn scm_env_a_complete_repository_encodes() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncoded { value: v } => serialize_json(v: v) == serialize_json(v: encode_repository(repo: repo))
+    RepositoryEncodeRefused { cause: _ } => false
+  }
 }

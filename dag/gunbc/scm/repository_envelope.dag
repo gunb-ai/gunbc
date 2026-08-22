@@ -51,12 +51,16 @@ import gunbc.scm.image {
   ImageNotAnObject,
   ImageFormatUnrecognized,
   ImageRootUnresolved,
+  ImageEdgeTargetUnresolved,
+  object_id_key,
   DecodeAcc,
   DecodePositions,
   EncodeAcc,
   encode_object_table,
   encoded_root_reference,
   decode_object_table,
+  position_reference,
+  unresolved_edge_reference,
   resolve_reference,
   read_string_member,
   MemberString,
@@ -139,11 +143,90 @@ fn empty_repository() -> RepositoryEnvelope {
 // object -- the value decode refuses as unresolved. Spelling "no commit is checked out" the same way
 // would fuse a legitimate repository state with a corruption signal, so an empty repository and a
 // repository whose checkout reference is dangling would become one state (DESIGN section 5).
-fn encode_optional_reference(acc: EncodeAcc, selected: ObjectId?) -> JsonValue {
+// CHECKED_OUT IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is a construction wall rather
+// than a check.
+//
+// An earlier revision resolved it against the OBJECT TABLE, which meant a document could name a
+// checkout that was not any commit -- an arbitrary interior node, a child three levels down. Nothing
+// refused it, because nothing asked the question: "checked out" means POSITIONED AT A COMMIT, and
+// the carrier admitted states that are not that. Resolving against the COMMIT LIST instead means the
+// invalid state has no spelling in the wire format at all, so it is unwritable rather than validated
+// (DESIGN section 5). An out-of-range commit index still refuses, but a non-commit checkout can no
+// longer be expressed to be refused.
+//
+// The reference is an index into the commits array, which is image-local exactly as node positions
+// are: it means "the commit at this position in this document" and nothing outside it.
+// The inverse of commit_reference_of, and it walks the SAME index sequence so the two cannot drift:
+// both derive a position from an ordinary counter over the commits list, rather than one of them
+// parsing a number the other formatted.
+fn commit_at_reference(commits: List<RepositoryCommit>, reference: String) -> RepositoryCommit? {
+  match fold(
+    commits,
+    init: CommitLookup { index: 0, found: none },
+    f: fn(acc, c) { commit_lookup_step(acc: acc, c: c, wanted: reference) }
+  ) {
+    CommitLookup { index: _, found: found } => found
+  }
+}
+
+type CommitLookup {
+  index: Int
+  found: RepositoryCommit?
+}
+
+fn commit_lookup_step(acc: CommitLookup, c: RepositoryCommit, wanted: String) -> CommitLookup {
+  match acc.found {
+    Present { value: _ } => CommitLookup { index: acc.index + 1, found: acc.found }
+    Absent =>
+      if position_reference(n: acc.index) == wanted {
+        CommitLookup { index: acc.index + 1, found: Present { value: c } }
+      } else {
+        CommitLookup { index: acc.index + 1, found: none }
+      }
+  }
+}
+
+fn commit_reference_of(commits: List<RepositoryCommit>, selected: ObjectId) -> String {
+  match fold(
+    commits,
+    init: CommitSearch { index: 0, found: none },
+    f: fn(acc, c) { commit_search_step(acc: acc, c: c, wanted: selected) }
+  ) {
+    CommitSearch { index: _, found: found } =>
+      match found {
+        Present { value: reference } => reference
+        Absent => ""
+      }
+  }
+}
+
+type CommitSearch {
+  index: Int
+  found: String?
+}
+
+// AN UNKNOWN CHECKOUT ENCODES TO THE EMPTY REFERENCE, which decode refuses -- the same treatment
+// encoded_root_reference gives a root naming no object. The encoder cannot refuse (it returns a
+// JsonValue, not an outcome), so what it must not do is emit something PLAUSIBLE: silently dropping
+// the checkout or substituting the first commit would produce a document that loads cleanly and
+// positions the user somewhere they never were.
+fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: ObjectId) -> CommitSearch {
+  match acc.found {
+    Present { value: _ } => CommitSearch { index: acc.index + 1, found: acc.found }
+    Absent =>
+      if object_id_eq(left: c.root, right: wanted) {
+        CommitSearch { index: acc.index + 1, found: Present { value: position_reference(n: acc.index) } }
+      } else {
+        CommitSearch { index: acc.index + 1, found: none }
+      }
+  }
+}
+
+fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> JsonValue {
   match selected {
     Absent => JsonNull
     Present { value: identity } =>
-      json_string(s: encoded_root_reference(acc: acc, root: identity))
+      json_string(s: commit_reference_of(commits: commits, selected: identity))
   }
 }
 
@@ -171,9 +254,71 @@ fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
         key: "commits",
         value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits))
       ),
-      json_kv(key: "checked_out", value: encode_optional_reference(acc: acc, selected: repo.checked_out)),
+      json_kv(key: "checked_out", value: encode_optional_reference(commits: repo.commits, selected: repo.checked_out)),
     ]
   )
+}
+
+type RepositoryEncodeOutcome
+  = RepositoryEncoded { value: JsonValue }
+  | RepositoryEncodeRefused { cause: RepositoryRefusal }
+
+// THE CHECKED ENCODER IS WHAT A PERSISTENCE BOUNDARY MUST CALL, and it exists because
+// encode_repository CANNOT refuse -- it returns a JsonValue, so its only honest treatment of an
+// unrepresentable input is the empty reference that decode later rejects. That is correct as far as
+// it goes and it arrives too late for a writer: bytes are already on disk, the operation has already
+// reported success, and the corruption surfaces on the next load, to whoever loads it rather than to
+// whoever caused it. So the adjudication is lifted ahead of the write.
+//
+// The three ways a repository can be unrepresentable are exactly the three arms below, and they are
+// separate causes rather than one because their remedies differ: an unresolvable EDGE means the
+// object table is an incomplete closure, an unresolvable COMMIT ROOT means a commit names an object
+// the store does not hold, and an unresolvable CHECKOUT means the selection names a non-commit.
+fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
+  let acc = encode_object_table(store: repo.store)
+  match unresolved_edge_reference(acc: acc, store: repo.store) {
+    Present { value: reference } =>
+      RepositoryEncodeRefused { cause: RepositoryImageRefusal { cause: ImageEdgeTargetUnresolved { reference: reference } } }
+    Absent =>
+      match unresolved_commit_root(acc: acc, commits: repo.commits) {
+        Present { value: reference } =>
+          RepositoryEncodeRefused { cause: RepositoryCommitRootUnresolved { reference: reference } }
+        Absent =>
+          match unresolved_checkout_reference(commits: repo.commits, selected: repo.checked_out) {
+            Present { value: reference } =>
+              RepositoryEncodeRefused { cause: RepositoryCheckedOutUnresolved { reference: reference } }
+            Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+          }
+      }
+  }
+}
+
+fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> String? {
+  fold(commits, init: none, f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) })
+}
+
+fn unresolved_commit_root_step(acc: EncodeAcc, found: String?, commit: RepositoryCommit) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if encoded_root_reference(acc: acc, root: commit.root) == "" {
+        Present { value: object_id_key(identity: commit.root) }
+      } else {
+        none
+      }
+  }
+}
+
+fn unresolved_checkout_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> String? {
+  match selected {
+    Absent => none
+    Present { value: identity } =>
+      if commit_reference_of(commits: commits, selected: identity) == "" {
+        Present { value: object_id_key(identity: identity) }
+      } else {
+        none
+      }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -313,13 +458,13 @@ fn decode_repository_checkout(
             envelope: RepositoryEnvelope { store: store, commits: commits, checked_out: none }
           }
         JsonString { value: reference } =>
-          match resolve_reference(positions: positions, reference: reference) {
+          match commit_at_reference(commits: commits, reference: reference) {
             Absent =>
               RepositoryDecodeRefused { cause: RepositoryCheckedOutUnresolved { reference: reference } }
-            Present { value: identity } =>
+            Present { value: selected } =>
               RepositoryDecoded {
                 envelope: RepositoryEnvelope {
-                  store: store, commits: commits, checked_out: Present { value: identity }
+                  store: store, commits: commits, checked_out: Present { value: selected.root }
                 }
               }
           }

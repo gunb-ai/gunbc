@@ -332,6 +332,65 @@ fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
   }
 }
 
+// ENCODING CAN REFUSE, AND IT MUST, because the alternative is a write that reports success for
+// bytes that cannot be loaded.
+//
+// The empty-string reference below is what an unresolvable root or edge target encodes to, and
+// decode refuses it. That is correct at the DECODER but it arrives too late: encode_image returned an
+// ordinary JsonValue, commit_closure_save wrote it, the filesystem write succeeded, and save answered
+// CommitClosureSaved. The user is told their repository is saved; the very next load refuses it.
+// That is the fabricated-plausible-output failure DESIGN section 5 forbids, reached through a
+// success report rather than through a value.
+//
+// The state is REACHABLE, not theoretical: object_store deliberately supports building an INCOMPLETE
+// closure through copy_object -- a root grafted without its children -- and that is a feature, not a
+// defect, so the encoder cannot assume completeness. It must check and refuse.
+//
+// The refusal is computed from the SAME position table the encoding uses, so there is no second
+// notion of "resolvable" that could drift from the one decode enforces.
+type ImageEncodeOutcome
+  = ImageEncoded { value: JsonValue }
+  | ImageEncodeRefused { cause: ImageRefusal }
+
+fn encode_image_checked(store: ObjectStore, root: ObjectId) -> ImageEncodeOutcome {
+  let acc = encode_object_table(store: store)
+  let root_reference = encoded_root_reference(acc: acc, root: root)
+  if root_reference == "" {
+    ImageEncodeRefused { cause: ImageRootUnresolved { reference: object_id_key(identity: root) } }
+  } else {
+    match unresolved_edge_reference(acc: acc, store: store) {
+      Present { value: reference } =>
+        ImageEncodeRefused { cause: ImageEdgeTargetUnresolved { reference: reference } }
+      Absent => ImageEncoded { value: encode_image(store: store, root: root) }
+    }
+  }
+}
+
+// A child an edge names that the table does not contain. store_records_in_dependency_order yields
+// children before parents for any closure store_node built, so this is empty for every complete
+// store -- it is the INCOMPLETE ones, which copy_object can legitimately produce, that it catches.
+fn unresolved_edge_reference(acc: EncodeAcc, store: ObjectStore) -> String? {
+  fold(store_records_in_dependency_order(store: store), init: none, f: fn(outer, record) {
+    match outer {
+      Present { value: _ } => outer
+      Absent => unresolved_edge_in_record(acc: acc, record: record)
+    }
+  })
+}
+
+fn unresolved_edge_in_record(acc: EncodeAcc, record: ObjectRecord) -> String? {
+  fold(record.children, init: none, f: fn(inner, stored) {
+    match inner {
+      Present { value: _ } => inner
+      Absent =>
+        match position_of(positions: acc.positions, identity: stored.target) {
+          Present { value: _ } => none
+          Absent => Present { value: object_id_key(identity: stored.target) }
+        }
+    }
+  })
+}
+
 fn encode_image(store: ObjectStore, root: ObjectId) -> JsonValue {
   let acc = encode_object_table(store: store)
   let root_reference = encoded_root_reference(acc: acc, root: root)
