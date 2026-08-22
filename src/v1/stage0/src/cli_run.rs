@@ -4604,6 +4604,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
+            "BareNoneNotAdmittedByFieldType"
+        }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
@@ -4616,6 +4620,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
+        CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4644,6 +4649,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
             constructor_decl_name,
             ..
@@ -4675,6 +4682,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
                 }
             }
         }
+        // The NAME is the full spelling, not its container leaf: the burn-down this
+        // histogram feeds is a list of spellings to declare a row for, and every
+        // refusal of one leaf would otherwise aggregate into a single row.
+        CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
     };
     (class.to_string(), name)
 }
@@ -7473,6 +7484,20 @@ pub enum ClaimOutcome {
     HostToolUnresolved {
         name: String,
         probed: Vec<String>,
+    },
+    /// THE ROUTE HAD NO ARM. The claim reached a host effect that its EXECUTION ROUTE cannot
+    /// realize, so it never reached its subject and produced no verdict.
+    ///
+    /// Typed here for exactly the reason `TimedOut` is (see its comment above): the same event
+    /// used to arrive as `RuntimeError` carrying `InterpError`'s prose, so any consumer
+    /// partitioning on the outcome saw a missing route as an ordinary failure on the subject.
+    /// Those are different facts with different remedies — a failure says the witness is wrong,
+    /// a route gap says the witness was never given a way to run — and the required floor's
+    /// answer to the ambiguity was to decline the whole live-tree population rather than
+    /// execute it.
+    HostEffectRefused {
+        operation: String,
+        ground: v1_interpreter::HermeticEffectGround,
     },
 }
 
@@ -14665,6 +14690,12 @@ pub enum CiWitnessVerdict {
     BudgetRefused,
     HostToolUnresolved,
     KnownRed,
+    /// THE CLAIM NEVER REACHED ITS SUBJECT. Mirrors `WitnessRouteGap`. Distinct from every
+    /// other arm here because the others all describe something the claim DID — it answered,
+    /// it errored, it was refused a budget. This one describes a claim that produced no
+    /// verdict at all, so rendering it as `FAILED` would assert a verdict that was never
+    /// reached, and rendering it as `KNOWN-RED` would assert an agreed failure it never made.
+    RouteGap,
 }
 
 impl CiWitnessVerdict {
@@ -14678,6 +14709,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
             CiWitnessVerdict::KnownRed => "KNOWN-RED",
+            CiWitnessVerdict::RouteGap => "NO-ROUTE",
         }
     }
 
@@ -14715,6 +14747,10 @@ impl CiWitnessVerdict {
             ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
             ClaimOutcome::TimedOut { .. } => CiWitnessVerdict::BudgetRefused,
             ClaimOutcome::HostToolUnresolved { .. } => CiWitnessVerdict::HostToolUnresolved,
+            // NOT `Failed`, and NOT `KnownRed` even when enrolled: the roster this identity is
+            // enrolled on is the ROUTE-GAP roster, not the expected-red one, and the row above
+            // only short-circuits on `ExpectedRedArm::Held`.
+            ClaimOutcome::HostEffectRefused { .. } => CiWitnessVerdict::RouteGap,
         }
     }
 }
@@ -14756,6 +14792,133 @@ fn render_witness_claim_result_text(
     Some(render_witness_claim_result_text_mirror(
         subject, function, wall_nanos, verdict,
     ))
+}
+
+/// The `src/v1` `.dag` parse sweep, as a callable phase rather than a separate binary.
+///
+/// WHY IT MOVED HERE. It was a `main()` in `bin/v1_src_dag_parse.rs`, reached only by its own
+/// GitHub Actions step. That made the ORDER of the CI checks a fact about a YAML file: a step
+/// list, `if:` guards referring to other steps' outcomes, and one process per check. This
+/// function is the same walk with its result returned instead of exited, so the composed
+/// `--required-ci` run can hold it beside the regen and floor phases in one process. The bin
+/// remains as a thin caller, because running the parse sweep alone is a real local action.
+///
+/// RECURSIVE, and the non-recursive predecessor is why the walk looks like this: `read_dir`
+/// on `src/v1` sees the top-level modules and nothing below them, so a walk that finds no
+/// files in a directory it never opened is indistinguishable from a clean one.
+///
+/// Returns the count of parse-clean files, or every error found — never a partial success.
+pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let v1_dir = workspace.join("src/v1");
+    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
+    while let Some(dir) = stack.pop() {
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(d) => d,
+            Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
+        };
+        // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
+        // which silently DISCARDS an entry that cannot be read, so an unreadable directory
+        // entry made the walk quietly smaller and a walk that never saw a file is
+        // indistinguishable from a file that parsed. The error is propagated instead.
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => return Err(vec![format!("read_dir entry in {}: {e}", dir.display())]),
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // `target/` under a nested Cargo.toml is build output, never authored source.
+                if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                    continue;
+                }
+                // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
+                // the parser's own tests -- a fixture that fails to parse is the fixture doing
+                // its job, not a defect. The existing corpus discovery in `compiler_tests`
+                // excludes them on the same grounds.
+                //
+                // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
+                // consolidation's first local run reported `fact_cardinality_split_brace.dag:
+                // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
+                // file is a headerless fragment under `tests/fixtures/` and it is on main,
+                // where the parse step is green -- so the "finding" was the extraction having
+                // silently widened its own subject, not a defect in the tree.
+                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                dag_paths.push(path);
+            }
+        }
+    }
+    dag_paths.sort();
+
+    // AN EMPTY WALK REFUSES. Zero files found is not zero errors — it is the walk failing to
+    // reach its subject, and reporting it as clean is the empty-observation narrow.
+    if dag_paths.is_empty() {
+        return Err(vec![format!(
+            "no .dag files found under {} — check the workspace root",
+            v1_dir.display()
+        )]);
+    }
+
+    let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let count = Arc::new(AtomicUsize::new(0));
+
+    // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
+    // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
+    std::thread::scope(|scope| {
+        for path in &dag_paths {
+            let errors = Arc::clone(&errors);
+            let count = Arc::clone(&count);
+            let path = path.clone();
+            scope.spawn(move || {
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        errors
+                            .lock()
+                            .expect("parse error lock")
+                            .push(format!("read {}: {e}", path.display()));
+                        return;
+                    }
+                };
+                let result = crate::v1_compiler_parse::parse(
+                    crate::v1_compiler_tokenize::tokenize(
+                        content,
+                        path.to_string_lossy().to_string(),
+                    ),
+                    std::rc::Rc::new(im::HashMap::new()),
+                );
+                if let Some(ref err) = result.error {
+                    errors.lock().expect("parse error lock").push(format!(
+                        "parse error in {}: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
+                    ));
+                } else {
+                    count.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        }
+    });
+
+    let errors = Arc::try_unwrap(errors)
+        .expect("parse error arc is uniquely held after scope")
+        .into_inner()
+        .expect("parse error lock");
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    Ok(Arc::try_unwrap(count)
+        .expect("parse count arc is uniquely held after scope")
+        .into_inner())
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
@@ -15940,6 +16103,9 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
+            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+                ClaimOutcome::HostEffectRefused { operation, ground }
+            }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
                 ClaimOutcome::TimedOut {
                     elapsed_ms: cpu_ms,
@@ -16126,6 +16292,44 @@ enum ExpectedRedArm {
     /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
     /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
     HostToolUnresolved,
+    /// Enrolled, but the EXECUTION ROUTE it was given has no arm for a host effect it reached
+    /// for. A sibling of `HostToolUnresolved`, not of `Held`: enrollment asserts an expected
+    /// VERDICT, and a claim that never reached its subject produced none. Its remedy is a
+    /// route (publish the mock case, author the `mock_response`, or supply a wet lane), never
+    /// a change to the witness's assertion.
+    HostEffectRefused,
+}
+
+/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
+/// caller that re-spells it per site is re-deriving the remedy per site.
+pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
+    match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            "no published mock case for a corpus-governed service"
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => {
+            "operation declares no mock_response"
+        }
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+            "filesystem removal has no mock arm; only a wet route can run it"
+        }
+    }
+}
+
+/// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
+/// carrier for the same closed ground. Total in both directions by construction — adding an
+/// arm to either side fails to compile here rather than falling through to a default.
+fn hermetic_effect_ground_verdict(
+    ground: &v1_interpreter::HermeticEffectGround,
+) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
+    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+    match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            Modeled::UnpublishedMockCase
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+    }
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
@@ -16143,6 +16347,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
             ExpectedRedArm::Held
         }
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
+        ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
     }
 }
 
@@ -18506,6 +18711,16 @@ pub fn project_witness_cost_receipt(
                         str_value(format!(
                             "host tool unresolved: {name:?} (probed: {})",
                             probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
+                ClaimOutcome::HostEffectRefused { operation, ground } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "hermetic route has no arm for {operation} ({})",
+                            hermetic_effect_ground_label(ground)
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -24301,6 +24516,15 @@ fn run_discovery_rows(
                 name,
                 probed.join(", ")
             )),
+            ClaimOutcome::HostEffectRefused { operation, ground } => {
+                summary.failures.push(format!(
+                    "{} ({}) hermetic route has no arm for {}: {}",
+                    row.function,
+                    row.entry,
+                    operation,
+                    hermetic_effect_ground_label(&ground)
+                ))
+            }
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
             // clock (cpu vs wall) is named because the two have different remedies.
@@ -36170,15 +36394,58 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
 
+/// Project one argv element of an `extdeps` transport declaration into the census token the
+/// `v2.lens.extdeps_shape_transport_policy` reading folds over.
+///
+/// TWO CHANGES HERE, AND THE SECOND IS DELIBERATELY WEAKER THAN THE FIRST.
+///
+/// (1) THE INTERPOLATION ARM READS PARTS, NOT RAW CHILDREN -- a repair, not a restatement.
+/// The old arm walked `node.children` and answered the empty string for any child that was
+/// neither a literal nor a var. A `StringPart` node is not an expression node -- an
+/// interpolated string's TEXT parts carry `NoExprData` -- so the old arm silently dropped
+/// the literal text of every interpolated argv element, surviving only because the var part
+/// happened to carry the whole token in this corpus's specimens. This arm goes through
+/// `extract_string_interp_parts`, the same authority `bind_argv_expr` uses for the same job.
+///
+/// (2) AN UNPROJECTABLE FORM IS ANNOUNCED BY NAME RATHER THAN REFUSED, and that is a
+/// DECLARED DEGRADATION rather than the wall this census set out to build. The wall was
+/// built, and running it against the live corpus is what produced the reason it cannot land
+/// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
+/// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
+/// author who causes it -- the same seven operations are already typed and counted debt on
+/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
+///
+/// So the two readings of one corpus disagree and this comment is where that is recorded:
+/// materialization counts the unreadable element as residue, the policy census renders it as
+/// the empty string, and an empty token matches no policy predicate -- so a leak carried by a
+/// form the reader cannot read is reported as clean. The line below makes that occurrence
+/// LOCATED AND COUNTABLE instead of silent; it does not make it correct.
+///
+/// NEXT RUNG, and it is a modelling decision rather than a seed edit: `ExtdepsTransportArgvFact`
+/// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
+/// materialization row already does, and the policy fold reads it. At that point the empty
+/// string has no way to be written and this arm becomes a refusal at the boundary rather
+/// than a degradation inside it. Carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census`.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    located: &str,
 ) -> String {
-    use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
+    use crate::v1_interpreter::{expr_data_form_name, literal_value_form_name};
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => value.clone(),
-            other => format!("{other:?}"),
+            crate::std_syntax::LiteralValue::LitStr { value } => value.clone(),
+            other => {
+                eprintln!(
+                    "[extdeps-argv-unprojectable] {located}: `{}` literal has no argv token \
+                     projection; the census token is empty and matches no policy predicate",
+                    literal_value_form_name(other)
+                );
+                String::new()
+            }
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
@@ -36188,26 +36455,26 @@ fn extdeps_argv_expr_token(
                 format!("{{{name}}}")
             }
         }
-        ExprData::ExprStringInterp => node
-            .children
-            .iter()
-            .map(|child| match child.expr_data.as_ref() {
-                ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => value.clone(),
-                    _ => String::new(),
-                },
-                ExprData::ExprVar { .. } => {
-                    let name = expr_var_name_at(child.clone(), source_indices.clone());
-                    if name.is_empty() {
-                        child.name.clone()
-                    } else {
-                        format!("{{{name}}}")
+        ExprData::ExprStringInterp => {
+            let mut out = String::new();
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                match part.as_ref() {
+                    StringPart::Text { value } => out.push_str(value),
+                    StringPart::Interpolation { expr } => {
+                        out.push_str(&extdeps_argv_expr_token(expr, source_indices, located))
                     }
                 }
-                _ => String::new(),
-            })
-            .collect(),
-        _ => String::new(),
+            }
+            out
+        }
+        other => {
+            eprintln!(
+                "[extdeps-argv-unprojectable] {located}: `{}` expression has no argv token \
+                 projection; the census token is empty and matches no policy predicate",
+                expr_data_form_name(other)
+            );
+            String::new()
+        }
     }
 }
 
@@ -36377,7 +36644,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
                     "Shell"
                 };
             for (idx, arg) in eff.children.iter().enumerate() {
-                let token = extdeps_argv_expr_token(arg, &source_indices);
+                let token = extdeps_argv_expr_token(
+                    arg,
+                    &source_indices,
+                    &format!("{module_path} `{}.{}` argv[{idx}]", item.name, op.name),
+                );
                 argv_facts.push(ExtdepsArgvFactRaw {
                     module_path: module_path.to_string(),
                     service: item.name.clone(),
@@ -39501,15 +39772,26 @@ pub struct RequiredFloorClaim {
 /// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
-    /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
-    /// the module does not declare `ReadsLiveTree`.
+    /// Admitted into `claims`: the module's authored name did not match a long-home prefix.
+    /// The identity's EXECUTION ROUTE is then `RequiredFloorClaim.execution_mode` — one route
+    /// per identity, carried by the claim that runs it, so there is no second vocabulary here
+    /// restating what the claim already says.
     Planned,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree` and cannot
-    /// execute in the hermetic frame this floor runs.
+    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
+    ///
+    /// STAGED FOR DELETION, and the reason is measured rather than intended — see
+    /// `docs/plans/witness-execution-closure.md`. The premise this arm rests on (reaching the
+    /// live tree implies "cannot run in the hermetic frame") is FALSE: hermetic mode's
+    /// checkout-read carve-out reads committed sources for real. Floor run 32345970386 deleted
+    /// this arm and executed the population: of ~783 identities, **626 pass** and only 157
+    /// genuinely lack a hermetic arm. The deletion is not in this change only because it also
+    /// surfaces 55 blockers — 6 witnesses that do not resolve and 49 in a cost tail — that need
+    /// their own owners, and every one of those 55 is newly-admitted, so this change is exactly
+    /// the part that carries none of them.
     DeclinedLiveTree,
 }
 
@@ -39600,6 +39882,27 @@ pub struct RequiredFloorOutcome {
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
+    /// THE OFFERED POPULATION, CARRIED BESIDE THE ROUTED ONE so the headline states its own
+    /// subject rather than a number derived from it.
+    ///
+    /// `claims_planned` is what SURVIVED the site projection. Reporting only that made the
+    /// run's own receipt unable to say what it dropped: a projection that declined a thousand
+    /// identities and one that declined none print identical `planned = executed = receipted`
+    /// triples. These two are the other side of that seam — every discovered site is either
+    /// routed or declined, and `SitePartitionInexact` refuses if they do not add up.
+    pub sites_offered: usize,
+    /// Discovered sites declined because the module's AUTHORED name matches a long-home prefix.
+    /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
+    /// silently subtracted: these identities have no executing consumer anywhere in the tree.
+    pub declined_long_module: usize,
+    /// Discovered sites declined because the module declares `ReadsLiveTree`.
+    ///
+    /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
+    /// previously visible only as an integer in a `[floor-phase]` line, and the run's own
+    /// honesty check (`planned == executed == receipted`) was computed entirely downstream of
+    /// it. A receipt that cannot state what it dropped cannot be read as a statement about
+    /// coverage. Measured at 778 on main; staged for deletion, see `RequiredFloorDisposition`.
+    pub declined_live_tree: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -39609,6 +39912,36 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// THE 101 THAT DID NOT SUM. These six are already computed by the fold, at the right grain,
+    /// and were reported only on `[floor-known-red]` / `[floor-route-gap]` lines that no consumer
+    /// of the headline ledger reads. Lifting them here adds no fact and makes no new distinction;
+    /// it projects values the run already holds onto the line the run is read from.
+    ///
+    /// `route_gap_held` is the load-bearing one. Measured on main run 32407436149:
+    /// `executed=9810 passed=9502 known_red_held=207 failed=0` leaves 101 unaccounted, and the
+    /// headline printed `route_gap=0` because that field is `route_gap.len()` — the UNENROLLED
+    /// gaps alone. So the reader did not see an understated count they might interrogate; they
+    /// saw a zero, which closes the question instead of opening it. The correcting number lived
+    /// on another line ~300 lines away. Evidence present but disjoint from the surface anyone
+    /// reads is the defect, so these belong on the SAME line rather than in a second report —
+    /// a fix shipped as another separate line would reproduce exactly what it repairs.
+    ///
+    /// A route-gapped identity is refused at the hermetic boundary, never reaches its subject,
+    /// and produces no verdict. That refusal is CORRECT and must not be repaired: mocking it
+    /// would pass the witness against a fabricated exit status, which is the fabricated-plausible
+    /// -output failure the witness exists to catch (DESIGN §5).
+    ///
+    /// NOT RENAMED HERE, DELIBERATELY: `claims_executed` still counts entering the fold rather
+    /// than reaching a verdict. Whether that is the right name is a question about
+    /// `RequiredFloorDisposition`, whose authority is `src/v2/workflow/required_floor.dag`, and
+    /// changing .dag vocabulary from inside a Rust projection fix would put the authority in the
+    /// wrong place. Raised separately or not at all; this change only makes the line sum.
+    pub route_gap_held: usize,
+    pub known_red_now_passing: usize,
+    pub known_red_budget_refused: usize,
+    pub known_red_passed_over_budget: usize,
+    pub known_red_host_tool_unresolved_held: usize,
+    pub known_red_host_effect_refused: usize,
     /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
     /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
     /// indistinguishable from a regression in the alert signature, which is the conflation
@@ -39630,6 +39963,25 @@ pub struct RequiredFloorOutcome {
     pub completed_over_cost_requirement: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
+    /// THE ROUTE HAD NO ARM — a sixth blocking cause, and the one this floor previously
+    /// answered by not executing the population at all.
+    ///
+    /// A claim reached a host effect its execution route cannot realize. It produced no verdict,
+    /// so it is not a failure; it consumed no meaningful cost, so it is not a budget outcome;
+    /// and its remedy is a route, not a fix to the witness. It BLOCKS, because the alternative
+    /// — counting a claim that never ran as green — is exactly the specification-without-
+    /// execution DESIGN §5 forbids, one level up from where the decline used to hide it.
+    pub route_gap: Vec<String>,
+    /// AN ENROLLED ROUTE GAP THAT DID NOT GAP — the roster's other direction, and the half that
+    /// makes it shrink rather than accumulate.
+    ///
+    /// A route was supplied, or the witness stopped reaching for the effect, so the enrollment
+    /// is stale. It BLOCKS for the same reason a stale expected-red row does: a repayment that
+    /// is silently absorbed is a repayment nobody is required to record, and the roster then
+    /// stops being a debt ledger and becomes a place rows go to be forgotten. Its remedy —
+    /// delete the row — is different from every other blocking cause here, which is why it is
+    /// its own collection and not folded into `route_gap`.
+    pub stale_route_gap: Vec<String>,
     /// DIAGNOSTIC ONLY, NEVER ADMISSION. A `VerdictReached` claim whose exact cost (on the
     /// `RequiredFloorCostBasis` clock) exceeded `required_floor_claim_cost_line_ms`, per
     /// `exceeds_completed_cost_line`. Counted so `ClaimTerminality`/`exceeds_completed_cost_line`
@@ -39657,9 +40009,9 @@ pub struct InventoryWitnessFile {
     pub functions: Vec<String>,
     /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
     ///
-    /// Read from the module's own source, at column zero, the same way `test fn` is — an
-    /// AUTHORED declaration, not a path or a directory. A witness that declares it reaches the
-    /// live tree, so it cannot execute in the hermetic frame this floor runs.
+    /// A SECOND, SYNTACTIC COMPUTATION OF A FACT `reads_live_tree_effective` DERIVES
+    /// SEMANTICALLY, and that is a §3 defect this change does not yet remove. See the comment
+    /// at its scan site below.
     pub reads_live_tree: bool,
 }
 
@@ -39696,8 +40048,33 @@ fn witness_file_from_source(
     if functions.is_empty() {
         return None;
     }
-    // Same scan, same column-zero rule as `test fn` above: a module-scope `data` whose value is
-    // `ReadsLiveTree`. Indented occurrences are inside bodies and are not declarations.
+    // ONE FACT, TWO COMPUTATIONS, IN ONE BINARY — a §3 defect, recorded here rather than
+    // silently carried, and deliberately NOT fixed in this change.
+    //
+    // This column-zero TEXT SCAN and `reads_live_tree_effective` answer the same question by
+    // methods that cannot agree except by coincidence: the second reads the same declaration
+    // and then falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC
+    // reachability derivation over the entry's import closure. A syntactic scan and an
+    // effect-reach derivation disagree as a function of the import graph.
+    //
+    // THE FIX IS NOT TO UNIFY THEM. The two consumers ask DIFFERENT QUESTIONS. Affected-set
+    // selection asks "does this entry's result depend on live tree state", which
+    // `reads_live_tree_effective` answers and keeps. The floor asks "can this identity
+    // execute", which no authored file-level boolean can answer — the interpreter decides it
+    // exactly, per identity, at the effect boundary, and now says so in a typed outcome
+    // (`ClaimOutcome::HostEffectRefused`). So the floor's copy is deleted rather than
+    // reconciled, and the population it was excluding is executed.
+    //
+    // MEASURED, so the deletion is not a hope: floor run 32345970386 removed this scan and ran
+    // the population. Of ~783 identities admitted, 626 PASS and 157 route-gap on real host
+    // operations (Mktemp.Dir 54, IsExecutable 26, Run 17, Write 8, git.Inspect 5, …) — not one
+    // a committed-source read. The premise was stale for the large majority of what it
+    // excluded.
+    //
+    // WHY IT IS STILL HERE: that same run surfaced 55 blockers — 6 witnesses that do not
+    // RESOLVE (`undefined variable`, `no such function`; never caught because nothing ever
+    // evaluated them) and 49 in a cost tail — and all 55 are newly-admitted. This change is the
+    // part that carries none of them. → `docs/plans/witness-execution-closure.md`.
     let reads_live_tree = content.lines().any(|line| {
         line.starts_with("data ")
             && line.contains("LiveTreeDisposition")
@@ -39750,7 +40127,35 @@ static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new(
 // and major faults rising while progress is flat is reclaim churn. One /proc read per tick buys
 // that discrimination, and without it a heartbeat only proves the process is alive -- which the
 // runner's "Terminate orphan process" line already proved, after four hours.
-fn floor_resource_sample() -> String {
+/// Process CPU milliseconds, cumulative since process start. Read directly only to establish
+/// a baseline; the heartbeat reports a DELTA against one.
+fn process_cpu_ms() -> u64 {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    let f: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    (tick(11) + tick(12)) * 1000 / 100
+}
+
+/// `cpu_baseline_ms` is subtracted from the process-cumulative CPU so the reported figure is
+/// THIS phase's, matching `wall_s`, which has always been relative to heartbeat spawn.
+///
+/// WHY IT NEEDED A BASELINE AT ALL. Until the CI phases shared a process, the floor ran in a
+/// process of its own and cumulative-since-process-start and since-the-floor-started were the
+/// same number. The composed `--required-ci` run puts regen's multi-threaded `compile_stage0`
+/// in front of it, and the difference is not marginal: measured across two CI runs of the same
+/// corpus, the floor's FIRST heartbeat reported cpu_ms=59830 when it had its own process
+/// (32341236470) and cpu_ms=786650 when it did not (32371293567) — 787 CPU-seconds of someone
+/// else's work, on the floor's line, at the floor's first beat.
+///
+/// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
+/// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
+/// right; only the CPU counter was absolute.
+fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
     let f: Vec<&str> = stat
         .rsplit(')')
@@ -39761,7 +40166,7 @@ fn floor_resource_sample() -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
     let hz = 100u64;
-    let cpu_ms = (tick(11) + tick(12)) * 1000 / hz;
+    let cpu_ms = ((tick(11) + tick(12)) * 1000 / hz).saturating_sub(cpu_baseline_ms);
     let majflt = tick(9);
     let rss_kb = std::fs::read_to_string("/proc/self/statm")
         .ok()
@@ -40030,6 +40435,10 @@ fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
 // slow, which is the property that makes it useful.
 fn spawn_floor_heartbeat() {
     let started = std::time::Instant::now();
+    // Taken HERE, beside the wall baseline, so both counters answer "since the floor started"
+    // rather than one of them answering "since the process started". See the note on
+    // `floor_resource_sample` for the measurement that made this necessary.
+    let cpu_baseline_ms = process_cpu_ms();
     // 60s is the CI cadence: dense enough to bound a phase, sparse enough not to bloat a
     // job log. It is too coarse to LOCALISE anything — a 2.7 GB step between two samples
     // names a minute, not a cause — so a local investigation can tighten it. Bounded below
@@ -40062,7 +40471,7 @@ fn spawn_floor_heartbeat() {
             "[floor-heartbeat] wall_s={} phase={} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample()
+            floor_resource_sample(cpu_baseline_ms)
         );
         beat += 1;
         if beat % 10 == 0 {
@@ -40557,6 +40966,31 @@ pub fn run_required_floor(
             });
         }
     }
+    // THE PARTITION OVER THE OFFERED POPULATION, CHECKED — not merely reported for a reader to
+    // add up.
+    //
+    // `claims_planned` is the POST-decline number, and the terminal invariant downstream
+    // (`ClaimIdentityCountsDisagree`) compares planned == executed == receipted. Every one of
+    // those three is measured after the projection has already dropped whatever it dropped, so
+    // the run's own honesty check could not see what it lost: a projection that declined a
+    // thousand identities and one that declined none produce identically healthy-looking
+    // triples. This is the missing invariant on the other side of that seam — the offered
+    // population must be exactly the routed population plus the declined one — and it is
+    // stated where the loop that could violate it runs.
+    //
+    // It cannot fail today, because the loop takes exactly one arm per site. That is the point:
+    // it is the construction's own statement of what it guarantees, and it fails loudly the
+    // first time an edit adds a third arm that quietly swallows rows, which is precisely how
+    // the live-tree decline arrived and stayed invisible.
+    if sites_offered != claims.len() + long_declined + live_declined {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
+             routed={} declined_long={long_declined} declined_live={live_declined} — every \
+             discovered site must be either routed to a claim or declined with a stated \
+             disposition; a gap here is a roster that narrowed without saying so",
+            claims.len()
+        ));
+    }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
          claims={} declined_long={} declined_live={}",
@@ -40638,6 +41072,95 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+
+    // THE ROUTE-GAP ROSTER, read the same way and for the same reason: it must be decoded while
+    // the policy frame is alive. It answers a THIRD question, distinct from both of the two
+    // above — not which claims exist, and not which of them are known to fail, but which of
+    // them the floor currently has no route that can RUN. See
+    // `v2.workflow.floor_route_gap` for the contract; the short form is that enrollment
+    // changes which outcome counts as agreement and nothing else, and that an unenrolled route
+    // gap reds the build.
+    //
+    // NO EMPTY-ROSTER REFUSAL HERE, and the asymmetry with the expected-red roster above is
+    // deliberate rather than an omission. That refusal exists because an empty expected-red
+    // roster makes its OWN downstream guards vacuous — a partition sum of zero against zero,
+    // a did-not-execute walk over nothing. This roster has no such guard to disable: an
+    // identity that is not enrolled BLOCKS, so an empty roster is the strictest possible
+    // state, not the most permissive one. A read failure here therefore cannot flatter a run;
+    // it can only red one that would otherwise be green.
+    let route_gap_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_route_gap.floor_route_gap_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_route_gap_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_route_gap_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the same reason it does above: the roster's
+                    // length is read as the debt, and a repeated identity makes that length
+                    // report one more supplied route than exists.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_route_gap_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-route-gap] roster carries {} enrolled identity(ies)",
+        route_gap_roster.len()
+    );
+
+    // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
+    // between them stays a split rather than decaying back into the conflation it was created
+    // to undo.
+    //
+    // They make CONTRADICTORY claims. Enrollment in `floor_expected_red` asserts that an
+    // identity REACHES ITS SUBJECT AND ANSWERS FALSE — a statement about a verdict. Enrollment
+    // in `floor_route_gap` asserts that it never reaches its subject at all. Both cannot be
+    // true of one identity, and the failure mode is not hypothetical: 101 identities sat in the
+    // expected-red roster for exactly this reason, held as agreed failures while producing no
+    // verdict, until the typed outcome made the difference observable. Having paid to separate
+    // them once, leaving nothing to stop them merging again would be the same defect with a
+    // longer fuse.
+    //
+    // It refuses by NAME rather than by count, because the remedy is per identity: decide which
+    // fact is true of it and delete the other row.
+    {
+        let mut both: Vec<&String> = route_gap_roster
+            .iter()
+            .filter(|q| expected_red_roster.contains(q.as_str()))
+            .collect();
+        both.sort();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=RosterClaimsContradict count={} — these \
+                 identities are enrolled BOTH in v2.workflow.floor_expected_red (which asserts \
+                 the witness reaches its subject and answers false) AND in \
+                 v2.workflow.floor_route_gap (which asserts it never reaches its subject). Both \
+                 cannot be true. Decide which one is, and delete the other row: {}",
+                both.len(),
+                both.iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
 
     // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
     // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
@@ -40749,15 +41272,26 @@ pub fn run_required_floor(
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
         modules_excluded: prepared.modules_excluded,
+        sites_offered,
+        declined_long_module: long_declined,
+        declined_live_tree: live_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        route_gap_held: 0,
+        known_red_now_passing: 0,
+        known_red_budget_refused: 0,
+        known_red_passed_over_budget: 0,
+        known_red_host_tool_unresolved_held: 0,
+        known_red_host_effect_refused: 0,
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         host_tool_unresolved: Vec::new(),
+        route_gap: Vec::new(),
+        stale_route_gap: Vec::new(),
         over_cost_line_diagnostic: 0,
         failures: Vec::new(),
         required_floor_disposition: disposition_rows,
@@ -40824,6 +41358,12 @@ pub fn run_required_floor(
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
+    let mut known_red_host_effect_refused: usize = 0;
+    // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
+    // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
+    // "is this enrollment still real", which is exactly how a skip list rots.
+    let mut route_gap_seen: HashSet<String> = HashSet::new();
+    let mut route_gap_held: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -41125,6 +41665,40 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
+                // A ROUTE GAP IS NOT AGREEMENT, for the same reason the two arms above are not.
+                // Enrollment asserts an expected VERDICT; a claim whose route had no arm for a
+                // host effect never reached its subject and produced none. Holding it would let
+                // an enrollment silently cover a witness that has not run since the day it was
+                // enrolled — the failure this whole lane exists to close.
+                ExpectedRedArm::HostEffectRefused => {
+                    known_red_host_effect_refused += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostEffectRefused { operation, ground } => format!(
+                            "hermetic route has no arm for {operation}: {}",
+                            hermetic_effect_ground_label(ground)
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    // THE TWO ROSTERS ARE DIFFERENT AXES, AND THIS ROW SITS ON BOTH. Being
+                    // enrolled as expected-red says nothing about whether the floor has a route
+                    // that can run the identity, so the route-gap roster is consulted here
+                    // exactly as it is for an unenrolled row — the expected-red enrollment does
+                    // not cover the gap, and the gap does not discharge the enrollment.
+                    route_gap_seen.insert(claim.qualified.clone());
+                    if route_gap_roster.contains(claim.qualified.as_str()) {
+                        route_gap_held += 1;
+                    } else {
+                        outcome.route_gap.push(format!(
+                            "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
+                             Enrollment asserts an expected verdict; a claim that never reached \
+                             its subject produced none. Supply the route (publish the mock case, \
+                             author the mock_response, or supply a lane that can run the effect) \
+                             — do not read this as the enrolled failure.",
+                            claim.qualified, detail
+                        ));
+                    }
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -41152,6 +41726,27 @@ pub fn run_required_floor(
                 name,
                 probed.join(", ")
             )),
+            // NOT A FAILURE, AND NOT GREEN. A route gap goes to its own blocking collection
+            // rather than to `failures`, because reporting it as a failure says the witness is
+            // wrong about its subject when the witness was never given a way to reach it — and
+            // the two have different remedies. It still stops the line.
+            ClaimOutcome::HostEffectRefused { operation, ground } => {
+                route_gap_seen.insert(claim.qualified.clone());
+                if route_gap_roster.contains(claim.qualified.as_str()) {
+                    route_gap_held += 1;
+                } else {
+                    outcome.route_gap.push(format!(
+                        "{} never reached its subject: the hermetic route has no arm for {} \
+                         ({}). Supply the route — publish the mock case, author the \
+                         mock_response, or supply a lane that can run the effect. Enrolling the \
+                         identity in v2.workflow.floor_route_gap records the gap as known debt; \
+                         it does not make the gap acceptable.",
+                        claim.qualified,
+                        operation,
+                        hermetic_effect_ground_label(&ground)
+                    ));
+                }
+            }
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -41304,6 +41899,52 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    outcome.route_gap_held = route_gap_held;
+    outcome.known_red_now_passing = known_red_now_passing;
+    outcome.known_red_budget_refused = known_red_budget_refused;
+    outcome.known_red_passed_over_budget = known_red_passed_over_budget;
+    outcome.known_red_host_tool_unresolved_held = known_red_host_tool_unresolved;
+    outcome.known_red_host_effect_refused = known_red_host_effect_refused;
+    eprintln!(
+        "[floor-route-gap] {} enrolled identity(ies) held as route-gapped; {} unenrolled route \
+         gap(s) reported",
+        route_gap_held,
+        outcome.route_gap.len()
+    );
+    // THE ROUTE-GAP ROSTER IS A TWO-WAY JOIN, exactly as the expected-red roster is, and for
+    // exactly the same reason. Enrollment above only ever asks "is this gap enrolled". The
+    // reverse question — is every enrolled identity STILL gapping — has no consumer unless it
+    // is asked here, and without it a row survives its own repair: a route lands, the identity
+    // starts passing, and the roster keeps counting a debt that was paid.
+    //
+    // Both directions of staleness are one refusal because both have one remedy — delete the
+    // row — and separating them would ask the reader to learn two names for it. An identity
+    // that executed and did not gap, and an identity that did not execute at all (renamed,
+    // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    {
+        let mut stale: Vec<&String> = route_gap_roster
+            .iter()
+            .filter(|q| !route_gap_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            let ran = receipted.contains(identity.as_str());
+            outcome.stale_route_gap.push(if ran {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_route_gap but its route did NOT \
+                     gap — the route was supplied or the witness stopped reaching for the \
+                     effect. Delete the row; the debt is repaid."
+                )
+            } else {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_route_gap but did not execute \
+                     at all, so no gap could be observed. It was renamed, deleted, or declined. \
+                     Delete the row or restore the identity to the routed roster — an \
+                     enrollment nothing observes is a row that can never ask to be removed."
+                )
+            });
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -41349,18 +41990,21 @@ pub fn run_required_floor(
             + known_red_budget_refused
             + known_red_passed_over_budget
             + known_red_host_tool_unresolved
+            + known_red_host_effect_refused
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
-             enrolled identity must be exactly one of held, now-passing, budget-refused, \
-             passed-over-budget, or host-tool-unresolved",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} \
+             host_effect_refused={} roster={} — every enrolled identity must be exactly one of \
+             held, now-passing, budget-refused, passed-over-budget, host-tool-unresolved, or \
+             host-effect-refused",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
             known_red_host_tool_unresolved,
+            known_red_host_effect_refused,
             expected_red_roster.len()
         ));
     }
@@ -41803,6 +42447,12 @@ fn witness_eval_verdict_from_claim_outcome(
                 probed: std::rc::Rc::new(probed.iter().cloned().collect::<im::Vector<_>>()),
             }
         }
+        ClaimOutcome::HostEffectRefused { operation, ground } => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
+                operation: operation.clone(),
+                ground: hermetic_effect_ground_verdict(ground),
+            }
+        }
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -41824,6 +42474,8 @@ fn witness_eval_verdict_from_claim_outcome(
     }
 }
 
+pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
 pub fn run_required_regen(
     candidate_dir_rel: &str,
     receipt_rel: &str,
@@ -41836,4 +42488,17 @@ pub fn run_required_regen_fixed_point(
     pass1_digest: Option<String>,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
+}
+
+/// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
+/// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
+/// regen compared. A second emit here would be a second producer of the candidate itself.
+pub use required_regen_host::emitted_generated_sources;
+
+/// The authority's own declared module path, for consumers outside this module.
+///
+/// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
+/// answer to a question this one already answers, and the two would drift.
+pub fn extract_module_path_public(content: &str) -> Option<String> {
+    extract_module_path(content)
 }

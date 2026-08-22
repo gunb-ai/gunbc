@@ -102,8 +102,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
+  NodeOccurrenceId,
   is_empty_conj_root,
-  OccurrenceId,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
@@ -154,6 +154,7 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, for_all, is_empty, length, list_append, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
+  CorrectionNotModeled,
   Diagnostic,
   ExternalContractUnknown,
   None,
@@ -4207,7 +4208,17 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
+// THE PARAMETER IS THE NODE-LEVEL OCCURRENCE, NOT THE RAW ID. It is assigned straight into
+// Node.occurrence_id, which is a NodeOccurrenceId -- the coproduct of SyntheticOccurrence and
+// MintedOccurrence. A bare OccurrenceId is the PAYLOAD INSIDE one of those arms, never a member of
+// the coproduct itself, which is the whole modeling error in one line.
+// Declaring the raw OccurrenceId here meant a caller could satisfy the signature
+// with an unwrapped id and build a Node whose occurrence field held a value outside the coproduct;
+// every downstream match over the two variants then failed at run time with a non-exhaustive
+// pattern on OccurrenceId, which is what took the required floor red at #8833. Every real caller
+// was already passing a NodeOccurrenceId (SyntheticOccurrence at the fixtures, node.occurrence_id
+// in the body-lowering fold), so this declaration was the outlier, not them.
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4220,7 +4231,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceId) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
@@ -4234,7 +4245,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId)
         d: Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
           at: port_locus(port: ^dag_int_literal_lexeme_invalid),
-          correction: None
+          correction: Unavailable { reason: CorrectionNotModeled }
         }
       )
   }
@@ -4275,7 +4286,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
           d: Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
             at: node_locus(node: node),
-            correction: None
+            correction: Unavailable { reason: CorrectionNotModeled }
           }
         )
     }
@@ -4284,7 +4295,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
       d: Diagnostic {
         reason: ^dag_int_literal_lexeme_invalid,
         at: node_locus(node: node),
-        correction: None
+        correction: Unavailable { reason: CorrectionNotModeled }
       }
     )
   }
@@ -4298,7 +4309,7 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
-    correction: None
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 

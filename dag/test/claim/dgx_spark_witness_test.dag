@@ -58,7 +58,7 @@ import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv3 }
-import gunbc.dgx_spark_procurement {
+import gunbc.spark.dgx_procurement {
   dgx_spark_procurement_intent,
   dgx_spark_router_bindings,
   dgx_spark_reserved_identities,
@@ -643,8 +643,8 @@ test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuse
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
     DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: e, reported_rc: r }
-    } => e == 1 && r == 0
+      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt: rec, reported_rc: r }
+    } => rec.exit_status == 1 && r == 0
     DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }

@@ -45,6 +45,7 @@ pub enum EvalBuiltinArm {
     FreeCallMapInsert,
     FreeCallLookup,
     FreeCallMapKeys,
+    FreeCallSortedMapKeys,
     FreeCallMapValues,
     FreeCallMapContainsKey,
     FreeCallMapIsEmpty,
@@ -172,6 +173,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "map_insert" => Some(EvalBuiltinArm::FreeCallMapInsert),
         "lookup" => Some(EvalBuiltinArm::FreeCallLookup),
         "map_keys" => Some(EvalBuiltinArm::FreeCallMapKeys),
+        "sorted_map_keys" => Some(EvalBuiltinArm::FreeCallSortedMapKeys),
         "map_values" => Some(EvalBuiltinArm::FreeCallMapValues),
         "map_contains_key" => Some(EvalBuiltinArm::FreeCallMapContainsKey),
         "map_has" => Some(EvalBuiltinArm::FreeCallMapContainsKey),
@@ -301,6 +303,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.map_insert") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallMapInsert };
     ("free_call.lookup") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLookup };
     ("free_call.map_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallMapKeys };
+    ("free_call.sorted_map_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSortedMapKeys };
     ("free_call.map_values") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallMapValues };
     ("free_call.map_contains_key") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallMapContainsKey };
     ("free_call.map_is_empty") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallMapIsEmpty };
@@ -409,13 +412,12 @@ pub enum EvalAlgebraMethodArm {
     MethodCallMapGet,
     MethodCallGet,
     MethodCallMapKeys,
+    MethodCallSortedMapKeys,
     MethodCallMapValues,
     MethodCallMapContainsKey,
     MethodCallMapIsEmpty,
     MethodCallInsert,
     MethodCallMerge,
-    MethodCallKeys,
-    MethodCallValues,
     MethodCallReplace,
     MethodCallSplit,
     MethodCallTrim,
@@ -452,12 +454,12 @@ pub fn lookup_eval_algebra_method_inner(spelling: &str) -> Option<EvalAlgebraMet
         "take" => Some(EvalAlgebraMethodArm::MethodCallTake),
         "enumerate" => Some(EvalAlgebraMethodArm::MethodCallEnumerate),
         "contains" => Some(EvalAlgebraMethodArm::MethodCallContains),
-        "has" => Some(EvalAlgebraMethodArm::MethodCallContains),
         "join" => Some(EvalAlgebraMethodArm::MethodCallJoin),
         "chars" => Some(EvalAlgebraMethodArm::MethodCallChars),
         "map_get" => Some(EvalAlgebraMethodArm::MethodCallMapGet),
         "get" => Some(EvalAlgebraMethodArm::MethodCallGet),
         "map_keys" => Some(EvalAlgebraMethodArm::MethodCallMapKeys),
+        "sorted_map_keys" => Some(EvalAlgebraMethodArm::MethodCallSortedMapKeys),
         "map_values" => Some(EvalAlgebraMethodArm::MethodCallMapValues),
         "map_contains_key" => Some(EvalAlgebraMethodArm::MethodCallMapContainsKey),
         "map_has" => Some(EvalAlgebraMethodArm::MethodCallMapContainsKey),
@@ -465,8 +467,6 @@ pub fn lookup_eval_algebra_method_inner(spelling: &str) -> Option<EvalAlgebraMet
         "insert" => Some(EvalAlgebraMethodArm::MethodCallInsert),
         "map_insert" => Some(EvalAlgebraMethodArm::MethodCallInsert),
         "merge" => Some(EvalAlgebraMethodArm::MethodCallMerge),
-        "keys" => Some(EvalAlgebraMethodArm::MethodCallKeys),
-        "values" => Some(EvalAlgebraMethodArm::MethodCallValues),
         "replace" => Some(EvalAlgebraMethodArm::MethodCallReplace),
         "split" => Some(EvalAlgebraMethodArm::MethodCallSplit),
         "trim" => Some(EvalAlgebraMethodArm::MethodCallTrim),
@@ -505,13 +505,12 @@ macro_rules! eval_algebra_method_inner_arm {
     ("method_call.map_get") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapGet };
     ("method_call.get") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallGet };
     ("method_call.map_keys") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapKeys };
+    ("method_call.sorted_map_keys") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallSortedMapKeys };
     ("method_call.map_values") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapValues };
     ("method_call.map_contains_key") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapContainsKey };
     ("method_call.map_is_empty") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapIsEmpty };
     ("method_call.insert") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallInsert };
     ("method_call.merge") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMerge };
-    ("method_call.keys") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallKeys };
-    ("method_call.values") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallValues };
     ("method_call.replace") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallReplace };
     ("method_call.split") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallSplit };
     ("method_call.trim") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallTrim };

@@ -1,0 +1,463 @@
+module gunbc.spark.managed_access_apply
+
+import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.content_hash { ContentHash, serialize_content_hash }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { shell_quote }
+import extdeps.ssh { ssh_public_key_line }
+import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  FleetSshAttemptIdentity,
+  fleet_ssh_attempt_identity,
+  FleetSshCredentialBinding,
+  fleet_ssh_execution_context_of,
+  materialize_fleet_known_hosts_anchor,
+  known_hosts_materialization_receipt,
+  SshTarget,
+  portable_remote_word,
+  PortableRemoteWord,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+}
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark.credential_workflow {
+  SparkAdministratorCredentialRefused,
+  SparkAdministratorCredentialResolved,
+  resolve_spark_administrator_credential,
+  run_with_materialized_fleet_ssh_binding,
+}
+
+// APPLYING THE PRIVILEGED BOOTSTRAP EFFECTS, over the same bound-credential context the standing
+// derivation used. The Sparks have no BMC, so SSH is the only transport and the admin principal is
+// the same human bootstrap account the probe observed -- which is why this arrives here rather than
+// through a console path.
+//
+// THE CREDENTIAL NEVER REACHES ARGV. It is carried on STDIN and consumed by a single `read` in the
+// remote script, so it is absent from the local command line (visible in ps to every user on this
+// machine), absent from the remote command line, and absent from any receipt this module writes.
+// That is the reason ExecPortableWordsWithStdin exists rather than an extra portable word: a word is
+// argv by construction, and no amount of care at the call site changes that.
+//
+// EVERY EFFECT IS IDEMPOTENT AND CHECKS ITSELF. The scripts create only what is absent and then
+// re-read the resulting state, so the reported outcome is an observation of the host after the fact
+// rather than the exit code of the command that intended it. A second identical apply must select
+// nothing, and that is the property the convergence claim rests on.
+
+type SparkApplyOutcome
+  = ApplyConverged { detail: String }
+  | ApplyRefused { cause: String }
+
+// ONE STEP: the effect that was attempted, joined to what happened. The join is the point -- an
+// outcome floating free of the effect it belongs to is exactly what forced the receipt to be read
+// as prose, because reconstructing "which one refused" meant parsing the text back out.
+type SparkApplyStep {
+  effect_label: String
+  outcome: SparkApplyOutcome
+}
+
+// THE WHOLE APPLY, as a population rather than a paragraph. Head-plus-tail so an apply that attempted
+// nothing has no constructor: reporting an apply with zero steps would be indistinguishable from one
+// where everything converged, which is the shape a caller most wants to trust.
+type SparkApplyReport
+  = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
+  | ApplyNotAttempted { cause: String }
+
+fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
+  match report {
+    ApplyAttempted { first: f, more: m } => concat([f], m)
+    ApplyNotAttempted { cause: _ } => []
+  }
+}
+
+// THE VERDICT IS DERIVED FROM THE STEPS, never from the receipt text. This replaces
+// string_contains(body, "REFUSED"), which was the prose-decision defect this branch was built to
+// remove and which I reintroduced one layer up: a spelling change in any label silently turned a
+// refusal into a success, and nothing structural prevented it. A step whose outcome is ApplyRefused
+// is now unignorable because the fold matches the variant.
+//
+// ApplyNotAttempted is NOT converged and NOT a refused step -- it is the arm for "we never got as
+// far as attempting", which has a different remedy from "we attempted and were refused" and must not
+// be folded into either.
+fn spark_apply_converged(report: SparkApplyReport) -> Bool {
+  match report {
+    ApplyNotAttempted { cause: _ } => false
+    ApplyAttempted { first: f, more: m } =>
+      fold(concat([f], m), init: true, f: fn(acc, step) {
+        match step.outcome {
+          ApplyConverged { detail: _ } => acc
+          ApplyRefused { cause: _ } => false
+        }
+      })
+  }
+}
+
+fn spark_apply_first_refusal(report: SparkApplyReport) -> String? {
+  match report {
+    ApplyNotAttempted { cause: c } => Present { value: c }
+    ApplyAttempted { first: f, more: m } =>
+      fold(concat([f], m), init: none, f: fn(acc, step) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => match step.outcome {
+            ApplyConverged { detail: _ } => none
+            ApplyRefused { cause: c } => Present { value: join([step.effect_label, ": ", c], "") }
+          }
+        }
+      })
+  }
+}
+
+fn spark_apply_report_text(report: SparkApplyReport) -> String {
+  match report {
+    ApplyNotAttempted { cause: c } => join(["  not-attempted ", c, "\n"], "")
+    ApplyAttempted { first: f, more: m } =>
+      join(map(concat([f], m), s => join(["  ", s.effect_label, "  ", apply_outcome_label(outcome: s.outcome), "\n"], "")), "")
+  }
+}
+
+fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
+  match outcome {
+    ApplyConverged { detail: d } => join(["converged ", d], "")
+    ApplyRefused { cause: c } => join(["REFUSED ", c], "")
+  }
+}
+
+// One privileged leg. The remote command is four ordinary words -- `sudo -S sh -s` -- and needs no
+// shell metacharacter, quote or pipe, which matters because the portable-word wall refuses those and
+// was RIGHT to: an earlier revision here tried to send `sh -c "read -r PW; printf ... | sudo -S"`
+// and was refused at every effect. The refusal was not an obstacle to route around; it said the
+// invocation was wrong. `sudo -S` already consumes the credential from stdin's first line and leaves
+// the remainder for `sh -s` to read as its script, so the shape the wall admits is also the simpler
+// one. The credential still never reaches argv, on either side.
+// THE CREDENTIAL STAYS A `Secret` UNTIL THE BYTE THAT NEEDS IT, and it used to be a bare `String`
+// for the whole journey. `resolve_spark_administrator_credential` returns
+// `SparkAdministratorCredentialResolved { credential: Secret }`, and this lane immediately did
+// `administrator as String` at the call site and threaded `String` through two function boundaries
+// and four call sites. `Secret` is `nominal_opaque` -- its whole job is to be a type a lens can key
+// on -- so unwrapping it at the top of the lane deletes the only structural mark that distinguishes
+// a password from any other string. A "no secrets in argv" check cannot fire on a `String`, and this
+// is the one lane in the corpus where that check matters most (raised in review 54347).
+//
+// The unwrap now happens once, at the single expression that builds the stdin payload, which is the
+// only place the bytes are genuinely needed. Everything upstream carries the opaque type. That does
+// not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
+// writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
+// requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
+fn privileged_leg(
+  context: FleetSshExecutionContext,
+  host: String,
+  admin_principal: String,
+  admin_credential: Secret,
+  script: String,
+) -> SparkApplyOutcome {
+  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
+    Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
+    Present { value: words } => {
+      let r = ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(
+          context: context,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+            principal: admin_principal as NonEmptyStr,
+          },
+          words: words,
+        ),
+        stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
+      )
+      if r.success {
+        ApplyConverged { detail: trim(s: r.stdout) }
+      } else {
+        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+    }
+  }
+}
+
+// WHAT THE PROOF STEP PROVES, AND WHAT IT DOES NOT, learned from the refusal control: with a wrong
+// credential all four privileged effects refused while this step still reported converged, because
+// the account already existed from an earlier successful run. That is correct -- the step asks
+// whether the managed principal accepts a key-only authentication, and it did -- but it means the
+// step is NOT evidence that this run created anything. The report's fold is what catches the failure;
+// a reader taking the last green line as the verdict would have concluded the opposite.
+//
+// An UNPRIVILEGED leg as the newly created account, which is what proves the account is reachable
+// key-only. Deliberately a separate connection under a different principal rather than a check run
+// from inside the privileged session: a privileged session can read /etc/passwd and conclude the
+// account exists, which is not the same claim as the account accepting an authentication.
+fn managed_principal_leg(
+  context: FleetSshExecutionContext,
+  host: String,
+  managed_principal: String,
+  raw_words: List<String>,
+) -> SparkApplyOutcome {
+  match portable_remote_words(raws: raw_words) {
+    Absent => ApplyRefused { cause: "non-portable remote word" }
+    Present { value: words } => {
+      let r = ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(
+          context: context,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+            principal: managed_principal as NonEmptyStr,
+          },
+          words: words,
+        ),
+        stdin_payload: "",
+      )
+      if r.success {
+        ApplyConverged { detail: trim(s: r.stdout) }
+      } else {
+        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+    }
+  }
+}
+
+data spark_managed_login: String = "gunbc-automation"
+data spark_inference_login: String = "gunbc-inference"
+
+// The account creation script. `--system` is deliberately NOT used: a system account gets no home
+// directory by default and the authorized_keys population needs one. The shell is a real shell
+// because this account executes convergence commands; the INFERENCE identity below is the one that
+// gets nologin, and keeping them distinct is the whole point of modeling two principals.
+fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
+  let login = admitted.value as String
+  join([
+    "set -e\n",
+    "id -u ", login, " >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ", login, "\n",
+    "id -un ", login, "\n",
+  ], "")
+}
+
+// The no-login inference identity. nologin plus a locked password is what makes it a service
+// identity rather than an account someone can become.
+fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
+  let login = admitted.value as String
+  join([
+    "set -e\n",
+    "id -u ", login, " >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin ", login, "\n",
+    "passwd -l ", login, " >/dev/null 2>&1 || true\n",
+    "passwd -S ", login, " | awk '{ print $2 }' | grep -qx L\n",
+    "getent passwd ", login, " | cut -d: -f7\n",
+  ], "")
+}
+
+// WHY `|| true` SURVIVES ON THE LOCK AND WHY IT IS NO LONGER AN ABSORBING ARM. A review read
+// `passwd -l ... || true` as silencing a failure, and read correctly: on its own it is exactly the
+// absorbing fallback -- the line whose whole job is making this a service identity rather than an
+// account someone can become, tolerating its own failure. What it was papering over is that
+// `passwd -l` exit statuses are not portable across shadow-utils versions for an account that has no
+// password set, which is the normal state of a freshly created system account, so a bare `set -e`
+// would stop the line on the SUCCESS case on some hosts.
+//
+// The repair is not a better-tolerated command, it is asserting the STATE instead of trusting the
+// exit status: `passwd -S` reports the lock field, and `grep -qx L` fails the script under `set -e`
+// unless the account is actually locked. So the tolerated status now decides nothing -- an
+// unsuccessful lock stops the line at the next line, on every host, and a host whose `passwd -l`
+// returns nonzero while locking correctly continues. That is the §5 move: check the property you
+// care about rather than the command that was supposed to establish it.
+
+// 🟡 dissolve-on: typed posix-account HostEffect rows realized through host_effect_apply (extend
+// fleet_posix_accounts + membership_reconcile for authorized_keys); deletes create_*_script
+// builders. Wet-bootstrap only — not enrolled in fleet_converge_apply timer spine. DESIGN §5
+// gunbc#8073: no Scaffold arm for out-of-band actuation beside the modeled spine.
+// THE SHELL-INTENT FRONTIER, MOVED OUT OF A `String` ROW AND STATED HONESTLY.
+//
+// This was a `data ...: String` declaration whose entire content was commentary. DESIGN §4c is
+// explicit that an ordinary `String` declaration whose sole purpose is commentary is misplaced or
+// dead data -- prose is not forbidden, unclassified prose is -- so it belongs in an annotation the
+// compiler cannot read, which is exactly what it always was.
+//
+// WHAT IT SAYS, and the second half is the part a review correctly refused to accept as written
+// (review 54347): the privileged Spark bootstrap scripts are interim string bodies until typed
+// HostEffects land, and the credential reaches the far side through portable-word
+// ExecPortableWordsWithStdin, which host_effect_apply refuses for ShellCommand+FleetSsh by design
+// (run_shell_transport) -- that refusal is why the stdin path exists at all rather than being a
+// convenience.
+//
+// NO OPERATOR VERDICT COVERS THESE SCRIPT BODIES, and the previous wording admitted them anyway by
+// naming a future in which they dissolve. Per the 2026-08-10 ruling a dissolution trigger is a
+// lifecycle fact and not permission, and an author cannot approve their own exception, so this is
+// recorded as OUTSTANDING DEBT rather than as an admitted scaffold. The operator's spark rulings
+// covered the workflow-step dissolve-on blocks and the privilege bootstrap's existence; neither is a
+// verdict on rendering remote script bodies as strings. It is named here so a reader finds the gap
+// rather than a claim of approval, and so the ask can be made explicitly rather than assumed.
+
+// The authorized-key install, by exact-line presence so a repeat appends nothing.
+fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
+  let login = admitted.value as String
+  let quoted_key_line = shell_quote(arg: key_line)
+  join([
+    "set -e\n",
+    "H=$(getent passwd ", login, " | cut -d: -f6)\n",
+    "install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\"\n",
+    "touch \"$H/.ssh/authorized_keys\"\n",
+    "grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\"\n",
+    "chown ", login, ":", login, " \"$H/.ssh/authorized_keys\"\n",
+    "chmod 600 \"$H/.ssh/authorized_keys\"\n",
+    "grep -c . \"$H/.ssh/authorized_keys\"\n",
+  ], "")
+}
+
+// THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one
+// argument form, one account. `loginctl enable-linger <login>` is what a user unit needs to survive
+// logout and reboot; nothing else is granted, so this account cannot use sudo for anything else.
+// THE NARROW-GRANT LEG WAS DELETED HERE, and the reason is recorded because a reader who wants to
+// re-add it should meet the argument first.
+//
+// It wrote the enable-linger sudoers drop-in with an ordering that cannot work:
+//
+//     printf '%s\n' '<grant line>' > /etc/sudoers.d/gunbc-<login>   <- the file is LIVE at this line
+//     chmod 440 /etc/sudoers.d/gunbc-<login>
+//     visudo -c -f /etc/sudoers.d/gunbc-<login>                      <- the verdict arrives too late
+//
+// A validator that runs after the state it validates is not a validator, it is a log line. And the
+// blast radius is what makes that serious rather than untidy: a malformed drop-in does not fail its
+// own file, sudo refuses to parse the ENTIRE sudoers set, so the host loses every privileged
+// operation -- including the one that would repair it. That is unrecoverable without out-of-band
+// access.
+//
+// It was also a SECOND AUTHORITY for a grant the corpus already models typed. EnableLingerForOwnAccount
+// is a member of gunbc.spark.managed_access_bootstrap spark_managed_grant_population, whose sudoers
+// command and argv are derived by spark_managed_grant_sudoers_command and spark_managed_grant_argv;
+// gunbc.spark.managed_grant_install installs from that population by staging, validating, and only
+// then installing -- and gunbc#8377 gave those phases distinct TYPES, so holding them the wrong way
+// round is a type error. This leg was the untyped version of a mistake that is already
+// unrepresentable on the modeled path.
+//
+// Operator-lane approval was given for this deletion specifically, on those grounds, and it needed no
+// decision about the module's other legs: a fork in the privileged path is wrong whether or not
+// anything consumes it.
+
+// WAS a local join re-spelling `ssh-ed25519 <material> <comment>` -- a nickname for the line
+// construction extdeps.ssh already owns, which additionally hardcoded the algorithm token that same
+// module serializes (review 51659). gunbc.fleet_host_key_enrollment carried the identical fork.
+fn fleet_authorized_key_line() -> String {
+  ssh_public_key_line(k: fleet_automation_ssh_key)
+}
+
+data spark_apply_receipt_path: String = "target/spark-managed-access-apply-receipt.txt"
+
+// THE PROCESS EXIT REPORTS THE APPLY, not the receipt write. An earlier revision returned
+// ExitSuccess whenever the receipt file was written, which is a fail-open of the worst kind because
+// it is invisible from the outside: it HAPPENED in this session, when the first apply attempt was
+// refused at all five effects by the portable-word wall and the process still exited 0. A caller
+// scheduling this -- a timer, a CI step, a convergence loop -- would have recorded a successful
+// apply against a host where nothing was applied.
+//
+// THE SUBSTRING TEST IS GONE, and its dissolution condition is discharged rather than carried: the
+// apply now builds a SparkApplyReport -- steps joining each effect to its outcome -- and the exit
+// folds over that population. A spelling change in any label can no longer turn a refusal into a
+// success, because the fold matches the variant and never reads the text.
+//
+// THE APPLY, ordered so that each step's evidence is the next step's precondition. The key-only
+// authentication proof runs LAST and as the managed principal, so a receipt reporting it converged
+// is a receipt that a fresh connection under the new account succeeded -- not that a privileged
+// session believed the account existed.
+fn spark_managed_access_apply_with_resolved_credentials(
+  attempt_raw: String,
+  host: String,
+  admin_credential: Secret,
+  credential_binding: FleetSshCredentialBinding,
+) -> SparkApplyReport {
+  match fleet_ssh_attempt_identity(raw: attempt_raw) {
+    Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
+    Present { value: attempt } => {
+      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
+        Absent => ApplyNotAttempted {
+          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+        }
+        Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
+          Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }
+          Present { value: managed_word } => match portable_remote_word(raw: spark_inference_login) {
+            Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
+            Present { value: inference_word } => {
+          let admin_principal = spark_operator_bootstrap_login
+          let create = privileged_leg(
+            context: context, host: host, admin_principal: admin_principal,
+            admin_credential: admin_credential,
+            script: create_managed_account_script(admitted: managed_word),
+          )
+          let key = privileged_leg(
+            context: context, host: host, admin_principal: admin_principal,
+            admin_credential: admin_credential,
+            script: install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
+          )
+          let inference = privileged_leg(
+            context: context, host: host, admin_principal: admin_principal,
+            admin_credential: admin_credential,
+            script: create_inference_identity_script(admitted: inference_word),
+          )
+          let proof = managed_principal_leg(
+            context: context, host: host, managed_principal: spark_managed_login, raw_words: ["id", "-un"],
+          )
+          ApplyAttempted {
+            first: SparkApplyStep { effect_label: "create-managed-account", outcome: create },
+            more: [
+              SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: key },
+              SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
+              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
+            ],
+          }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Administrator password and fleet SSH private key material resolve inside this boundary via
+// Secret Manager — never as argv parameters on gunbc run.
+func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let token_source = GcloudPrintToken
+  match resolve_spark_administrator_credential(token_source: token_source) {
+    SparkAdministratorCredentialRefused { reason: reason } =>
+      exit_failure(reason: reason as String)
+    SparkAdministratorCredentialResolved { credential: administrator } =>
+      run_with_materialized_fleet_ssh_binding(
+        attempt_raw: attempt_raw,
+        token_source: token_source,
+        body: fn(binding) {
+          let report = spark_managed_access_apply_with_resolved_credentials(
+            attempt_raw: attempt_raw,
+            host: host,
+            admin_credential: administrator,
+            credential_binding: binding,
+          )
+          let body = join([
+            "spark managed-access apply host=", host, " at=", probed_at_word(reading: now) as String,
+            " credential_identity=", serialize_content_hash(hash: binding.credential_identity) as String, "\n",
+            spark_apply_report_text(report: report),
+          ], "")
+          let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
+          if !w.success {
+            exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
+          } else {
+            if spark_apply_converged(report: report) {
+              ExitSuccess
+            } else {
+              match spark_apply_first_refusal(report: report) {
+                Present { value: why } =>
+                  exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
+                Absent =>
+                  exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
+              }
+            }
+          }
+        },
+      )
+  }
+}

@@ -3,6 +3,9 @@ module gunbc.stage0_rust_lifecycle_totality
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
+  EmitPopulationEvidence,
+  EmitPopulationUnobserved,
   GitObservationRefused,
   RustManifestObserved,
   RustManifestParseRefused,
@@ -11,6 +14,7 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
+  witness_generated_stage0_fixture_paths,
   disposition_authority_rows,
   lifecycle_row_well_formed,
   list_concat_unique,
@@ -92,9 +96,45 @@ fn well_formed_maintenance_disposition_paths() -> List<String> {
   )
 }
 
-fn derived_file_grain_classified_repo_paths() -> List<String> {
+// Both the generated population and the classified universe are now functions of the OBSERVED
+// tracked list rather than of a stored roster, so they are threaded from the receipt's own
+// subject. Before this, `generated_paths` was the same 100+ hand rows on every observation --
+// the receipt reported a fact about a list someone maintained, under the name of a fact about
+// the tree it had just observed.
+// THE EMIT POPULATION IS AN OBSERVED FACT THIS RECEIPT REQUIRES, so an unobserved one refuses
+// through the SAME arm as a failed git read or a failed manifest parse. That is not a state-space
+// conflation slipped in: `LifecycleTotalityObservationRefused` is already this module's single
+// answer for "the observation did not produce the facts this receipt needs" -- read refusals,
+// parse refusals and git refusals all land there (see the fold below). An emitted-population that
+// could not be read is the same class, and giving it a private variant would fork one question
+// across three consumer modules for no gain in what any of them can do about it.
+//
+// What it must NOT do is proceed on an empty population, which would report every tracked stage0
+// path as unclassified under the name of a measurement. Hence the guard before the derivation
+// rather than a default inside it.
+fn emit_population_declared(evidence: EmitPopulationEvidence) -> Bool {
+  match evidence {
+    EmitPopulationConfirmed { emitted_stage0_repo_paths: _ } => true
+    EmitPopulationUnobserved { detail: _ } => false
+  }
+}
+
+fn declared_emit_population_or_empty(evidence: EmitPopulationEvidence) -> List<String> {
+  match evidence {
+    EmitPopulationConfirmed { emitted_stage0_repo_paths: paths } => paths
+    EmitPopulationUnobserved { detail: _ } => []
+  }
+}
+
+fn derived_file_grain_classified_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
   list_concat_unique(
-    acc: derived_generated_stage0_repo_paths(),
+    acc: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+      tracked_paths: tracked_paths
+    ),
     items: well_formed_maintenance_disposition_paths()
   )
 }
@@ -157,15 +197,27 @@ fn lifecycle_totality_receipt(
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
       manifest_content_identity: _,
-      prior_tracked_rust_repo_paths: _
+      prior_tracked_rust_repo_paths: _,
+      emit_population_evidence: emit_population_evidence
     } =>
       if revision == "" {
         LifecycleTotalityObservationRefused
+      } else if !emit_population_declared(evidence: emit_population_evidence) {
+        LifecycleTotalityObservationRefused
       } else {
-        let generated_paths = derived_generated_stage0_repo_paths()
+        let emitted_stage0_repo_paths = declared_emit_population_or_empty(
+          evidence: emit_population_evidence
+        )
+        let generated_paths = derived_generated_stage0_repo_paths(
+          emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+          tracked_paths: tracked_paths
+        )
         let raw_disposition_paths = raw_disposition_authority_paths()
         let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
-        let classified_paths = derived_file_grain_classified_repo_paths()
+        let classified_paths = derived_file_grain_classified_repo_paths(
+          emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+          tracked_paths: tracked_paths
+        )
         LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
           generated_paths: generated_paths,
@@ -256,14 +308,29 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
   }
 }
 
+// The fixture cannot derive its tracked list from the classified population any more: the
+// generated half is now a FUNCTION of the tracked list, so that would be circular -- the
+// observation would contain only what it already named and could never exercise the filter.
+// It is built the other way round, from the authored dispositions plus the scaffold's
+// synthetic generated fixture paths, which the derivation then re-finds as generated.
+fn lifecycle_totality_witness_classified_paths() -> List<String> {
+  list_concat_unique(
+    acc: witness_generated_stage0_fixture_paths,
+    items: well_formed_maintenance_disposition_paths()
+  )
+}
+
 fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustManifestObserved {
-  let classified = derived_file_grain_classified_repo_paths()
+  let classified = lifecycle_totality_witness_classified_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: extra_paths),
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 

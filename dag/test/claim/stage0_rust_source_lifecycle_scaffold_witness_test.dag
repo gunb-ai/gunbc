@@ -7,6 +7,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   DerivedHandMaintainedGrew,
   DerivedNewlyUnclassified,
   DerivedUnclassifiedTracked,
+  EmitPopulationUnobservedEvidence,
   HostGitObservationRefused,
   HostManifestParseRefused,
   HostManifestReadRefused,
@@ -18,7 +19,6 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   behavioral_oracle_carrier_ref,
   bootstrap_stage0_crate_layout_generated_repo_path,
   classified_residue_disjoint_holds,
-  derived_generated_hand_disjoint_holds,
   derived_generated_stage0_repo_paths,
   derived_hand_maintained_disposition_repo_paths,
   derived_hand_maintained_stage0_repo_paths,
@@ -45,17 +45,24 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note,
+  unclassified_axis_rung_note,
+  unclassified_axis_rung_restoration,
   v1_interpreter_dispatch_generated_repo_path,
   witness_duplicate_tracked_observation,
   witness_honest_minimal_observation_ok,
   witness_hand_maintained_growth_observation,
-  witness_observation_covering_lifecycle_plus_extra
+  witness_observation_covering_lifecycle_plus_extra,
+  witness_standing_unclassified_observation
 }
 import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
+  EmitPopulationEvidence,
+  EmitPopulationUnobserved,
   GitObservationRefused,
   RustManifestParseRefused,
   RustManifestReadRefused,
   RustManifestObserved,
+  RustSourceHostObservation,
   stage0_cargo_manifest_parser_seed_scaffold,
   stage0_cargo_manifest_projection_seed_scaffold,
   stage0_rust_observation_seed_growth_justification
@@ -63,8 +70,9 @@ import gunbc.stage0_rust_host_observation {
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
 import v2.std.algebra { any, length }
+import v2.std.collection { List }
 import v2.std.text { String }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
 
@@ -131,10 +139,6 @@ test fn scaffold_join_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
 }
 
-test fn w_scaffold_generated_hand_disjoint_holds() -> Bool {
-  derived_generated_hand_disjoint_holds()
-}
-
 test fn scaffold_classified_residue_disjoint_holds() -> Bool {
   classified_residue_disjoint_holds()
 }
@@ -160,6 +164,67 @@ test fn scaffold_authority_refs_populated_holds() -> Bool {
   behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
 }
 
+// #8674'S DECLARED RUNG DROP IS DISSOLVED HERE, AND THE BLOCK THAT DECLARED IT IS DELETED RATHER
+// THAN AMENDED. It read, in part: "RESTORATION TRIGGER the observation carrier gains the
+// emitted-path population (the same set required_regen_host generated_basenames_from_emit already
+// computes), at which point the subject returns to a direct child and this block deletes." That
+// trigger has fired. `v1.compiler.emit_rust` now declares its produced population at rest
+// (`src/v1/stage0/src/emitted_population.rs`), `gunbc.stage0_rust_host_observation` reads it at
+// the revision, and `derived_generated_stage0_repo_paths` selects the tracked paths that
+// declaration names instead of taking the complement of the crate-layout claim.
+//
+// So the two controls below are back on a DIRECT CHILD of `src/v1/stage0/src/`, which is the
+// subject the drop had to give up: under the complement a direct child nobody claimed was
+// "generated" by definition, and the refusal could never fire on it again. Under the declaration
+// a path the emitter did not produce is unclassified wherever it sits.
+// THE NEW REFUSAL GETS ITS OWN DISCRIMINATING RED, because a refusal arm with no executing
+// evidence is the specification-without-execution trap DESIGN 5 names, and this one guards the
+// exact deficit #8674's rung drop was declared over. If the emitted-population manifest cannot be
+// read, this module cannot separate "the emitter produces this" from "nobody registered this",
+// and the honest answer is a typed, located, countable line-stop -- NOT a quiet fall back to the
+// crate-layout complement, which would reinstate the deficit while reporting a verdict and zero
+// its own firing rate by construction.
+//
+// The discriminating pair is the same observation differing in ONE field: with the evidence
+// unobserved it refuses on that cause; with the identical tracked list and a confirmed population
+// naming it, it does not. So the control fails if the arm is deleted AND if the arm is widened to
+// fire on anything else.
+data emit_evidence_probe_tracked: List<String> = ["src/v1/stage0/src/cli_run.rs"]
+
+fn emit_evidence_probe_observation(evidence: EmitPopulationEvidence) -> RustSourceHostObservation {
+  RustManifestObserved {
+    repository_revision: "deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: emit_evidence_probe_tracked,
+    prior_tracked_rust_repo_paths: emit_evidence_probe_tracked,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: evidence
+  }
+}
+
+test fn scaffold_unobserved_emit_population_refuses_rather_than_falling_back() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: emit_evidence_probe_observation(
+      evidence: EmitPopulationUnobserved { detail: "probe: manifest unreadable at revision" }
+    )
+  ) {
+    ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } } =>
+      detail == "probe: manifest unreadable at revision"
+    _ => false
+  }
+}
+
+test fn scaffold_confirmed_emit_population_does_not_take_the_unobserved_arm() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: emit_evidence_probe_observation(
+      evidence: EmitPopulationConfirmed { emitted_stage0_repo_paths: emit_evidence_probe_tracked }
+    )
+  ) {
+    ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: _ } } => false
+    _ => true
+  }
+}
+
 test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool {
   match rust_source_manifest_state_verdict(
     observation: RustManifestObserved {
@@ -174,7 +239,10 @@ test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool 
         "src/v1/stage0/src/cli_run.rs",
         "src/v1/stage0/src/main.rs"
       ],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
@@ -189,7 +257,7 @@ test fn scaffold_observed_ratchet_red_control_hand_maintained_growth_reds() -> B
   }
 }
 
-test fn scaffold_observed_derives_unclassified_from_path_evidence_red_control() -> Bool {
+test fn scaffold_observed_derives_newly_unclassified_from_path_evidence_red_control() -> Bool {
   match rust_source_manifest_state_verdict(
     observation: witness_observation_covering_lifecycle_plus_extra(
       extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
@@ -207,7 +275,10 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
       manifest_content_identity: Fnv1a64Structural { digest: "beef000000000000" },
       tracked_rust_repo_paths: [],
       prior_tracked_rust_repo_paths: [],
-      cargo_bin_repo_paths: []
+      cargo_bin_repo_paths: [],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     ManifestStateScaffoldRefused { cause: _ } => true
@@ -229,7 +300,10 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
       manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: _ } } => true
@@ -244,7 +318,10 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
       manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"]
+      cargo_bin_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     ManifestStateScaffoldRefused {
@@ -404,8 +481,17 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
     && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
+// ORDER UPDATED, NOT WEAKENED. This is a list equality, so it asserts the derived ORDER as well
+// as the membership, and the order is a projection of the registration families in
+// v2.compiler.self_host.stage0_crate_layout: the overlap is a filter over
+// derived_hand_maintained_stage0_repo_paths, which follows hand_maintained_stage0_filenames.
+// v1_interpreter_dispatch_generated moved from the scaffold family to the wet-actuator family
+// where its actual producer lives, which puts it after bootstrap rather than before it. Membership
+// and count are unchanged. The equality is kept rather than relaxed to a set comparison because
+// the ordering IS derived and deterministic, so asserting it catches strictly more; a set
+// comparison here would be a quieter assertion bought with no fact.
 test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [v1_interpreter_dispatch_generated_repo_path, bootstrap_stage0_crate_layout_generated_repo_path]
+  generated_artifact_layout_overlap_repo_paths() == [bootstrap_stage0_crate_layout_generated_repo_path, v1_interpreter_dispatch_generated_repo_path]
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
@@ -425,4 +511,121 @@ test fn scaffold_disposition_population_excludes_exactly_the_registry_overlap_pa
   let layout_count = length(xs: derived_hand_maintained_stage0_repo_paths())
   let overlap_count = length(xs: generated_artifact_layout_overlap_repo_paths())
   disposition_count == layout_count - overlap_count
+}
+
+// The discriminating RED for DerivedUnclassifiedTracked, and its arm-separating control.
+//
+// These two use the SAME planted path and differ only in whether it is also in
+// prior_tracked_rust_repo_paths. That is the entire difference between the two unclassified arms,
+// so a single fold that collapsed them -- or a reordering that let the newly arm swallow the
+// standing one -- turns exactly one of these red. Before this pair, no executing input reached
+// DerivedUnclassifiedTracked at all: every constructor added its extra path to tracked alone, and
+// count_newly_unclassified_tracked is checked first.
+// The planted path is deliberately NOT a direct child of src/v1/stage0/src/.
+//
+// #8674 derives the generated population as the COMPLEMENT of the claiming rosters over direct
+// children of the stage0 src root (derived_generated_stage0_repo_paths -> stage0_src_direct_child_rust_path
+// && !claimed). So a planted direct child is classified GENERATED by construction, and can never
+// reach either unclassified arm -- which is what turned this pair red on the #8674 merge. Planting
+// under stage0/tests keeps the path genuinely unclaimed by every roster, which is the condition
+// these two witnesses exist to discriminate. It is also a real family: the 026a709a71 live
+// measurement put 14 of its 137 unclassified paths under src/v1/stage0/tests.
+data standing_unclassified_planted_path: String = "src/v1/stage0/tests/planted_standing_unclassified.rs"
+
+test fn scaffold_standing_unclassified_reds_on_derived_unclassified_tracked() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: witness_standing_unclassified_observation(
+      planted_path: standing_unclassified_planted_path
+    )
+  ) {
+    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count == 1
+    _ => false
+  }
+}
+
+test fn scaffold_same_planted_path_when_new_reaches_the_newly_arm_instead() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: witness_observation_covering_lifecycle_plus_extra(
+      extra_path: standing_unclassified_planted_path
+    )
+  ) {
+    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: count } } => count == 1
+    _ => false
+  }
+}
+
+// The rung declaration is a machine-consumed fact about what this carrier does and does not
+// guarantee, so it is asserted rather than left as prose someone can quietly soften. The three
+// figures below are the executed measurement the row rests on; if the row is edited to claim a
+// climb it did not make, this goes red.
+test fn scaffold_unclassified_axis_rung_is_declared_with_measurement_and_trigger() -> Bool {
+  string_contains(s: unclassified_axis_rung_note, pattern: "RUNG DROP, DECLARED")
+    && string_contains(s: unclassified_axis_rung_note, pattern: "DECLARED RUNG: mitigatable")
+    && string_contains(s: unclassified_axis_rung_note, pattern: "UNCLASSIFIED=137")
+    && string_contains(s: unclassified_axis_rung_note, pattern: "026a709a71636d60df325f9183b78febff22901d")
+    && string_contains(s: unclassified_axis_rung_note, pattern: "NEXT-RUNG TRIGGER")
+    && string_contains(s: unclassified_axis_rung_note, pattern: "executing consumer")
+    && !(dissolution_description(condition: unclassified_axis_rung_restoration) == "")
+}
+
+// THESE THREE PROBES ASSERTED THE COMPLEMENT DERIVATION AND ARE REWRITTEN, NOT DELETED. They
+// tested #8674's rule -- "a direct child of the stage0 root that no authority claims IS
+// generated" -- which was a property of PATH SHAPE. The generated population is now what the
+// emitter DECLARED it produced, so the same three questions get asked of the declaration: does it
+// intersect the observed tree, does it respond to the declaration rather than to path shape, and
+// does a direct child the emitter did not declare stay unclassified. The last is the one the rung
+// drop had to give up and is the reason this PR exists.
+data w_generated_derivation_probe_tracked: List<String> = [
+  "src/v1/stage0/src/cli_run.rs",
+  "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs",
+  "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
+  "src/v1/stage0/src/w_probe_emitted_module.rs",
+  "src/v1/stage0/src/w_probe_unregistered_hand_file.rs",
+  "src/v1/stage0/src/module_path_index/index.rs",
+  "src/v1/stage0/tests/w_probe_harness.rs"
+]
+
+// The declaration names one path IN the tree and one path that is NOT, so the intersection is
+// observable rather than incidental.
+data w_generated_derivation_probe_declared: List<String> = [
+  "src/v1/stage0/src/w_probe_emitted_module.rs",
+  "src/v1/stage0/src/w_probe_declared_but_absent_from_tree.rs"
+]
+
+test fn scaffold_generated_population_is_the_declaration_intersected_with_the_observed_tree() -> Bool {
+  derived_generated_stage0_repo_paths(
+    emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
+    tracked_paths: w_generated_derivation_probe_tracked
+  ) == ["src/v1/stage0/src/w_probe_emitted_module.rs"]
+}
+
+test fn scaffold_generated_population_responds_to_the_declaration_not_to_path_shape() -> Bool {
+  length(
+    xs: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: [],
+      tracked_paths: w_generated_derivation_probe_tracked
+    )
+  ) == 0
+    && length(
+      xs: derived_generated_stage0_repo_paths(
+        emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
+        tracked_paths: w_generated_derivation_probe_tracked
+      )
+    ) == 1
+}
+
+// THE DISCRIMINATING CASE THE RUNG DROP GAVE UP. `w_probe_unregistered_hand_file.rs` is a direct
+// child of the stage0 source root that no authority claims. Under the complement it was
+// "generated" by definition and could never surface; under the declaration the emitter does not
+// name it, so it is not generated -- which is what lets DerivedNewlyUnclassified fire on a direct
+// child again. The probe is the same tracked list as above, so a regression that reinstated the
+// complement would turn this red while leaving the two tests above green.
+test fn scaffold_unregistered_direct_child_is_not_generated_under_the_declaration() -> Bool {
+  !path_in_list(
+    path: "src/v1/stage0/src/w_probe_unregistered_hand_file.rs",
+    paths: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
+      tracked_paths: w_generated_derivation_probe_tracked
+    )
+  )
 }

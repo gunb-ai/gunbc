@@ -1,0 +1,36 @@
+module test.claim.probed_at_word_witness_test
+
+import std.types { String, NonEmptyStr }
+import gunbc.clock_read { probed_at_word }
+
+// A PERMANENT regression control for the leaked-Optional rendering, not a check that a match
+// statement has two arms. The defect these assert against was live in production receipts on
+// 2026-08-20: fourteen sites cast `NonEmptyStr?` to String directly, which renders the OPTIONAL,
+// so srv5 and srv6 receipts carried `probed_at=Present { value: 2026-08-20T21:11:38Z }`. The
+// discriminating half is the wrapper-name search: an assertion that the present arm merely CONTAINS
+// the instant would pass on the leaked spelling too, because the leaked spelling contains it.
+//
+// RUNG: structurally guaranteed on the source -> .dag-acceptance path, and NOT by these witnesses.
+// They guard what the rendering authority DOES; they never guarded that the fourteen call sites
+// route through it, and they still do not -- reverting one of those sites leaves both of these
+// green. What changed is that the reverted spelling no longer compiles: the declared next-rung
+// trigger below landed as `OptionalCastNotEliminated`, a typed located refusal fired from the
+// ExprCast arm of inference (src/v1/04_infer.dag `optional_cast_diags`), so a cast off an optional
+// source is refused for every target rather than detected after the fact. These two witnesses stay
+// enrolled as the permanent controls on the rendering authority's own behavior (DESIGN section 4b(4):
+// a climb deletes the redundant production machinery, never the evidence); the refusal itself is
+// executed by `test.claim.optional_cast_wall_witness_test`, whose RED arm is the reverted call site.
+// WHAT IS STILL WRITABLE, so this note is not inflation: an optional reaching a text position by a
+// route other than a cast -- string interpolation, or an argument at a String-typed parameter -- is
+// a different site with a different judgment and is not covered here.
+
+test fn w_probed_at_word_renders_the_instant_and_not_its_wrapper() -> Bool {
+  let rendered = probed_at_word(reading: Present { value: "2026-08-20T21:11:38Z" as NonEmptyStr }) as String
+  rendered == "2026-08-20T21:11:38Z"
+    && string_contains(s: rendered, pattern: "Present") == false
+}
+
+test fn w_probed_at_word_absent_reading_is_a_loud_word() -> Bool {
+  let rendered = probed_at_word(reading: none) as String
+  rendered == "clock-unreadable"
+}

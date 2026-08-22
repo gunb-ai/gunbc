@@ -112,15 +112,30 @@ pub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
 // RESIDUAL GAP vs the authority, stated rather than implied: the authority folds
 // `locally_well_formed` over the whole tree (`connective_edges_conform` /
 // `behavior_edges_conform` per node). This carries the strongest surviving SHIM behavior —
-// a root-level Conj/Disj non-emptiness check — not that fold. It is strictly stronger than
+// a root-level non-emptiness check — not that fold. It is strictly stronger than
 // either copy it replaces and strictly weaker than the authority.
 // dissolve-on: emitted v2 std closure compiles; then the authority's fold is used directly.
+//
+// THE CATCH-ALL IS GONE, AND IT WAS NOT COSMETIC. `_ => true` answered well-formed for
+// `Cardinality` and `Instantiation`, and the authority `connective_edges_conform` requires
+// `count(children) >= 1` for BOTH — so an empty node of either form passed a check the
+// authority fails. That is the same §5 fail-open this shim's own header says it exists to
+// prevent, one connective away from the case review 44739 caught, and a wildcard is exactly
+// what hid it: the two forms were never named here, so no reader could see they were
+// unanswered. Every form is now named, which also means a new `Connective` member in
+// `v2.std.node` stops this compile instead of being silently admitted as well-formed.
+//
+// `Arrow` remains `true` and that is a DECLARED residue, not an answer: the authority routes
+// it to `arrow_body_edges_conform`, which this bridge does not carry, and inventing a weaker
+// arrow rule here would be a second authority for the same fact. It is named rather than
+// absorbed into a wildcard so the gap is countable.
 pub fn well_formed(n: Rc<Node>) -> bool {
     match n.kind.as_ref() {
         NodeKind::TypeNode { connective } => match connective.as_ref() {
             Connective::Atom { .. } => true,
             Connective::Conj | Connective::Disj => !n.children.is_empty(),
-            _ => true,
+            Connective::Cardinality | Connective::Instantiation => !n.children.is_empty(),
+            Connective::Arrow => true,
         },
         NodeKind::ComputationNode { .. } => true,
     }

@@ -25,7 +25,8 @@ import extdeps.github.actions {
   Step, RunStep, UsesStep,
   checkout_action, setup_rust_action, cache_action,
   google_auth_action,
-  upload_artifact_action, download_artifact_action
+  upload_artifact_action, download_artifact_action,
+  max_job_timeout_minutes,
 }
 import gunbc.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
@@ -49,6 +50,20 @@ import gunbc.ci_spec {
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import std.types { List, String, Int }
 
+import gunbc.roadmap_execution_contract {
+  CargoCapability,
+  RustcCapability,
+  RustfmtCapability,
+  RustupCapability,
+}
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  StepCapabilityRole,
+  capability_neutral,
+  provides_only,
+  consumes_only,
+}
+
 fn ci_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout" },
@@ -64,58 +79,158 @@ fn ci_checkout_step() -> Step {
   }
 }
 
+// THE PRELUDE'S ORDERING CONSTRAINTS, WRITTEN DOWN INSTEAD OF ASSERTED IN AN ERROR STRING.
+//
+// Two of these steps consume a capability an earlier one installs, and until now that fact lived
+// only inside a diagnostic: the native-cache step's own script says "rustc -V failed AFTER
+// setup-rust-toolchain". The dependency was real, load-bearing, and invisible to everything except
+// a human reading the error text it would print if it broke.
+//
+// One list, two projections. ci_prelude_steps_with_checkout returns the Steps GitHub sees;
+// ci_prelude_annotations_with_checkout returns the capability roles the closure reads. Both derive
+// from these rows, so they cannot drift -- a second hand-maintained roles list beside the step list
+// would be the fork the closure exists to close, reintroduced as its own fix.
+type FleetPreludeBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn ci_prelude_bound_steps_with_checkout(
+  checkout: Step,
+  exact_head_preflight: List<Step>,
+) -> List<FleetPreludeBoundStep> {
+  concat(
+    [
+      FleetPreludeBoundStep {
+        step: checkout,
+        role: capability_neutral,
+        step_name: "Checkout",
+      },
+    ],
+    concat(
+      list_map(
+        xs: exact_head_preflight,
+        f: fn(st) {
+          FleetPreludeBoundStep {
+            step: st,
+            role: capability_neutral,
+            step_name: "Exact-head preflight",
+          }
+        },
+      ),
+      [
+        FleetPreludeBoundStep {
+          step: ci_isolate_toolchain_step(),
+          role: capability_neutral,
+          step_name: "Isolate toolchain dirs",
+        },
+        FleetPreludeBoundStep {
+          step: ci_setup_rust_step(),
+          role: provides_only(
+            capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
+          ),
+          step_name: "Setup Rust",
+        },
+        FleetPreludeBoundStep {
+          step: ci_native_cache_root_step(),
+          role: consumes_only(capabilities: [RustcCapability]),
+          step_name: "Derive native-cache root",
+        },
+        FleetPreludeBoundStep {
+          step: ci_pin_rustup_default_step(),
+          role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+          step_name: "Pin rustup default",
+        },
+        FleetPreludeBoundStep {
+          step: ci_cache_cargo_step(),
+          role: capability_neutral,
+          step_name: "Cache Cargo",
+        },
+      ],
+    ),
+  )
+}
+
+fn ci_prelude_annotations_with_checkout(
+  checkout: Step,
+  exact_head_preflight: List<Step>,
+) -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: ci_prelude_bound_steps_with_checkout(
+      checkout: checkout,
+      exact_head_preflight: exact_head_preflight,
+    ),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn ci_prelude_annotations() -> List<CapabilityAnnotatedStep> {
+  ci_prelude_annotations_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
+}
+
+fn ci_setup_rust_step() -> Step {
+  UsesStep {
+    name: Present { value: "Setup Rust" },
+    id: none,
+    uses: setup_rust_action,
+    with: Present {
+      value: [
+        kv(key: "components", value: yaml_string(s: "rustfmt")),
+        kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: ""))
+      ]
+    },
+    env: Present {
+      value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
+    },
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_pin_rustup_default_step() -> Step {
+  RunStep {
+    name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+    id: none,
+    run: ci_pin_rustup_default_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_cache_cargo_step() -> Step {
+  UsesStep {
+    name: Present { value: "Cache Cargo" },
+    id: none,
+    uses: cache_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: ci_cache_path())),
+        kv(key: "key", value: yaml_string(s: ci_cache_key())),
+        kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
-  [
-    checkout,
-  ] |> concat(exact_head_preflight) |> concat([
-    ci_isolate_toolchain_step(),
-    UsesStep {
-      name: Present { value: "Setup Rust" },
-      id: none,
-      uses: setup_rust_action,
-      with: Present {
-        value: [
-          kv(key: "components", value: yaml_string(s: "rustfmt")),
-          kv(key: "cache", value: yaml_bool(b: false)),
-          kv(key: "rustflags", value: yaml_string(s: ""))
-        ]
-      },
-      env: Present {
-        value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
-      },
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    ci_native_cache_root_step(),
-    RunStep {
-      name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-      id: none,
-      run: ci_pin_rustup_default_script(),
-      shell: none,
-      env: none,
-      working_directory: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    UsesStep {
-      name: Present { value: "Cache Cargo" },
-      id: none,
-      uses: cache_action,
-      with: Present {
-        value: [
-          kv(key: "path", value: yaml_string(s: ci_cache_path())),
-          kv(key: "key", value: yaml_string(s: ci_cache_key())),
-          kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
-        ]
-      },
-      env: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    }
-  ])
+  list_map(
+    xs: ci_prelude_bound_steps_with_checkout(
+      checkout: checkout,
+      exact_head_preflight: exact_head_preflight,
+    ),
+    f: fn(b) { b.step },
+  )
 }
 
 fn ci_prelude_steps() -> List<Step> {
@@ -314,113 +429,46 @@ fn ci_fleet_key_agent_cleanup_step() -> Step {
 
 data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 
-fn ci_native_cache_root_step() -> Step {
-  RunStep {
-    name: Present { value: ci_native_cache_derive_step_name },
-    id: none,
-    run: ci_native_cache_root_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
 
 data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
 
-fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
-  [
-    checkout,
-  ] |> concat(exact_head_preflight) |> concat([
-    ci_isolate_toolchain_step(),
-    UsesStep {
-      name: Present { value: "Setup Rust" },
-      id: none,
-      uses: setup_rust_action,
-      with: Present {
-        value: [
-          kv(key: "components", value: yaml_string(s: "rustfmt")),
-          kv(key: "cache", value: yaml_bool(b: false)),
-          kv(key: "rustflags", value: yaml_string(s: ""))
-        ]
-      },
-      env: Present {
-        value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
-      },
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    ci_native_cache_root_step(),
-    RunStep {
-      name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-      id: none,
-      run: ci_pin_rustup_default_script(),
-      shell: none,
-      env: none,
-      working_directory: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    UsesStep {
-      name: Present { value: "Cache Cargo" },
-      id: none,
-      uses: cache_action,
-      with: Present {
-        value: [
-          kv(key: "path", value: yaml_string(s: ci_cache_path())),
-          kv(key: "key", value: yaml_string(s: ci_cache_key())),
-          kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
-        ]
-      },
-      env: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    }
-  ])
-}
 
 data ci_release_bins_artifact_name: String = "release-bins"
 
-fn ci_release_bins_pack_step() -> Step {
-  RunStep {
-    name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
-    id: none,
-    run: ci_release_bins_pack_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
 
-data gunbc_ci_aux_step_timeout_minutes: Int = 5
+data gunbc_ci_aux_step_timeout_minutes: Duration = 5
+
+data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
+
+data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
+
+WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
+
+Why the step needed its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes: that value is multiplied by the step count in the fleet job backstop, so raising it would inflate every unrelated aux step and the job cap together — a per-site cost paid fleet-wide to fix one step.
+
+STEADY STATE IS SECONDS, NOT MINUTES. A converged host plans zero rows and the slice returns without transferring anything; this envelope is paid only on a cold or drifted target. A run that approaches it is therefore evidence about the install path, not a budget to raise again.
+
+DISSOLVE-ON: the first successful srv6 canary produces the measurement this envelope stands in for — replace the number with that receipt, dated and cited to its run id, per the rule the v1-compiler test-targets gate states one constant down (raising a budget needs a measurement, not a round number)."
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
-data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Int = 15
+data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the build-job compile backstop over stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
 
-data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Int = 10
+data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Duration = 10
 
 data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_note: String = "v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than this step's cost — it was all that could be measured while main's lib test target did not compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m carried by the v1-compiler-tests and partition gates rather than copied from them: those two inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the same reason the retained-kernel gate does — v1-compiler is already compiled in release with the shared feature set, so the check reuses that artifact instead of forcing a second compile. Raising this needs a measurement, not a round number."
 
-data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
+data gunbc_ci_artifact_transfer_step_timeout_minutes: Duration = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
 
-data gunbc_ci_prelude_allowance_minutes: Int = 5
+data gunbc_ci_prelude_allowance_minutes: Duration = 5
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
+data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
@@ -429,41 +477,34 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
+data gunbc_ci_fleet_job_always_run_aux_step_count: Int = 5
 
-data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
+data gunbc_ci_fleet_job_always_run_artifact_transfer_step_count: Int = 1
 
-data gunbc_ci_prelude_allowance_minutes: Int = 5
+data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
+data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
+data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
 
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+type JobTimeoutBudget
+  = JobTimeoutWithinCeiling { minutes: Int }
+  | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
+
+data checked_job_timeout_minutes_note: String = "Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review, bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would then die at the clamped cap while the model believed it had the computed value. This is a wall on any future per-tier raise, not evidence the current backstop is at risk: see gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well under the ceiling today."
+
+fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
+  if computed <= max_job_timeout_minutes {
+    JobTimeoutWithinCeiling { minutes: computed }
+  } else {
+    JobTimeoutExceedsCeiling { minutes: computed, ceiling: max_job_timeout_minutes }
+  }
 }
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_prelude_allowance_minutes + (13 * gunbc_ci_aux_step_timeout_minutes)
+  gunbc_ci_prelude_allowance_minutes
+    + ((gunbc_ci_fleet_job_always_run_aux_step_count + gunbc_ci_fleet_job_worst_case_mode_aux_step_count) * gunbc_ci_aux_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_always_run_artifact_transfer_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
 }
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
-
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
-
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
-
-data gunbc_ci_prelude_allowance_minutes: Int = 5
-
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
-
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
-
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}

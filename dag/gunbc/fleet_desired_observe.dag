@@ -3,15 +3,23 @@ module gunbc.fleet_desired_observe
 import std.types { String, Bool, FilePath, GitRef }
 import std.algebra { trim }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectId,
   git_object_id_from_untagged_hex,
   git_object_id_eq,
+  git_object_id_wire_hex,
 }
+import gunbc.live_deploy.revision { SameRevision }
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_main_revision {
+  FleetRevisionRelationObservation,
+  fleet_revision_relation_from_merge_base,
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
   FleetDesiredUnobserved,
   converge_target_revision,
 }
@@ -24,23 +32,26 @@ import gunbc.fleet_main_revision {
 // observation edge: ls-remote the exact ref through the typed git.Core service op
 // (runtime-present site — typed service op, never emitted shell, per the shell→intent
 // routing), decode the advertised object id through the ONE untagged-hex decoder the
-// object-store authority provides, and refuse (typed cause, never a fabricated target)
-// on transport refusal, an unadvertised ref, or an undecodable advertisement.
+// object-store authority provides, and answer with the variant the observation actually
+// supports: absent, undecodable, or unobserved.
+//
+// THESE THREE WERE ONE VARIANT AND ARE NOT ANY MORE. A ref origin does not advertise, an
+// advertisement that will not decode, and an ls-remote that refused all returned
+// FleetDesiredUnobserved with a cause string. The string told a human which had happened and
+// told a CONSUMER nothing, so the only safe reading was "no target", and the first creation of
+// refs/fleet/desired was inexpressible: nothing could say "the remote does not have this ref"
+// as a claim rather than as a failure to look. Exit 0 with an empty advertisement IS that
+// claim, and it is now the only thing that produces it.
 fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
   let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
   if read.exit_code == 0 {
     let line = trim(s: read.advertised)
     if line == "" {
-      FleetDesiredUnobserved {
-        cause: concat("fleet_desired_observe: origin does not advertise ", fleet_desired_ref_name),
-      }
+      FleetDesiredAbsent
     } else {
       match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
         Present { value: oid } => FleetDesiredAdmitted { revision: oid }
-        Absent =>
-          FleetDesiredUnobserved {
-            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
-          }
+        Absent => FleetDesiredUndecodable { advertised: line }
       }
     }
   } else {
@@ -48,6 +59,97 @@ fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
       cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
     }
   }
+}
+
+data fleet_desired_observe_repository_path: String = "."
+
+data fleet_desired_observe_repository_path_note: String = "The repository whose ancestry this observer inspects. It is `.` in production because the admission workflow runs in the checkout, and it is a DECLARED `.` rather than an ambient one so that a witness can point the same observation at a fixture repository without relocating the process."
+
+
+// THE EFFECTFUL HALF OF THE ANCESTRY OBSERVATION, AND THE SOLE PRODUCTION CONSTRUCTOR OF A
+// MERGE-BASE-DERIVED RELATION.
+//
+// The decidable half is a pure fold in gunbc.fleet_main_revision, and only this function may feed
+// it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
+// that fold as though those had been observed -- the fold stays public because the POLICY has to
+// be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness
+// reaching it refuses under the hermetic envelope), but authoring its inputs outside an actual
+// probe is fabricating an observation.
+//
+// THE REPOSITORY IS NAMED, NOT INHERITED. An earlier revision of this annotation said the
+// repository was "STATED RATHER THAN PARAMETERIZED" -- that git.Inspect.MergeBase took no
+// repository, so this function's precondition was that the process already sits in the right
+// checkout. That is no longer true and the sentence would now describe a shape the operation
+// refuses: MergeBase requires `repository_path`, so the fact is supplied rather than assumed.
+//
+// Why it mattered enough to change the operation: an ambient repository makes a WRONG answer
+// indistinguishable from a right one, because two checkouts can hold refs that look identical.
+// It also made the observation unwitnessable against a controlled fixture, since a witness cannot
+// relocate its own process.
+
+// THE REPOSITORY IS A PARAMETER HERE AND BOUND ONE FUNCTION BELOW, and the split exists because
+// the annotation above made a promise the signature could not keep: it said a witness could point
+// this observation at a fixture repository without relocating its process, while the repository was
+// reachable only as a module-scope constant. Naming the repository on the OPERATION removed the
+// ambient checkout; it did not give a caller any way to say WHICH repository, so the observation
+// remained exactly as unwitnessable as before, now with a note claiming otherwise.
+//
+// This is not a second policy authority and the asymmetry is the point: `_in` owns the whole
+// observation composition and the wrapper owns exactly one fact, which repository production reads.
+// Both reach the same pure fold, so a matrix run against a fixture repository exercises the real
+// observer rather than the merge-base operation alone -- the gap that let git.Inspect.MergeBase be
+// proven by record/replay while the composition above it stayed unproven.
+//
+// The alternative -- record against `.` while launching the recorder from another directory -- is
+// specifically rejected: it makes one identical operation input mean different repositories
+// depending on ambient process state, which is the ambiguity naming the repository removed.
+// THE CALLER NO LONGER TRIMS, and the reason is narrower than it looks: the trim here was INERT.
+// The operation's output binding already delivers `sha` without git's line terminator -- measured,
+// not assumed (a recorded fixture's stored sha is 40 characters, and removing the trim left the
+// whole wet matrix green). So this was a guard against a byte that never arrives, and normalization
+// now happens once inside extdeps.git.inspect merge_base_outcome, at the boundary that owns the
+// wire format. Deleting it removes a second site for one invariant; it does not close a defect,
+// and saying otherwise would credit this change with a repair it did not make.
+fn observe_fleet_revision_relation_in(
+  repository_path: String,
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  if git_object_id_eq(left: current, right: accepted) {
+    FleetRevisionRelationObservation {
+      current: current,
+      accepted: accepted,
+      relation: SameRevision,
+    }
+  } else {
+    let probe = git.Inspect.MergeBase(
+      repository_path: repository_path,
+      left: git_object_id_wire_hex(oid: current) as String as GitRef,
+      right: git_object_id_wire_hex(oid: accepted) as String as GitRef,
+      expect: OutcomeIsData,
+    )
+    fleet_revision_relation_from_merge_base(
+      current: current,
+      accepted: accepted,
+      exit_code: probe.exit_code,
+      base_hex: probe.sha as String,
+      stderr: probe.stderr,
+    )
+  }
+}
+
+// The production binding, and the ONLY place the production repository is named. Note what it does
+// NOT do: it does not re-check equality, re-decode, or re-classify. A wrapper that repeated any of
+// that would be the second authority this split was written to avoid.
+fn observe_fleet_revision_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  observe_fleet_revision_relation_in(
+    repository_path: fleet_desired_observe_repository_path,
+    current: current,
+    accepted: accepted,
+  )
 }
 
 // The local half of the comparison: what revision THIS host's deployed tree is at.
@@ -92,6 +194,14 @@ fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
     Absent =>
       match observed {
         FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        FleetDesiredAbsent =>
+          RevisionUnobserved {
+            cause: concat("fleet_desired_observe: origin advertises no ", fleet_desired_ref_name),
+          }
+        FleetDesiredUndecodable { advertised: line } =>
+          RevisionUnobserved {
+            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
+          }
         FleetDesiredAdmitted { revision: _ } =>
           RevisionUnobserved {
             cause: "fleet_desired_observe: admitted revision projected no target (unreachable by construction)",

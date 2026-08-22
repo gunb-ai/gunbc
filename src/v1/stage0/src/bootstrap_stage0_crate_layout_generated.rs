@@ -12,7 +12,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "resolved_graph_cache.rs",
     "shared_typecheck_store.rs",
     "recorded_fixture.rs",
-    "main.rs",
     "phase_profile.rs",
     "pre_push.rs",
     "census_exclude_derive.rs",
@@ -37,12 +36,24 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_program_partition.rs",
     "v2_compiler_tokenize.rs",
     "v2_compiler_infer.rs",
+    "bootstrap_stage0_crate_layout_generated.rs",
     "v1_interpreter_dispatch_generated.rs",
-    "bootstrap_stage0_crate_layout_generated.rs"
+    "main.rs"
 ];
 
 #[rustfmt::skip]
 pub const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &[
     "module_path_index",
     "cli_run"
+];
+
+/// Basenames the emitter DOES produce and whose emitted bytes diverge from the committed
+/// file. A declared rung drop, bounded by this list; see
+/// v2.compiler.self_host.stage0_crate_layout emitter_produced_divergent_note for the reason
+/// and restoration trigger of each row. Membership is not permission: the consumer fails on
+/// an undeclared divergence, on a declared row that no longer diverges, and on a declared row
+/// the emitter no longer produces.
+#[rustfmt::skip]
+pub const EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES: &[&str] = &[
+    "main.rs"
 ];

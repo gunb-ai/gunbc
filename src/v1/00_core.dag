@@ -176,6 +176,8 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
+  | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
       constructor_module_path: String,
@@ -193,6 +195,7 @@ type CompilerDiagnostic
   | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
+  | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -302,6 +305,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
+    BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: _,
@@ -323,6 +328,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Present { value: span } => span
         Absent => no_span()
       }
+    ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
   }
 }
 
@@ -354,6 +360,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
+      concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
+    BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
+      concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: cm,
@@ -390,6 +400,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     OccurrenceTransportViolation { refusal: refusal } =>
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
+    ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
+      concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
   }
 }
 
@@ -734,7 +746,7 @@ fn param_node_span(n: Node) -> SourceSpan { n.span }
 fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   let props = match from_key {
-    Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+    Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: no_span(), ident_span: default_ident_span(name: fk, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: no_span(), name_span: no_span())]
     Absent => []
   }
   Node {
@@ -1185,7 +1197,7 @@ fn local_transport_node(span: SourceSpan) -> Node {
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
   let method_props = match method {
     Present { value: m } => [make_field_init_node(name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
@@ -1213,7 +1225,7 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let stdin_props = match stdin {
     Present { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
     Absent => []
@@ -1229,10 +1241,10 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
 }
 
 fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
-  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
   let props = match verb {
     Present { value: verb_expr } =>
-      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: no_span(), name_span: no_span())]
     Absent => [path_field]
   }
   make_transport_node(properties: props, children: [], body: none, span: span)
@@ -1507,7 +1519,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
 }
 
 fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
     Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
@@ -1617,18 +1629,25 @@ data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_
 data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data tuple_type_name: String = "Tuple"
-data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
-
-fn make_span(start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: "<synthetic>", start: start, end: end }
-}
+data error_type: Node = Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: file, start: start, end: end }
 }
 
+// The ONLY fileless SourceSpan constructor, and it takes no offsets. A span either
+// names the file it was authored in (make_file_span / kernel_span) or is the null span:
+// there is no third constructor that accepts real start/end offsets while fabricating
+// the file, because such a span asserts a located range inside a file that does not
+// exist. make_span(start:, end:) was exactly that constructor and is deleted; every one
+// of its call sites passed 0, 0, so the offset parameters only ever served to make the
+// fabrication look located.
+//
+// The "<synthetic>" file name itself is NOT this rule's subject -- it is the FilePath
+// non_empty sentinel tracked by std.types file_path_sentinel_scaffold_note and dissolves
+// with feature:optional-textfile-and-source-span.
 fn no_span() -> SourceSpan {
-  make_span(start: 0, end: 0)
+  SourceSpan { file: "<synthetic>", start: 0, end: 0 }
 }
 
 type LineCol {
@@ -1812,6 +1831,82 @@ fn qualified_last_segment(name: String) -> String {
   match module_path_segments(path: name) |> last {
     Present { value: s } => s
     Absent => name
+  }
+}
+
+// A container-table lookup has THREE answers, not two. container_expected_arity
+// returning Absent conflates "this name is not a container" -- String, Bool, and
+// every user record, which is the correct answer for the overwhelming majority of
+// type-position names -- with "this IS a container spelling, and it is one we do
+// not recognize", which is ignorance. Rendering the second as the first is the
+// empty-observation narrow of DESIGN section 5: the arm answers "not under-
+// parameterized" / "not a keyed map" about a name it could not classify at all,
+// and the wrong answer produces no evidence of itself.
+//
+// The discriminator refuses; it never DECIDES. Matching on the leaf to pick a
+// container kind would collapse a qualified spelling onto the kernel row and
+// silently realize the wrong one (the std.nat.Nat collision class). Matching on
+// the leaf to REFUSE selects no kind and no template: its worst case is a located
+// diagnostic closed by declaring the row it names.
+type ContainerSpellingVerdict
+  = ContainerSpellingDeclared { arity: Int }
+  | NotAContainerSpelling
+  | ContainerSpellingUnknown { container_leaf: String }
+
+// The known container leaves are read from container_type_arity itself -- the same
+// authority the Present arm consults -- so this is not a third roster (DESIGN
+// section 3). The lowercase alias spellings that container_template_alias_rows
+// additionally carries are deliberately NOT read here: "list", "map" and "set" are
+// ordinary identifier spellings, so a binder or field named `map` would be refused
+// as an unrecognized container. The wall is drawn where the refusal cannot be
+// wrong about what kind of name it is looking at.
+fn known_container_leaf(name: String) -> String? {
+  let leaf = qualified_last_segment(name: name)
+  match container_expected_arity(name: leaf) {
+    Present { value: _ } => Present { value: leaf }
+    Absent => none
+  }
+}
+
+fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
+  match container_expected_arity(name: name) {
+    Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+    Absent =>
+      match known_container_leaf(name: name) {
+        Present { value: leaf } => ContainerSpellingUnknown { container_leaf: leaf }
+        Absent => NotAContainerSpelling
+      }
+  }
+}
+
+// Only a name the compiler can read back out of real authored source may be
+// refused. A synthesized type node carries a <kernel:...> span whose file is in no
+// source index -- and the service path is exactly that: check_service_field_access_node
+// builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
+// segment is a container name and which is not a container. Excluding it by
+// authorship rather than by an exception list is what keeps the six known
+// false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
+// tmux.Session.List, os.Hostname.Set, req.Header.Set) out by construction: a
+// seventh service operation named after a container needs no edit here.
+fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match node.ident_span {
+    Present { value: span } =>
+      match map_get(source_indices, span.file) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn authored_container_spelling_verdict(node: Node, source_indices: Map<String, NewlineIndex>) -> ContainerSpellingVerdict {
+  if type_node_name_is_authored(node: node, source_indices: source_indices) {
+    container_spelling_verdict(name: authored_name_at(source_indices: source_indices, node: node))
+  } else {
+    match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
+      Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+      Absent => NotAContainerSpelling
+    }
   }
 }
 

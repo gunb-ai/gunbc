@@ -1,10 +1,13 @@
 module test.claim.fabric_witness_run
 
-// The subject is ELIGIBILITY, so every witness here is a refusal or one of the
-// controls that prove refusal is not the only reachable arm. A suite that only
-// proved the happy path would establish that an offer can be accepted, which was
-// never in doubt; what is in doubt is that it CANNOT be accepted when the
-// executor does not satisfy the work, or when the demand cannot afford it.
+// The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
+// separate coproducts, so every witness here is a refusal on ONE of them or one
+// of the controls that prove refusal is not the only reachable arm on either. A
+// suite that only proved the happy path would establish that an offer can be
+// accepted, which was never in doubt; what is in doubt is that it CANNOT be
+// accepted when the executor does not satisfy the work (fungibility), or when
+// the demand cannot afford it (affordability) -- and that the two never answer
+// for each other's question.
 
 fn t_source() -> SourceManifestRef {
   "gunbc.source.test-commit"
@@ -52,10 +55,10 @@ fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
 // than quietly reworded.
 //
 // What this scalar honestly is: the supplier-side ASKING PRICE for one grant.
-// The fold compares it to what the demand will pay. That is AFFORDABILITY
-// SCREENING and it is not selection -- nothing here chooses among several
-// eligible offers, and choosing would need the interval, tariff, commitment
-// state and alternative uses that no carrier holds yet.
+// The affordability fold compares it to what the demand will pay. That is
+// AFFORDABILITY SCREENING and it is not selection -- nothing here chooses among
+// several affordable offers, and choosing would need the interval, tariff,
+// commitment state and alternative uses that no carrier holds yet.
 fn t_fleet_offer() -> Offer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
@@ -65,34 +68,49 @@ fn t_fleet_offer() -> Offer<NonEmptyStr> {
   )
 }
 
-fn eligible(e: OfferEligibility) -> Bool {
+fn fungible(e: OfferFungibility) -> Bool {
   match e {
-    OfferEligible => true
+    Fungible => true
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
-    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+  }
+}
+
+// AffordableUnderEstimate is still affordable -- it is affordable AGAINST AN
+// ESTIMATE, which is a different fact from Affordable but not a refusal. A
+// helper that only accepted the exact arm would make the floor's own duration
+// (EstimatedGrantDuration, see fabric_witness_run.dag) permanently ineligible
+// by construction, which is exactly the fusion this suite exists to keep out.
+fn affordable(a: DemandOfferAffordability) -> Bool {
+  match a {
+    Affordable => true
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
 }
 
-fn floor_eligibility(offer: Offer<NonEmptyStr>) -> OfferEligibility {
-  floor_offer_eligibility(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
+fn floor_fungibility(offer: Offer<NonEmptyStr>) -> OfferFungibility {
+  floor_offer_fungibility(offer: offer)
+}
+
+fn floor_affordability(offer: Offer<NonEmptyStr>) -> DemandOfferAffordability {
+  floor_offer_affordability(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
 }
 
 // CONTROLS. Without these, every refusal below is satisfied by a fold that
 // refuses unconditionally -- the shape a wall takes when it is actually a brick.
 
 test fn fleet_offer_is_eligible_for_the_floor() -> Bool {
-  eligible(e: floor_eligibility(offer: t_fleet_offer()))
+  fungible(e: floor_fungibility(offer: t_fleet_offer())) && affordable(a: floor_affordability(offer: t_fleet_offer()))
 }
 
 // The shape wall is an INEQUALITY. An offer larger than the requirement must
-// still be eligible; one that rejected a bigger machine would be a bug wearing
+// still be fungible; one that rejected a bigger machine would be a bug wearing
 // a wall's clothing.
 test fn larger_offer_is_still_eligible() -> Bool {
-  eligible(e: floor_eligibility(offer: t_offer(
+  fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 256),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
@@ -100,29 +118,29 @@ test fn larger_offer_is_still_eligible() -> Bool {
   )))
 }
 
-// DISCRIMINATING REDS -- capability side.
+// DISCRIMINATING REDS -- fungibility side. None of these carry money, and the
+// helper below asserts that on the type: floor_fungibility takes no ceiling and
+// no currency at all, so a test proving a capability defect cannot accidentally
+// be satisfied by a price change.
 
 // A host outside the declared trust domain must be refused even when it is
-// larger and cheaper: capacity does not substitute for trust.
+// larger: capacity does not substitute for trust.
 test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
-  match floor_eligibility(offer: t_offer(
+  match floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 1024),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.public-cloud",
     quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
   )) {
     TrustDomainMismatch { required: _, offered: _ } => true
-    OfferEligible => false
+    Fungible => false
     ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
-    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
-    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
-    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
 }
 
 test fn missing_capabilities_refuse() -> Bool {
-  !eligible(e: floor_eligibility(offer: t_offer(
+  !fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
     trust: "gunbc.trust.internal-fleet",
@@ -131,7 +149,7 @@ test fn missing_capabilities_refuse() -> Bool {
 }
 
 test fn insufficient_threads_refuse() -> Bool {
-  !eligible(e: floor_eligibility(offer: t_offer(
+  !fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 2),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
@@ -139,44 +157,41 @@ test fn insufficient_threads_refuse() -> Bool {
   )))
 }
 
-// DISCRIMINATING REDS -- price side. These are the arm that makes gunbc's own
-// CI an ordinary priced demand rather than an always-admitted path. The fleet
-// offer above quotes zero and still goes THROUGH this check; these prove the
-// check is reachable and can refuse.
+// DISCRIMINATING REDS -- affordability side. These are the arm that makes
+// gunbc's own CI an ordinary priced demand rather than an always-admitted path.
+// The fleet offer above quotes zero and still goes THROUGH this check; these
+// prove the check is reachable and can refuse, and none of them carry shape,
+// trust domain or capabilities -- offer_affordability_for takes none of them.
 
 test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
-  match floor_eligibility(offer: t_offer(
+  match floor_affordability(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
     quote: t_quote(amount: money_amount_micro(count: 9000000), currency: Usd),
   )) {
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => true
-    OfferEligible => false
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
-    TrustDomainMismatch { required: _, offered: _ } => false
-    CapabilitiesNotOffered { required: _, offered: _ } => false
-    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    Affordable => false
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
 }
 
-// Affordability and capability are SEPARATE arms with different remedies --
+// Affordability and fungibility are SEPARATE arms with different remedies --
 // raise the buy order, or find another supplier -- so a currency mismatch must
-// not be reported as an ordinary over-budget refusal.
+// not be reported through the fungibility coproduct at all, and does not need to
+// be distinguished from an over-budget refusal because the two are now different
+// TYPES, not two constructors of one type a caller could confuse.
 test fn foreign_currency_quote_refuses_distinctly() -> Bool {
-  match floor_eligibility(offer: t_offer(
+  match floor_affordability(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
     quote: t_quote(amount: money_amount_micro(count: 1), currency: Eur),
   )) {
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => true
-    OfferEligible => false
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
-    TrustDomainMismatch { required: _, offered: _ } => false
-    CapabilitiesNotOffered { required: _, offered: _ } => false
-    RateQuoteNotPriceableAgainstGrantCeiling { quoted: _ } => false
+    Affordable => false
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
   }
 }
@@ -201,7 +216,7 @@ fn t_free_offer() -> Offer<NonEmptyStr> {
 }
 
 test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() -> Bool {
-  eligible(e: floor_offer_eligibility(
+  affordable(a: floor_offer_affordability(
     offer: t_free_offer(),
     maximum_buy_order: money_amount_micro(count: 0),
     budget_currency: Usd,
@@ -211,7 +226,7 @@ test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() ->
 // The control that keeps the row above from being satisfied by a fold that
 // admits everything: one micro over the ceiling refuses.
 test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
-  !eligible(e: floor_offer_eligibility(
+  !affordable(a: floor_offer_affordability(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -231,22 +246,65 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
     && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
 
-test fn fabric_argv_and_workflow_step_agree_on_source_roots() -> Bool {
+// THE EMITTED STEP IS DERIVED FROM THE FABRIC'S COMMAND, NOT AGREED WITH IT.
+//
+// This replaces fabric_argv_and_workflow_step_agree_on_source_roots, which asserted that two
+// independently-built invocations happened to name the same source roots. That was validation
+// standing where construction was available (DESIGN §5) -- it stayed green over a second
+// binary path, a second --required-floor spelling and any argument ORDER, because agreeing on
+// the roots is not agreeing on the command. witness_floor_run_script now RENDERS
+// floor_run_command, so there is one producer and nothing left to agree.
+//
+// The second clause is the discriminating half and the reason this is not a restatement of the
+// implementation: '$ROOT/dag' was the old fork's exact spelling, and it is unrenderable from an
+// argv, since shell_command_render single-quotes every word and '$ROOT/dag' does not expand.
+// So its presence would mean someone hand-built the path back into the script, which is the
+// only way the fork returns.
+test fn workflow_step_renders_the_fabric_command_and_does_not_respell_it() -> Bool {
+  let script = witness_floor_run_script()
+  string_contains(s: script, pattern: shell_command_render(command: floor_run_command()))
+    && !string_contains(s: script, pattern: "$ROOT/dag")
+    && !string_contains(s: script, pattern: "$ROOT/target")
+}
+
+// The renderer must actually place every declared root in the emitted step, single-quoted.
+// Without this the row above is satisfied by a renderer that emits nothing at all.
+test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
+  let script = witness_floor_run_script()
+  all(witness_layer_roots, r => string_contains(s: script, pattern: concat("'", concat(r, "'"))))
+}
+
+// THE MODE ITSELF IS NOT SETTLED BY DERIVATION, SO IT KEEPS ITS OWN ROW.
+//
+// Rendering the script FROM the argv makes script-vs-argv agreement automatic -- that is the
+// point of the row above. It says nothing about whether the argv names the RIGHT mode, which
+// is a fact about floor_run_command alone and stays independently falsifiable. #8647 found
+// exactly this live: both sides were re-pointed at `--required-ci` while the argv still said
+// `--required-floor`, and the agreement witness of the day was green throughout. Deleting that
+// witness in favour of construction would have dropped the one clause that caught it, so the
+// clause is carried here rather than lost with its old carrier.
+test fn fabric_command_names_the_consolidated_mode() -> Bool {
   let argv = floor_run_command().argv
-  all(witness_layer_roots, r => any(argv, a => a == r))
-    && string_contains(s: witness_floor_run_script(), pattern: "--required-floor")
-    && all(witness_layer_roots, r =>
-         string_contains(s: witness_floor_run_script(), pattern: concat("--source-root \"$ROOT/", concat(r, "\""))))
+  any(argv, a => a == "--required-ci") && !any(argv, a => a == "--required-floor")
 }
 
 test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
   floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
 }
 
-// The floor and the v1 parse gate are TWO steps, so a receipt can say which one
-// failed. That distinction is what gunbc#8466 -> #8519 paid to learn.
-test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
-  length(xs: floor_work_contract(source: t_source()).steps) == 2
+// ONE STEP, AND THE RECEIPT DISTINGUISHES MORE THAN IT USED TO.
+//
+// This asserted `steps == 2` -- the floor and the v1 parse gate as separate
+// steps, so a receipt could say which one failed (gunbc#8466 -> #8519). The
+// workflow no longer gates them separately: the phases moved into the binary, so
+// the contract describes one step and the receipt names one of FOUR phases
+// rather than one of two steps. The claim is not weakened by the change, so the
+// witness is re-pointed rather than retired -- what it defends is that the
+// contract matches the job shape, and the number is the thing that moved.
+test fn floor_contract_is_one_composed_step() -> Bool {
+  let steps = floor_work_contract(source: t_source()).steps
+  length(xs: steps) == 1
+    && all(steps, s => s.step_id == "required-ci")
 }
 
 // THE FLOOR IS AN ORDINARY PRICED DEMAND. These pin the two properties that,
@@ -269,18 +327,18 @@ test fn floor_demand_still_permits_step_reuse() -> Bool {
   floor_satisfaction_requirement().step_reuse_permitted
 }
 
-// The buy terms carry a real ceiling that the eligibility fold reads. This is
+// The buy terms carry a real ceiling that the affordability fold reads. This is
 // the join between "the floor is priced" and "the price is checked": a demand
-// whose maximum buy order is below an offer's quote must not be eligible for it,
-// and that must hold through the floor's own terms rather than only through the
-// hand-built ones above.
+// whose maximum buy order is below an offer's quote must not be affordable to
+// it, and that must hold through the floor's own terms rather than only through
+// the hand-built ones above.
 test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
   let terms = floor_buy_terms(
     account: "gunbc.budget.ci",
     reservation_price: money_amount_micro(count: 0),
     maximum_buy_order: money_amount_micro(count: 5),
   )
-  !eligible(e: floor_offer_eligibility(
+  !affordable(a: floor_offer_affordability(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -309,30 +367,40 @@ test fn floor_admission_carries_no_privilege_field() -> Bool {
 }
 
 // THE DISCRIMINATING PAIR FOR THE DIMENSIONAL DEFECT. maximum_buy_order is the
-// ceiling on a single grant -- a TOTAL -- and an hourly rate is not one. Before
-// the fix, the fold read .amount off the rate and compared it to the ceiling, so
-// an hourly quote of 1 against a ceiling of 1000 was ADMITTED: the offer would
-// bill 1 per hour for an unbounded number of hours, and nothing refused. This
-// witness goes red against that fold and green only once the rate arms refuse.
-test fn an_hourly_rate_is_not_priceable_against_a_per_grant_ceiling() -> Bool {
-  !eligible(e: floor_offer_eligibility(
+// ceiling on a single grant -- a TOTAL -- and an hourly rate is not one until it
+// is multiplied by a duration. Before the fix, the fold read .amount off the
+// rate and compared it to the ceiling directly, so an hourly quote of 1 against
+// a ceiling of 1000 was unconditionally REFUSED regardless of duration or price
+// -- the fold could not price a rate at all, so it treated "I cannot compare a
+// rate to a total" as a fact about the supplier rather than a missing input.
+// This witness proves the repaired fold prices the rate instead of refusing it
+// by construction: a genuinely expensive hourly quote -- one whose amount times
+// the grant's own duration exceeds the ceiling -- still refuses, for the real
+// arithmetic reason rather than a blanket one.
+test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool {
+  !affordable(a: offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
       trust: "gunbc.trust.internal-fleet",
-      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd }),
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
     ),
-    maximum_buy_order: money_amount_micro(count: 1000),
+    maximum_buy_order: money_amount_micro(count: 9),
     budget_currency: Usd,
+    duration: ExactGrantDuration { seconds: second(count: 3600) },
   ))
 }
 
-// The same amount quoted per SECOND and per HOUR differ by 3600x in fact and
-// were indistinguishable to the old fold, which compared the bare scalar. Both
-// must refuse for the same reason -- neither is a per-grant total -- so this
-// asserts the erasure is gone rather than merely that one arm was special-cased.
-test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal() -> Bool {
-  let per_second = floor_offer_eligibility(
+// The same bare amount quoted per SECOND and per HOUR differ by 3600x once a
+// real duration is supplied, and were indistinguishable to the old fold, which
+// refused both unconditionally without ever reading a duration. Over one hour
+// (3600 seconds), a per-second quote of 1 projects to 3600 and a per-hour quote
+// of 1 projects to 1: against a ceiling of 1000 the two now DIVERGE, one
+// refusing and one affordable, which is the erasure being gone rather than
+// merely relabelled.
+test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> Bool {
+  let duration = ExactGrantDuration { seconds: second(count: 3600) }
+  let per_second = offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -341,8 +409,9 @@ test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal()
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
     budget_currency: Usd,
+    duration: duration,
   )
-  let per_hour = floor_offer_eligibility(
+  let per_hour = offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -351,8 +420,40 @@ test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal()
     ),
     maximum_buy_order: money_amount_micro(count: 1000),
     budget_currency: Usd,
+    duration: duration,
   )
-  !eligible(e: per_second) && !eligible(e: per_hour)
+  !affordable(a: per_second) && affordable(a: per_hour)
+}
+
+// THE DISCRIMINATING RED THE FIX EXISTS FOR. Before the fix this claim was
+// UNTESTABLE, not merely untested: every per-hour quote reached
+// RateQuoteNotPriceableAgainstGrantCeiling unconditionally, so no offer of this
+// shape could ever be constructed as eligible, and an hourly supplier -- the
+// operator's own sourcing posture is x86 and arm at lowest cost, not anchored
+// to owned hardware -- could never win a grant regardless of price. This offer
+// is capable (satisfies the floor's own requirements), in-currency (Usd, which
+// is what floor_offer_affordability budgets in), and cheap (10 micro/hour
+// against the floor's estimated 1800-second grant rounds up to ONE billed
+// hour -- billed_unit_count's whole-hour quantum, not a 0.5-hour fraction --
+// and projects to 10, against a million-micro ceiling). It must be BOTH fungible and affordable,
+// through the floor's own production functions -- not a hand-built duration --
+// so this is the fix proven on the real codepath, not only on the isolated
+// fold. KEEP THIS ENROLLED: per DESIGN section 4b, the evidence that a climb
+// happened survives even if the production machinery it discriminates is later
+// replaced.
+test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> Bool {
+  let offer = t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+  )
+  fungible(e: floor_offer_fungibility(offer: offer))
+    && affordable(a: floor_offer_affordability(
+         offer: offer,
+         maximum_buy_order: money_amount_micro(count: 1000000),
+         budget_currency: Usd,
+       ))
 }
 
 // THE POSITIVE CONTROL FOR THE REFUSAL. A per-grant total under the ceiling is
@@ -360,7 +461,7 @@ test fn per_second_and_per_hour_quotes_both_refuse_rather_than_comparing_equal()
 // made every priced offer ineligible -- which would pass both reds above while
 // destroying the fold.
 test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
-  eligible(e: floor_offer_eligibility(
+  affordable(a: floor_offer_affordability(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
       caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -377,18 +478,18 @@ test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
 // have been unwritable while the fleet quoted zero: at zero it clears every
 // ceiling, so no ceiling can refuse it and the arm has no discriminating input.
 test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool {
-  !eligible(e: floor_offer_eligibility(
+  !affordable(a: floor_offer_affordability(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 39),
     budget_currency: Usd,
   ))
 }
 
-// The control for the row above: the same owned-fleet offer IS eligible to a
+// The control for the row above: the same owned-fleet offer IS affordable to a
 // demand willing to pay its asking price. Without this, refusing at 39 is
-// equally explained by the fleet offer having become ineligible outright.
+// equally explained by the fleet offer having become unaffordable outright.
 test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> Bool {
-  eligible(e: floor_offer_eligibility(
+  affordable(a: floor_offer_affordability(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 40),
     budget_currency: Usd,

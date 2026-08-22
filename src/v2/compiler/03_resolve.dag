@@ -73,7 +73,6 @@ import v2.std.node {
   Node,
   NodeFold,
   NodeOccurrenceId,
-  OccurrenceId,
   Positional,
   Symbol,
   Transform,
@@ -82,6 +81,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed
 }
+import std.occurrence_identity { OccurrenceId }
 
 type ResolvedTree = Node
 

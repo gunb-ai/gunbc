@@ -156,12 +156,13 @@ use crate::v1_std_core::CallSemantics::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
-    CallNamedArgOnFunctionValue, CallPositionalDeficit, CallPositionalSurplus,
-    ConstructorCallAdmissionRefused, FieldNotFound, FrontierOccurrenceBudgetExceeded,
-    InternalError, MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound,
-    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch,
-    UnresolvedType, VariantCollision,
+    AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
+    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
+    CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
+    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
+    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -203,7 +204,7 @@ pub use crate::v1_std_core::{
     is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
     let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_default_value, param_node_name_at, param_node_type_expr,
@@ -1121,14 +1122,11 @@ pub fn constructor_call_admission_diags(
     } else {
         match (*func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
-    Some(permitted) => if (identity.owner_module_path.clone() == scope.module_name.clone()) {
+    Some(permitted) => match caller_decl_coords(scope.clone()) {
+    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
             Rc::new(vec![])
         } else {
-            match caller_decl_coords(scope.clone()) {
-    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
-                Rc::new(vec![])
-            } else {
-                Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: caller.module_path.clone(),
@@ -1136,7 +1134,7 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())])
-            },
+        },
     None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
@@ -1145,8 +1143,7 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())]),
-}
-        },
+},
     None => Rc::new(vec![]),
 },
     ConstructorDeclarationLookup::NotAdmissionBearingReference => Rc::new(vec![]),
@@ -1418,6 +1415,99 @@ pub fn rejects_string_for_optional_coproduct_field(
             == "Primitive(String)".to_string())
             || (authored_name_at(source_indices.clone(), got.clone()) == "String".to_string()));
         (expected_is_optional_coproduct.clone() && got_is_string.clone())
+    }
+}
+
+pub fn bare_none_construction_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some { n: Int }` in scope, `Holder { n: None }` for `n: Int` and `ListHolder { xs: None }` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn field_declared_type_is_identified(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let required = match lookup_type_for(
+            scope.type_env.clone(),
+            with_required_cardinality(ft.clone()),
+        ) {
+            Some(resolved) => resolved.clone(),
+            None => with_required_cardinality(ft.clone()),
+        };
+        (authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            required.clone(),
+        ) != "".to_string())
+    }
+}
+
+pub fn field_type_admits_bare_none(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let required = match lookup_type_for(
+            scope.type_env.clone(),
+            with_required_cardinality(ft.clone()),
+        ) {
+            Some(resolved) => resolved.clone(),
+            None => with_required_cardinality(ft.clone()),
+        };
+        let expanded =
+            expand_scrut_type_for_variant_lookup(required.clone(), scope.type_env.clone());
+        let declares_none_variant = ((expanded.connective.clone() == Connective::Disj)
+            && has_child_named(
+                expanded.clone(),
+                "None".to_string(),
+                scope.type_env.clone().source_indices.clone(),
+            ));
+        ((ft.return_cardinality.clone() == Cardinality::CardOptional)
+            || declares_none_variant.clone())
+    }
+}
+
+pub fn expr_is_bare_none_reference(texpr: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            (expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone())
+                == "None".to_string())
+        }
+        _ => false,
+    }
+}
+
+pub fn bare_none_field_construction_diags(
+    fi: Rc<Node>,
+    fi_name: String,
+    field_declared_type: Option<Rc<Node>>,
+    type_name_for_message: String,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match field_declared_type.clone() {
+        None => Rc::new(vec![]),
+        Some(ft) => {
+            let value_expr = field_init_node_value(fi.clone());
+            if ((expr_is_bare_none_reference(value_expr.clone(), scope.clone())
+                && field_declared_type_is_identified(ft.clone(), scope.clone()))
+                && (field_type_admits_bare_none(ft.clone(), scope.clone()) == false))
+            {
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::BareNoneNotAdmittedByFieldType {
+                        field: fi_name.clone(),
+                        type_name: type_name_for_message.clone(),
+                        declared_type: node_type_shape(
+                            ft.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
+                        span: value_expr.span.clone(),
+                    }),
+                    scope.module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
+        }
     }
 }
 
@@ -2090,6 +2180,83 @@ pub fn where_refinement_predicates_equivalent(
     }
 }
 
+pub fn where_refinement_min_length_implication_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE FRAGMENT IS TWO PARTIAL FUNCTIONS, NOT AN IMPLICATION ENGINE, and the asymmetry between them is the entire soundness argument. Predicate implication in general is undecidable, so this decides exactly one relation and refuses outside it: a value whose refinement GUARANTEES a minimum length satisfies a formal position whose refinement DEMANDS a minimum length AND NOTHING ELSE. Provider and demander are separate partial functions over the same closed predicate vocabulary because a predicate can inhabit one side and not the other, and collapsing them into one min-length table is a FAIL-OPEN that the obvious framing walks straight into: model lower_hex_64 as min-length 64 on both sides and a formal lower_hex_64 is then satisfied by an actual lower_hex_128, since 128 >= 64 — but those predicates demand DIFFERENT EXACT LENGTHS and a 128-digit string is not a valid sha256 hex. lower_hex_N therefore appears as a PROVIDER only (it guarantees exactly N lower-hex digits, hence at least N characters) and never as a demander (it demands an exact length and a charset, neither of which a length lower bound establishes). non_empty is the only predicate in the live vocabulary that is a pure length lower bound, so it is the only demander, and it is a provider too because it demands what it guarantees. Everything outside both tables answers Absent and the caller falls through to the pre-existing name-equality path unchanged, so this widens what the wall can DECIDE and narrows nothing it already decided. oci_other_digest_algorithm and oci_other_digest_encoded are deliberately NOT providers even though their grammars happen to exclude the empty string: that fact lives in oci_digest_algorithm_wire_holds / oci_encoded_digest_syntax_valid as a consequence of a syntax walk, not as a declared constant this table could cite, and asserting a bound the predicate does not state is the fabrication DESIGN §5 forbids. The four lower_hex_N bounds ARE declared constants — each is content_hash_validate_lower_hex_length(text, expected_hex_digits: N), whose body is text.length() == N — so the number in this table is the number in the predicate, cited rather than restated. WHY THIS IS A WALL AND NOT A WIDENING: the two corpus sites it closes (std.content_hash serialize_content_hash, `s.digest as NonEmptyStr` over Fnv1a64StructuralDigestHex and `d.hex as NonEmptyStr` over Sha1DigestHex) were carrying WhereRefinementUnenforced advisories for REFUSED evidence, not absent evidence — the value's own declared type already proved the property and where_refinement_predicates_equivalent could not see it because it compares predicate NAMES for equality, and lower_hex_40 != non_empty. WHAT IS NOT STRUCTURAL, STATED AT ITS HONEST RUNG (§4b) BECAUSE A TABLE PAIR WHOSE SOUNDNESS LIVES IN PROSE DECAYS SILENTLY: nothing prevents a predicate from being enrolled in BOTH tables, and membership in both is NOT the fail-open — non_empty is deliberately in both and is sound there, because it demands exactly what it guarantees. The real enrollment condition is narrower: a predicate may take a REQUIRED row only if its entire semantics is a length lower bound and nothing else. lower_hex_64 in both tables would be unsound not because it appears twice but because it demands an exact length and a charset that a lower bound does not establish. That condition is enforced by nobody: these are two hand-written name-keyed partial functions, so a future demander row asserting more than length would fail open and no check would fire. The decided relation guaranteed >= required is mechanically enforced; the authoring discipline that populates the demander table is DILIGENCE, rung MITIGATABLE, and it is contained only by the vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on: feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the string classifiers, the guaranteed and required bounds become fields on the predicate's own declaration rather than two tables a reader must keep in lockstep with where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn where_predicate_guaranteed_min_length(pred_name: String) -> Option<i64> {
+    if (pred_name.clone() == "non_empty".to_string()) {
+        Some(1)
+    } else {
+        if (pred_name.clone() == "lower_hex_16".to_string()) {
+            Some(16)
+        } else {
+            if (pred_name.clone() == "lower_hex_40".to_string()) {
+                Some(40)
+            } else {
+                if (pred_name.clone() == "lower_hex_64".to_string()) {
+                    Some(64)
+                } else {
+                    if (pred_name.clone() == "lower_hex_128".to_string()) {
+                        Some(128)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn where_predicate_required_min_length(pred_name: String) -> Option<i64> {
+    if (pred_name.clone() == "non_empty".to_string()) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+pub fn where_refinement_predicate_min_length_implies(
+    formal_pred: Rc<Node>,
+    actual_pred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match where_predicate_required_min_length(where_predicate_canonical_name(
+        where_predicate_name_at(formal_pred.clone(), source_indices.clone()),
+    )) {
+        Some(required) => {
+            match where_predicate_guaranteed_min_length(where_predicate_canonical_name(
+                where_predicate_name_at(actual_pred.clone(), source_indices.clone()),
+            )) {
+                Some(guaranteed) => (guaranteed.clone() >= required.clone()),
+                None => false,
+            }
+        }
+        None => false,
+    }
+}
+
+pub fn where_refinement_predicate_satisfied_by(
+    formal_pred: Rc<Node>,
+    actual_pred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (where_refinement_predicates_equivalent(
+        formal_pred.clone(),
+        actual_pred.clone(),
+        source_indices.clone(),
+    ) || where_refinement_predicate_min_length_implies(
+        formal_pred.clone(),
+        actual_pred.clone(),
+        source_indices.clone(),
+    ))
+}
+
 pub fn where_refinement_predicates_covered(
     formal_preds: Rc<Vec<Rc<Node>>>,
     actual_preds: Rc<Vec<Rc<Node>>>,
@@ -2101,7 +2268,7 @@ pub fn where_refinement_predicates_covered(
             if !({
                 let mut __found = false;
                 for ap in actual_preds.clone().iter().cloned() {
-                    if where_refinement_predicates_equivalent(
+                    if where_refinement_predicate_satisfied_by(
                         fp.clone(),
                         ap.clone(),
                         source_indices.clone(),
@@ -4707,10 +4874,42 @@ pub fn validate_cast(
     }
 }
 
+pub fn optional_cast_diags(
+    source_inferred: Option<Rc<InferredNode>>,
+    target_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match source_inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: src_node, .. }) => {
+            let source_name = authored_name_at(source_indices.clone(), src_node.clone());
+            let source_is_optional = ((src_node.return_cardinality.clone()
+                == Cardinality::CardOptional)
+                || (source_name.clone() == "Optional".to_string()));
+            let target_is_optional =
+                (target_type.return_cardinality.clone() == Cardinality::CardOptional);
+            if (source_is_optional.clone() && !target_is_optional.clone()) {
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::OptionalCastNotEliminated {
+                        source_type: v1_rt::concat(source_name.clone(), "?".to_string()),
+                        target_type: authored_name_at(source_indices.clone(), target_type.clone()),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: make_span(0, 0),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -7071,6 +7270,15 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_rt.clone(),
                         method_name.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        |n| {
+                            expand_type_for_field_access(
+                                n.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                            )
+                            .resolved
+                            .clone()
+                        },
                     );
                     let mc_arg_infer_results = infer_method_args_with_fold(
                         mc_method_name.clone(),
@@ -8254,6 +8462,13 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 Some(d) => Rc::new(vec![d.clone()]),
                 None => Rc::new(vec![]),
             };
+            let cast_optional_diags = optional_cast_diags(
+                inner_typed.inferred.clone(),
+                target_type.clone(),
+                span.clone(),
+                si.clone(),
+                scope.module_name.clone(),
+            );
             let cast_sole_ctor_diags = sole_constructor_construction_diags(
                 target_name.clone(),
                 span.clone(),
@@ -8278,7 +8493,10 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 typed: cast_texpr.clone(),
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                        v1_rt::concat(
+                            v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                            cast_optional_diags.clone(),
+                        ),
                         cast_sole_ctor_diags.clone(),
                     ),
                     cast_refinement_diags.clone(),
@@ -9781,8 +9999,17 @@ pub fn infer_record_lit_structural(
                         ),
                         infer_result: ar.clone(),
                         diagnostics: v1_rt::concat(
-                            v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
-                            unknown_field_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
+                                unknown_field_diags.clone(),
+                            ),
+                            bare_none_field_construction_diags(
+                                fi.clone(),
+                                fi_name.clone(),
+                                field_declared_type.clone(),
+                                tn_str.clone(),
+                                scope.clone(),
+                            ),
                         ),
                     })
                 });
@@ -18226,7 +18453,7 @@ pub fn build_type_env_unresolved(
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
                 intern(t, name.clone()).table.clone()
             });
-        let zero_span = make_span(0, 0);
+        let zero_span = no_span();
         let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()

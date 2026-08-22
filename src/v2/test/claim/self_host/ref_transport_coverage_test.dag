@@ -1,0 +1,125 @@
+module v2.test.self_host.ref_transport_coverage
+
+import std.content_hash { Fnv1a64, Fnv1a64Structural }
+import v2.compiler.self_host.compiler_closure_emit_driver {
+  ClosureEmitPopulationAdmitted,
+  ClosureEmitPopulationRefused,
+  closure_emit_population_admission
+}
+import v2.compiler.source_authority {
+  SourceRootCoverage,
+  DiscoveredSourceRefsDigestFromList,
+  SourceRef,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
+  SourceRootManifestElided,
+  SourceRootProvenanceCoverageReceipt,
+  SourceRootRowsMissing,
+  source_root_coverage_is_complete,
+  source_root_ref_transport_coverage_admits
+}
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// WHY THESE FIXTURES DO NOT NAME REAL FILES.
+//
+// Every claim here is decided BEFORE the admission ladder reaches its read
+// arm, so no fixture ref is ever opened. That is deliberate: the question
+// under test is which COVERAGE variants a ref-carrier consumer may proceed
+// past, and a fixture that had to read the tree would make the answer depend
+// on a live population instead of on the coproduct.
+
+fn probe_ref(path: String) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: V2Tree,
+    content_hash: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" })
+  }
+}
+
+data probe_refs: List<SourceRef> = [
+  probe_ref(path: "src/v2/pilot/probe_a.dag"),
+  probe_ref(path: "src/v2/pilot/probe_b.dag")
+]
+
+// A digest that cannot be the digest of probe_refs. It is the sentinel that
+// makes these claims decidable without a read: an admission that gets past
+// coverage and past transport completeness stops HERE, at the digest, and the
+// refusal reason names which rung it reached.
+data wrong_population_digest: Fnv1a64Structural = Fnv1a64Structural {
+  digest: "ffffffffffffffff"
+}
+
+fn probe_receipt(coverage: SourceRootCoverage) -> SourceRootProvenanceCoverageReceipt {
+  SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: 2,
+    produced_row_count: 2,
+    discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {
+      digest: wrong_population_digest
+    },
+    coverage: coverage
+  }
+}
+
+fn probe_refusal_reason(coverage: SourceRootCoverage) -> Symbol {
+  match closure_emit_population_admission(
+    refs: probe_refs,
+    receipt: probe_receipt(coverage: coverage)
+  ) {
+    ClosureEmitPopulationRefused { reason: reason } => reason
+    ClosureEmitPopulationAdmitted { ingest: _ } => ^probe_admitted_unexpectedly
+  }
+}
+
+// THE POSITIVE CONTROL, and it is RED before the narrowing lands. An elided
+// INLINE carrier no longer stops a consumer that reads through REFS: the
+// admission walks past coverage and stops at the digest instead. The
+// compiler's own closure is 107 modules against an inline cap of 64, so
+// before this the driver refused every real subject on a fact about a
+// carrier it never reads.
+test fn elided_inline_carrier_no_longer_refuses_a_ref_carrier_consumer() -> Bool {
+  probe_refusal_reason(coverage: SourceRootManifestElided { read_count: 107, cap: 64 })
+    == ^closure_emit_driver_population_digest_mismatch
+}
+
+test fn complete_coverage_still_walks_past_coverage() -> Bool {
+  probe_refusal_reason(coverage: SourceRootCoverageComplete)
+    == ^closure_emit_driver_population_digest_mismatch
+}
+
+// THE PRESERVED REFUSALS. The arm is narrowed, not deleted, so both real
+// deficits must still stop the ladder AT COVERAGE -- earlier than the digest
+// rung the two claims above reach. Asserting the reason rather than a bare
+// refusal is what makes that distinction visible: a deletion of the arm would
+// green a bare-refusal assertion, because the transport clause below it
+// happens to catch RowsMissing too, and the guarantee would silently become a
+// property of arm order.
+test fn rows_missing_still_refuses_at_coverage() -> Bool {
+  probe_refusal_reason(
+    coverage: SourceRootRowsMissing { read_count: 2, produced_row_count: 1 }
+  ) == ^closure_emit_driver_coverage_incomplete
+}
+
+test fn absent_manifest_still_refuses_at_coverage() -> Bool {
+  probe_refusal_reason(coverage: SourceRootManifestAbsent)
+    == ^closure_emit_driver_coverage_incomplete
+}
+
+// The two predicates are one concept read for two carriers, so the ONLY
+// variant they may disagree on is the one the inline cap produces. This is
+// the wall against the next edit: widening the ref predicate to admit Absent
+// or RowsMissing, or collapsing it back onto the inline one, reds here.
+test fn the_two_coverage_questions_differ_on_exactly_the_elided_variant() -> Bool {
+  let elided = SourceRootManifestElided { read_count: 107, cap: 64 }
+  let rows_missing = SourceRootRowsMissing { read_count: 2, produced_row_count: 1 }
+  source_root_ref_transport_coverage_admits(coverage: elided)
+    && !source_root_coverage_is_complete(coverage: elided)
+    && (source_root_ref_transport_coverage_admits(coverage: SourceRootCoverageComplete)
+        == source_root_coverage_is_complete(coverage: SourceRootCoverageComplete))
+    && (source_root_ref_transport_coverage_admits(coverage: rows_missing)
+        == source_root_coverage_is_complete(coverage: rows_missing))
+    && (source_root_ref_transport_coverage_admits(coverage: SourceRootManifestAbsent)
+        == source_root_coverage_is_complete(coverage: SourceRootManifestAbsent))
+}

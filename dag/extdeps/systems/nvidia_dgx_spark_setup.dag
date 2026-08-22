@@ -10,7 +10,11 @@ import extdeps.uri { Uri, Https }
 // that one models the HARDWARE the vendor ships and this one models the SETUP SURFACE
 // the vendor exposes; they version independently (a firmware/OOBE revision changes the
 // surface without changing a single hardware row). Nothing here is an operator decision,
-// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark_provisioning.
+// a fleet fact, or an observation of srv5/srv6 — those live downstream, in the product
+// layer: the units' fleet identities and router bindings in gunbc.fleet_intent_network and
+// gunbc.spark.dgx_procurement, and what is observed of them in gunbc.spark.serving_observe.
+// This clause used to name gunbc.spark.provisioning, which was deleted as an unconsumed
+// model whose subject completed by another route; the boundary it states is unchanged.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -97,10 +101,12 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
 //
 // Hostname assignment is in the universe and not in the list — a measured absence in the
 // cited page rather than an omission here. It is carried because the page's silence is a
-// fact worth stating, not because anything upstream needs it: gunbc.spark_provisioning
-// models no hostname at all (an OS hostname is presentation and converges later through
+// fact worth stating, not because anything upstream needs it: no downstream model asks the
+// OOBE surface for a hostname (an OS hostname is presentation and converges later through
 // the ordinary apply path), so this member is the predicate's negative case and nothing
-// more.
+// more. The example this clause used to cite was gunbc.spark.provisioning, now deleted; the
+// measured absence in the cited page is a fact about the page and does not depend on which
+// consumer happens to exist.
 fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
   fold(
     dgx_spark_oobe_fields,

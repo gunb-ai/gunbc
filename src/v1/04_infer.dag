@@ -31,7 +31,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -60,7 +60,7 @@ import v1.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
-  no_span, make_span, NewlineIndex,
+  no_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
@@ -702,6 +702,28 @@ fn declaration_lookup_failure_label(cause: DeclarationLookupFailure) -> String {
   }
 }
 
+// ADMISSION IS EXACT FOR EVERY CALLER, INCLUDING SAME-MODULE ONES.
+//
+// This function used to skip the permitted-list comparison entirely when caller and callee shared
+// a module, so the semantics the compiler implemented were "a permitted caller OR any declaration
+// in the defining module" -- an implicit wildcard that never appeared in the authored declaration
+// and that no reader of a sealed `fn` could see. Measured before the repair: a probe added to
+// gunbc.host_effect_realize, absent from the admitted list, calling the elevated execution leaf
+// with ["/bin/rm", "-rf", "/"], typechecked and resolved with no diagnostic at all, while the same
+// call from another module refused.
+//
+// That made every same-module permitted list unverified data rather than an executable
+// declaration: a "private handler" co-located with its serializer was not private, an arbitrary
+// helper added inside the module bypassed the wall, and an incorrect caller list could sit green
+// forever. The last one is not hypothetical -- the srv3 seal's own lists were first authored by
+// hand with a caller that does not exist and two attributed to the wrong enclosing function, and
+// nothing in the compiler would have said so.
+//
+// The repair deletes the branch and nothing else: the exact caller-coordinate comparison, the
+// ConstructorCallAdmissionRefused diagnostic, and the caller-identity-unavailable arm were all
+// already here and already correct. Self-calls obey the same rule -- a recursive sealed function
+// lists itself -- because an invisible self exception would replace the module wildcard with a
+// smaller undeclared one.
 fn constructor_call_admission_diags(
   callee_name: String,
   scope: InferScope,
@@ -718,9 +740,6 @@ fn constructor_call_admission_diags(
       ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
         match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
           Present { value: permitted } =>
-            if identity.owner_module_path == scope.module_name {
-              []
-            } else {
               match caller_decl_coords(scope: scope) {
                 Present { value: caller } =>
                   if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
@@ -755,7 +774,6 @@ fn constructor_call_admission_diags(
                     )
                   ]
               }
-            }
           Absent => []
         }
       NotAdmissionBearingReference => []
@@ -914,6 +932,62 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_resolved.connective == Disj
   let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
   expected_is_optional_coproduct && got_is_string
+}
+
+data bare_none_construction_wall_note: String = "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some \{ n: Int \}` in scope, `Holder \{ n: None \}` for `n: Int` and `ListHolder \{ xs: None \}` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm."
+
+fn field_declared_type_is_identified(ft: Node, scope: InferScope) -> Bool {
+  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: ft)
+  }
+  authored_name_at(source_indices: scope.type_env.source_indices, node: required) != ""
+}
+
+fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
+  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: ft)
+  }
+  let expanded = expand_scrut_type_for_variant_lookup(scrut_node: required, env: scope.type_env)
+  let declares_none_variant = expanded.connective == Disj
+    && has_child_named(n: expanded, name: "None", source_indices: scope.type_env.source_indices)
+  ft.return_cardinality == CardOptional || declares_none_variant
+}
+
+fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices) == "None"
+    _ => false
+  }
+}
+
+fn bare_none_field_construction_diags(
+  fi: Node,
+  fi_name: String,
+  field_declared_type: Node?,
+  type_name_for_message: String,
+  scope: InferScope
+) -> List<ErrorNode> {
+  match field_declared_type {
+    Absent => []
+    Present { value: ft } =>
+      let value_expr = field_init_node_value(n: fi)
+      if expr_is_bare_none_reference(texpr: value_expr, scope: scope)
+        && field_declared_type_is_identified(ft: ft, scope: scope)
+        && field_type_admits_bare_none(ft: ft, scope: scope) == false {
+        [make_error_node(
+          diagnostic: BareNoneNotAdmittedByFieldType {
+            field: fi_name,
+            type_name: type_name_for_message,
+            declared_type: node_type_shape(n: ft, source_indices: scope.type_env.source_indices),
+            span: value_expr.span
+          },
+          module_name: scope.module_name
+        )]
+      } else { [] }
+  }
 }
 
 fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
@@ -1352,6 +1426,67 @@ fn where_refinement_predicates_equivalent(
   }
 }
 
+data where_refinement_min_length_implication_note: String = "THE FRAGMENT IS TWO PARTIAL FUNCTIONS, NOT AN IMPLICATION ENGINE, and the asymmetry between them is the entire soundness argument. Predicate implication in general is undecidable, so this decides exactly one relation and refuses outside it: a value whose refinement GUARANTEES a minimum length satisfies a formal position whose refinement DEMANDS a minimum length AND NOTHING ELSE. Provider and demander are separate partial functions over the same closed predicate vocabulary because a predicate can inhabit one side and not the other, and collapsing them into one min-length table is a FAIL-OPEN that the obvious framing walks straight into: model lower_hex_64 as min-length 64 on both sides and a formal lower_hex_64 is then satisfied by an actual lower_hex_128, since 128 >= 64 — but those predicates demand DIFFERENT EXACT LENGTHS and a 128-digit string is not a valid sha256 hex. lower_hex_N therefore appears as a PROVIDER only (it guarantees exactly N lower-hex digits, hence at least N characters) and never as a demander (it demands an exact length and a charset, neither of which a length lower bound establishes). non_empty is the only predicate in the live vocabulary that is a pure length lower bound, so it is the only demander, and it is a provider too because it demands what it guarantees. Everything outside both tables answers Absent and the caller falls through to the pre-existing name-equality path unchanged, so this widens what the wall can DECIDE and narrows nothing it already decided. oci_other_digest_algorithm and oci_other_digest_encoded are deliberately NOT providers even though their grammars happen to exclude the empty string: that fact lives in oci_digest_algorithm_wire_holds / oci_encoded_digest_syntax_valid as a consequence of a syntax walk, not as a declared constant this table could cite, and asserting a bound the predicate does not state is the fabrication DESIGN §5 forbids. The four lower_hex_N bounds ARE declared constants — each is content_hash_validate_lower_hex_length(text, expected_hex_digits: N), whose body is text.length() == N — so the number in this table is the number in the predicate, cited rather than restated. WHY THIS IS A WALL AND NOT A WIDENING: the two corpus sites it closes (std.content_hash serialize_content_hash, `s.digest as NonEmptyStr` over Fnv1a64StructuralDigestHex and `d.hex as NonEmptyStr` over Sha1DigestHex) were carrying WhereRefinementUnenforced advisories for REFUSED evidence, not absent evidence — the value's own declared type already proved the property and where_refinement_predicates_equivalent could not see it because it compares predicate NAMES for equality, and lower_hex_40 != non_empty. WHAT IS NOT STRUCTURAL, STATED AT ITS HONEST RUNG (§4b) BECAUSE A TABLE PAIR WHOSE SOUNDNESS LIVES IN PROSE DECAYS SILENTLY: nothing prevents a predicate from being enrolled in BOTH tables, and membership in both is NOT the fail-open — non_empty is deliberately in both and is sound there, because it demands exactly what it guarantees. The real enrollment condition is narrower: a predicate may take a REQUIRED row only if its entire semantics is a length lower bound and nothing else. lower_hex_64 in both tables would be unsound not because it appears twice but because it demands an exact length and a charset that a lower bound does not establish. That condition is enforced by nobody: these are two hand-written name-keyed partial functions, so a future demander row asserting more than length would fail open and no check would fire. The decided relation guaranteed >= required is mechanically enforced; the authoring discipline that populates the demander table is DILIGENCE, rung MITIGATABLE, and it is contained only by the vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on: feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the string classifiers, the guaranteed and required bounds become fields on the predicate's own declaration rather than two tables a reader must keep in lockstep with where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds."
+
+fn where_predicate_guaranteed_min_length(pred_name: String) -> Int? {
+  if pred_name == "non_empty" {
+    Present { value: 1 }
+  } else if pred_name == "lower_hex_16" {
+    Present { value: 16 }
+  } else if pred_name == "lower_hex_40" {
+    Present { value: 40 }
+  } else if pred_name == "lower_hex_64" {
+    Present { value: 64 }
+  } else if pred_name == "lower_hex_128" {
+    Present { value: 128 }
+  } else {
+    none
+  }
+}
+
+fn where_predicate_required_min_length(pred_name: String) -> Int? {
+  if pred_name == "non_empty" {
+    Present { value: 1 }
+  } else {
+    none
+  }
+}
+
+fn where_refinement_predicate_min_length_implies(
+  formal_pred: Node,
+  actual_pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  match where_predicate_required_min_length(
+    pred_name: where_predicate_canonical_name(
+      pred_name: where_predicate_name_at(pred: formal_pred, source_indices: source_indices)
+    )
+  ) {
+    Present { value: required } =>
+      match where_predicate_guaranteed_min_length(
+        pred_name: where_predicate_canonical_name(
+          pred_name: where_predicate_name_at(pred: actual_pred, source_indices: source_indices)
+        )
+      ) {
+        Present { value: guaranteed } => guaranteed >= required
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn where_refinement_predicate_satisfied_by(
+  formal_pred: Node,
+  actual_pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  where_refinement_predicates_equivalent(
+    formal_pred: formal_pred, actual_pred: actual_pred, source_indices: source_indices
+  ) || where_refinement_predicate_min_length_implies(
+    formal_pred: formal_pred, actual_pred: actual_pred, source_indices: source_indices
+  )
+}
+
 fn where_refinement_predicates_covered(
   formal_preds: List<Node>,
   actual_preds: List<Node>,
@@ -1359,7 +1494,7 @@ fn where_refinement_predicates_covered(
 ) -> Bool {
   formal_preds |> all(fp =>
     actual_preds |> any(ap =>
-      where_refinement_predicates_equivalent(
+      where_refinement_predicate_satisfied_by(
         formal_pred: fp, actual_pred: ap, source_indices: source_indices
       )
     )
@@ -2837,8 +2972,45 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
   }
 }
 
+// THE LEAKED-OPTIONAL WALL. A cast does not eliminate absence -- it re-types the node and
+// leaves the value alone, so `reading as String` over a `NonEmptyStr?` rendered the WRAPPER:
+// production receipts on 2026-08-20 carried `probed_at=Present { value: 2026-08-20T21:11:38Z }`
+// from fourteen such sites. `gunbc.clock_read` `probed_at_word` fixed those sites, and
+// `test.claim.probed_at_word_witness_test` recorded the honest rung: reverting any one of them
+// left both witnesses green, because a witness on the rendering authority cannot see who calls it.
+// This is that carrier's declared next-rung trigger. Membership is decidable from the inferred
+// cardinality alone -- no corpus knowledge, no name list -- so it is a wall (DESIGN section 5),
+// and it refuses every cast off an optional source rather than only the text targets that made
+// the defect visible, because the loss is the elimination that never happened, not the target's
+// spelling. A cast whose TARGET is itself optional is not this class: it re-types the carrier
+// with the absence intact, so it is left to validate_cast.
+fn optional_cast_diags(
+  source_inferred: InferredNode?,
+  target_type: Node,
+  span: SourceSpan,
+  source_indices: Map<String, NewlineIndex>,
+  module_name: String
+) -> List<ErrorNode> {
+  match source_inferred {
+    Present { value: Resolved { node: src_node } } =>
+      let source_name = authored_name_at(source_indices: source_indices, node: src_node)
+      let source_is_optional = src_node.return_cardinality == CardOptional || source_name == "Optional"
+      let target_is_optional = target_type.return_cardinality == CardOptional
+      if source_is_optional && !target_is_optional {
+        [make_error_node(
+          diagnostic: OptionalCastNotEliminated {
+            source_type: concat(source_name, "?"),
+            target_type: authored_name_at(source_indices: source_indices, node: target_type),
+            span: span
+          },
+          module_name: module_name)]
+      } else { [] }
+    _ => []
+  }
+}
+
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -3977,7 +4149,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices)
+      let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
@@ -4496,6 +4668,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: d } => [d]
         Absent => []
       }
+      let cast_optional_diags = optional_cast_diags(
+        source_inferred: inner_typed.inferred,
+        target_type: target_type,
+        span: span,
+        source_indices: si,
+        module_name: scope.module_name
+      )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
@@ -4507,7 +4686,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: concat(concat(concat(inner_diags, cast_diags), cast_sole_ctor_diags), cast_refinement_diags)
+        diagnostics: concat(concat(concat(concat(inner_diags, cast_diags), cast_optional_diags), cast_sole_ctor_diags), cast_refinement_diags)
       }
 
     ExprForEach =>
@@ -5271,7 +5450,13 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     FieldInferResult {
       typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(ar_diags, field_type_diags), unknown_field_diags)
+      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+        fi: fi,
+        fi_name: fi_name,
+        field_declared_type: field_declared_type,
+        type_name_for_message: tn_str,
+        scope: scope
+      ))
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
@@ -8890,7 +9075,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),

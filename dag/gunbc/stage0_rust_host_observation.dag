@@ -7,21 +7,48 @@ import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.stage0_emitted_population_manifest {
+  emitted_population_manifest_basename,
+  emitted_population_manifest_line_prefix,
+  emitted_population_manifest_line_separator
+}
 import gunbc.stage0_cargo_manifest {
   CargoManifestBinParse,
   CargoManifestBinsParsed,
   CargoManifestBinsParseRefused,
   stage0_cargo_toml_repo_path,
-  stage0_package_root
+  stage0_package_root,
+  stage0_source_dir_relative_to_package
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { CommitSha, GitRef, String }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 
+data stage0_rust_observation_repository_path: String = "."
+
+data stage0_rust_observation_repository_path_note: String = "The repository this observation inspects. Declared rather than ambient: git.Inspect.MergeBase names its repository (see that operation), so this fact is authored and visible even though production runs from the root. A `.` that is written down can be reviewed and changed; a `.` that is merely where the process happened to start cannot."
+
 data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
+
+// WHAT THE EMITTER DECLARED IT PRODUCED, AS AN OBSERVED FACT RATHER THAN A RECONSTRUCTION.
+//
+// This axis is a coproduct and not a bare `List<String>` because "the emitter produced nothing"
+// and "this observation makes no claim about the emit population" are DIFFERENT STATES with
+// different remedies, and collapsing them into an empty list is the state-space conflation
+// DESIGN's failure-mode list names. An empty list would read as a total claim -- every tracked
+// stage0 path unaccounted for -- from a subject that never looked.
+//
+// `EmitPopulationUnobserved` is therefore NOT a permissive default. Every consumer that needs the
+// population must REFUSE on it (see `stage0_rust_source_lifecycle_scaffold`'s
+// `EmitPopulationUnobservedEvidence` arm); it is the honest value for a fixture exercising some
+// other axis, and it is a typed, located line-stop anywhere else. Reading it as "carry on with a
+// reconstruction" would be the absorbing fallback with the deficit's frequency zeroed.
+type EmitPopulationEvidence
+  = EmitPopulationConfirmed { emitted_stage0_repo_paths: List<String> }
+  | EmitPopulationUnobserved { detail: String }
 
 type RustSourceHostObservation
   = RustManifestObserved {
@@ -29,7 +56,8 @@ type RustSourceHostObservation
       manifest_content_identity: Fnv1a64Structural,
       tracked_rust_repo_paths: List<String>,
       prior_tracked_rust_repo_paths: List<String>,
-      cargo_bin_repo_paths: List<String>
+      cargo_bin_repo_paths: List<String>,
+      emit_population_evidence: EmitPopulationEvidence
     }
   | RustManifestReadRefused { detail: String }
   | RustManifestParseRefused { detail: String }
@@ -122,6 +150,79 @@ fn normalize_cargo_bin_repo_paths(
   )
 }
 
+data emitted_population_manifest_repo_path: String = concat(
+  stage0_package_root,
+  concat(stage0_source_dir_relative_to_package, emitted_population_manifest_basename)
+)
+
+// THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
+//
+// `v1.compiler.emit_rust` `emit_emitted_population_manifest` renders one line per produced path
+// as `line_prefix ++ path`, joined by the separator. This recovers them by splitting on that
+// separator and stripping that prefix, reading BOTH literals from the same authority the writer
+// reads (`gunbc.stage0_emitted_population_manifest`). No Rust grammar is involved: the artifact
+// is a `.rs` so that it is covered by the regen comparison, but nothing here parses Rust, which
+// is the whole reason it is comment lines rather than a `const &[&str]`.
+//
+// A line that does not carry the prefix is DROPPED rather than guessed at. The manifest is
+// emitter-produced and every line carries it by construction, so a line that does not is
+// evidence the artifact is not what this function was pointed at -- and the emptiness that
+// results is caught by the caller, which refuses on an empty population rather than reporting
+// "the emitter produced nothing".
+fn emitted_population_paths_from_manifest(content: String) -> List<String> {
+  let prefix_length = string_length(s: emitted_population_manifest_line_prefix)
+  let lines = split(s: content, delimiter: emitted_population_manifest_line_separator)
+  list_map(
+    xs: filter(
+      xs: lines,
+      predicate: fn(line) {
+        starts_with(s: line, prefix: emitted_population_manifest_line_prefix)
+      }
+    ),
+    f: fn(line) { substring(s: line, start: prefix_length, end: string_length(s: line)) }
+  )
+}
+
+// The manifest declares TARGET-relative paths (`src/cli_run.rs`), because that is the space the
+// emitter writes in. Everything downstream of this observation addresses REPOSITORY-relative
+// paths. The conversion is composition with the package root, and it lives here rather than in
+// the shared manifest authority for the reason stated there: only the parts that are genuinely
+// one fact are shared, and a path is not -- the two ends speak different spaces.
+fn emitted_population_repo_paths(content: String) -> List<String> {
+  list_map(
+    xs: emitted_population_paths_from_manifest(content: content),
+    f: fn(target_relative) { concat(stage0_package_root, target_relative) }
+  )
+}
+
+fn observe_emit_population_evidence(revision: CommitSha) -> EmitPopulationEvidence {
+  let manifest = git.Core.Show(
+    ref: revision as GitRef,
+    path: emitted_population_manifest_repo_path,
+    expect: ExpectSuccess
+  )
+  if !manifest.success {
+    EmitPopulationUnobserved {
+      detail: git_refusal_detail(
+        operation: concat("git.Core.Show(", concat(emitted_population_manifest_repo_path, ")")),
+        stderr: manifest.stderr
+      )
+    }
+  } else {
+    let paths = emitted_population_repo_paths(content: manifest.content)
+    if length(xs: paths) == 0 {
+      EmitPopulationUnobserved {
+        detail: concat(
+          emitted_population_manifest_repo_path,
+          " carried no declared paths -- it is not the emitted-population manifest"
+        )
+      }
+    } else {
+      EmitPopulationConfirmed { emitted_stage0_repo_paths: paths }
+    }
+  }
+}
+
 fn observe_stage0_rust_sources(
   manifest_repo_path: String,
   package_root: String,
@@ -133,6 +234,7 @@ fn observe_stage0_rust_sources(
   } else {
     let revision = head.sha as String
     let baseline = git.Inspect.MergeBase(
+      repository_path: stage0_rust_observation_repository_path,
       left: revision as GitRef,
       right: base_ref as GitRef,
       expect: ExpectSuccess
@@ -197,7 +299,8 @@ fn observe_stage0_rust_sources(
                       manifest_content_identity: content_hash_atom(value: manifest.content),
                       tracked_rust_repo_paths: rust_paths_from_nul(raw: current_tree.paths_nul),
                       prior_tracked_rust_repo_paths: rust_paths_from_nul(raw: prior_tree.paths_nul),
-                      cargo_bin_repo_paths: cargo_bin_repo_paths
+                      cargo_bin_repo_paths: cargo_bin_repo_paths,
+                      emit_population_evidence: observe_emit_population_evidence(revision: revision)
                     }
                 }
             }
@@ -269,7 +372,7 @@ data stage0_rust_observation_seed_growth_justification: SeedGrowthJustification 
       field: WholeDeclaration
     }
   ],
-  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is on gunbc.stage0_emit_model generated_stage0_files and is regenerated from src/v1/04_method.dag rather than authored.\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum, the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.\n\nTHE SEVENTH ITEM IS REAL BUT NOT CITABLE, AND THAT IS RECORDED HERE RATHER THAN FORCED INTO A FIELD IT IS NOT. The hand-authored surface this change adds is seven Rust items; the list above carries six. The missing one is the Display realization named above: `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal`, an item in its own right and not part of the enum declaration already cited. std.decl_ref DeclField offers exactly WholeDeclaration or NamedField, and a trait-impl method is neither -- the impl block has no name, and fmt is a method on it, not a field of the enum, which has three unit variants and no fields at all. Two earlier revisions each tried to make the vocabulary say it anyway: the first invented the symbol Stage0CargoBinManifestParseRefusal_Display, which resolves to nothing (review 46351); the second wrote a NamedField citing fmt, which type-checks and greps clean while asserting a field that does not exist (review 46383). Both are one defect -- a citation shaped to fit the carrier rather than the code -- and the second is the DESIGN 5 workaround class exactly: the obstacle was the vocabulary, and respelling around it concealed that instead of stopping the line. So the row is dropped, the citable count is six, and the seventh is named here in prose where it is at least true; scaffold_host_observation_hand_rust_receipt_is_bounded asserts both the six and this paragraph, so the item cannot go missing by someone editing the list alone. Dissolve-on: DeclField gains a variant naming a trait-impl method, at which point this paragraph deletes and the row returns. That is a corpus-wide std change -- 161 modules import std.decl_ref and several match DeclField exhaustively -- so it is deliberately not carried here, and saying so is the honest boundary rather than a reason to fabricate a seventh row.",
+  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is claimed by the derived generated population (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths) and is regenerated from src/v1/04_method.dag rather than authored. (This clause formerly cited gunbc.stage0_emit_model generated_stage0_files -- a module path that had ALREADY been deleted when it was written, so the citation named nothing; it is repointed at the live derivation rather than at a second dead roster.)\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum, the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.\n\nTHE SEVENTH ITEM IS REAL BUT NOT CITABLE, AND THAT IS RECORDED HERE RATHER THAN FORCED INTO A FIELD IT IS NOT. The hand-authored surface this change adds is seven Rust items; the list above carries six. The missing one is the Display realization named above: `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal`, an item in its own right and not part of the enum declaration already cited. std.decl_ref DeclField offers exactly WholeDeclaration or NamedField, and a trait-impl method is neither -- the impl block has no name, and fmt is a method on it, not a field of the enum, which has three unit variants and no fields at all. Two earlier revisions each tried to make the vocabulary say it anyway: the first invented the symbol Stage0CargoBinManifestParseRefusal_Display, which resolves to nothing (review 46351); the second wrote a NamedField citing fmt, which type-checks and greps clean while asserting a field that does not exist (review 46383). Both are one defect -- a citation shaped to fit the carrier rather than the code -- and the second is the DESIGN 5 workaround class exactly: the obstacle was the vocabulary, and respelling around it concealed that instead of stopping the line. So the row is dropped, the citable count is six, and the seventh is named here in prose where it is at least true; scaffold_host_observation_hand_rust_receipt_is_bounded asserts both the six and this paragraph, so the item cannot go missing by someone editing the list alone. Dissolve-on: DeclField gains a variant naming a trait-impl method, at which point this paragraph deletes and the row returns. That is a corpus-wide std change -- 161 modules import std.decl_ref and several match DeclField exhaustively -- so it is deliberately not carried here, and saying so is the honest boundary rather than a reason to fabricate a seventh row.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete all seven declarations when a modeled Cargo-manifest grammar/ingestion realization produces CargoManifestBinParse, or when the v1 interpreter and cli_run seed retire.",
   current_boundary: "gunbc.stage0_cargo_manifest CargoManifestBinParse -> v1_compiler.cli_run parse_stage0_cargo_manifest_bin_paths -> v1_compiler.v1_interpreter eval_builtin_inner"

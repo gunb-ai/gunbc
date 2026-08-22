@@ -4,14 +4,14 @@ import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
 import std.content_hash { content_hash_of_value, ContentHash }
 import product.placement_supply { HostIdentity }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
   GrantPopulationUnobserved,
   SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
   NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
   SparkServingRealization, UserUnitRealization, SystemUnitRealization,
 }
-import gunbc.spark_serving_release {
+import gunbc.spark.serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence,
   SparkServingRelease, RuntimeArtifactIdentity,
   ServingConfigurationIdentity, InferenceCapacityPolicy,

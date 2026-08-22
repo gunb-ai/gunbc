@@ -64,7 +64,7 @@ data ci_pin_rustup_echo_cargo_bin_command: String = "echo \"CARGO_BIN=$CARGO_BIN
 fn ci_workflow_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }

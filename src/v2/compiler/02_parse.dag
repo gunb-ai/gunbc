@@ -49,7 +49,6 @@ import v2.std.node {
   Named,
   Node,
   NodeOccurrenceId,
-  OccurrenceId,
   Symbol,
   TypeNode,
   byte_limb_hash_peano_digest,
@@ -68,7 +67,7 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
-import std.occurrence_identity { OccurrenceIdAllocator }
+import std.occurrence_identity { OccurrenceId, OccurrenceIdAllocator }
 import std.source_annotation {
   AnnotationAttachmentResult,
   AnnotationsAdmitted,
@@ -2037,9 +2036,19 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
 }
 
 
+// THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
+// Node.occurrence_id is the NodeOccurrenceId coproduct, so the mint has to be lifted into
+// MintedOccurrence before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
+// wrap against a callee that declared the raw type -- but the callee's declaration was the defect,
+// and dropping the lift put a value outside the coproduct into every int-literal node the parser
+// built, which the required floor reported as a non-exhaustive match at run time.
+//
+// This annotation is here because the type judgment that would refuse the unwrapped form does not
+// run: module_skips_direct_call_arg_check exempts every v2.* caller from the direct-call
+// argument-type check. Until that exemption is deleted, nothing mechanical stands at this site.
 fn parse_expr_terminal(
   token_class: Symbol,
-  stamp: StampClass,
+  stamp: TerminalStampMode,
   tokens: List<Token>,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2071,7 +2080,10 @@ fn parse_expr_terminal(
                       table: table
                     }
                   Rejected { diagnostics: d } =>
-                    ParseExprRejected { diagnostics: d, table: table }
+                    ParseExprRejected {
+                      diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+                      table: table
+                    }
                 }
               } else {
                 let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)

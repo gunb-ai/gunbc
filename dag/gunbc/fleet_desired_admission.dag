@@ -1,0 +1,414 @@
+module gunbc.fleet_desired_admission
+
+import std.types { String, Bool, FilePath, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.object_store {
+  GitObjectId, GitRefName, git_object_id_from_untagged_hex, git_object_id_wire_hex,
+}
+import extdeps.git.publication_transport {
+  GitRemoteRefExpectation,
+  RemoteRefMustBeAbsent,
+  RemoteRefMustEqual,
+  GitRemoteRefCasRequest,
+  git_remote_ref_lease_word,
+  git_remote_ref_cas_refspec,
+}
+import extdeps.github.workflow_runs {
+  WorkflowRunConclusion,
+  Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure,
+  workflow_run_conclusion_wire_label,
+}
+import extdeps.github.workflow_run_event {
+  WorkflowRunEvent,
+  WorkflowRunEventObserved,
+  WorkflowRunEventMemberAbsent,
+  WorkflowRunEventMemberMalformed,
+  WorkflowRunEventMalformed,
+  WorkflowRunEventPayloadReadRefused,
+  workflow_run_event_from_event_path,
+}
+import gunbc.fleet_revision_acceptance {
+  AcceptedFleetRevision,
+  RequiredCiSucceeded,
+  DefaultBranchRevisionObserved,
+  RequiredCiAdmitted,
+  RequiredCiRefused,
+  DefaultBranchAdmitted,
+  DefaultBranchRefused,
+  FleetRevisionAccepted,
+  RequiredCiAndDefaultBranchRevisionMismatch,
+  accept_required_ci_workflow_run,
+  observe_default_branch_revision,
+  admit_fleet_revision,
+  required_ci_refusal_message,
+  default_branch_refusal_message,
+}
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, observe_local_tree_revision }
+import gunbc.fleet_main_revision {
+  FleetDesiredAdvanceInput,
+  FleetDesiredExpectationRefusedInput,
+  FleetDesiredRefAbsentInput,
+  FleetDesiredObservedCurrentInput,
+  FleetDesiredAdvanceDecision,
+  FleetDesiredAdvanceAdmitted,
+  FleetDesiredAlreadyConverged,
+  FleetDesiredSupersededNoOp,
+  FleetDesiredAdvanceRefused,
+  fleet_desired_advance_expectation,
+  fleet_desired_advance_refusal_message,
+  decide_fleet_desired_advance,
+  FleetDesiredExpectationReady,
+  FleetDesiredExpectationRefused,
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
+  fleet_desired_ref_name,
+  FleetDesiredRevision,
+  FleetDesiredAdmitted,
+  FleetDesiredUnobserved,
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THIS MODULE IS THE LIVE HALF OF THE ADMISSION GATE, AND IT EXISTS BECAUSE THE GATE HAD
+// NO PRODUCTION CONSUMER. gunbc.fleet_main_revision states the rule in its own header —
+// the desired revision derives from MERGED, FLOOR-GREEN main, never from raw HEAD — and
+// models it as decide_fleet_desired_advance, whose refusal names the prevented class
+// ("raw-HEAD simultaneous fleet-bricking"). Until this module landed that function's ONLY
+// caller was its witness test, while the shell step emitted by gunbc.ci_spec
+// (gunbc_ci_advance_fleet_desired_script) stamped $GITHUB_SHA on every push to main
+// without consulting it. That is specification-without-execution (DESIGN §5) with the
+// unproven path live: the modeled wall stood beside an actuator that walked around it.
+//
+// WHY THE ADMISSION CANNOT LIVE IN THE DEPLOY JOB. The required floor takes ~30 minutes,
+// so at push-trigger time no floor conclusion exists for the candidate. A push-triggered
+// advance can only ever fabricate floor-green or refuse forever; neither is the gate. The
+// conclusion becomes observable exactly once — when the floor run completes — so the
+// admission is keyed to that event and reads the conclusion GitHub delivers, rather than
+// inferring it from the trigger that happened to fire.
+//
+// WHAT THIS BUYS DOWNSTREAM, which is more than a correctly-named ref: gunbc.roadmap_belt_actuate
+// gates worker DISPATCH on revision standing, and its own note calls a dispatch from an
+// unadmitted tree "a worker spawned from code the fleet never admitted, reported as an
+// ordinary spawn". Advancing desired to whatever last landed makes that comparison agree
+// unconditionally, so the gate passes silently. Gating the advance is what gives the
+// dispatch gate something real to compare against.
+data fleet_desired_admission_note: String = "The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation above it."
+
+// The floor run's event payload, copied to a modeled path by the workflow step so the
+// decision reads a path this module names rather than an environment variable it cannot
+// see. The copy is the only thing the surrounding shell decides; every admission fact is
+// read from the payload here.
+data fleet_desired_admission_event_payload_path: String = "target/fleet-desired-admission-event.json"
+
+// The authorized actuation. The model writes the exact push this admission authorized —
+// including the compare-and-swap prior it observed — and the workflow executes that file
+// and nothing else. The shell therefore carries no candidate revision, no ref name and no
+// expected prior of its own: it cannot push a revision the gate did not admit, because it
+// has no other push to run. Full construction (a typed CAS service op) is not reachable
+// yet — extdeps.git.publication_transport PushRefUpdate is shadow-only and models no
+// --force-with-lease — so the actuation stays shell; what changed is that the DECISION no
+// longer does.
+data fleet_desired_admission_authorized_action_path: String = "target/fleet-desired-authorized-action.sh"
+
+// The repository root the observation reads. The admission runs in the checkout the
+// workflow prepared, so the desired ref is observed through that checkout's origin.
+data fleet_desired_admission_repo_root: FilePath = "." as FilePath
+
+// THREE POSITIVE ACTIONS, AND TWO OF THEM MUTATE NOTHING.
+//
+// The workflow executes `test -s <action>; sh <action>`, and that guard is not a convenience --
+// IT IS THE WALL SEPARATING "AUTHORIZATION PRODUCED NOTHING" FROM "AUTHORIZATION SAID DO NOTHING".
+// Before this port those were the same state on disk (no file) and the guard refused both, which
+// was correct while every authorized outcome was a push. It is no longer correct, because a
+// converged or superseded decision is a SUCCESS that writes no git mutation.
+//
+// So the absent file keeps exactly one meaning: the decision never ran, crashed, or could not
+// write. It is the transport-failure signal and nothing else. The tempting repair, one line away,
+// is to see `test -s` fail on a legitimate no-op and relax it to "no file means nothing to do" --
+// at which point a crashed decider, a failed write, or a mis-set $ROOT all render as a successful
+// no-op, permanently and silently. That is why the no-op arms are POSITIVE actions.
+//
+// AND EMPTY IS UNREACHABLE BY SHAPE, not by remembering to echo: every arm of the renderer below
+// begins with a literal, so no decision can produce an empty script. The return type says
+// NonEmptyStr and the fold makes it true. HONEST RUNG: the compiler does not today establish the
+// NonEmptyStr refinement -- it is a declared carrier, not a proof -- so this is construction at
+// the fold rather than a structural guarantee. What it does buy is that adding a fourth action
+// cannot silently produce an empty script without deleting a literal on purpose.
+type FleetDesiredAuthorizedAction
+  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected_prior: GitObjectId }
+  | FleetDesiredAlreadyConvergedAction { revision: GitObjectId }
+  | FleetDesiredSupersededAction { accepted: GitObjectId, current: GitObjectId }
+
+type FleetDesiredAdmissionOutcome
+  = AdmissionActionAuthorized { action: FleetDesiredAuthorizedAction }
+  | AdmissionRefused { cause: String }
+
+// THE TRUST WALL IS GONE FROM THIS MODULE, AND THAT IS THE POINT OF THE PORT.
+//
+// fleet_desired_admission_event_trusted and fleet_desired_floor_green are DELETED, not wrapped.
+// They answered "is this event a trustworthy floor result" and "was the floor green" with a String
+// option and a Bool, and gunbc.fleet_revision_acceptance now answers both as two typed
+// propositions over one decoded revision. Keeping the old pair as helpers would have left two
+// authorities for one question -- the fork this lane spends its time removing -- and the Bool in
+// particular bound greenness to no revision at all.
+//
+// WHAT THE PORT MUST NOT LOSE, checked arm by arm rather than assumed: the old wall refused a
+// non-completed activity, a run of another workflow, a non-default branch, and a fork's head
+// repository. The new producers refuse all four, and two of them more strictly -- the workflow is
+// matched by PATH rather than name, and the repository is matched against the repository authority
+// rather than only against itself, so a fork whose head and base agree with each other no longer
+// passes. The new producers also refuse a non-push originating event, which the old wall did not
+// check at all.
+type FleetDesiredAcceptedRevision
+  = FleetDesiredRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
+  | FleetDesiredRevisionRefused { cause: String }
+
+// The evidence both propositions carry is the run id: both facts are read from ONE delivered
+// event, so claiming two independent provenances would be a lie about where they came from.
+fn fleet_desired_accepted_from_event(event: WorkflowRunEvent) -> FleetDesiredAcceptedRevision {
+  match accept_required_ci_workflow_run(event: event, evidence: event.run_id) {
+    RequiredCiRefused { cause: why } =>
+      FleetDesiredRevisionRefused {
+        cause: concat("fleet_desired_admission: ", required_ci_refusal_message(cause: why)),
+      }
+    RequiredCiAdmitted { succeeded: ci } =>
+      match observe_default_branch_revision(event: event, evidence: event.run_id) {
+        DefaultBranchRefused { cause: why } =>
+          FleetDesiredRevisionRefused {
+            cause: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)),
+          }
+        DefaultBranchAdmitted { observed: br } =>
+          match admit_fleet_revision(required_ci: ci, default_branch: br) {
+            FleetRevisionAccepted { accepted: a } => FleetDesiredRevisionAccepted { accepted: a }
+            RequiredCiAndDefaultBranchRevisionMismatch {
+              required_ci_revision: ci_rev,
+              default_branch_revision: br_rev,
+            } =>
+              FleetDesiredRevisionRefused {
+                cause: join([
+                  "fleet_desired_admission: the floor proved ",
+                  git_object_id_wire_hex(oid: ci_rev) as String,
+                  " while the default branch carries ",
+                  git_object_id_wire_hex(oid: br_rev) as String,
+                  " -- both facts are true of different revisions, and only their conjunction would license an advance",
+                ], ""),
+              }
+          }
+      }
+  }
+}
+
+// Decision to action. Every admitted decision becomes exactly one positive action; every refusal
+// becomes a cause and NO action, so the absent file continues to mean only that.
+fn fleet_desired_action_from_decision(
+  decision: FleetDesiredAdvanceDecision<NonEmptyStr, NonEmptyStr>,
+) -> FleetDesiredAdmissionOutcome {
+  match decision {
+    FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+      AdmissionActionAuthorized {
+        action: FleetDesiredRemoteAdvance { accepted: a.revision, expected_prior: prior },
+      }
+    FleetDesiredAlreadyConverged { accepted: a } =>
+      AdmissionActionAuthorized {
+        action: FleetDesiredAlreadyConvergedAction { revision: a.revision },
+      }
+    FleetDesiredSupersededNoOp { accepted: a, current: cur } =>
+      AdmissionActionAuthorized {
+        action: FleetDesiredSupersededAction { accepted: a.revision, current: cur },
+      }
+    FleetDesiredAdvanceRefused { cause: why } =>
+      AdmissionRefused {
+        cause: concat("fleet_desired_admission: ", fleet_desired_advance_refusal_message(cause: why)),
+      }
+  }
+}
+
+// ONE SCAFFOLD OBLIGATION COVERS THE RENDERER AND ITS EXECUTOR, because they are one
+// independently removable unit: the renderer exists solely to feed that executor, both dissolve
+// into the same typed git CAS realization, and neither has a useful life without the other. The
+// predecessor this replaces (`gunbc.ci_spec` `gunbc_ci_advance_fleet_desired_script`) carried the
+// same pair of rows; re-declaring them here is where the remaining shell actually lives.
+//
+// THIS ROW AUTHORIZES NOTHING. `std.disposition.Scaffold` records the temporary construction and
+// its dissolution binding and says nothing about permission — the operator verdict is an external
+// fact bound to the current head, and unmarked debt is not a way to defer it (it is marked debt's
+// violation plus concealment). Declaring the population is what makes the verdict decidable.
+data fleet_desired_authorized_action_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_desired_admission",
+    decl_name: "fleet_desired_authorized_action_script",
+    field: WholeDeclaration
+  }
+}
+
+data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
+
+// THE WIRE WORDS COME FROM THE CAS-REQUEST CARRIER, NOT FROM A STRING BUILT HERE. An earlier
+// revision of this renderer hand-spelled `--force-with-lease=<ref>:<hex>`, which was a SECOND
+// rendering of the lease beside extdeps.git.publication_transport, the module that owns it. That
+// survives the creation retraction because it is orthogonal to it: the expectation is constructed
+// here as RemoteRefMustEqual because an admitted advance is the only thing this gate authorizes,
+// and the carrier still renders the words.
+//
+// A RECEIPT-ONLY PHRASE FUNCTION WAS DELETED WITH THE CREATION ARM rather than kept for one live
+// case. It existed to render absence as a positive word, because git spells "must be absent" as
+// an EMPTY expect value and an empty string in a receipt cannot be told from an operand nobody
+// printed. With creation unauthorized here that arm is unreachable, and an unreachable arm is the
+// dead-state problem in miniature. The reasoning is preserved upstream in nimble-fox-671's #8768,
+// where creation IS authorized and the distinction is live.
+//
+// The authorized action, rendered from the decision's own operands. On the advancing arm
+// --force-with-lease names the observed prior as the expected value, so a concurrent admission
+// refuses at the remote instead of silently overwriting -- the compare-and-swap the authority
+// requires, with the `from` side supplied by the gate rather than re-read by the shell.
+//
+// THE TWO NO-OP ARMS ARE NONEMPTY BY SHAPE, NOT BY REMEMBERING TO ECHO. Every arm opens with
+// `set -eu` and the return type is NonEmptyStr, so an authorized no-op can never render as an
+// empty file. That matters because the executing step's `test -s` is the wall distinguishing
+// "authorization produced nothing" -- a transport or writer failure -- from "authorization said
+// do nothing". If a no-op could render empty, those two states would collide at the only place
+// that can still tell them apart, and a dropped authorization would read as a converged fleet.
+fn fleet_desired_authorized_action_script(
+  action: FleetDesiredAuthorizedAction,
+  judge_source_observed: GitObjectId,
+) -> NonEmptyStr {
+  match action {
+    FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } => {
+      let request = GitRemoteRefCasRequest {
+        remote: "origin" as NonEmptyStr,
+        ref_name: fleet_desired_ref_name as GitRefName,
+        new_oid: to,
+        expected: RemoteRefMustEqual { oid: prior },
+      }
+      join([
+        "set -eu\n",
+        "git push ", git_remote_ref_lease_word(request: request) as String,
+        " ", request.remote as String,
+        " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
+        "echo \"[fleet-desired] admitted ", git_object_id_wire_hex(oid: to) as String,
+        " expected-prior ", git_object_id_wire_hex(oid: prior) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String, "\"\n",
+      ], "") as NonEmptyStr
+    }
+    FleetDesiredAlreadyConvergedAction { revision: rev } =>
+      join([
+        "set -eu\n",
+        "echo \"[fleet-desired] already converged at ",
+        git_object_id_wire_hex(oid: rev) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
+        "; no ref mutation\"\n",
+      ], "") as NonEmptyStr
+    FleetDesiredSupersededAction { accepted: acc, current: cur } =>
+      join([
+        "set -eu\n",
+        "echo \"[fleet-desired] superseded: accepted ",
+        git_object_id_wire_hex(oid: acc) as String,
+        " is an ancestor of the current ", git_object_id_wire_hex(oid: cur) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
+        "; no ref mutation\"\n",
+      ], "") as NonEmptyStr
+  }
+}
+
+// THE ONLY EFFECTFUL STEP BETWEEN THE ACCEPTED REVISION AND THE DECISION.
+//
+// The three-way classification of the observed ref is NOT repeated here: it is
+// fleet_desired_advance_expectation's, and re-deriving "absent vs unreadable vs unobserved" beside
+// it would be a second authority for the question that seam exists to answer. This function only
+// routes each already-classified outcome into the input variant that carries the evidence that
+// outcome has -- and only the observed-current branch reaches git at all, because it is the only
+// one with two revisions to relate.
+//
+// THE RemoteRefMustBeAbsent ARM BELOW IS THE CREATION RETRACTION WORKING, NOT A LEFTOVER OF IT,
+// and it is called out here because the correct action and the tidy-looking action are opposites.
+// Creation is unauthorized, so a reader finishing the retraction by deleting the last mention of
+// the absent expectation would delete that arm -- and an observed-absent remote would then have
+// nowhere to land. Absence remains a real, observable STATE and must be CLASSIFIED in order to
+// REACH its refusal. What the retraction removed is the authorized ACTION downstream; it never
+// removed the ability to say what was seen. Same family as the absent-arm witness: a red or a
+// stray symbol is not evidence of which repair is wanted, and only the policy separates them.
+// (Pinned by nimble-fox-671 while independently verifying the retraction at fa2290eb6c5.)
+fn fleet_desired_advance_input_wet(
+  accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>,
+) -> FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr> {
+  match fleet_desired_advance_expectation(
+    observed: observe_fleet_desired_revision(repo: fleet_desired_admission_repo_root),
+  ) {
+    FleetDesiredExpectationRefused { cause: why } =>
+      FleetDesiredExpectationRefusedInput { accepted: accepted, cause: why }
+    FleetDesiredExpectationReady { expectation: e } =>
+      match e {
+        RemoteRefMustBeAbsent => FleetDesiredRefAbsentInput { accepted: accepted }
+        RemoteRefMustEqual { oid: current } =>
+          FleetDesiredObservedCurrentInput {
+            accepted: accepted,
+            current: current,
+            relation: observe_fleet_revision_relation(
+              current: current,
+              accepted: accepted.revision,
+            ),
+          }
+      }
+  }
+}
+
+func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
+  match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
+    WorkflowRunEventObserved { event: event } =>
+      match fleet_desired_accepted_from_event(event: event) {
+        FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
+        FleetDesiredRevisionAccepted { accepted: accepted } =>
+          match fleet_desired_action_from_decision(
+            decision: decide_fleet_desired_advance(
+              input: fleet_desired_advance_input_wet(accepted: accepted),
+            ),
+          ) {
+            AdmissionRefused { cause: why } => exit_failure(reason: why)
+            AdmissionActionAuthorized { action: action } =>
+              match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
+                Absent =>
+                  exit_failure(
+                    reason: join([
+                      "fleet_desired_admission: the action was authorized, but the admission checkout's ",
+                      "source revision could not be observed, so the receipt cannot record which source ",
+                      "this run was running from -- refusing to actuate rather than publish an ",
+                      "unattributable action",
+                    ], ""),
+                  )
+                Present { value: judge_source_observed } => {
+                  let wrote = Filesystem.Write(
+                    path: fleet_desired_admission_authorized_action_path,
+                    content: fleet_desired_authorized_action_script(
+                      action: action,
+                      judge_source_observed: judge_source_observed,
+                    ) as String,
+                  )
+                  if wrote.success {
+                    ExitSuccess
+                  } else {
+                    exit_failure(
+                      reason: join([
+                        "fleet_desired_admission: the action was authorized but could not be written to ",
+                        fleet_desired_admission_authorized_action_path,
+                        " -- the absent file is the transport-failure signal and must never be read as a no-op: ",
+                        wrote.error,
+                      ], ""),
+                    )
+                  }
+                }
+              }
+          }
+      }
+    WorkflowRunEventMemberAbsent { member: m } =>
+      exit_failure(reason: concat("fleet_desired_admission: floor run event payload is missing a required member: ", m))
+    WorkflowRunEventMemberMalformed { member: m, detail: d } =>
+      exit_failure(reason: join(["fleet_desired_admission: floor run event member ", m, " is malformed: ", d], ""))
+    WorkflowRunEventMalformed { detail: d } =>
+      exit_failure(reason: concat("fleet_desired_admission: floor run event payload is malformed: ", d))
+    WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
+      exit_failure(reason: join(["fleet_desired_admission: floor run event payload could not be read at ", p, ": ", c], ""))
+  }
+}
