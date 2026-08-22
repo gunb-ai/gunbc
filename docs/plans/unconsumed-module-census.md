@@ -42,7 +42,7 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument: the universe it decodes, and the five defects found in building it
+## 2. Instrument: the universe it decodes, and the defects found in building it
 
 Attribution matters here, because a lesson that reads as one session's mistakes gets
 discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
@@ -124,6 +124,43 @@ module invoked by a path assembled at runtime, and it treats an `--entry` argv l
 anywhere in the tree — including in a doc — as a root, which is deliberately generous:
 this census over-admits consumption, so the population is a floor, and every row still
 needs the mention check in §3 before deletion.
+
+### Defect 7 — variant constructors are declared symbols (found by the floor, 2026-08-22)
+
+**Filed from the disposition lane (#8862), and it is a defect in this document's METHOD, not
+only in one implementation of it.** The defect-6 re-score asks whether another `.dag` file
+names a candidate's declared symbol *bare*. Answering that requires knowing what a module
+declares — and an extractor that matches `fn`, `data`, `type` and `const` **does not match
+coproduct variant constructors**, the `= Ready | NotReady { ... }` continuation lines under a
+`type`. So a module owning `MergeReadinessVerdict` does not own `Ready`, and a consumer
+naming `Ready` bare with no import is invisible: the exact whole-pool case defect 6 exists to
+catch, missed on the constructor half.
+
+**Measured, not inferred.** `gunbc.pr_digests` scored residue and was deleted; the required
+floor refused with `unresolved type 'MergeReadinessVerdict'` plus eight `undefined variable
+'Ready'` in `gunbc.code_change_workflow`, which imports neither. Counting variants moves
+CONSUMED-DECISIVE from 89 to 94 on the disposition lane's re-derivation at `90986d19469`, and
+its residue from 139 to 133.
+
+**Scope of the claim, stated precisely.** The defect was measured in the disposition lane's
+own re-implementation of this section's method. Whether *this document's* 91 and 96 carry it
+depends on whether its extractor read variants, which the disposition lane did not measure.
+If it did not, the 91 is understated and the 96 STILL-UNCONSUMED contains consumed rows.
+Named here as a method defect so it is checked rather than assumed either way.
+
+**The general lesson, which outlives the row.** The disposition lane offered two counters as
+evidence its cut was safe — `reachable` and `CONSUMED-DECISIVE`, both unchanged across the
+deletion. Both were computed by the instrument that carried defect 7, so they were
+structurally incapable of surfacing the case it was blind to, and they read as reassurance
+*precisely because they were consistent*:
+
+> **A control derived from the measurement it controls does not discriminate that
+> measurement's blind spot.**
+
+The floor caught it because the floor is an independent instrument that does not share the
+method. That is the delete-first doctrine's actual mechanism (DESIGN §3): not that a
+mechanical rule is trustworthy, but that a fail-closed substrate refuses on an authority the
+rule had no part in building.
 
 ## 3. Dispositions
 

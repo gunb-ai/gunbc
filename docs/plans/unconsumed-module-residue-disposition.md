@@ -216,6 +216,43 @@ describes it: the deletion is the census, the real dependent refused loudly, and
 identified a load-bearing edge that three static surfaces and two reviews had all passed
 over.
 
+## 4f. A finding walked past while editing the pin, filed rather than fixed
+
+Repairing `census_extra_excludes.txt` meant moving two count literals in
+`v1_compiler.census_exclude_derive` (83 to 82, 27 to 26). **Those literals are a change
+detector, not a check**, and this lane is in a position to say so with a receipt rather than
+as a style objection.
+
+A hand-maintained count beside a hand-maintained list measures whether someone remembered to
+update both. It has no independent referent: it is not a controlled fixture, not an external
+or versioned authority, not a policy budget, and not a monotone debt contract over a closed
+universe — the four grounds DESIGN §5 admits for a numeric literal in a merge-blocking test.
+The section's own review tell applies exactly: automating the literal's update collapses the
+assertion to `measure() == measure()`, so the manual update was the assertion's entire
+content.
+
+The receipt is this change. One row moved for an unrelated reason, and both literals had to
+be hand-followed; nothing about the list's *correctness* was checked by either. Had the row
+moved without them, the failure would have reported as a count mismatch rather than as what
+it was.
+
+**Filed, not fixed.** The pin belongs to the exclude-closure lane — `census_exclude_derive`'s
+own header names its dissolution (the pin retires when strict whole-tree resolve greens
+without host fixed-point closure) — and repairing an oracle inside a deletion PR would be
+this document's own §6 objection turned on itself. Recorded because the person who paid the
+cost is the right person to report it, and the wrong person to fix it.
+
+### Why the `src/v1` edit is admitted
+
+`census_exclude_derive.rs` is in the frozen seed, so the edit needs its class named.
+**The row the pin names is deleted by this PR**, so the choice is not *touch v1 or leave it
+alone* — it is *move two count literals, or knowingly land a dangling citation in the seed*,
+which is the staleness class this repository polices, landed deliberately. Under
+`gunbc.v1_maintenance_standing`'s PURPOSE test this is maintenance of an existing pin
+tracking a v2-side deletion: no new surface, no new capability, two literals following a row
+that had to move. The coupled change is the smaller harm and it is caused by this PR rather
+than imported into it.
+
 ## 5. The 69 deleted
 
 | module | path | lines |
