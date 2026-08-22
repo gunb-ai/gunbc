@@ -102,6 +102,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
+  NodeOccurrenceId,
   is_empty_conj_root,
 }
 import std.occurrence_identity { OccurrenceId }
@@ -4208,7 +4209,7 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4221,7 +4222,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceId) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
