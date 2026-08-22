@@ -110,6 +110,26 @@ type RunnerSlotAddSequence
 // the fabric executor -- landing as its own arm here. Until then this refusal is the honest
 // terminal state for the one fabric slot that exists (srv3-06), and it is why that slot is
 // declared but not yet convergeable.
+// THIS GATE HAS NO PRODUCTION CALLER TODAY, AND SAYING SO IS THE DIFFERENCE BETWEEN A WALL AND A
+// CLAIM ABOUT A WALL. Only its witness calls it. The apply path never reaches a step sequence at
+// all: gunbc.runner_capacity_realize matches RunnerSlotAdd and discards the identity, counting adds
+// and returning a scaffold refusal.
+//
+// THE SAFETY PROPERTY IS NOT VACUOUS -- IT IS HELD ONE LAYER EARLIER, ON A PATH THAT IS LIVE. The
+// chain gunbc.apply -> runner_capacity_plan -> plan_runner_capacity_host -> addition_actions ->
+// desired_github_identities is reachable from the CLI, and that last function filters by purpose,
+// so a fabric execution slot is never placed in a RunnerSlotAdd to begin with. Nothing downstream
+// can register it whether or not it consults this gate.
+//
+// SO THERE ARE TWO WALLS WITH DIFFERENT STATUSES AND THEY MUST NOT BE QUOTED AS ONE. The planner
+// filter is what makes "the plan can never add a fabric slot" true today. This gate is a second,
+// independent wall at the step-selection seam, and it is defence in depth for a path that cannot
+// currently produce a fabric add anyway. Describing registration as "derived from purpose" without
+// that split implies this function holds the line; it does not, yet.
+//
+// TRIGGER: it becomes load-bearing the moment anything in production selects a step sequence --
+// which is the same event that makes the fabric provisioning arm below necessary. Until then its
+// witness is the only thing executing it, and a witness is not a consumer.
 fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
   match runner_slot_membership(host: host, slot_index: slot_index) {
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
