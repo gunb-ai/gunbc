@@ -55,15 +55,26 @@ fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
 fn empty_map<K, V>() -> Map<K, V> {
   empty_map_primitive_delegate()
 }
+fn map_insert_primitive_delegate<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+  map_insert_primitive_delegate(m: m, key: key, value: value)
+}
+
+// MAP CONSTRUCTION GOES THROUGH THE PRIMITIVE IT ALREADY DECLARES.
+//
+// This body used to build a `Map { lookup: ... }` record — a closure chained over the previous
+// map — while `empty_map` two lines above delegated to its primitive. That is one carrier
+// constructed two ways inside one module: the delegate route lands on the host's map
+// (`v1_rt::rc_map_insert` when emitted, the HAMT arm when interpreted), the record route lands on
+// `PartialFunction`. The declared return type lowers to the FORMER in both realizations, so the
+// record form was a value the declaration could never accept — measured as the T3 pair
+// `expected HashMap<K, V>, found Rc<PartialFunction<_, _>>` at this exact function.
+//
+// Nothing here is a new capability: `map_insert_contract` was already declared in
+// `std.primitives` and already bound below as `map_insert_host_binding`. The contract was
+// declared and the construction did not consume it, which is why the fix is a delegation rather
+// than a new primitive.
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
-  Map {
-    lookup: fn(candidate) {
-      match candidate == key {
-        true => Present { value: value }
-        false => m.lookup(candidate)
-      }
-    }
-  }
+  map_insert_primitive_delegate(m: m, key: key, value: value)
 }
 
 // LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no

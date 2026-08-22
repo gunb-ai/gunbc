@@ -1852,6 +1852,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "map_grounding.map_insert" },
       form: NativeSpecial,
+      authored_spelling: "map_insert_primitive_delegate",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "try_v2_std_collection_map_primitive_grounding",
+      dispatch_emit_site: TryV2StdCollectionMapPrimitiveGroundingSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "map_grounding.map_insert" },
+      form: NativeSpecial,
       authored_spelling: "map_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_v2_std_collection_map_primitive_grounding",
