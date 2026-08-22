@@ -6,7 +6,7 @@ import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
   parse_positive_width,
   desired_github_identities,
-  reconcile_slot_population,
+  validate_observed_github_slot_members,
   SlotPopulationVerdict,
   SlotPopulationReconciled,
   SlotPopulationRefused,
@@ -174,24 +174,42 @@ fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
 // its full committed population is a reconciled observation and must NOT refuse; an identity beyond
 // its width must. A verdict that refused every non-empty roster would satisfy the srv3 rows by
 // being broken everywhere.
+// THE SUBJECT IS BOUND: AN IDENTITY ADMISSIBLE FOR ANOTHER HOST CANNOT ANSWER FOR THIS ONE. The
+// host parameter was declared and never read, so this accepted srv4-01 when asked about srv3 --
+// srv4-01 is a perfectly good slot, just not one of srv3's, and accepting it would let a foreign
+// member stand in for a missing local one while every other arm stayed satisfied.
+//
+// THE SECOND ROW IS THE CONTROL. The same identity asked about its OWN host must pass, or the
+// refusal is just a broken function rather than a subject binding.
+test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
+  population_is_refused(v: validate_observed_github_slot_members(
+    host: operator_host_srv3,
+    observed: [srv3_slot(i: 1), RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }],
+  ))
+    && !population_is_refused(v: validate_observed_github_slot_members(
+      host: operator_host_srv4,
+      observed: [RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }],
+    ))
+}
+
 test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
-  population_is_refused(v: reconcile_slot_population(
+  population_is_refused(v: validate_observed_github_slot_members(
     host: operator_host_srv3,
     observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5), srv3_slot(i: 6)],
   ))
-    && !population_is_refused(v: reconcile_slot_population(
+    && !population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv3,
       observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5)],
     ))
-    && population_is_refused(v: reconcile_slot_population(
+    && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv3,
       observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 6)],
     ))
-    && !population_is_refused(v: reconcile_slot_population(
+    && !population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
       observed: [srv1_slot(i: 1), srv1_slot(i: 2), srv1_slot(i: 3), srv1_slot(i: 4), srv1_slot(i: 5)],
     ))
-    && population_is_refused(v: reconcile_slot_population(
+    && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
       observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
     ))
