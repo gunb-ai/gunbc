@@ -26,8 +26,8 @@ import gunbc.runner_slot_allocation {
   host_fabric_slot_count,
   runner_slot_membership,
   RunnerSlotMembership,
-  RunnerSlotMember,
-  RunnerSlotOutsideCommittedPopulation,
+  CommittedSlotMember,
+  SlotOutsideCommittedPopulation,
   RunnerSlotPurpose,
   SlotServesGitHubActions,
   SlotServesFabricExecution,
@@ -253,11 +253,11 @@ type SlotPopulationVerdict
 // function is where that observation is adjudicated when it arrives.
 fn reconcile_observed_slot_identity(identity: RunnerSlotIdentity) -> SlotPopulationVerdict {
   match runner_slot_membership(host: identity.host, slot_index: identity.slot_index) {
-    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotPopulationRefused {
         reason: "an observed runner slot lies outside the host committed population: the fleet is over-provisioned against its own memory admission, refusing rather than planning against a width this host was never admitted to carry"
       }
-    RunnerSlotMember { identity: _, purpose: p } =>
+    CommittedSlotMember { identity: _, purpose: p } =>
       match p {
         SlotServesFabricExecution =>
           SlotPopulationRefused {

@@ -21,8 +21,8 @@ import gunbc.runner_slot_allocation {
   SlotServesGitHubActions,
   SlotServesFabricExecution,
   RunnerSlotMembership,
-  RunnerSlotMember,
-  RunnerSlotOutsideCommittedPopulation,
+  CommittedSlotMember,
+  SlotOutsideCommittedPopulation,
   runner_slot_membership,
 }
 import gunbc.host_disk_observation {
@@ -112,11 +112,11 @@ type RunnerSlotAddSequence
 // declared but not yet convergeable.
 fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
   match runner_slot_membership(host: host, slot_index: slot_index) {
-    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMember {
         reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"
       }
-    RunnerSlotMember { identity: _, purpose: p } =>
+    CommittedSlotMember { identity: _, purpose: p } =>
       match p {
         SlotServesGitHubActions =>
           GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }

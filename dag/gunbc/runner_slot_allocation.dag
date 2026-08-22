@@ -456,9 +456,27 @@ type RunnerSlotPurpose
   = SlotServesGitHubActions
   | SlotServesFabricExecution
 
+// THE VARIANT IS NOT NAMED RunnerSlotMember BECAUSE THAT NAME IS TAKEN, AND THE COLLISION IS
+// SILENT AT THE SITE. gunbc.runner_slot_provision already declares a plain record type
+// RunnerSlotMember { instance_name, slot_dir } -- a different concept entirely, a materialized
+// install tree rather than a committed allocation. Names resolve against one flat whole-tree
+// namespace, so a coproduct variant spelled the same way resolved to THAT product, and the floor
+// refused: "if branches resolve to incompatible types: Coproduct(RunnerSlotMembership) vs
+// Product(RunnerSlotMember)" -- one arm the coproduct, the other someone else's record, in a
+// function whose arms are all variants of one type.
+//
+// RECORDED BECAUSE NOTHING LOCAL SHOWS IT. The source reads as an ordinary coproduct, every witness
+// ran green under the interpreter, and `gunbc compile` typechecks clean; only the floor sees it. A
+// future rename back to RunnerSlotMember would silently rebind to the provision record again.
+//
+// An earlier revision of this comment blamed a longest-common-prefix effect between the variant and
+// RunnerSlotMembership. That was a guess that fit the symptom, and it was wrong -- the cause is an
+// ordinary duplicate declaration, found by grepping the tree rather than by reasoning about the
+// resolver. The wrong explanation is kept here because it is the plausible one and the next reader
+// will reach for it too.
 type RunnerSlotMembership
-  = RunnerSlotMember { identity: RunnerSlotIdentity, purpose: RunnerSlotPurpose }
-  | RunnerSlotOutsideCommittedPopulation { identity: RunnerSlotIdentity, committed_width: Int }
+  = CommittedSlotMember { identity: RunnerSlotIdentity, purpose: RunnerSlotPurpose }
+  | SlotOutsideCommittedPopulation { identity: RunnerSlotIdentity, committed_width: Int }
 
 // THE CARVE IS AN EXACT IDENTITY, NOT AN INDEX ARITHMETIC RULE, AND THE FIRST VERSION OF THIS
 // MODULE GOT THAT WRONG IN THE EXACT WAY IT WAS WRITTEN TO PREVENT. It derived purpose by comparing
@@ -522,11 +540,11 @@ fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMemb
   let identity = RunnerSlotIdentity { host: host, slot_index: slot_index }
   let committed = gunbc_runner_slots_per_host(host: host)
   if slot_index > committed || slot_index < 1 {
-    RunnerSlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
+    SlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
   } else if identity_is_fabric_execution_member(identity: identity) {
-    RunnerSlotMember { identity: identity, purpose: SlotServesFabricExecution }
+    CommittedSlotMember { identity: identity, purpose: SlotServesFabricExecution }
   } else {
-    RunnerSlotMember { identity: identity, purpose: SlotServesGitHubActions }
+    CommittedSlotMember { identity: identity, purpose: SlotServesGitHubActions }
   }
 }
 

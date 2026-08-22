@@ -5,8 +5,8 @@ import gunbc.runner_slot_allocation {
   SlotServesGitHubActions,
   SlotServesFabricExecution,
   RunnerSlotMembership,
-  RunnerSlotMember,
-  RunnerSlotOutsideCommittedPopulation,
+  CommittedSlotMember,
+  SlotOutsideCommittedPopulation,
   runner_slot_membership,
   srv3_fabric_canary_slot,
   host_fabric_slot_count,
@@ -190,8 +190,8 @@ test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliati
 
 fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
   match m {
-    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
-    RunnerSlotMember { identity: _, purpose: p } =>
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
+    CommittedSlotMember { identity: _, purpose: p } =>
       match p {
         SlotServesFabricExecution => true
         SlotServesGitHubActions => false
@@ -201,8 +201,8 @@ fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
 
 fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
   match m {
-    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
-    RunnerSlotMember { identity: _, purpose: _ } => false
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
+    CommittedSlotMember { identity: _, purpose: _ } => false
   }
 }
 
