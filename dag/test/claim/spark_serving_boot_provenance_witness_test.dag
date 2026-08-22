@@ -10,7 +10,6 @@ import gunbc.spark.serving_boot_provenance {
   spark_serving_classify_boot_provenance,
   spark_serving_boot_provenance_establishes_durability,
   spark_serving_boot_provenance_wire,
-  spark_serving_boot_start_window,
   UnitStartedByManagerAtBoot,
   UnitStartedAfterBoot,
   UnitNotActiveAtAll,
@@ -34,6 +33,7 @@ fn uptime(secs: String) -> SshSessionExecResult {
 test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> Bool {
   match spark_serving_classify_boot_provenance(
     active_enter: ok(out: "4200000\n"),
+    default_target_enter: ok(out: "999999999"),
     uptime: uptime(secs: "259200"),
   ) {
     UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
@@ -51,6 +51,7 @@ test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> Bool {
 test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> Bool {
   match spark_serving_classify_boot_provenance(
     active_enter: ok(out: "7200000000"),
+    default_target_enter: ok(out: "999999999"),
     uptime: uptime(secs: "259200"),
   ) {
     UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => microsecond_count(e) == 7200000000
@@ -79,7 +80,7 @@ test fn only_the_boot_started_arm_establishes_durability() -> Bool {
 // inactive unit, not a failure to observe, and conflating the two would report a probe that worked
 // as a probe that did not.
 test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> Bool {
-  match spark_serving_classify_boot_provenance(active_enter: ok(out: "0\n"), uptime: uptime(secs: "100")) {
+  match spark_serving_classify_boot_provenance(active_enter: ok(out: "0\n"), default_target_enter: ok(out: "999999999"), uptime: uptime(secs: "100")) {
     UnitNotActiveAtAll => true
     BootProvenanceUnobserved { cause: _ } => false
     UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
@@ -92,6 +93,7 @@ test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> Bool {
 test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> Bool {
   match spark_serving_classify_boot_provenance(
     active_enter: bad(err: "Failed to connect to bus"),
+    default_target_enter: ok(out: "999999999"),
     uptime: uptime(secs: "100"),
   ) {
     BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
@@ -106,6 +108,7 @@ test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> Bool {
 test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
   match spark_serving_classify_boot_provenance(
     active_enter: ok(out: "4200000"),
+    default_target_enter: ok(out: "999999999"),
     uptime: bad(err: "cat: /proc/uptime: Permission denied"),
   ) {
     BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
@@ -115,16 +118,25 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
   }
 }
 
-// The boundary is the declared window and not a value fitted to a host: one microsecond either side
-// of it decides differently, which is what makes the constant load-bearing rather than decorative.
-test fn the_boot_window_is_the_boundary_that_decides() -> Bool {
+// THE BOUNDARY IS AN OBSERVED ORDERING, not a constant. This test replaced one that asserted a
+// 10,000,000us window was load-bearing -- and it was load-bearing, which is exactly why it was
+// dangerous: the constant decided, and it decided against the wrong origin. A user unit cannot
+// reach active near KERNEL boot because lingering brings the session up first, so that check had
+// no true-positive path and reported both durable hosts as not durable.
+//
+// Now both sides come off the host. Equal-to-target is INSIDE the startup transaction (the unit
+// entered active no later than the target did) and one microsecond past it is OUTSIDE. Nothing
+// here is authored: change either observed value and the verdict follows the observation.
+test fn default_target_active_enter_is_the_boundary_that_decides() -> Bool {
   match spark_serving_classify_boot_provenance(
-    active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()))),
+    active_enter: ok(out: "10675297"),
+    default_target_enter: ok(out: "10675297"),
     uptime: uptime(secs: "100"),
   ) {
     UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
       match spark_serving_classify_boot_provenance(
-        active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()) + 1)),
+        active_enter: ok(out: "10675298"),
+        default_target_enter: ok(out: "10675297"),
         uptime: uptime(secs: "100"),
       ) {
         UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
@@ -135,6 +147,49 @@ test fn the_boot_window_is_the_boundary_that_decides() -> Bool {
     UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
     BootProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// THE REGRESSION CONTROL FOR THE DEFECT THIS REPLACED. These are the real srv5 numbers from
+// 2026-08-22: a unit at 10,670,729us into a 28-hour-old boot, which the deleted 10s kernel-boot
+// window classified as started-after-boot. Against default.target at 10,675,297us it is what it
+// always was -- inside the startup transaction. If this ever reds again, someone has reintroduced
+// an origin the user manager cannot satisfy.
+test fn the_live_srv5_reading_is_inside_the_startup_transaction() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "10670729"),
+    default_target_enter: ok(out: "10675297"),
+    uptime: uptime(secs: "101662"),
+  ) {
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => true
+    _ => false
+  }
+}
+
+// A HAND START MUST STILL BE FALSE. Without this the relation could be satisfied by any unit at
+// all, and the fix would have traded a false negative for silent false positives -- which is the
+// objection that ruled out comparing against the manager's START rather than the target's.
+test fn a_unit_started_hours_later_is_not_part_of_the_transaction() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "50000000000"),
+    default_target_enter: ok(out: "10675297"),
+    uptime: uptime(secs: "101662"),
+  ) {
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
+    _ => false
+  }
+}
+
+// A TARGET WITH NO ACTIVE-ENTER IS UNOBSERVED, never a verdict. Reporting "started after" when the
+// thing being compared against never came up would be a measured negative built on nothing.
+test fn an_unreached_default_target_refuses_rather_than_deciding() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "10670729"),
+    default_target_enter: ok(out: "0"),
+    uptime: uptime(secs: "101662"),
+  ) {
+    BootProvenanceUnobserved { cause: c } => string_contains(c as String, "no observed end")
+    _ => false
   }
 }
 
