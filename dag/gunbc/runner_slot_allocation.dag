@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, 
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -493,10 +493,6 @@ fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [srv3_fabric_canary_slot()]
-}
-
-fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
-  (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
 }
 
 fn identity_is_fabric_execution_member(identity: RunnerSlotIdentity) -> Bool {

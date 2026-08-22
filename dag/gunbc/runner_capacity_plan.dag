@@ -3,7 +3,7 @@ module gunbc.runner_capacity_plan
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat, nat_range_inclusive }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network {
   operator_host_srv3, operator_host_srv4,
 }
@@ -94,7 +94,7 @@ fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
 }
 
 fn slot_identity_eq(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
-  (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
+  runner_slot_identity_equal(a: a, b: b)
 }
 
 fn slot_in_list(slot: RunnerSlotIdentity, slots: List<RunnerSlotIdentity>) -> Bool {
