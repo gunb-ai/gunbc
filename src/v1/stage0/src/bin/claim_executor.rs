@@ -9914,6 +9914,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_cited_symbol_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
@@ -9945,6 +9946,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--required-cited-symbol" => {
+                required_cited_symbol_mode = true;
             }
             "--corpus-type-judgment" => {
                 corpus_type_judgment_mode = true;
@@ -10337,6 +10341,65 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             Err(e) => {
                 eprintln!("required-regen-fixed-point: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    //
+    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
+    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
+    // for. A census with a different subject gets its own named check instead: `--required-ci`
+    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
+    // quietly reinterpreted. Routing the same phase in under a different name would be the
+    // workaround this repository refuses; a distinct concern with its own check is the shape the
+    // ruling points at.
+    //
+    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
+    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
+    // reading the live corpus IS this census's subject -- relocating the witness moves it from
+    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
+    // cheaper opens that door.
+    //
+    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
+    // green -- the population it checked. An empty refusal list means both "every authored
+    // reference resolved" and "there were no references to check"; those are different states and
+    // only the first is coverage, so a population it cannot read FAILS rather than greening over
+    // an unknown denominator.
+    if required_cited_symbol_mode {
+        let (ctx, _entry) = match cited_symbol_lens_context(&source_roots) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        let rows = match cited_symbol_census(&ctx) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if !rows.is_empty() {
+            for row in &rows {
+                eprintln!("cited-symbol: REFUSED {row}");
+            }
+            eprintln!(
+                "cited-symbol: FAIL {} authored reference(s) do not resolve — a citation outlived \
+                 what it names (DESIGN §3)",
+                rows.len()
+            );
+            return Err(ExitCode::from(1));
+        }
+        return match cited_symbol_population(&ctx) {
+            Ok(checked) => {
+                eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("cited-symbol: refused: population unreadable: {e}");
                 Err(ExitCode::from(1))
             }
         };
@@ -19746,6 +19809,93 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
 /// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
 /// report a false green about them, so it does not speak about them at all.
+/// THE CITED-SYMBOL CENSUS, RUN AS ITS OWN REQUIRED CHECK BECAUSE IT CANNOT BE RUN AS A CLAIM.
+///
+/// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
+/// authors -- hand-authored doc binds, the generated design document's references, and the roster
+/// registry -- against live declaration facts, and refuses a reference whose module, declaration or
+/// field is absent or ambiguous. Its live-corpus claim was carried only by a witness under
+/// `dag/test/claim/long/`, whose entire file is classified `OfflineLocalRecipe`, so nothing executed
+/// it: on unmodified main the lens was RED with 27 refusing production references while every
+/// required check was green.
+///
+/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
+/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
+/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
+/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
+/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
+/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
+/// byte-unchanged.
+///
+/// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
+/// refused it -- so the failure names what to fix rather than reporting a count.
+/// The size of the population the census just checked, so a green names its denominator.
+///
+/// An empty refusal list is returned both when every reference resolves and when there are no
+/// references at all; those are different states and only the first is coverage.
+fn cited_symbol_population(ctx: &InterpContext) -> Result<i64, String> {
+    match run_value(ctx, "cited_symbol_production_reference_count") {
+        Ok(Value::Int(n)) => Ok(n),
+        Ok(other) => Err(format!(
+            "cited_symbol_production_reference_count must be an Int, got {other:?}"
+        )),
+        Err(msg) => Err(msg),
+    }
+}
+
+/// The lens's evaluation context. The caller builds it ONCE and lends it to both readers -- the
+/// refusal report and the population count -- which is why they take a `&InterpContext` rather
+/// than source roots: two constructions would be two reads of a tree that can change between them,
+/// and a denominator is only meaningful for the census it accompanies. An earlier revision said
+/// this while both helpers built their own; the comment was true of the intent and false of the
+/// code, which is the stale-claim class this very census exists to catch (found in review 54581).
+fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
+    const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
+    let entry = source_roots
+        .iter()
+        .map(|r| Path::new(r).join(LENS_REL))
+        .find(|p| p.exists())
+        .ok_or_else(|| {
+            format!(
+                "cited-symbol: no source root carries {LENS_REL} (roots: {}) -- the census cannot \
+                 be run, which is ignorance and not a green",
+                source_roots.join(", ")
+            )
+        })?
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    Ok((ctx, entry))
+}
+
+fn cited_symbol_census(ctx: &InterpContext) -> Result<Vec<String>, String> {
+    match run_value(ctx, "cited_symbol_unresolved_reference_report") {
+        Ok(Value::List(rows)) => {
+            let mut out = Vec::new();
+            for row in rows.iter() {
+                match row {
+                    Value::Str(s) => out.push(s.to_string()),
+                    other => {
+                        return Err(format!(
+                            "cited-symbol: report rows must be String, got {other:?} (fail-closed)"
+                        ))
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Ok(other) => Err(format!(
+            "cited-symbol: cited_symbol_unresolved_reference_report must return a List, got \
+             {other:?} (fail-closed)"
+        )),
+        Err(msg) => Err(format!(
+            "cited-symbol: census unavailable (fail-closed): {msg}"
+        )),
+    }
+}
+
 fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
     // NOT under src/v1: regen seeds every .dag there into the stage0 compile closure, and this
