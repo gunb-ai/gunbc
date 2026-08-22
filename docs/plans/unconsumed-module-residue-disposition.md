@@ -440,6 +440,36 @@ both, which is suggestive and is not evidence. The claim above rests instead on 
 checkable observation about one symbol's references before and after. An unfaithful instrument
 does not become trustworthy because its delta looks stable.
 
+## 4j. A finding this change is a specimen of, and it is not about this change
+
+**A defect keyed on a specific `OccurrenceId` value stops reproducing under any change that
+perturbs occurrence allocation.** Stated as a property of the class, because the next such
+defect will have it and nobody will be watching.
+
+The specimen is this branch, and it is usable *precisely because it contains no fix*:
+
+| | tree | failed | planned |
+| --- | --- | --- | --- |
+| base `90986d19469` | as-is | **16** | 10425 |
+| this branch | base minus 56 deleted modules | **1** (unrelated) | **10425** |
+
+The 16 are the `fold_lowering` / `body_lowering.statement_let_bind` family, every one
+reporting `non-exhaustive pattern match on: OccurrenceId { value: 79 }`. All 16 identities are
+absent — passing — on a tree that differs from their red base *only* by deleted modules. No
+test file was deleted, no lowering code was touched, and **`planned` is identical at 10425**,
+which rules out roster change and leaves corpus size as the isolated variable.
+
+**The consequence for method:** a bisect, or any before/after comparison, run across trees of
+different module counts measures allocation luck rather than the defect. A green obtained that
+way is not evidence of a repair.
+
+**What this is NOT a claim about.** It is not a claim that this change fixed anything — it
+plainly did not, and saying so would be the rung inflation DESIGN §4b names. Nor is it a claim
+about the original defect's status: that was root-caused separately at the declaration
+(`v2.extdeps.languages.dag`'s int-literal constructors declared `OccurrenceId` while every
+caller passed `SyntheticOccurrence`, repaired with a 17-site caller census), and main is green
+on that repair. Two greens, two different causes; this branch has the luck, main has the fix.
+
 ## 5. The 56 deleted
 
 | module | path | bucket |
