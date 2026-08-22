@@ -2,6 +2,45 @@ module test.claim.fleet_converge_cli_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => oid
+    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+  }
+}
+
+// THE OPERATOR-FACING REMEDY MUST NAME AN OPERATION THE REPOSITORY WOULD ACTUALLY PERFORM. This arm
+// told a human "tree-sync is the catch-up realization" while gunbc.live_deploy.deployed_tree_report
+// BLOCKS exactly that: a tree-only publication flips belt_revision_admission to admitting while the
+// installed binary is still old, so the next tick dispatches a mixed realization never admitted as a
+// release. The typed verdict was correct throughout, which is why nothing caught it -- no consumer of
+// the VERDICT was wrong, only the sentence a human acts on, and this fn had no witness at all.
+test fn witness_converge_cli_drift_reason_does_not_prescribe_tree_only_sync() -> Bool {
+  let d = converge_cli_drift_fixture_oid(hex: "1111111111111111111111111111111111111111")
+  let l = converge_cli_drift_fixture_oid(hex: "2222222222222222222222222222222222222222")
+  match converge_cli_revision_reason(standing: RevisionDrifted { desired: d, local: l }) {
+    Present { value: reason } =>
+      string_contains(s: reason, pattern: "full host-release publication is required")
+        && !string_contains(s: reason, pattern: "tree-sync is the catch-up")
+        && string_contains(s: reason, pattern: "1111111111111111111111111111111111111111")
+        && string_contains(s: reason, pattern: "2222222222222222222222222222222222222222")
+    Absent => false
+  }
+}
+
+// The converged arm must stay SILENT -- a reason on a converged standing would put a remedy in front
+// of an operator who has nothing to remedy.
+test fn witness_converge_cli_converged_standing_offers_no_remedy() -> Bool {
+  match converge_cli_revision_reason(
+    standing: RevisionConverged {
+      revision: converge_cli_drift_fixture_oid(hex: "3333333333333333333333333333333333333333"),
+    }
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
 test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
   converge_cli_routes_to_slice1(host: "srv1")
     && match host_converge_slice1_fixture_receipt() {

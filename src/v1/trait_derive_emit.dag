@@ -1,6 +1,9 @@
 module v1.compiler.trait_derive_emit
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution {
+  DissolutionCondition,
+  unbound_dissolution
+}
 
 import v1.compiler.emit { to_pascal, emit_ident }
 import v1.compiler.artifact { Rust }
@@ -13,36 +16,45 @@ import extdeps.languages.rust.derive_contracts {
   rust_btree_set_supplemental_generic_bound_rows,
 }
 import v1.std.core {
-  Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
+  Node,
+  NewlineIndex,
+  authored_name_at,
+  generic_param_name_at,
+  param_node_type_expr,
   NoConnective,
-  ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
-  ContainerSpellingUnknown, authored_container_spelling_verdict
+  ContainerSpellingVerdict,
+  ContainerSpellingDeclared,
+  NotAContainerSpelling,
+  ContainerSpellingUnknown,
+  authored_container_spelling_verdict
 }
 import std.trait_derive_shape {
-  ReprGroundingDeriveTrait,
-  ReprDeriveDebug,
-  ReprDeriveClone,
-  ReprDerivePartialEq,
-  ReprDeriveSerialize,
-  ReprDeriveDeserialize,
-  map_key_required_derive_traits,
-  derive_traits_union,
-  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelInt,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemUnknown,
+  ReprGroundingDeriveElemShape,
   repr_grounding_derive_completeness_predicate,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  nullary_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  payload_coproduct_derive_traits,
-  fn_field_derive_traits,
-  kernel_int_arithmetic_traits,
-  ReprDeriveElemKernelInt,
   repr_grounding_group_completion_carrier,
   repr_grounding_supplemental_bool_host_bridge_target
+}
+import extdeps.languages.rust.capabilities {
+  RustCapability,
+  RustDebug,
+  RustPartialEq,
+  RustSerialize,
+  RustDeserialize,
+  derive_traits_union,
+  fn_field_derive_traits,
+  kernel_int_arithmetic_traits,
+  map_key_required_derive_traits,
+  nullary_coproduct_derive_traits,
+  payload_coproduct_derive_traits,
+  record_derive_traits_copy,
+  record_derive_traits_heap,
+  rust_capability_shape_table,
+  symbol_wrapped_ord_carrier_derive_traits
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
@@ -50,7 +62,10 @@ import extdeps.languages.rust.emit {
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
-import std.types { is_container_type, container_template_algebra }
+import std.types {
+  is_container_type,
+  container_template_algebra
+}
 
 data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 
@@ -152,9 +167,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
 fn v1_with_map_key_requirement(
-  base: List<ReprGroundingDeriveTrait>,
+  base: List<RustCapability>,
   map_key_required: Bool
-) -> List<ReprGroundingDeriveTrait> {
+) -> List<RustCapability> {
   if map_key_required {
     derive_traits_union(base: base, extra: map_key_required_derive_traits())
   } else {
@@ -369,10 +384,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDebug => Present { value: FreeMonoidHandWrittenImpl }
+    RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }
@@ -386,13 +401,13 @@ fn v1_freemonoid_unroutable_row_refusal() -> String {
   }
 }
 
-fn v1_freemonoid_hand_written_traits() -> List<ReprGroundingDeriveTrait> {
+fn v1_freemonoid_hand_written_traits() -> List<RustCapability> {
   rust_vec_freemonoid_supplemental_generic_bound_rows
     |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
     |> map(row => row.derive_trait)
 }
 
-fn v1_freemonoid_filter_hand_written(traits: List<ReprGroundingDeriveTrait>) -> List<ReprGroundingDeriveTrait> {
+fn v1_freemonoid_filter_hand_written(traits: List<RustCapability>) -> List<RustCapability> {
   traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
 }
 
@@ -498,23 +513,23 @@ fn v1_set_unroutable_row_refusal() -> String {
   }
 }
 
-fn v1_set_hand_written_traits() -> List<ReprGroundingDeriveTrait> {
+fn v1_set_hand_written_traits() -> List<RustCapability> {
   rust_btree_set_supplemental_generic_bound_rows
     |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
     |> map(row => row.derive_trait)
 }
 
-fn v1_set_filter_hand_written(traits: List<ReprGroundingDeriveTrait>) -> List<ReprGroundingDeriveTrait> {
+fn v1_set_filter_hand_written(traits: List<RustCapability>) -> List<RustCapability> {
   traits |> filter(t => !(v1_set_hand_written_traits() |> any(h => h == t)))
 }
 
-fn v1_set_required_traits_for(derive_trait: ReprGroundingDeriveTrait) -> List<ReprGroundingDeriveTrait> {
+fn v1_set_required_traits_for(derive_trait: RustCapability) -> List<RustCapability> {
   rust_btree_set_supplemental_generic_bound_rows
     |> filter(row => row.derive_trait == derive_trait)
     |> map(row => row.required)
 }
 
-fn v1_set_supplemental_bound_spelling_for(derive_trait: ReprGroundingDeriveTrait) -> String {
+fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
   unique_strings(items: v1_set_required_traits_for(derive_trait: derive_trait) |> map(t => rust_trait_derive_spelling(t)))
     |> join(separator: " + ")
 }
@@ -523,8 +538,8 @@ fn v1_set_serde_bound_attr(
   generic_param_names: List<String>,
   set_params: List<String>
 ) -> String {
-  let ser_supplement = v1_set_supplemental_bound_spelling_for(ReprDeriveSerialize)
-  let de_supplement = v1_set_supplemental_bound_spelling_for(ReprDeriveDeserialize)
+  let ser_supplement = v1_set_supplemental_bound_spelling_for(RustSerialize)
+  let de_supplement = v1_set_supplemental_bound_spelling_for(RustDeserialize)
   let ser_entries = generic_param_names |> map(p =>
     let pascal = to_pascal(name: p)
     if set_params |> any(f => f == p) {
@@ -548,13 +563,13 @@ fn v1_set_serde_bound_attr(
 }
 
 fn v1_set_serde_bound_attr_for_traits(
-  traits: List<ReprGroundingDeriveTrait>,
+  traits: List<RustCapability>,
   generic_param_names: List<String>,
   set_params: List<String>
 ) -> String {
   if (set_params |> count) == 0 { "" } else {
     let refusal = v1_set_unroutable_row_refusal()
-    if refusal != "" { refusal } else if !(traits |> any(t => t == ReprDeriveSerialize) && traits |> any(t => t == ReprDeriveDeserialize)) {
+    if refusal != "" { refusal } else if !(traits |> any(t => t == RustSerialize) && traits |> any(t => t == RustDeserialize)) {
       v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord + Clone for Serialize/Deserialize but the derive trait list for this coproduct elem shape omits one of them — supplemental bound cannot attach")
     } else {
       concat("\n", v1_set_serde_bound_attr(generic_param_names: generic_param_names, set_params: set_params))
@@ -680,7 +695,7 @@ fn v1_set_impl_type_params(
   set_params: List<String>,
   field_type_exprs: List<Node>,
   structural_spelling: String,
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: RustCapability,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
@@ -703,7 +718,7 @@ fn v1_set_enum_debug_impl(
   field_type_exprs: List<Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: ReprDeriveDebug, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
     let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
@@ -735,7 +750,7 @@ fn v1_set_enum_partial_eq_impl(
   field_type_exprs: List<Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: ReprDerivePartialEq, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
     let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
@@ -761,6 +776,135 @@ fn v1_set_enum_partial_eq_impl(
   )
 }
 
+data trait_derive_emit_ord_propagation_note: String = "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain)."
+
+fn v1_item_own_set_affected_param_names(
+  item: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  v1_set_element_params(
+    generic_param_names: item_generic_param_names(item: item, source_indices: source_indices),
+    field_type_exprs: v1_item_field_type_exprs(item: item, source_indices: source_indices),
+    source_indices: source_indices
+  )
+}
+
+fn v1_ord_propagated_zip_loop(
+  param_name: String,
+  decl_params: List<Node>,
+  type_args: List<Node>,
+  decl_set_affected_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  match decl_params |> first {
+    Absent => false
+    Present { value: decl_param } =>
+      match type_args |> first {
+        Absent => false
+        Present { value: type_arg } =>
+          let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
+          let here =
+            if decl_set_affected_names |> any(n => n == slot_name) {
+              v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_arg, source_indices: source_indices)
+            } else {
+              false
+            }
+          here || v1_ord_propagated_zip_loop(
+            param_name: param_name,
+            decl_params: decl_params |> skip(1),
+            type_args: type_args |> skip(1),
+            decl_set_affected_names: decl_set_affected_names,
+            source_indices: source_indices
+          )
+      }
+  }
+}
+
+fn v1_field_type_expr_ord_propagated_for_param(
+  param_name: String,
+  type_expr: Node,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let decl_name = authored_name_at(source_indices: source_indices, node: type_expr)
+  match map_get(type_decl_items, decl_name) {
+    Absent => false
+    Present { value: decl } =>
+      v1_ord_propagated_zip_loop(
+        param_name: param_name,
+        decl_params: decl.params,
+        type_args: type_expr.children,
+        decl_set_affected_names: v1_item_own_set_affected_param_names(item: decl, source_indices: source_indices),
+        source_indices: source_indices
+      )
+  }
+}
+
+fn v1_item_ord_propagated_param_names(
+  generic_param_names: List<String>,
+  field_type_exprs: List<Node>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  generic_param_names |> filter(p =>
+    field_type_exprs |> any(te =>
+      v1_field_type_expr_ord_propagated_for_param(
+        param_name: p,
+        type_expr: te,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
+fn v1_set_struct_debug_impl(
+  name: String,
+  generic_param_names: List<String>,
+  set_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let field_calls = children |> map(f =>
+    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    concat(".field(\"", ident, "\", &self.", ident, ")")
+  )
+  concat(
+    "impl", tp, " std::fmt::Debug for ", name, args, " {\n",
+    "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    "        f.debug_struct(\"", name, "\")", field_calls |> join(separator: ""), ".finish()\n",
+    "    }\n",
+    "}"
+  )
+}
+
+fn v1_set_struct_partial_eq_impl(
+  name: String,
+  generic_param_names: List<String>,
+  set_params: List<String>,
+  children: List<Node>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
+  let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
+  let comparisons = children |> map(f =>
+    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    concat("self.", ident, " == other.", ident)
+  )
+  let body = if (comparisons |> count) == 0 { "true" } else { comparisons |> join(separator: " && ") }
+  concat(
+    "impl", tp, " PartialEq for ", name, args, " {\n",
+    "    fn eq(&self, other: &Self) -> bool {\n",
+    "        ", body, "\n",
+    "    }\n",
+    "}"
+  )
+}
+
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
@@ -778,7 +922,7 @@ fn v1_emit_struct_derives(
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
     let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
-    if repr_grounding_derive_completeness_predicate(traits, shape) {
+    if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), traits, shape) {
       rust_trait_derive_attr_from_traits(traits)
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
@@ -850,7 +994,7 @@ fn v1_emit_enum_derives(
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
-      if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), nullary_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: nullary_traits) } else { nullary_traits }
         concat(
           set_row_refusal,
@@ -861,7 +1005,7 @@ fn v1_emit_enum_derives(
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
-      if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), payload_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: payload_traits) } else { payload_traits }
         concat(
           set_row_refusal,
@@ -1925,7 +2069,8 @@ fn v1_emit_struct_from_capability_table(
   map_key_required: Bool,
   generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
-  carrier_param_needs_clone: Bool
+  carrier_param_needs_clone: Bool,
+  type_decl_items: Map<String, Node>
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => child_type_node(ch: f))
   let fm_params = if has_fn_fields || map_key_required
@@ -1951,24 +2096,50 @@ fn v1_emit_struct_from_capability_table(
     )
     StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
   } else {
-    let derive_attr = v1_emit_struct_derives(
-      name: name,
-      children: children,
-      shared_types: shared_types,
-      has_fn_fields: has_fn_fields,
-      map_key_required: map_key_required,
-      source_indices: source_indices
-    )
-    let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
-      && repr_grounding_derive_completeness_predicate(
-        kernel_int_arithmetic_traits(),
-        ReprDeriveElemKernelInt
-      ) {
-      rust_supplemental_impls_group_completion(carrier_param_needs_clone: carrier_param_needs_clone)
+    let ord_propagated_params = if has_fn_fields || map_key_required
+      || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
+      || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
+      []
     } else {
-      ""
+      v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
     }
-    StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+    if (ord_propagated_params |> count) > 0 {
+      let base = if set_contains(shared_types, name) { record_derive_traits_heap() } else { record_derive_traits_copy() }
+      let set_row_refusal = v1_set_unroutable_row_refusal()
+      let derived_traits = v1_set_filter_hand_written(traits: base)
+      let derive_attr = concat(
+        set_row_refusal,
+        rust_trait_derive_attr_from_traits(derived_traits),
+        v1_set_serde_bound_attr_for_traits(traits: base, generic_param_names: generic_param_names, set_params: ord_propagated_params)
+      )
+      let impl_bodies = concat(
+        "\n\n",
+        v1_set_struct_debug_impl(name: name, generic_param_names: generic_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+        "\n\n",
+        v1_set_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+      )
+      StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+    } else {
+      let derive_attr = v1_emit_struct_derives(
+        name: name,
+        children: children,
+        shared_types: shared_types,
+        has_fn_fields: has_fn_fields,
+        map_key_required: map_key_required,
+        source_indices: source_indices
+      )
+      let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
+        && repr_grounding_derive_completeness_predicate(
+          rust_capability_shape_table(),
+          kernel_int_arithmetic_traits(),
+          ReprDeriveElemKernelInt
+        ) {
+        rust_supplemental_impls_group_completion(carrier_param_needs_clone: carrier_param_needs_clone)
+      } else {
+        ""
+      }
+      StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
+    }
   }
 }
 
@@ -2002,6 +2173,7 @@ fn v1_emit_enum_supplemental_impls(
     )
   } else if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
+      rust_capability_shape_table(),
       nullary_coproduct_derive_traits(),
       ReprDeriveElemNullaryEnumCopy
     ) {
