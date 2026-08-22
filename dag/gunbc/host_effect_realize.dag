@@ -99,12 +99,6 @@ import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
-import gunbc.host_converge_realize {
-  interpret_host_converge,
-  ConvergeHostRefused,
-  ConvergeHostInterpreted,
-  converge_host_no_knobs_reason,
-}
 import extdeps.gunbc
 import extdeps.apt { package_curl, package_nbdkit, package_socat, package_xorriso, apt_get_binary_path }
 import extdeps.tools.curl { curl_cli_tool }
@@ -193,7 +187,7 @@ import extdeps.cache.sccache {
 }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.build_cache_unit { render_build_cache_unit }
+import gunbc.build_cache_unit { build_cache_unit_text }
 import gunbc.build_cache_provision_verdict {
   BuildCacheDaemonObservation,
   DaemonStatsOk,
@@ -2730,6 +2724,15 @@ fn build_cache_classify_failure_body() -> String {
   ], "\n")
 }
 
+// THE HEREDOC TERMINATOR IS CONCATENATED ONTO THE UNIT TEXT, NOT JOINED AS A SIBLING LINE.
+//
+// build_cache_unit_text ends in its own terminating newline, because extdeps.systemd.unit_file
+// serializes a unit as a complete file. The heredoc supplies a newline of its own before the
+// terminator, so joining the two as adjacent list elements would emit BOTH and deliver a unit
+// carrying a trailing blank line. Concatenating spends the render's newline as the one the
+// terminator needs, which is what keeps the delivered bytes identical to the hand renderer this
+// replaced -- measured on both the CI and session instances rather than argued. The drift would
+// have been one byte in a file that convergence compares byte-for-byte against this same render.
 fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
   join([
     join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
@@ -2738,8 +2741,7 @@ fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonE
     "_gunbc_stage=\"$(mktemp -d)\"",
     "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
     join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    join(render_build_cache_unit(instance: instance), "\n"),
-    "__GUNBC_SCCACHE_UNIT__",
+    concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
     join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
     systemctl_daemon_reload_command(privileged: true),
     systemctl_enable_command(unit: instance.intended_unit, privileged: true),
@@ -2906,7 +2908,7 @@ fn realize_provision_build_cache_body(
                     ),
                     applied: effect_intent,
                   }
-                EnsureBuildCacheAdmitted { desired: _, preflight: pf, unit_lines: _ } =>
+                EnsureBuildCacheAdmitted { desired: _, preflight: pf, unit_file: _ } =>
                   build_cache_unlink_then_ensure(
                     instance: instance,
                     preflight: pf,
@@ -3064,28 +3066,35 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
   }
 }
 
+// CONVERGE DOES NOT APPLY KNOBS ON THE OPERATOR PRINCIPAL, AND THE ABSENCE OF THE CODE PATH IS
+// WHAT ENFORCES THAT. The 2026-08-13 operator privilege hold says drop-in authoring,
+// daemon-reload, set-property and revert for the per-slot memory-cap axis belong to the deploy
+// principal (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo), never to
+// `gunbc converge` on the operator principal. Until this cut the hold was carried by two
+// `data ...: Bool = true` flags whose only readers were witnesses asserting the literal, while the
+// arm they described was still wired: gunbc.host_converge_realize interpreted a PerSlotMemoryCap
+// knob into a shell body and this function ran it through run_shell_transport and reported
+// convergence from its exit status. A flag that asserts itself is not a wall (DESIGN §5's oracle
+// rule rejects exactly that shape); a deleted arm is.
+//
+// So the interpreter module, the flags and the witnesses that read them are gone, and this
+// function refuses by construction. That refusal is strictly stronger than the three it replaces
+// (unimplemented knob target, zero knobs, multi-knob concatenation): every converge apply for
+// every host now refuses, where before a caps-only host would have actuated.
+//
+// CONVERGE'S ANSWER FOR THIS AXIS IS OBSERVATION, and it already exists:
+// gunbc.host_runner_memory_cap_verify reads the unit back through
+// gunbc.fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read. That path is
+// untouched by this cut - it is the half that was always correct.
+data converge_in_process_apply_withdrawn_reason: String = "host_effect_apply: ConvergePlan in-process apply is WITHDRAWN, not unimplemented — the 2026-08-13 operator privilege hold reserves per-slot memory-cap authoring to the deploy principal (gunbc.host_axis_caps at live_deploy apply), so `gunbc converge` on the operator principal has no apply arm to reach. Converge's answer for this axis is the read-back verdict at gunbc.host_runner_memory_cap_verify (fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read), not a mutation."
+
 fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match interpret_host_converge(host_converge: host_converge) {
-    ConvergeHostRefused { reason: why } =>
-      NotConverged { reason: why, applied: intent }
-    ConvergeHostInterpreted { knob_count: n, stdout: out } =>
-      if n == 0 {
-        NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
-      } else {
-        let observed = run_shell_transport(script: retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: LocalShell)
-        if observed.success {
-          reconcile_grounded(
-            apply_effect: intent,
-            show_read: ReadObserved { value: observed.stdout },
-            grounding: Grounds { evidence: ConvergePlanApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
-          )
-        } else {
-          NotConverged {
-            reason: concat("host_effect: converge apply failed (nonzero exit); stderr: ", observed.stderr),
-            applied: intent,
-          }
-        }
-      }
+  NotConverged {
+    reason: concat(
+      concat(converge_in_process_apply_withdrawn_reason, " (host="),
+      concat(host_converge.identity as String, ")"),
+    ),
+    applied: intent,
   }
 }
 

@@ -1,8 +1,9 @@
 module test.claim.spark_serving_observe_witness_test
 
 import std.types { String, NonEmptyStr, Int, Bool }
+import std.measure { microsecond }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
+import gunbc.spark.serving_boot_provenance { SparkServingBootProvenance, BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
 import gunbc.spark.serving_release {
   SparkServingObservation, SparkServingAbsent, SparkServingObserved,
@@ -35,6 +36,12 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
+  SparkServingCurrentBootDurabilityStanding,
+  CurrentBootDurabilityExhibitedFleetWide,
+  CurrentBootDurabilityNotExhibited,
+  CurrentBootDurabilityUnobserved,
+  spark_serving_current_boot_durability_standing,
+  spark_serving_current_boot_durability_line,
   ManagedAccountAbsent,
   ManagedAccountKeyFileUnread,
   ManagedAccountObserved,
@@ -720,7 +727,7 @@ test fn the_readback_line_carries_boot_provenance() -> Bool {
 // An absent leg is unobserved on the leg's OWN behalf and never a durability verdict, asserted here
 // on the wiring rather than only on the classifier it delegates to.
 test fn an_absent_boot_probe_leg_is_unobserved_at_the_wiring() -> Bool {
-  match spark_serving_boot_provenance_from_probes(active_enter: none, uptime: none) {
+  match spark_serving_boot_provenance_from_probes(active_enter: none, default_target_enter: none, uptime: none) {
     BootProvenanceUnobserved { cause: c } =>
       string_contains(c as String, "ActiveEnterTimestampMonotonic probe leg did not run")
     UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
@@ -919,4 +926,103 @@ test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bo
         && string_contains(s: c as String, pattern: "does not decode")
     _ => false
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// CURRENT-BOOT DURABILITY STANDING
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+fn ho_with_provenance(p: SparkServingBootProvenance) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: SparkServingReadback {
+      host: "srv5",
+      unit_outcome: SparkServingUnitAbsent,
+      runtime_version: SparkServingReadbackAbsent,
+      runtime_materialization_identity: SparkServingReadbackAbsent,
+      model_name: SparkServingReadbackAbsent,
+      model_tag: SparkServingReadbackAbsent,
+      model_manifest_digest: SparkServingReadbackAbsent,
+      nvidia_driver: SparkServingReadbackAbsent,
+      bind_address: SparkServingReadbackAbsent,
+      boot_provenance: p,
+      grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+    },
+    observation: SparkServingObservationRefused {
+      host: "srv5",
+      cause: "fixture: standing tests read boot provenance only" as NonEmptyStr,
+    },
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+  }
+}
+
+data fixture_started_at_boot: SparkServingBootProvenance = UnitStartedByManagerAtBoot {
+  active_enter_monotonic: microsecond(count: 10),
+  uptime: microsecond(count: 84716000000),
+}
+data fixture_started_after_boot: SparkServingBootProvenance = UnitStartedAfterBoot {
+  active_enter_monotonic: microsecond(count: 10670729),
+  uptime: microsecond(count: 84716000000),
+}
+
+test fn every_host_up_with_its_boot_exhibits_fleet_wide() -> Bool {
+  match spark_serving_current_boot_durability_standing(
+    report: SparkServingObservationsProduced {
+      first: ho_with_provenance(p: fixture_started_at_boot),
+      more: [ho_with_provenance(p: fixture_started_at_boot)],
+    },
+  ) {
+    CurrentBootDurabilityExhibitedFleetWide { observed_hosts: n } => n == 2
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. One host of two differs, and only in its boot provenance -- every
+// other field on both fixtures is identical. A standing that reported the fleet by its FIRST
+// host, or by any host, would pass the all-exhibiting test above and fail here. This is the
+// shape the real fleet is in today: 19:19 measured both hosts started-after-boot.
+test fn one_host_not_up_with_its_boot_drops_the_fleet_standing() -> Bool {
+  match spark_serving_current_boot_durability_standing(
+    report: SparkServingObservationsProduced {
+      first: ho_with_provenance(p: fixture_started_at_boot),
+      more: [ho_with_provenance(p: fixture_started_after_boot)],
+    },
+  ) {
+    CurrentBootDurabilityNotExhibited { exhibiting: e, observed_hosts: n } => e == 1 && n == 2
+    _ => false
+  }
+}
+
+// NOBODY LOOKED IS NOT THE SAME AS LOOKED AND FOUND NOTHING. A refused report must not arrive
+// as "not exhibited, 0 of 0" -- that reads as a measured negative and is the empty-observation
+// narrow this standing is built to refuse.
+test fn a_refused_report_is_unobserved_not_a_measured_negative() -> Bool {
+  match spark_serving_current_boot_durability_standing(
+    report: SparkServingObservationReportRefused { cause: "transport refused every leg" as NonEmptyStr },
+  ) {
+    CurrentBootDurabilityUnobserved { cause: c } => string_contains(s: c as String, pattern: "transport refused")
+    _ => false
+  }
+}
+
+// THE WIRE MUST NOT SAY FAILED. A reader who turns this line into "durability failed on srv6"
+// asserts more than the measurement supports, and that mis-reading is the reason the standing
+// exists at all.
+test fn the_not_exhibited_wire_denies_being_a_failure() -> Bool {
+  let line = spark_serving_current_boot_durability_line(
+    standing: CurrentBootDurabilityNotExhibited { exhibiting: 1, observed_hosts: 2 },
+  )
+  string_contains(s: line, pattern: "not-exhibited-this-boot")
+    && string_contains(s: line, pattern: "does not establish")
+    && string_contains(s: line, pattern: "NOT a finding that durability failed")
+}
+
+// THE UNOBSERVED WIRE MUST NAME ITSELF A COVERAGE GAP, for the same reason in the other
+// direction: an unobserved fleet reported as a fleet property would be a fabricated verdict.
+test fn the_unobserved_wire_names_a_coverage_gap() -> Bool {
+  let line = spark_serving_current_boot_durability_line(
+    standing: CurrentBootDurabilityUnobserved { cause: "nothing ran" as NonEmptyStr },
+  )
+  string_contains(s: line, pattern: "unobserved")
+    && string_contains(s: line, pattern: "coverage gap")
 }

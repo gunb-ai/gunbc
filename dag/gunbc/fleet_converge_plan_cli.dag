@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_plan_cli
 
+import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
@@ -9,7 +10,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.chmod { chmod_set_mode_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
@@ -35,7 +36,11 @@ import gunbc.fleet_converge_plan {
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
   fleet_converge_parse_nonneg_generation_text,
-  fleet_converge_generation_from_store_content,
+  fleet_converge_generation_observation,
+  fleet_converge_generation_admission,
+  GenerationAdmission,
+  GenerationAdmitted,
+  GenerationAdmissionRefused,
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
   fleet_converge_plan_content_hash_path,
@@ -83,11 +88,19 @@ func observe_host_short_wet() -> NonEmptyStr?
   }
 }
 
-func observe_generation_store_wet() -> Int?
+// The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
+// (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
+// that invents a number.
+func observe_generation_store_wet() -> GenerationAdmission
   uses net: Network
 {
   let read = Filesystem.Read(path: fleet_converge_generation_store_path)
-  fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
+  fleet_converge_generation_admission(
+    observation: fleet_converge_generation_observation(
+      store_present: read.success,
+      content: read.content,
+    ),
+  )
 }
 
 func observe_timer_members_wet() -> List<TimerRetirementMember>
@@ -124,9 +137,8 @@ func fleet_converge_plan_wet() -> ProcessExit
     Present { value: host } => {
   let host_short = host as String
   match observe_generation_store_wet() {
-    Absent =>
-      exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
-    Present { value: prior_generation } => {
+    GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
+    GenerationAdmitted { generation: prior_generation } => {
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
   match fleet_converge_plan_artifact(
@@ -196,7 +208,7 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    chmod_set_mode_command(mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
+                    chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
                     cat_command(path: fleet_converge_plan_body_path),
                     cat_command(path: fleet_converge_plan_content_hash_path),
                   ],

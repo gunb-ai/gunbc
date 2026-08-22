@@ -15,7 +15,11 @@ import gunbc.session_residency { host_carries_interactive_sessions }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget_for,
-  host_allocation_conserves,
+  host_allocation_verdict,
+  HostAllocationVerdict,
+  HostAllocationConserves,
+  HostAllocationOversubscribed,
+  HostAllocationUnchargeable,
   declared_runner_count_for,
   oomd_actuation_floor,
   CompilePoolResolution,
@@ -26,6 +30,12 @@ import gunbc.fleet_host_budget {
   CompilePoolInRunnerSlots,
   compile_pool_bytes_for,
   gunbc_compile_pool_placement,
+}
+import gunbc.fabric_control_plane_charge {
+  host_fabric_control_plane_claim_under,
+  fabric_control_plane_placement,
+  FabricControlPlanePlacement,
+  HostFabricControlPlaneClaim,
 }
 import extdeps.jobserver { jobserver_config }
 import extdeps.cpu { cpu_facts_threads }
@@ -166,7 +176,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_verdict (node_conserves over runner_pool + session_pool + fixed_overhead + headroom + the control-plane charge <= host RAM), consumed as a coproduct so an unmeasured resident reports a measurement to take rather than a capacity deficit; it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
@@ -282,7 +292,7 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
   }
 }
 
-fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
+fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer, control_plane_placement: FabricControlPlanePlacement) -> DeploymentAccumulator {
   match compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
       DeploymentAccumulator {
@@ -311,8 +321,8 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
             any_unfit: acc.any_unfit,
             total: acc.total,
           }
-        SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: byte_size(0))
-        SessionSliceCharged { bytes: session_pool } => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool)
+        SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: byte_size(0), control_plane_placement: control_plane_placement)
+        SessionSliceCharged { bytes: session_pool } => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool, control_plane_placement: control_plane_placement)
       }
         }
       }
@@ -326,7 +336,8 @@ fn accumulate_with_session_slice(
   host_id: HostIdentity,
   host_ram: ByteSize,
   headroom: ByteSize,
-  session_pool: ByteSize
+  session_pool: ByteSize,
+  control_plane_placement: FabricControlPlanePlacement
 ) -> DeploymentAccumulator {
       match host_overhead_or_refusal(host: host_id, o: gunbc_ci_host_fixed_overhead_for(host: host_id)) {
         HostOverheadUnresolved { reason: orr } =>
@@ -351,14 +362,16 @@ fn accumulate_with_session_slice(
             total: acc.total,
           }
         CompilePoolDerived { bytes: compile_pool } =>
-        if host_allocation_conserves(
+        match host_allocation_verdict(
           host: host_ram,
           overhead: overhead,
           headroom: headroom,
           runner_pool: gunbc_runner_pool_budget_for(host: host_id),
           session_pool: session_pool,
-          compile_pool: compile_pool
+          compile_pool: compile_pool,
+          control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
         ) {
+          HostAllocationConserves => {
           let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
           DeploymentAccumulator {
             deployments: concat(acc.deployments, [dep]),
@@ -366,10 +379,18 @@ fn accumulate_with_session_slice(
             any_unfit: acc.any_unfit || (dep.runner_count == 0),
             total: acc.total + dep.runner_count,
           }
-        } else {
+          }
+          HostAllocationOversubscribed =>
           DeploymentAccumulator {
             deployments: acc.deployments,
             unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
+          HostAllocationUnchargeable { cause: c } =>
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { concat(concat("host allocation unchargeable on ", offer.supply.physical.identity), concat(": ", c)) } else { acc.unsound_reason },
             any_unfit: acc.any_unfit,
             total: acc.total,
           }
@@ -379,10 +400,14 @@ fn accumulate_with_session_slice(
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
+  runner_deployment_plan_under_placement(control_plane_placement: fabric_control_plane_placement)
+}
+
+fn runner_deployment_plan_under_placement(control_plane_placement: FabricControlPlanePlacement) -> RunnerDeploymentPlan {
   let acc = fold(
     fleet_intent_offers,
     init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
-    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
+    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o, control_plane_placement: control_plane_placement)
   )
   if acc.unsound_reason != "" {
     PlanUnsound { reason: acc.unsound_reason }

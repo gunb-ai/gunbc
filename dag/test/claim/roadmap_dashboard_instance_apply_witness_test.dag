@@ -275,6 +275,13 @@ test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
   }
 }
 
+// THE CHMOD LITERAL MOVED FROM /usr/bin TO /bin AND THAT IS A REPAIR, NOT A LOOSENING. This roster
+// and the install step that execs chmod each spelled their own absolute path, and they disagreed:
+// the roster demanded /usr/bin/chmod while extdeps.tools.chmod -- the tool's authority, and the
+// path this repository actually recorded for these hosts -- says /bin/chmod. The preflight was
+// therefore gating a path no sanctioned caller runs, and it passed only because usrmerge makes
+// both resolve. Both sites now read the authority, so this literal is the one independent
+// statement of the value left, and it reds if that authority moves without anyone looking here.
 test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let required = dashboard_required_target_executables(instance: lab)
@@ -289,7 +296,7 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     && any(required, path => path == ("/usr/bin/install" as FilePath))
     && any(required, path => path == ("/usr/bin/ln" as FilePath))
     && any(required, path => path == ("/usr/bin/dirname" as FilePath))
-    && any(required, path => path == ("/usr/bin/chmod" as FilePath))
+    && any(required, path => path == ("/bin/chmod" as FilePath))
     && !any(required, path => path == lab.serve_binary)
     && !any(
       required,

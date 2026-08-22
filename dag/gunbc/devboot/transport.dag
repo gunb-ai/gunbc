@@ -1,10 +1,39 @@
 module gunbc.devboot.transport
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.gunbc
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git { git_ref_missing_exit_code }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.git.plumbing {
+  GitRepositoryAddress,
+  GitWorktreeAt,
+  GitDirectoryAt,
+  GitRefObservation,
+  GitRefObserved,
+  GitRefAbsent,
+  GitRefObservationRefused,
+}
 
 data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+
+// THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
+// distinction is the point. Every row in this roster declares the same dissolution target,
+// gunbc.host_effect_realize host_effect_apply, which is a TRANSPORT (DESIGN section 3 (b)).
+// That target is correct for the host-effect rows below -- rm, mkdir, cp, mv, chmod, sleep,
+// uname, ldd, sha256sum, cargo, rustc, execute -- and it was WRONG for the git rows: a git
+// operation's terminus is a modeled interface shape, which extdeps owns, and routing
+// `git write-tree` into a generic host-effect actuator would have dissolved the transport
+// while leaving git's interface unmodeled permanently. The roster conflated two dissolution
+// classes under one target, so the git half's trigger could not fire correctly.
+//
+// Those sites now call extdeps.git.plumbing (git.Plumbing) and extdeps.git (git.Core). They
+// are not retained argv any more, so they have no row here; the deletion IS the census, and
+// re-adding a git argv site to gunbc.devboot would be a site with no reason row rather than
+// a site with a stale one.
 
 data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.host_effect_realize",
@@ -27,68 +56,8 @@ data retained_devboot_mkdir: RetainedWitnessRun = RetainedWitnessRun {
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
-data retained_devboot_git_read_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot materializes a ref tree or prefixes a source tree into a scratch index" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_checkout_index: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot checks out indexed blobs to the exchange directory without piping artifact bytes" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_fetch: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot polls the producer answer ref over the git-only transport" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
 data retained_devboot_sleep: RetainedWitnessRun = RetainedWitnessRun {
   reason: "devboot poll interval waits between fetch attempts" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_init: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot prepares a scratch exchange repository under the work root" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_update_index: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot stages request and produced tree entries in a scratch index" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_push: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot publishes a parentless request commit to the producer store" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_hash_object: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot writes staged blobs into the object database before indexing" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_write_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot serializes a staged index to a tree object for commit-tree" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_commit_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot wraps request and produced trees in parentless commits for shallow clones" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_cat_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot reads request entry blobs from the producer store ref" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_rev_parse: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot resolves the request source subtree and produced answer refs" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_update_ref: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot publishes the produced answer ref after commit-tree" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
@@ -122,33 +91,8 @@ data retained_devboot_rm_file: RetainedWitnessRun = RetainedWitnessRun {
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
-data retained_devboot_git_add_all: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer stages the dirty worktree into its snapshot index" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
 data retained_devboot_rustc_version: RetainedWitnessRun = RetainedWitnessRun {
   reason: "devboot producer observes the local rustc toolchain for subject identity" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_bare_init: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer bootstraps the artifact store as a bare git repository" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_unpack_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer materializes a store blob to disk for independent digest verification" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_object_exists: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer checks artifact blob presence before reuse verification" as NonEmptyStr,
-  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
-}
-
-data retained_devboot_git_object_size: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer measures stored artifact byte size for the availability record" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
@@ -166,6 +110,52 @@ data retained_devboot_ldd: RetainedWitnessRun = RetainedWitnessRun {
   reason: "devboot producer observes platform C library version for subject identity" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
+
+// DEVBOOT'S TWO REPOSITORY ADDRESSES, NAMED ONCE. The client side operates on a WORKTREE
+// (the developer's checkout, reached with `-C`); the producer side operates on a BARE STORE
+// with no worktree (reached with `--git-dir=`). Both readings exist in git and they are not
+// interchangeable, so the choice is made here, at the one place that knows which side of the
+// exchange it is on, rather than re-spelled at every call.
+fn devboot_repo_address(repo_root: String) -> GitRepositoryAddress {
+  GitWorktreeAt { path: repo_root as FilePath }
+}
+
+fn devboot_store_address(store_root: String, repo_root: String) -> GitRepositoryAddress {
+  GitDirectoryAt { path: store_root as FilePath, run_in: repo_root as FilePath }
+}
+
+// A REF READ HAS THREE ANSWERS AND THIS IS WHERE THE EXIT CODES BECOME THEM. `rev-parse
+// --verify --quiet` exits 0 with the object id, 1 when the ref is absent, and 128 when the
+// repository itself could not be used (extdeps.git git_ref_missing_exit_code /
+// git_repository_unusable_exit_code). Absent and unreachable have OPPOSITE remedies -- create
+// it, versus stop -- so the third is a refusal here rather than a second spelling of absence.
+// A zero exit whose text does not decode to an object id is also a refusal: it means the read
+// succeeded and this layer cannot say what it read, which is not the same as reading nothing.
+fn devboot_ref_observation(exit_code: Int, revision: String, stderr: String) -> GitRefObservation {
+  if exit_code == git_ref_missing_exit_code {
+    GitRefAbsent
+  } else if !(exit_code == 0) {
+    GitRefObservationRefused { exit_code: exit_code, stderr: trim(s: stderr) }
+  } else {
+    match git_object_id_from_untagged_hex(hex: trim(s: revision)) {
+      Absent =>
+        GitRefObservationRefused {
+          exit_code: exit_code,
+          stderr: join(["rev-parse returned an object id this build cannot decode: ", trim(s: revision)], ""),
+        }
+      Present { value: oid } => GitRefObserved { oid: oid }
+    }
+  }
+}
+
+fn devboot_observe_ref(repo_root: String, ref_name: String) -> GitRefObservation {
+  let read = git.Plumbing.ObserveRef(
+    address: devboot_repo_address(repo_root: repo_root),
+    ref_name: ref_name,
+  )
+  devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
+}
+
 
 type WitnessBinRunOutcome {
   success: Bool
