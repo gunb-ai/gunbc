@@ -8,6 +8,7 @@ import gunbc.runner_lifecycle {
   RunnerSlotAddSequence,
   GitHubRunnerAddSequence,
   FabricSlotProvisioningNotModeled,
+  SlotIsNotACommittedMember,
   runner_slot_add_steps_ordered,
   runner_slot_caps_precede_start,
   runner_slot_add_step_index,
@@ -139,6 +140,7 @@ fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
   match seq {
     GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
     FabricSlotProvisioningNotModeled { reason: _ } => false
+    SlotIsNotACommittedMember { reason: _ } => false
   }
 }
 

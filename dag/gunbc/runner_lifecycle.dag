@@ -19,8 +19,11 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   RunnerSlotPurpose,
   SlotServesGitHubActions,
-  SlotServesComputeFabric,
-  runner_slot_purpose,
+  SlotServesFabricExecution,
+  RunnerSlotMembership,
+  RunnerSlotMember,
+  RunnerSlotOutsideCommittedPopulation,
+  runner_slot_membership,
 }
 import gunbc.host_disk_observation {
   HostDiskObservation,
@@ -86,6 +89,7 @@ fn runner_slot_add_steps_ordered() -> List<RunnerSlotAddStep> {
 type RunnerSlotAddSequence
   = GitHubRunnerAddSequence { steps: List<RunnerSlotAddStep> }
   | FabricSlotProvisioningNotModeled { reason: String }
+  | SlotIsNotACommittedMember { reason: String }
 
 // REGISTRATION IS DERIVED FROM PURPOSE, WHICH IS THE HALF THAT MAKES THE PURPOSE FIELD REAL. A
 // purpose that does not gate the step is a label: it would record which slots we INTENDED not to
@@ -107,12 +111,19 @@ type RunnerSlotAddSequence
 // terminal state for the one fabric slot that exists (srv3-06), and it is why that slot is
 // declared but not yet convergeable.
 fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
-  match runner_slot_purpose(host: host, slot_index: slot_index) {
-    SlotServesGitHubActions =>
-      GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
-    SlotServesComputeFabric =>
-      FabricSlotProvisioningNotModeled {
-        reason: "compute-fabric slot: the GitHub runner add sequence does not apply and no fabric provisioning sequence is modeled yet; refusing rather than returning a filtered subsequence that would install an actions-runner for a slot that never serves Actions"
+  match runner_slot_membership(host: host, slot_index: slot_index) {
+    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+      SlotIsNotACommittedMember {
+        reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"
+      }
+    RunnerSlotMember { identity: _, purpose: p } =>
+      match p {
+        SlotServesGitHubActions =>
+          GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
+        SlotServesFabricExecution =>
+          FabricSlotProvisioningNotModeled {
+            reason: "fabric execution slot: the GitHub runner add sequence does not apply and no fabric provisioning sequence is modeled yet; refusing rather than returning a filtered subsequence that would install an actions-runner for a slot that never serves Actions"
+          }
       }
   }
 }

@@ -3,8 +3,12 @@ module test.claim.runner_slot_allocation_witness
 import gunbc.runner_slot_allocation {
   RunnerSlotPurpose,
   SlotServesGitHubActions,
-  SlotServesComputeFabric,
-  runner_slot_purpose,
+  SlotServesFabricExecution,
+  RunnerSlotMembership,
+  RunnerSlotMember,
+  RunnerSlotOutsideCommittedPopulation,
+  runner_slot_membership,
+  srv3_fabric_canary_slot,
   host_fabric_slot_count,
   host_github_slot_count,
   gunbc_runner_slot_allocation_wall_holds,
@@ -184,10 +188,21 @@ test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliati
   )
 }
 
-fn purpose_is_fabric(p: RunnerSlotPurpose) -> Bool {
-  match p {
-    SlotServesComputeFabric => true
-    SlotServesGitHubActions => false
+fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
+  match m {
+    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
+    RunnerSlotMember { identity: _, purpose: p } =>
+      match p {
+        SlotServesFabricExecution => true
+        SlotServesGitHubActions => false
+      }
+  }
+}
+
+fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
+  match m {
+    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
+    RunnerSlotMember { identity: _, purpose: _ } => false
   }
 }
 
@@ -213,12 +228,36 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // the SAME committed width, and it is a GitHub slot. So the partition is keyed on the host's
 // authored fabric count, not on the number 6 -- an implementation that special-cased the top index
 // fleet-wide would pass the srv3 assertion and fail here.
+// AN IDENTITY THAT IS NOT A COMMITTED SLOT IS NOT A FABRIC SLOT, AND THIS ROW EXISTS BECAUSE THE
+// FIRST VERSION SAID IT WAS. Purpose was derived by comparing the index against a count, so any
+// index above the GitHub ceiling answered "fabric" -- measured, srv1-06 and srv3-99 both did, though
+// srv1 is five wide and neither is a member of anything. Membership now precedes purpose and those
+// identities are refused with the width they were measured against.
+test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
+  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 7))
+    && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+}
+
+// THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
+// srv3-06 rather than derived as "the top index", so the counts below are projections of it. If
+// this ever regresses to index arithmetic, a width change would silently relabel a slot that may be
+// running work -- which is why the identity is asserted directly here and not just its count.
+test fn the_fabric_member_is_an_authored_identity_not_a_top_index_rule() -> Bool {
+  srv3_fabric_canary_slot().slot_index == 6
+    && (srv3_fabric_canary_slot().host as String) == (operator_host_srv3 as String)
+    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    && host_fabric_slot_count(host: operator_host_srv4) == 0
+}
+
 test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
-  purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 6))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv4, slot_index: 6))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 5))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv1, slot_index: 5))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv2, slot_index: 5))
+  membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv2, slot_index: 5))
 }
 
 // THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. Fabric slots are taken from the TOP of the
@@ -227,10 +266,10 @@ test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
 // from the bottom would have renumbered every live runner on the host, and this row goes red if
 // anyone reverses that direction.
 test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
-  !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 1))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 2))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 3))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 4))
-    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 5))
+  !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 1))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 2))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
     && host_github_slot_count(host: operator_host_srv3) == 5
 }

@@ -20,7 +20,18 @@ import gunbc.fleet_runner_connectivity {
   SlotConnectivityUnknown,
 }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_github_slot_count, host_fabric_slot_count }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host,
+  host_github_slot_count,
+  host_fabric_slot_count,
+  runner_slot_membership,
+  RunnerSlotMembership,
+  RunnerSlotMember,
+  RunnerSlotOutsideCommittedPopulation,
+  RunnerSlotPurpose,
+  SlotServesGitHubActions,
+  SlotServesFabricExecution,
+}
 
 data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Additions are the run of slot indices between observed and the host's GitHub ceiling, DERIVED rather than enumerated, and clamped to the GitHub population so this plan can never add a compute-fabric slot. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
@@ -216,36 +227,60 @@ type SlotPopulationVerdict
   = SlotPopulationReconciled
   | SlotPopulationRefused { reason: String }
 
-// RECONCILIATION COMPARES POPULATIONS, NOT INDEX COUNTS, AND THIS IS WHERE THAT BITES. A width
-// answers how many slots a host has; it cannot say that the sixth belongs to the fabric while the
-// first five are GitHub runners. Once purposes differ the count is a PROJECTION of the population
-// and can never be an authority FOR it, so a reconciliation that reasons in counts alone is
-// deciding convergence on a fact that no longer determines the answer.
+// RECONCILIATION COMPARES POPULATIONS, AND AN EARLIER REVISION OF THIS FUNCTION DID NOT -- IT TOOK
+// AN INT. The annotation above it claimed it compared populations while the signature accepted only
+// observed_width, which is precisely the proposition this module says counts cannot establish, and
+// the comment asserted what the code omitted. It caught the unequal-count case (five expected, six
+// observed) and MISSED the equal-count wrong-member case: observed GitHub {1,2,3,4,6} against
+// expected {1,2,3,4,5} counts five on both sides and reconciles, while slot 06 -- the fabric
+// member -- is occupied by an actions-runner and a legitimate GitHub member is missing.
 //
-// THE REACHABLE BAD STATE, STATED CONCRETELY BECAUSE IT IS NOT HYPOTHETICAL. srv3 commits 6 slots
-// and its GitHub population is 5. If an actions-runner is ever registered at srv3-06 -- by a hand
-// run of the installer, by a converge from a checkout that predates the purpose model, or by
-// anyone reading the width row as "six runners" -- then observed_width becomes 6, the additions
-// run is empty because 6 already exceeds the GitHub ceiling of 5, and the host READS AS CONVERGED
-// while the slot the fabric is supposed to own is occupied by a GitHub runner. Nothing in a
-// count-shaped comparison can see that: the numbers agree, the population does not.
+// So it takes the observed identities and folds them. Each observed identity is one of three
+// things, and only the first is acceptable: a committed member whose purpose is GitHub Actions; a
+// committed member whose purpose is fabric execution, which means an actions-runner is registered
+// in the fabric's slot; or an identity outside the committed population, which is
+// over-provisioning against the host's own memory admission.
 //
-// SO IT REFUSES RATHER THAN KEEPING. Present-at-a-fabric-index-with-GitHub-purpose is not Keep,
-// and it is deliberately not silently repaired either -- removing a live registered runner is
+// IT REFUSES RATHER THAN REPAIRING, DELIBERATELY. Deregistering a live registered runner is
 // destructive and belongs to an operator, not to a planner that inferred the situation from a
-// width. The line stops, typed and located, naming the host and both counts.
-fn reconcile_slot_population(host: HostIdentity, observed_width: Int) -> SlotPopulationVerdict {
-  if observed_width > gunbc_runner_slots_per_host(host: host) {
-    SlotPopulationRefused {
-      reason: "observed runner slots exceed the host committed width: the population is over-provisioned against its own memory admission, refusing rather than planning against a width this host was never admitted to carry"
-    }
-  } else if host_fabric_slot_count(host: host) > 0 && observed_width > host_github_slot_count(host: host) {
-    SlotPopulationRefused {
-      reason: "a GitHub runner occupies a compute-fabric slot index: observed GitHub slots exceed this host's GitHub population, so a slot reserved for the fabric is registered with Actions. Refusing rather than reading the host as converged — the counts agree while the populations do not, and deregistering a live runner is an operator action, not a planner inference"
-    }
-  } else {
-    SlotPopulationReconciled
+// roster read. The line stops, typed, naming the offending identity.
+//
+// WHAT THIS STILL CANNOT DO, AND IT IS NOT A GAP THIS MODULE CAN CLOSE. GitHub is an external
+// authority. The model can make its OWN registration path incapable of creating a runner at a
+// fabric slot -- that is structural, via the add-sequence gate -- but it cannot make GitHub
+// incapable of ALREADY containing one that a person registered by hand. So desired-state
+// disjointness is structural and observed disjointness stays an observation obligation: this
+// function is where that observation is adjudicated when it arrives.
+fn reconcile_observed_slot_identity(identity: RunnerSlotIdentity) -> SlotPopulationVerdict {
+  match runner_slot_membership(host: identity.host, slot_index: identity.slot_index) {
+    RunnerSlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+      SlotPopulationRefused {
+        reason: "an observed runner slot lies outside the host committed population: the fleet is over-provisioned against its own memory admission, refusing rather than planning against a width this host was never admitted to carry"
+      }
+    RunnerSlotMember { identity: _, purpose: p } =>
+      match p {
+        SlotServesFabricExecution =>
+          SlotPopulationRefused {
+            reason: "a GitHub runner occupies a fabric execution slot: the observed roster registers a slot reserved for the fabric. Refusing rather than reading the host as converged — the counts can agree while the populations do not, and deregistering a live runner is an operator action, not a planner inference"
+          }
+        SlotServesGitHubActions => SlotPopulationReconciled
+      }
   }
+}
+
+fn reconcile_slot_population(
+  host: HostIdentity,
+  observed: List<RunnerSlotIdentity>,
+) -> SlotPopulationVerdict {
+  fold(
+    observed,
+    init: SlotPopulationReconciled,
+    f: (acc, id) =>
+      match acc {
+        SlotPopulationRefused { reason: r } => SlotPopulationRefused { reason: r }
+        SlotPopulationReconciled => reconcile_observed_slot_identity(identity: id)
+      }
+  )
 }
 
 type HostCapacityPlanOutcome
@@ -277,7 +312,7 @@ fn plan_runner_capacity_host(
         }
       }
     WidthAdmitted { width: admitted } =>
-      match reconcile_slot_population(host: host, observed_width: observed_width) {
+      match reconcile_slot_population(host: host, observed: observed_slot_identities(host: host)) {
         SlotPopulationRefused { reason: r } =>
           HostCapacityPlanRefused { reason: r }
         SlotPopulationReconciled =>

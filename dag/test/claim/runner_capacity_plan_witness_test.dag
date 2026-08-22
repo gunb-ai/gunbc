@@ -1,6 +1,7 @@
 module test.claim.runner_capacity_plan_witness
 
 import std.logic { Bool }
+import std.nat { Nat }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
   desired_slot_indices,
@@ -11,6 +12,7 @@ import gunbc.runner_capacity_plan {
   SlotPopulationRefused,
 }
 import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
@@ -92,10 +94,15 @@ test fn a_requested_width_is_always_enumerable_and_purpose_gates_the_plan() -> B
     && addition_actions(host: operator_host_srv3, requested_width: 6, observed_width: 5).length() == 0
 }
 
+// WIDTH MOVED TO 6 SO THIS ROW STILL REACHES ITS OWN SUBJECT. The admission ceiling now derives
+// from the committed width, so a request for 7 is refused BEFORE the roster is ever consulted --
+// the plan would come back Ready with zero actions and this row would have been asserting the width
+// wall while claiming to assert the roster wall. At the committed width admission passes and the
+// unavailable roster is genuinely what refuses.
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: 6,
+    srv4_width: 6,
     roster: RosterReadUnavailable { reason: "503" }
   ) {
     PlanRefused { reason: _ } => true
@@ -134,19 +141,46 @@ test fn the_additions_run_is_general_across_transitions() -> Bool {
     && addition_slot_indices(observed_width: 6, requested_width: 5) == []
 }
 
-// A GitHub RUNNER SITTING IN THE FABRIC'S SLOT MUST NOT READ AS CONVERGED. srv3 commits 6 slots
-// with a GitHub population of 5, so an observation of 6 GitHub slots means an actions-runner
-// occupies srv3-06 -- the slot the fabric owns. The count-shaped answer is "no additions needed",
-// which is indistinguishable from a healthy converged host; the population-shaped answer is a
-// refusal, and this row is what holds the difference.
+fn srv3_slot(i: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: i }
+}
+
+fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }
+}
+
+// A GitHub RUNNER SITTING IN THE FABRIC'S SLOT MUST NOT READ AS CONVERGED, AND THE THIRD ROW IS THE
+// ONE THAT MATTERS. The first two are the unequal-count cases an Int-shaped reconciler could already
+// catch. The third is the case it could not: observed GitHub {1,2,3,4,6} against expected
+// {1,2,3,4,5} counts FIVE ON BOTH SIDES, so every count-shaped comparison reconciles, while slot 06
+// -- the fabric member -- is occupied by an actions-runner and a legitimate GitHub member is missing.
+// That is exactly the proposition this module asserts counts cannot establish, and an earlier
+// revision of reconcile_slot_population took an observed_width Int while its own annotation claimed
+// it compared populations.
 //
-// THE srv1 ROW IS THE CONTROL AND WITHOUT IT THIS PROVES NOTHING. srv1 has no fabric slot, so an
-// observation equal to its committed width is genuinely converged and must NOT refuse. A verdict
-// that refused whenever observed reached the width would satisfy the srv3 assertion by being
-// broken everywhere, and this pairing is what separates "refuses correctly" from "refuses".
+// THE srv1 ROWS ARE THE CONTROL AND WITHOUT THEM THIS PROVES NOTHING. srv1 has no fabric slot, so
+// its full committed population is a reconciled observation and must NOT refuse; an identity beyond
+// its width must. A verdict that refused every non-empty roster would satisfy the srv3 rows by
+// being broken everywhere.
 test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
-  population_is_refused(v: reconcile_slot_population(host: operator_host_srv3, observed_width: 6))
-    && !population_is_refused(v: reconcile_slot_population(host: operator_host_srv3, observed_width: 5))
-    && !population_is_refused(v: reconcile_slot_population(host: operator_host_srv1, observed_width: 5))
-    && population_is_refused(v: reconcile_slot_population(host: operator_host_srv1, observed_width: 6))
+  population_is_refused(v: reconcile_slot_population(
+    host: operator_host_srv3,
+    observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5), srv3_slot(i: 6)],
+  ))
+    && !population_is_refused(v: reconcile_slot_population(
+      host: operator_host_srv3,
+      observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5)],
+    ))
+    && population_is_refused(v: reconcile_slot_population(
+      host: operator_host_srv3,
+      observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 6)],
+    ))
+    && !population_is_refused(v: reconcile_slot_population(
+      host: operator_host_srv1,
+      observed: [srv1_slot(i: 1), srv1_slot(i: 2), srv1_slot(i: 3), srv1_slot(i: 4), srv1_slot(i: 5)],
+    ))
+    && population_is_refused(v: reconcile_slot_population(
+      host: operator_host_srv1,
+      observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
+    ))
 }
