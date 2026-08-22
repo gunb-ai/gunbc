@@ -18,6 +18,7 @@ import gunbc.dissolution_observation {
 import gunbc.dissolution_census {
   dissolution_census_verdict,
   dissolution_census_holds,
+  dissolution_census_refused_keys,
   frontier_rows_bound_count,
 }
 import std.roster_frontier { frontier_rows_well_formed }
@@ -36,11 +37,17 @@ data dissolution_census_cost_class_note: String = "unbound_dissolution_empty_lit
 // A refused verdict is a distinct outcome from a dirty roster: it means the resolver
 // could not decide one of the roster's own trigger refs, and the census declines to
 // answer rather than guessing a direction.
+// A REFUSAL IS LOCATED, NOT JUST COUNTED. The assertion is that the refused set is
+// EMPTY at identity grain — `dissolution_census_refused_keys` renders each undecided ref
+// as its display key — so a run that starts refusing says WHICH roster refs the resolver
+// could not decide instead of reporting a bare false. A count would have said the same
+// thing about a different set.
 test fn census_verdict_is_answered_over_the_live_tree() -> Bool {
-  match dissolution_census_verdict() {
-    DissolutionCensusAnswered { report: _ } => true
-    DissolutionCensusRefused { undecided: _ } => false
-  }
+  length(xs: dissolution_census_refused_keys(verdict: dissolution_census_verdict())) == 0
+    && match dissolution_census_verdict() {
+      DissolutionCensusAnswered { report: _ } => true
+      DissolutionCensusRefused { undecided: _ } => false
+    }
 }
 
 test fn census_counters_exhaustively_partition_the_rows() -> Bool {

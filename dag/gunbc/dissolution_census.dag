@@ -2,13 +2,11 @@ module gunbc.dissolution_census
 
 import std.roster_frontier {
   FrontierRow,
-  FrontierExpiryReport,
-  fold_frontier_expiry,
   frontier_expiry_clean,
   frontier_rows_well_formed,
 }
 import std.dissolution { DissolutionCondition, dissolution_is_bound }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.dissolution_observation {
   DissolutionCensusVerdict,
@@ -38,10 +36,6 @@ fn dissolution_census_refused_keys(verdict: DissolutionCensusVerdict) -> List<St
     DissolutionCensusRefused { undecided: u } =>
       u |> map(r => declaration_ref_display_key(ref: r))
   }
-}
-
-fn dissolution_census_report_against(present_decls: List<DeclarationRef>) -> FrontierExpiryReport {
-  fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: present_decls)
 }
 
 fn dissolution_census_holds() -> Bool {
