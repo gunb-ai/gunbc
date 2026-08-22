@@ -682,7 +682,6 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
     match spelling {
         "empty_map_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
         "empty_map" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
-        "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
         "map_insert" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
         _ => None,
     }

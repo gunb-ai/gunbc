@@ -5128,7 +5128,7 @@ macro_rules! v1_map_grounding_arms {
         $cb! {
             $fname;
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
+            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
         }
     };
 }
