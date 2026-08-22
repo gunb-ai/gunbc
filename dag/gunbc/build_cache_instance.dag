@@ -57,6 +57,30 @@ type RunnerSlotIdentity {
 // which is one concept under two names, the nicknaming DESIGN section 3 forbids. Comparing on BOTH
 // coordinates is the substance: an equality blind to slot_index would report any slot on a host as
 // the host's fabric member.
+// THE TWO-DIGIT SUFFIX IS ONE RULE AND IT WAS THREE IMPLEMENTATIONS, ONE OF WHICH WAS WRONG.
+// runner_lifecycle and runner_host_deploy each derived it arithmetically; runner_incarnation
+// ENUMERATED it -- if index == 1 then "01", up to 8 -- with an else arm returning the literal "00".
+// So above index 8 the three disagreed, measured: srv3-09 from the derived pair, srv3-00 from the
+// enumerator. That is not a wrong name, it is a COLLISION -- every index above 8 mapped to the same
+// string, so two slots would contend for one registration in the GitHub runner namespace.
+//
+// IT WAS UNREACHABLE ONLY BY ACCIDENT, AND THE ACCIDENT WAS ANOTHER DEFECT. Nothing could hand the
+// enumerator an index above 8 because the widths were capped -- first by a bucketed slot-index
+// enumerator, then by host_memory_admitted_width's else arm admitting an unknown host at width zero.
+// The second of those is being repaired in this same change, which is exactly why the suffix is
+// repaired WITH it: making an unknown host admissible removes the guard, so landing that alone would
+// convert a dormant collision into a live one on the commit that first lets a rented host exist.
+//
+// DERIVED RATHER THAN REFUSED, because a refusal would still be a second representation of a rule
+// the arithmetic already states. There is no fall-through to reach: the pad is total over Nat.
+fn runner_slot_index_suffix(index: Nat) -> String {
+  if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
+}
+
+fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
+  join([slot.host as String, "-", runner_slot_index_suffix(index: slot.slot_index)], "")
+}
+
 fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
   (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
 }
