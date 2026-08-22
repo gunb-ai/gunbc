@@ -1,0 +1,44 @@
+module extdeps.systemd.loginctl
+
+
+// loginctl is systemd's login-manager client, governed by the same upstream as systemctl but
+// documented as its own command with its own verb set, so it gets its own module rather than more
+// rows on systemctl's: they are independently documented surfaces of one project, and a verb added
+// to one is not a verb on the other.
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/loginctl.html"
+  }
+}
+
+data loginctl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
+
+data loginctl_binary_name: std.types.NonEmptyStr = "loginctl" as std.types.NonEmptyStr
+
+fn loginctl_binary_path() -> std.types.NonEmptyStr {
+  extdeps.systemd.systemd_binary_path(name: loginctl_binary_name)
+}
+
+// enable-linger TAKES ITS SUBJECT, and the argument is not optional in any use this repository has.
+// Upstream defaults the subject to the calling user when it is omitted, which is exactly why the
+// omission is dangerous here rather than convenient: a sudoers grant written without the subject
+// authorizes `loginctl enable-linger` for the grantee to run as root, and root's own linger is not
+// what the grant was for. The parameter is required so that the subject cannot be dropped by
+// forgetting it.
+data loginctl_enable_linger_verb: std.types.NonEmptyStr = "enable-linger" as std.types.NonEmptyStr
+
+fn loginctl_enable_linger_argv(subject: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+  [loginctl_binary_name as std.types.String, loginctl_enable_linger_verb as std.types.String, subject as std.types.String]
+}
+
+// The same command rendered for a sudoers Cmnd_Spec: absolute path, same verb, same subject. It is
+// this function and loginctl_enable_linger_argv that must not be able to disagree, which is why
+// both fold the same three rows rather than each spelling the command.
+fn loginctl_enable_linger_command(subject: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  join([
+    loginctl_binary_path() as std.types.String,
+    " ", loginctl_enable_linger_verb as std.types.String,
+    " ", subject as std.types.String,
+  ], "") as std.types.NonEmptyStr
+}

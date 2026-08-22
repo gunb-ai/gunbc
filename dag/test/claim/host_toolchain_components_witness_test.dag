@@ -34,16 +34,35 @@ test fn witness_after_fix_converges() -> Bool {
     )
 }
 
-data witness_no_probe_note: String = "No probe, no verdict. srv1, srv3 and srv4 have no toolchain reading — srv1 refuses every credential this session holds, and no component-listing producer runs anywhere in the tree — so their verdict is UnknownRefused and the module does not invent one. The count is pinned so that landing a probe, or fabricating a fixture to make the matrix look greener, both show up as a change to this witness."
+data witness_no_probe_note: String = "No probe, no verdict. srv1, srv3 and srv4 have no toolchain reading — srv1 refuses every credential this session holds, and no component-listing producer runs anywhere in the tree — so their verdict is UnknownRefused and the module does not invent one. The frontier is asserted as the SET of hosts without a reading, joined against the enrolled population by identity, so landing a probe or fabricating a fixture to make the matrix look greener both show up as a NAMED host leaving that set rather than as a number moving."
+
+// THE FRONTIER IS THE SET OF HOSTS WITHOUT A READING, AND IT NAMES THE ONE THAT HAS ONE. The count
+// this replaces asserted enrolled-minus-one, which is true and says nothing about WHICH host is the
+// exception -- so the single most interesting fact on this axis, that srv2 alone has a resolved
+// toolchain because its components were brought into the desired state BY HAND on operator
+// instruction, was invisible to the assertion and survived only in prose (toolchain_ensure_frontier_note).
+// Naming it puts the hand-fixed host in the witness, so when the modeled ensure lands and a second
+// host acquires a reading, the diff says which.
+//
+// This is also DESIGN section 5's rule applied: completeness is an identity join, not a count
+// equality. The universe joined against is the enrolled population, never a roster typed here.
+fn toolchain_unobserved_hosts() -> List<HostIdentity> {
+  filter(
+    fleet_subsumption_hosts,
+    h => observation_verdict_eq(
+      a: host_toolchain_completeness_verdict(host: h),
+      b: std.upsert_decision.UnknownRefused,
+    ),
+  )
+}
 
 test fn witness_unobserved_hosts_are_unknown_not_converged() -> Bool {
-  let unobserved = toolchain_completeness_fleet_unobserved_count()
   observation_verdict_eq(
     a: host_toolchain_completeness_verdict(host: operator_host_srv1),
     b: std.upsert_decision.UnknownRefused,
   )
-    && unobserved == fleet_subsumption_hosts.length() - 1
-    && unobserved > 0
+    && toolchain_unobserved_hosts()
+      == filter(fleet_subsumption_hosts, h => h != operator_host_srv2)
 }
 
 data witness_missing_set_note: String = "The refusal must be able to say WHICH component is missing and which gate wanted it, or the remedy is a search. The missing set is computed against the requirement rows, so it carries the DeclarationRef of the gate that required it rather than a bare label."

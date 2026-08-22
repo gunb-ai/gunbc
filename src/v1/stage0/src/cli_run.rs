@@ -114,11 +114,14 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
-        .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e)))
-        .collect();
+        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
+        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
+        .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
@@ -126,11 +129,16 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files(&path, files);
+            collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
         }
     }
+    Ok(())
+}
+
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -183,120 +191,6 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
         }
     }
     imports
-}
-
-/// Module paths a source REFERENCES, for the namespace-only era where `import` no longer
-/// exists. A reference is `module.path.Symbol`, so the module is the longest dotted prefix
-/// the index knows; string literals and `//` annotations are removed first, because prose
-/// naming a module is commentary, not a dependency.
-pub(crate) fn extract_reference_module_paths(
-    content: &str,
-    index: &std::collections::HashMap<String, PathBuf>,
-    services: &std::collections::HashMap<String, String>,
-) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    // STRING STATE IS CONTENT-WIDE, NOT PER-LINE, and that is the whole repair.
-    //
-    // This scanner used to reset `in_str` at every newline, so only the FIRST line of a
-    // multi-line `data note: String = "..."` row was treated as string; every subsequent line
-    // was scanned as code. A `.dag` prose row citing `gunbc.merge_admission_subject` therefore
-    // entered the regen closure as a dependency EDGE, and the transitive pull was not small:
-    // measured on the namespace-cut corpus, the src/v1 closure was 396 modules with per-line
-    // state and 111 with content-wide state -- 56 `gunbc.plans.*` modules were reached solely
-    // through prose. A citation is not an edge (DESIGN 4c: no `Accepted` program can read an
-    // annotation, and a `String` row is data, not a reference), so pulling one is a fail-open
-    // widening of the seed surface, denominated in the corpus rather than in the change.
-    let mut in_str = false;
-    let mut prev_backslash = false;
-    let mut code = String::with_capacity(content.len());
-    let mut it = content.chars().peekable();
-    while let Some(ch) = it.next() {
-        if in_str {
-            if ch == '\\' && !prev_backslash {
-                prev_backslash = true;
-                continue;
-            }
-            if ch == '"' && !prev_backslash {
-                in_str = false;
-            }
-            prev_backslash = false;
-            // Newlines are preserved so the scan below still sees line structure.
-            if ch == '\n' {
-                code.push('\n');
-            }
-            continue;
-        }
-        if ch == '"' {
-            in_str = true;
-            continue;
-        }
-        if ch == '/' && it.peek() == Some(&'/') {
-            // Line comment: skip to end of line (a `//` inside a string never reaches here).
-            for c in it.by_ref() {
-                if c == '\n' {
-                    code.push('\n');
-                    break;
-                }
-            }
-            continue;
-        }
-        code.push(ch);
-    }
-    for line in code.lines() {
-        let chars: Vec<char> = line.chars().collect();
-        let mut i = 0usize;
-        while i < chars.len() {
-            let c = chars[i];
-            if !(c.is_ascii_lowercase() || c == '_') {
-                i += 1;
-                continue;
-            }
-            if i > 0 {
-                let p = chars[i - 1];
-                if p.is_alphanumeric() || p == '_' || p == '.' {
-                    i += 1;
-                    continue;
-                }
-            }
-            let start = i;
-            while i < chars.len()
-                && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.')
-            {
-                i += 1;
-            }
-            let run: String = chars[start..i].iter().collect();
-            let segs: Vec<&str> = run.split('.').filter(|s| !s.is_empty()).collect();
-            if segs.len() < 2 {
-                continue;
-            }
-            let mut k = segs.len();
-            while k >= 2 {
-                let cand = segs[..k].join(".");
-                // A service's addressable name lives in a FLAT namespace unrelated to the
-                // module tree (`extdeps.shell` declares `service shell.PosixCommandV`), so a
-                // reference like `shell.PosixCommandV.Check` names no module at any prefix and
-                // the declaring module was never pulled into the closure. Before the cut an
-                // `import extdeps.shell` supplied it; with imports deleted the reference IS
-                // the edge, and this is the only place that can see it. Resolving the service
-                // name to its declaring module keeps `seen` keyed on module paths, so a module
-                // reached both ways is stored once.
-                let resolved = if index.contains_key(&cand) {
-                    Some(cand.clone())
-                } else {
-                    services.get(&cand).cloned()
-                };
-                if let Some(module_path) = resolved {
-                    if seen.insert(module_path.clone()) {
-                        out.push(module_path);
-                    }
-                    break;
-                }
-                k -= 1;
-            }
-        }
-    }
-    out
 }
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
@@ -1235,6 +1129,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_unlisted_import_census"
+        );
+    }
+
+    #[test]
     fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
@@ -1486,98 +1388,6 @@ mod workspace_root_discovery_tests {
     }
 }
 
-#[cfg(test)]
-mod regen_input_closure_tests {
-    use super::{regen_input_sources, regen_path_affects_regen};
-    use std::collections::HashSet;
-    use std::path::{Path, PathBuf};
-
-    fn fixture_root(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
-    }
-
-    fn write(root: &Path, rel: &str, content: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
-        std::fs::write(p, content).expect("write fixture");
-    }
-
-    /// The regen input closure is exactly the `src/v1` entries plus their transitive
-    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
-    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
-    /// (every dag change would appear in-closure and the shortcut would never fire).
-    #[test]
-    fn closure_is_imports_only_unimported_dag_excluded() {
-        let root = fixture_root("imports-only");
-        let _ = std::fs::remove_dir_all(&root);
-        write(
-            &root,
-            "src/v1/a.dag",
-            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
-        );
-        write(&root, "src/v1/b.dag", "module v1.b\n");
-        write(&root, "dag/std/x.dag", "module std.x\n");
-        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
-        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
-
-        let relpaths: HashSet<String> = regen_input_sources(&root)
-            .expect("closure computes")
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
-        let _ = std::fs::remove_dir_all(&root);
-
-        assert!(
-            relpaths.contains("src/v1/a.dag"),
-            "entry seed: {relpaths:?}"
-        );
-        assert!(
-            relpaths.contains("src/v1/b.dag"),
-            "imported v1 module present"
-        );
-        assert!(
-            relpaths.contains("dag/std/x.dag"),
-            "imported dag module present"
-        );
-        assert!(
-            !relpaths.contains("dag/std/y.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-        assert!(
-            !relpaths.contains("dag/gunbc/u.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
-        );
-    }
-
-    #[test]
-    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
-        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
-        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/src/cli_run.rs",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
-        // Cargo / toolchain build config (emitter binary inputs).
-        assert!(regen_path_affects_regen("Cargo.lock", &closure));
-        assert!(regen_path_affects_regen(
-            "src/v1/stage0/Cargo.toml",
-            &closure
-        ));
-        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
-        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
-        // dag file in v1's transitive import closure.
-        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
-        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
-        assert!(!regen_path_affects_regen(
-            "src/v2/compiler/frontier.dag",
-            &closure
-        ));
-        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
-        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
-    }
-}
-
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1650,9 +1460,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         .join("\u{1f}");
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         if let Some(index) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_path_index", &key);
             return index.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
+        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         cache.borrow_mut().insert(key, index.clone());
         index
     })
@@ -2109,7 +1923,11 @@ pub fn declared_import_closure_binding_observation_from_resolved(
     }
     let definer = definer_module_for_name(graph, symbol);
     let symbol_resolves = definer.is_some();
-    let binding_source: Option<UnlistedImportBindingSource> = None;
+    let binding_source = if symbol_resolves {
+        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
+    } else {
+        None
+    };
     DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
         binding_source,
         definer_module: definer,
@@ -2696,6 +2514,142 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
+/// A source root the stage0 self-compile closure may be built from.
+///
+/// The seed boundary is the reason this is a closed two-member vocabulary rather than a string:
+/// stage0 IS the v1 seed, so a root reaching into `src/v2` would make the seed depend on the
+/// successor it bootstraps toward. There is no `src/v2` variant to write, so that root set has no
+/// spelling — DESIGN §4b *structurally impossible*, replacing a validation that never existed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RegenSourceRoot {
+    /// The v1 seed tree — every `.dag` under it seeds the closure.
+    SeedV1,
+    /// The shared `.dag` corpus — reached only through imports from the seed.
+    DagCorpus,
+}
+
+impl RegenSourceRoot {
+    pub fn repo_relative_path(self) -> &'static str {
+        match self {
+            RegenSourceRoot::SeedV1 => "src/v1",
+            RegenSourceRoot::DagCorpus => "dag",
+        }
+    }
+}
+
+/// The stage0 self-compile root set: exactly two roots, in named roles.
+///
+/// Both invalid states the previous `Vec<String>` admitted are unwritable here. The empty set has
+/// no constructor, so `regen_input_sources`' "root list must not be empty" refusal is deleted
+/// rather than kept beside the proof (DESIGN §4b dissolution-on-climb); and the entry role is a
+/// field rather than `.first()`, so it cannot be decided by list order. Fields are private and
+/// `regen_source_roots` is the sole constructor, so a same-root or role-swapped pair is likewise
+/// unconstructable outside this module.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RegenSourceRoots {
+    entry: RegenSourceRoot,
+    imported: RegenSourceRoot,
+}
+
+impl RegenSourceRoots {
+    /// The root whose `.dag` files seed the closure whole.
+    pub fn entry(self) -> RegenSourceRoot {
+        self.entry
+    }
+
+    /// Both roots, in the order the module-path index is built over them.
+    pub fn all(self) -> [RegenSourceRoot; 2] {
+        [self.entry, self.imported]
+    }
+
+    pub fn repo_relative_paths(self) -> Vec<String> {
+        self.all()
+            .iter()
+            .map(|root| root.repo_relative_path().to_string())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod regen_source_root_tests {
+    use super::{regen_source_roots, RegenSourceRoot};
+
+    /// Positive control for the construction above. The discriminating RED is a compile error and
+    /// so cannot be enrolled as a running test: adding a third root, emptying the set, or naming
+    /// `src/v2` are all unwritable, which is the point. This asserts the surviving population and
+    /// the entry role so a silent widening of either would fail here.
+    #[test]
+    fn root_set_is_the_two_seed_admissible_roots_with_the_seed_as_entry() {
+        let roots = regen_source_roots();
+        assert_eq!(roots.entry(), RegenSourceRoot::SeedV1);
+        assert_eq!(
+            roots.all(),
+            [RegenSourceRoot::SeedV1, RegenSourceRoot::DagCorpus]
+        );
+        assert_eq!(roots.repo_relative_paths(), vec!["src/v1", "dag"]);
+    }
+}
+
+/// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
+pub fn regen_source_roots() -> RegenSourceRoots {
+    RegenSourceRoots {
+        entry: RegenSourceRoot::SeedV1,
+        imported: RegenSourceRoot::DagCorpus,
+    }
+}
+
+/// Every `(repo-relative path, source text)` in the stage0 compile closure.
+///
+/// Seeds every `.dag` under `src/v1`; walks imports through `build_module_path_index`
+/// over `regen_source_roots()` so reachable `dag/` modules are included.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots();
+    let abs_roots: Vec<String> = roots
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = build_module_path_index(&abs_roots);
+    let entry_root = workspace.join(roots.entry().repo_relative_path());
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new();
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = workspace_relative_repo_path(&path.to_string_lossy());
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = index.get(&module_path) {
+                let file_path = workspace.join(rel_path);
+                let file_content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
+}
+
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
@@ -3179,9 +3133,16 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    // UnlistedImportUse is deleted with the import era; every remaining class delegates
-    // to the single authority in 00_core.dag.
-    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+    use crate::v1_std_core::CompilerDiagnostic;
+    match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => {
+            match compile_clean_unlisted_import_use_blocks_cached() {
+                Ok(blocks) => blocks,
+                Err(_) => true,
+            }
+        }
+        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
+    }
 }
 
 /// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
@@ -3191,7 +3152,8 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
         && matches!(
             d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
                 // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
@@ -3678,380 +3640,6 @@ fn compile_clean_scoping_active() -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Regen (self-host fixed-point) affected-set scoping.
-//
-// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
-// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
-// committed crate. The emit is a pure function of exactly one input set: every
-// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
-// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
-// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
-// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
-// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
-// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
-// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
-// ---------------------------------------------------------------------------
-
-pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
-pub const RUN_REGEN_LABEL: &str = "run_regen";
-
-/// Relativize an absolute source path against the workspace root for regen display /
-/// closure identity. Single authority: consumed by `regen_stage0` and the skip witness.
-pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
-}
-
-// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
-// `target/` output dirs): regen needs the fail-closed Result variant and the exact
-// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
-// to the committed seed (guarded by `regen_stage0 --verify`).
-fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            regen_collect_dag_files(&path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == "dag") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-/// Module index plus the service-name index built in the SAME pass. A second walk over the
-/// corpus to answer "which module declares this service" would re-read every `.dag` to learn
-/// one more fact per file, so both facts come off one read.
-fn regen_build_module_index(
-    roots: &[PathBuf],
-) -> Result<
-    (
-        std::collections::HashMap<String, PathBuf>,
-        std::collections::HashMap<String, String>,
-    ),
-    String,
-> {
-    let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
-    let mut services: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    return Err(format!(
-                        "duplicate module path `{module_path}`: {} and {}",
-                        existing.display(),
-                        path.display()
-                    ));
-                }
-                for service_name in extract_service_names(&content) {
-                    services.insert(service_name, module_path.clone());
-                }
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok((index, services))
-}
-
-/// Service declarations are module-scope `service <name> {` rows. `<name>` is the ADDRESSABLE
-/// name and is not derived from the module path, which is exactly why it needs its own index.
-fn extract_service_names(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let rest = match line.strip_prefix("service ") {
-            Some(r) => r,
-            None => continue,
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
-            .collect();
-        // Only a dotted name can be seen by the reference scanner, which requires a run of at
-        // least two dot-separated segments. A single-segment service name is recorded anyway so
-        // the index states what the corpus declares rather than what one consumer can use.
-        if !name.is_empty() {
-            out.push(name);
-        }
-    }
-    out
-}
-
-/// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
-/// (the import-resolution index). Single authority for both `regen_stage0` and the
-/// regen affected-set skip witness.
-/// Ported from main at the merge that brought coproduct_reflection's caller: whether a
-/// directory tree holds any `.dag` file at all, skipping cargo's own output directories.
-pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return false,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if is_cargo_target_output_dir(dir, &path) {
-                continue;
-            }
-            if dag_tree_holds_any_file(&path) {
-                return true;
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    // src/v2 is NOT a root and never will be: stage0 IS the v1 seed, and a seed that reached
-    // into src/v2 would depend on the successor it bootstraps toward
-    // (std.trait_derive_shape states this as a standing invariant -- a module reachable by
-    // import from src/v1 cannot reference v2 anything).
-    //
-    // This list briefly carried src/v2 on the namespace-cut branch, because deleting imports
-    // left four references in v1.compiler.emit_rust spelled `v2.std.node.Arrow` / `.Bind` where
-    // main spells them bare, and regen then reported `undefined variable 'v2'`. Adding the root
-    // resolved the reference and violated the invariant: it made v1.std.core and v2.std.node
-    // co-resident, and the emitter's bare-keyed registry -- last-write-wins -- began answering
-    // v2 for Connective, Node and Cardinality in every v1 module, for 10,821 build errors.
-    // The four references were the defect; the root was the workaround. Do not re-add it to
-    // make a closure resolve -- an unresolvable v2 reference under regen means a v1 source is
-    // reaching across the boundary, and the reference is what has to move.
-    vec![workspace.join("src/v1"), workspace.join("dag")]
-}
-
-/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
-/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
-/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
-/// consumes this function — so the regen compile and the skip witness share one closure
-/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
-/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
-/// oracle guarding that equivalence.
-pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
-    let roots = regen_source_roots(workspace);
-    let (index, services) = regen_build_module_index(&roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
-    let mut entry_paths = Vec::new();
-    regen_collect_dag_files(entry_root, &mut entry_paths)?;
-
-    // module_path -> (relpath, content); the first occurrence of a module path wins, so
-    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let rel = regen_workspace_relpath(path, workspace);
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_reference_module_paths(&content, &index, &services) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = regen_workspace_relpath(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(result)
-}
-
-/// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.
-///
-/// This deliberately stops before resolve/infer/emit: every identity comes from the same
-/// parse-derived module-binding path used by `v2.compiler.source_authority`, over exactly the
-/// `regen_input_sources` closure. It must never accept an `EmitResult` or inspect emitted paths.
-/// Dissolve-on: generated_artifact_gate accepts a source_authority ModuleStorageIndex.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Stage0EmissionSourceIdentity {
-    pub module_path: String,
-    pub storage_path: String,
-    pub source_tree: &'static str,
-}
-
-thread_local! {
-    static STAGE0_EMISSION_SOURCE_IDENTITY_CACHE: RefCell<
-        std::collections::HashMap<PathBuf, Vec<Stage0EmissionSourceIdentity>>
-    > = RefCell::new(std::collections::HashMap::new());
-}
-
-pub fn stage0_emission_source_identities(
-    workspace: &Path,
-) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
-    if let Some(cached) =
-        STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| cache.borrow().get(workspace).cloned())
-    {
-        return Ok(cached);
-    }
-    let mut identities = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for (storage_path, content) in regen_input_sources(workspace)? {
-        // #8547 made this a TYPED outcome instead of an Option-with-panic. Both arms
-        // are surfaced rather than collapsed: a parse REFUSAL carries the parser's own
-        // located diagnostic and must not be reported as "missing module declaration",
-        // which is a different fact about a file that parsed fine.
-        let parsed = match parse_module_binding(Path::new(&storage_path), &content).map_err(
-            |refusal: ModuleBindingRefusal| {
-                format!(
-                    "stage0 emission source identity parse refused: {} ({:?})",
-                    refusal.source_path, refusal.diagnostic
-                )
-            },
-        )? {
-            ModuleBindingOutcome::Bound(binding) => binding,
-            ModuleBindingOutcome::ModuleBindingUnclassified => {
-                return Err(format!(
-                    "stage0 emission source identity missing module declaration: {storage_path}"
-                ))
-            }
-        };
-        if !seen.insert(parsed.module_path.clone()) {
-            return Err(format!(
-                "stage0 emission source identity duplicated module: {}",
-                parsed.module_path
-            ));
-        }
-        let source_tree = if storage_path.starts_with("src/v1/") {
-            "V1SourceTree"
-        } else if storage_path.starts_with("dag/") {
-            "DagSourceTree"
-        } else {
-            return Err(format!(
-                "stage0 emission source identity outside modeled regen roots: {storage_path}"
-            ));
-        };
-        identities.push(Stage0EmissionSourceIdentity {
-            module_path: parsed.module_path,
-            storage_path,
-            source_tree,
-        });
-    }
-    STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| {
-        cache
-            .borrow_mut()
-            .insert(workspace.to_path_buf(), identities.clone());
-    });
-    Ok(identities)
-}
-
-/// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
-fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    // src/v1/** = the emitter binary source (.rs), every committed stage0 output
-    // (all under src/v1/stage0/src), and the src/v1 .dag entry seeds.
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    // Cargo/toolchain build config: the emitter binary is built from these; a
-    // dependency, pinned-toolchain, or cargo-config change could in principle alter
-    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    // dag/** files in v1's transitive import closure.
-    dag_closure.contains(&p)
-}
-
-/// CI label for the regen self-host fixed-point step's affected-set skip arm.
-/// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
-/// `run_regen` on any intersection, empty diff, departed non-docs path, or
-/// observation/closure failure (fail-closed). This computes the label only; the CI
-/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
-/// regen unconditionally as the cold control that surfaces a wrong closure on the
-/// next merge.
-pub fn regen_floor_skip_label_for_ci() -> String {
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    if changed_paths.is_empty() {
-        eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
-        return RUN_REGEN_LABEL.to_string();
-    }
-    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
-    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
-    // invisible to it — the intersection test would skip a diff that provably changes
-    // the fresh emit (the deleted module no longer contributes; its importers now fail
-    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
-    if let Some(gone) = departed_paths.iter().find(|p| {
-        let n = normalize_repo_path(p);
-        !n.starts_with("docs/")
-    }) {
-        eprintln!(
-            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
-            normalize_repo_path(gone)
-        );
-        return RUN_REGEN_LABEL.to_string();
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match regen_input_sources(&workspace) {
-        Ok(sources) => sources
-            .into_iter()
-            .map(|(p, _)| normalize_repo_path(&p))
-            .collect(),
-        Err(msg) => {
-            eprintln!("regen floor skip: input-closure computation failed ({msg}) — run regen");
-            return RUN_REGEN_LABEL.to_string();
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| regen_path_affects_regen(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "regen floor skip: diff intersects regen inputs (e.g. {}) — run regen",
-                normalize_repo_path(example)
-            );
-            RUN_REGEN_LABEL.to_string()
-        }
-        None => {
-            eprintln!(
-                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
-                changed_paths.len()
-            );
-            REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
 // `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
@@ -4151,7 +3739,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
+        collect_dag_files(root, &mut dag_paths);
         for path in dag_paths {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -4184,7 +3772,8 @@ fn import_closure_dag_files(
                 continue;
             };
             for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                let rel =
+                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
                 if !seen.insert(rel) {
                     continue;
                 }
@@ -4215,8 +3804,8 @@ fn collect_repo_files_under_prefix(
             if path.is_dir() {
                 walk(&path, workspace, seen)?;
             } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(
-                    &path, workspace,
+                seen.insert(normalize_repo_path(&workspace_relative_repo_path(
+                    &path.to_string_lossy(),
                 )));
             }
         }
@@ -4233,12 +3822,9 @@ fn collect_repo_files_under_prefix(
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
 /// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
-/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
-/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
-/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
-/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
-/// re-greens on it.
+/// `regen_input_sources` (whole-root seed under `src/v1` vs. declared entry list). They differ in
+/// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments).
 ///
 /// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
@@ -4464,35 +4050,11 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
-static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
 static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
-
-pub fn record_regen_verify_gate_failure_detail(detail: String) {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = Some(detail);
-    }
-}
-
-pub fn consume_regen_verify_gate_failure_detail() -> String {
-    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "regen_verify failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
-    }
-}
 
 pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         *guard = Some(detail);
-    }
-}
-
-#[cfg(test)]
-fn reset_regen_verify_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
     }
 }
 
@@ -4949,17 +4511,18 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .collect())
 }
 
+// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
+// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
+// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
+// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_unlisted_import_census";
+
 // INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
 // DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
-/// Binding-source attribution. The `UnlistedImportUse` census this was minted for
-/// is DELETED 2026-08-20 with its subject: there are no imports, so there is no
-/// unlisted one. What survives is the type of an honest "not observed" on two live
-/// receipts (`DeclaredImportClosureBindingObserved`, `CrossModuleBindingReceipt`),
-/// both of which construct `None` because the import-era classifier is retired and
-/// neither fabricates a source in its place. It is therefore inhabited only by
-/// absence today; the variants are kept because a resolution-grain binding source is
-/// a real fact the resolver could report, not because anything reports one now.
+/// Binding-source attribution for the UnlistedImportUse census (issue 11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnlistedImportBindingSource {
     ListedImport,
@@ -4975,6 +4538,16 @@ impl UnlistedImportBindingSource {
             Self::DefinerResolvable => "definer-resolvable",
         }
     }
+}
+
+/// One attributed row of the UnlistedImportUse census.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlistedImportCensusRow {
+    pub file: String,
+    pub referenced_name: String,
+    pub referencing_module: String,
+    pub definer_module: Option<String>,
+    pub binding_source: UnlistedImportBindingSource,
 }
 
 fn compile_clean_whole_tree_resolved(
@@ -5010,6 +4583,31 @@ fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> 
     None
 }
 
+/// Classify how a single `UnlistedImportUse` site obtained its binding.
+pub fn classify_unlisted_import_binding_source(
+    graph: &ResolvedGraph,
+    referencing_module: &str,
+    referenced_name: &str,
+) -> (UnlistedImportBindingSource, Option<String>) {
+    let definer = definer_module_for_name(graph, referenced_name);
+    let tm = graph
+        .modules
+        .iter()
+        .find(|m| m.type_env.module_path == referencing_module);
+    let imports: HashSet<String> = tm
+        .map(import_module_paths_for_typed_module)
+        .unwrap_or_default();
+    if let Some(ref def_mod) = definer {
+        if imports.contains(def_mod) {
+            return (UnlistedImportBindingSource::ListedImport, definer);
+        }
+    }
+    if referenced_name.contains('.') {
+        return (UnlistedImportBindingSource::DefinerResolvable, definer);
+    }
+    (UnlistedImportBindingSource::PoolCoincidence, definer)
+}
+
 fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
     let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
     normalize_repo_relative_path_for_census(&raw)
@@ -5025,6 +4623,38 @@ fn normalize_repo_relative_path_for_census(path: &str) -> String {
         }
     }
     p
+}
+
+/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
+pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let result = compile_clean_whole_tree_resolved()?;
+    let graph = result
+        .graph
+        .clone()
+        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
+    let mut rows = Vec::new();
+    for d in result.diagnostics.iter() {
+        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
+            continue;
+        };
+        let (binding_source, definer_module) =
+            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
+        rows.push(UnlistedImportCensusRow {
+            file: diagnostic_decl_file_for_census(d),
+            referenced_name: name.clone(),
+            referencing_module: d.module_name.clone(),
+            definer_module,
+            binding_source,
+        });
+    }
+    rows.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
+            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
+    });
+    Ok(rows)
 }
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
@@ -5108,6 +4738,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
+        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
@@ -5116,9 +4747,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
-        CompilerDiagnostic::UseLineCandidateRefused { .. } => "UseLineCandidateRefused",
-        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
+        CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5153,6 +4783,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
+        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
@@ -5182,9 +4813,13 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         // The NAME is the full spelling, not its container leaf: the burn-down this
         // histogram feeds is a list of spellings to declare a row for, and every
         // refusal of one leaf would otherwise aggregate into a single row.
-        CompilerDiagnostic::UseLineCandidateRefused { name, .. } => name.clone(),
-        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
+        // The NAME is the qualified operation, not the transport kind: the burn-down this
+        // histogram feeds is the list of operations awaiting a realization handler, and keying
+        // on "file" would aggregate every one of them into a single row.
+        CompilerDiagnostic::TransportEmissionNotModeled {
+            service, operation, ..
+        } => format!("{service}.{operation}"),
     };
     (class.to_string(), name)
 }
@@ -6208,9 +5843,17 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
+        shared_fill::record_fill(
+            "module_graph_facts",
+            &key,
+            start.elapsed().as_nanos() as u64,
+        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -6945,12 +6588,11 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            // The import era's binding classifier is retired with the era; this
-            // receipt reports the definer it can still observe and says nothing
-            // about how the name bound, rather than fabricating a source.
-            // Mirrors the same retirement at declared_import_closure_binding.
-            let binding_source: Option<UnlistedImportBindingSource> = None;
-            let _ = consumer_module;
+            let binding_source = if definer.is_some() {
+                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
+            } else {
+                None
+            };
             (
                 (*sym).to_string(),
                 CrossModuleBindingReceipt {
@@ -10043,12 +9685,8 @@ fn typed_module_content_key(
                  in this process before its typed result is keyed"
             )
         })?;
-    struct ImportHashSubject {
-        module_path: String,
-    }
     let mut import_hashes: im::Vector<String> = im::Vector::new();
-    #[allow(clippy::never_loop)]
-    for import in std::iter::empty::<ImportHashSubject>() {
+    for import in resolved.resolved_imports.iter() {
         let hash = interface_hash_by_name
             .get(&import.module_path)
             .cloned()
@@ -13892,8 +13530,11 @@ fn module_schedule_batches(
         .enumerate()
         .flat_map(|(i, resolved)| {
             let position = &position;
-            let _ = (position, i, resolved);
-            Vec::<(usize, usize)>::new()
+            resolved
+                .resolved_imports
+                .iter()
+                .filter_map(move |imp| position.get(imp.module_path.as_str()).map(|&src| (src, i)))
+                .collect::<Vec<_>>()
         })
         .collect();
     let path_to_slot: HashMap<String, usize> = modules
@@ -14065,15 +13706,21 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-
+    let rewire2_started = std::time::Instant::now();
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -14818,6 +14465,7 @@ fn reconcile_with_typed_cache(
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
                 let variant_surface = v1_compiler_infer::build_variant_export_surface(
                     typed.clone(),
+                    variant_surfaces.clone(),
                     source_indices.clone(),
                 );
                 variant_surfaces =
@@ -16177,7 +15825,10 @@ pub fn whole_tree_ancestry_retention_probe(
             te.ancestry_str_bindings.len(),
         );
         tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
-
+        tallies[7].add(
+            Rc::as_ptr(&te.source_visible_names) as usize,
+            te.source_visible_names.len(),
+        );
         tallies[8].add(
             Rc::as_ptr(&te.inductive_fields) as usize,
             te.inductive_fields.len(),
@@ -16812,6 +16463,130 @@ fn hermetic_effect_ground_verdict(
         }
         v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
         v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+    }
+}
+
+/// The completeness reconciliation, as ONE authority.
+///
+/// It is a free function rather than inline in the fold because the test that proves it must
+/// call THE PRODUCTION CODE. An earlier draft of that test carried its own copy of this loop:
+/// it passed, and it would have kept passing while production drifted arbitrarily far from it —
+/// a control sharing nothing with its subject except a name. Extracting it costs nothing and is
+/// the difference between a test of the reconciliation and a test of a paraphrase of it.
+///
+/// Returns (planned-without-terminal, terminal-without-planned, terminal-duplicated). Three sets
+/// rather than a first-failure verdict: an omission and a duplicate arrive together and cancel
+/// in every count, so reporting only the first found would hide the half that explains it.
+pub fn reconcile_terminal_ledger<'a>(
+    planned: &'a HashSet<String>,
+    rows: &'a [ClaimTerminalRow],
+) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for row in rows {
+        *seen.entry(row.qualified.as_str()).or_insert(0) += 1;
+    }
+    let mut missing: Vec<&str> = planned
+        .iter()
+        .map(|q| q.as_str())
+        .filter(|q| !seen.contains_key(q))
+        .collect();
+    let mut foreign: Vec<&str> = seen
+        .keys()
+        .filter(|q| !planned.contains(**q))
+        .copied()
+        .collect();
+    let mut duplicated: Vec<&str> = seen
+        .iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(q, _)| *q)
+        .collect();
+    missing.sort_unstable();
+    foreign.sort_unstable();
+    duplicated.sort_unstable();
+    (missing, foreign, duplicated)
+}
+
+/// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
+/// `ClaimTerminalRow`. v2 owns the evidence schema, its completeness law and the artifact's
+/// lifecycle; this side preserves the raw terminal fact it already holds. It does NOT yet
+/// serialize the ledger to that artifact — binding, footer and atomic publish are v2's and are
+/// not in this change; the rows are consumed in-process only, by the reconciliation refusal
+/// below and by the `passed` derivation.
+///
+/// WHY THE SEAM EXISTS, and it is not that the change is small. The v2 self-host program
+/// declares a per-identity completed-evidence obligation, and this process is the ONLY producer
+/// that holds a witness identity and its terminal outcome at the same moment. It destroys the
+/// identity at accumulation — `ClaimOutcome::Pass => outcome.passed += 1` keeps the count and
+/// drops the name — so the obligation is not realizable without a bridge here. Nothing about the
+/// diff's size bears on that: a zero-cost change with no v2 consumer would stay refused, and this
+/// one is admitted because a consumer lands with it.
+///
+/// It deliberately acquires NOTHING ELSE. No candidate digest, no expectation join, no artifact
+/// verification, no general evidence API. The BINDING — which candidate this evidence is for — is
+/// v2's to compute and mean; this side hands over facts, not identity semantics.
+///
+/// THIS TYPE IS A SECOND REPRESENTATION AND NOTHING CHECKS ITS AGREEMENT WITH THE FIRST.
+/// Stated rather than left silent, because the doc line above says "mirroring" and a reader
+/// could take that to mean the `.dag` schema is an authority this Rust derives from. It is not.
+/// `cli_run.rs` is HAND_MAINTAINED, so this struct and `ClaimDisposition` are hand-written beside
+/// a hand-written `v2.workflow.floor_terminal_ledger`, and the two share ONLY NAMES. Regen does
+/// not compare them — this file is not generated. The witnesses do not compare them — they
+/// exercise each side separately, never one against the other. So an arm added, renamed or
+/// re-meaned on either side leaves the other silently stale, and the seam is exactly the shape
+/// this change repaired one grain down: `reconcile_terminal_ledger` was extracted so its test
+/// could not be a control that shares only a name with its subject. That rule condemns this seam
+/// too, and here it is declared debt rather than repaired.
+///
+/// Rung: *mitigatable* — the divergence is not prevented, not detected, and is currently held
+/// only by an author's diligence. No lens is built for it: the cheapest honest check is a v2-side
+/// reading of the seed's emitted ledger, which cannot exist before serialization does, so it
+/// belongs to that change rather than to a mechanism minted beside this one.
+///
+/// DISSOLUTION CONDITION, for this bridge and for the mirror above, one event for both: the
+/// self-emitted v2 claim executor. When the floor's execution is driven by v2 rather than by this
+/// seed, the producer that holds identity-and-outcome together IS the v2 side, so there is no
+/// seam to bridge and no second representation to keep in agreement — this struct,
+/// `claim_disposition`, `reconcile_terminal_ledger` and the refusal below are deleted whole, and
+/// `v2.workflow.floor_terminal_ledger` is left as the sole authority it already claims to be.
+pub struct ClaimTerminalRow {
+    pub qualified: String,
+    pub expected_red: bool,
+    pub outcome: ClaimOutcome,
+}
+
+/// The lossless projection. One arm per terminal shape, so every counter the floor reports stays
+/// derivable from the rows — a projection that merged two of them could derive neither, and the
+/// counters would need a second authority, which is what this bridge exists to dissolve.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ClaimDisposition {
+    Passed,
+    Failed,
+    KnownRedHeld,
+    KnownRedNowPassing,
+    BudgetRefusedBeforeVerdict,
+    HostToolUnresolvedBeforeVerdict,
+    RouteGapBeforeVerdict,
+    RuntimeErroredBeforeVerdict,
+    ObservationUnreadableBeforeVerdict,
+}
+
+pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
+    match (&row.outcome, row.expected_red) {
+        (ClaimOutcome::Pass, false) => ClaimDisposition::Passed,
+        (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
+        (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
+        (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::NotBool { .. }, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::RuntimeError { .. }, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::NotBool { .. }, false) => {
+            ClaimDisposition::ObservationUnreadableBeforeVerdict
+        }
+        (ClaimOutcome::RuntimeError { .. }, false) => ClaimDisposition::RuntimeErroredBeforeVerdict,
+        (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        (ClaimOutcome::HostToolUnresolved { .. }, _) => {
+            ClaimDisposition::HostToolUnresolvedBeforeVerdict
+        }
+        (ClaimOutcome::HostEffectRefused { .. }, _) => ClaimDisposition::RouteGapBeforeVerdict,
     }
 }
 
@@ -20736,6 +20511,34 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
             rows.len() - 8
         );
     }
+}
+
+/// Does this tree hold at least one `.dag` file? EXISTENCE, not inventory.
+///
+/// `collect_dag_files_tolerant` answers "which files" and costs the whole subtree; this answers
+/// "any file" and stops at the first hit. They are different questions and the pool-root gate asks
+/// this one -- collecting every file beneath a root in order to call `is_empty` on the result is
+/// the copied-accumulator shape, an O(subtree) walk to settle something the first file decides.
+/// Directory recursion is depth-first for the same reason: a hit anywhere ends the walk.
+pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            if dag_tree_holds_any_file(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -30772,8 +30575,14 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
+    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
+    // from here so the claim that happens to reach it first is not read as the claim that costs
+    // it; see `shared_fill` for why the per-row number alone cannot answer that.
+    shared_fill::begin_fill();
+    let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
     // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
@@ -30977,6 +30786,11 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    shared_fill::record_fill(
+        "reference_edges",
+        &cache_key,
+        reference_edges_fill_start.elapsed().as_nanos() as u64,
+    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
@@ -31903,13 +31717,7 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                             source_indices.clone(),
                             value.clone(),
                         );
-                        // Compared at the LEAF, because this reader parses the module without
-                        // resolving it and therefore sees the AUTHORED spelling: the rows now
-                        // write `std.roster_frontier.PathSubject`, and a bare-leaf equality
-                        // read that as a different variant and refused a correct roster.
-                        if crate::v1_std_core::qualified_last_segment(variant_name.clone())
-                            != "PathSubject"
-                        {
+                        if variant_name != "PathSubject" {
                             panic!(
                                 "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is not PathSubject {{ ... }}"
@@ -32275,7 +32083,7 @@ struct NonFoldReport {
 
 fn nfr_build_report() -> &'static NonFoldReport {
     static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    REPORT.get_or_init(|| {
+    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
         let files = corpus_dag_files();
         let closed_coproduct_names = nfr_closed_coproduct_names(&files);
         NonFoldReport {
@@ -33123,7 +32931,9 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
 
 fn build_inert_carrier_data() -> &'static InertCarrierData {
     static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+    shared_fill::once(&CACHE, "inert_carrier_data", "corpus", || {
+        compute_inert_carrier_data(&corpus_dag_files())
+    })
 }
 
 pub fn inert_carrier_names_live() -> Vec<String> {
@@ -33529,13 +33339,18 @@ struct ClaAuditBuiltinCache {
 
 fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
     static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
-    CACHE.get_or_init(|| {
-        let summary = complexity_linearity_audit_corpus_default_roots();
-        ClaAuditBuiltinCache {
-            finding_count: summary.findings.len() as i64,
-            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
-        }
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_audit",
+        "default_roots",
+        || {
+            let summary = complexity_linearity_audit_corpus_default_roots();
+            ClaAuditBuiltinCache {
+                finding_count: summary.findings.len() as i64,
+                sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+            }
+        },
+    )
 }
 
 pub fn complexity_linearity_syntactic_finding_count() -> i64 {
@@ -33589,9 +33404,14 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
 
 fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
     static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
-    CACHE.get_or_init(|| ClaWildcardFactsCache {
-        facts: cla_compute_wildcard_facts(&witness_layer_roots()),
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_wildcard",
+        "witness_layer_roots",
+        || ClaWildcardFactsCache {
+            facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+        },
+    )
 }
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
@@ -33799,8 +33619,10 @@ struct FacCensusCache {
 
 fn fac_cached_census_facts() -> &'static FacCensusCache {
     static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
+    shared_fill::once(&CACHE, "fallback_arm_census", "witness_layer_roots", || {
+        FacCensusCache {
+            facts: fac_compute_census_facts(&witness_layer_roots()),
+        }
     })
 }
 
@@ -34054,10 +33876,15 @@ fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
         OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    let key = extra_roots.join("\u{1f}");
     if let Some(r) = guard.get(extra_roots) {
+        shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
+    shared_fill::begin_fill();
+    let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);
     guard.insert(extra_roots.to_vec(), report.clone());
     report
 }
@@ -34214,7 +34041,12 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
 
 fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_behavior_discovery",
+        "corpus",
+        build_test_migration_behavior_discovery_report,
+    )
 }
 
 pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
@@ -34332,7 +34164,12 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
 
 fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_debt_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_debt",
+        "corpus",
+        build_test_migration_debt_report,
+    )
 }
 
 pub fn test_migration_debt_module_names() -> Vec<String> {
@@ -34632,28 +34469,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    #[test]
-    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        assert!(
-            consume_regen_verify_gate_failure_detail()
-                .contains("gate body did not run in this process"),
-            "missing record must refuse with a located message, not imply an empty success verdict"
-        );
-    }
-
-    #[test]
-    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
-        reset_regen_verify_gate_failure_detail_for_test();
-        record_regen_verify_gate_failure_detail(
-            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
-        );
-        assert_eq!(
-            consume_regen_verify_gate_failure_detail(),
-            "Changed generated file(s): v1_compiler_emit_rust.rs"
-        );
-    }
-
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
     /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
@@ -34823,41 +34638,6 @@ mod witness_layer_roots_compile_clean_tests {
                 matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
                 "expected SkipNoAffected, got {plan:?}"
             );
-        });
-    }
-
-    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
-    /// current-tree closure no longer contains it (the closure is computed from the
-    /// current tree, so deletions are invisible to the intersection test). The control
-    /// below proves the same path as a modification outside the closure still skips.
-    #[test]
-    fn regen_floor_skip_runs_on_departed_dag_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
-            });
-        });
-    }
-
-    /// Control for the departed guard: the same non-closure path as a plain
-    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
-    #[test]
-    fn regen_floor_skip_skips_on_modified_non_closure_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    regen_floor_skip_label_for_ci(),
-                    REGEN_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
         });
     }
 
@@ -38534,6 +38314,7 @@ mod peel_alias_fixpoint_termination {
                 inductive_fields: crate::v1_rt::rc_empty_map(),
                 source_indices: crate::v1_rt::rc_empty_map(),
                 intern_table: crate::v1_std_core::empty_intern_table(),
+                source_visible_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
             // The pre-fix firing set: the old peel called this same resolver,
@@ -38549,7 +38330,6 @@ mod peel_alias_fixpoint_termination {
                 n.clone(),
                 env.clone(),
                 "peel_fixpoint_probe".to_string(),
-                crate::v1_rt::rc_empty_map(),
             );
             let termination_probe = (out.resolved.name.clone(), out.resolved == n);
             let refusal_count = out
@@ -38580,7 +38360,6 @@ mod peel_alias_fixpoint_termination {
                 plain_int,
                 env.clone(),
                 "peel_quiet_probe".to_string(),
-                crate::v1_rt::rc_empty_map(),
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 
@@ -40428,12 +40207,18 @@ pub fn claim_scope_for(
     // produced it are read off ONE field. Deriving the population from the authored module node
     // while deriving the closure from `func_env` would be two spellings of a module identity,
     // and a scope whose members disagree with its own closure is the defect one level up.
-    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+    let module_by_name: HashMap<&str, Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
-        .cloned()
+        .map(|m| (m.func_env.name.as_str(), m.clone()))
+        .collect();
+    // `in_scope` is collected from `order` immediately above, so this cannot drop a
+    // member that was in the scope: every in-graph name in `order` is in the map.
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
+        .iter()
+        .filter_map(|name| module_by_name.get(name.as_str()).cloned())
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
     // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
@@ -40442,9 +40227,11 @@ pub fn claim_scope_for(
     // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
     // `module_name` is not the module-path spelling the inventory carries, so the predicate
     // matched nothing and every data declaration was dropped. Functions still worked — they
-    // come from `fn_nodes`, built off the module list — so a function-only control would have
-    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
-    // no name comparison to be correct, which is why it is the projection used.
+    // come from `fn_nodes` — so a function-only control would have passed while
+    // `build_initial_env` bound nothing at all. Each module's own registry needs no name
+    // comparison to be correct, which is why it is the projection used. `fn_nodes` is built
+    // through the same precedence-ordered first-write-wins walk (see
+    // `build_scope_indexes_with_module_order` below) so bare calls and data bindings agree.
     // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
     // write wins.
     //
@@ -40516,9 +40303,10 @@ pub fn claim_scope_for(
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
             &scoped_graph,
             prepared.source_indices.clone(),
+            Some(&order),
         ),
         module_count,
         scope_identity,
@@ -41820,10 +41608,7 @@ pub fn run_required_floor(
     let expected_red_roster: HashSet<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
-            // Called through the policy module's own delegating edge rather than by reaching
-            // across the graph: the frame's scope IS this module's closure, so a name that
-            // module does not reference is not in the world the frame was built from.
-            "v2.workflow.required_floor.required_floor_expected_red_roster",
+            "v2.workflow.floor_expected_red.floor_expected_red_roster",
             false,
         )
         .map_err(|e| format!("floor_expected_red_roster: {e}"))?;
@@ -42167,6 +41952,7 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
@@ -42369,6 +42155,15 @@ pub fn run_required_floor(
                 );
             }
         }
+        // ONE ROW PER PLANNED IDENTITY, MINTED HERE BECAUSE THIS IS THE ONLY POINT BEFORE THE
+        // BRANCHING. Every expected-red arm below `continue`s, and the ordinary match below has
+        // its own arms; minting in either place would silently omit whichever population took
+        // the other path, and an omission is exactly what this ledger exists to make visible.
+        terminal_rows.push(ClaimTerminalRow {
+            qualified: claim.qualified.clone(),
+            expected_red,
+            outcome: result.clone(),
+        });
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red {
             // ONE DISPATCH. Every arm does its own work here rather than classifying once and
@@ -42520,7 +42315,12 @@ pub fn run_required_floor(
             }
         }
         match result {
-            ClaimOutcome::Pass => outcome.passed += 1,
+            // `outcome.passed += 1` USED TO LIVE HERE AND IS DELETED, not left beside the
+            // derivation. Two authorities over one fact is what this change removes; keeping the
+            // counter here "as a cross-check" would preserve exactly the disagreement the
+            // derivation makes unrepresentable. `passed` is now counted from the terminal rows
+            // after the fold.
+            ClaimOutcome::Pass => {}
             ClaimOutcome::Fail => outcome
                 .failures
                 .push(format!("{} returned Bool(false)", claim.qualified)),
@@ -42614,10 +42414,20 @@ pub fn run_required_floor(
         }
     }
     outcome.receipt_identities = receipted.len();
+    // THE FOLD IS OVER, so nothing after this point is any witness's cost. Cleared before the
+    // report is rendered rather than after, so a gate that fills a cache on its way out cannot
+    // be charged to the last row that happened to run.
+    shared_fill::set_current_claim(None);
     eprintln!(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
+    // its fill cost, which claim paid it, and how many claims and modules read that same fill
+    // for free. A `shared` fill does not go away when its payer is removed from the floor — the
+    // next claim to touch it pays the same seconds — so a paring decision that reads only the
+    // per-row wall time is deciding on an attribution artifact.
+    eprint!("{}", shared_fill::report());
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
@@ -42826,6 +42636,41 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    // THE CONSUMER. Reconciliation is an IDENTITY JOIN, and the counts above cannot replace it.
+    //
+    // The check immediately preceding this one compares three COUNTS, and it is the reason this
+    // one is not redundant: a ledger that omits one identity and duplicates another satisfies
+    // every count in the run — planned == executed == receipted, and `passed` unchanged — while
+    // the identity population is short by one. `ClaimIdentityCountsDisagree` is green over that.
+    // Completeness is an identity join, not a count equality.
+    //
+    // Three sets, computed independently and reported together rather than as a coproduct: the
+    // omission-plus-duplicate case fails in TWO of them at once, and an arm that reported only
+    // the first would hide the second — which is precisely the pair that cancels in the totals.
+    {
+        let (planned_without_terminal, terminal_without_planned, terminal_duplicated) =
+            reconcile_terminal_ledger(&planned_identities, &terminal_rows);
+        if !planned_without_terminal.is_empty()
+            || !terminal_without_planned.is_empty()
+            || !terminal_duplicated.is_empty()
+        {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerIncomplete \
+                 planned_without_terminal={:?} terminal_without_planned={:?} \
+                 terminal_duplicated={:?} — every planned identity must appear exactly once in \
+                 the terminal population; counts agreeing does not establish this, because an \
+                 omission and a duplicate cancel in every total",
+                planned_without_terminal, terminal_without_planned, terminal_duplicated
+            ));
+        }
+    }
+    // `passed` IS DERIVED FROM THE ROWS, and the branch that used to increment it is deleted
+    // rather than kept as a cross-check. A cross-check would preserve the disagreement this
+    // derivation makes unrepresentable.
+    outcome.passed = terminal_rows
+        .iter()
+        .filter(|row| claim_disposition(row) == ClaimDisposition::Passed)
+        .count();
     if let Some(join) = roster_join_report {
         let join = crate::v1_compiler_expected_red_roster_join::finalize_not_observed(join);
         emit_expected_red_roster_join_summary(&join);
@@ -43305,4 +43150,146 @@ pub use required_regen_host::emitted_generated_sources;
 /// answer to a question this one already answers, and the two would drift.
 pub fn extract_module_path_public(content: &str) -> Option<String> {
     extract_module_path(content)
+}
+
+#[cfg(test)]
+mod terminal_ledger_completeness_law {
+    //! THE ONE TEST THAT DECIDES WHETHER THIS BRIDGE IS WORTH ANYTHING.
+    //!
+    //! A ledger that OMITS one identity and DUPLICATES another has the same row count as a
+    //! correct one, the same `passed`, and the same planned/executed/receipted triple. Every
+    //! aggregate in the run is byte-identical to a healthy run. If completeness is checked by
+    //! counting, that ledger is green and the missing witness — possibly the one the author just
+    //! added — reports as covered.
+    //!
+    //! These tests exercise the reconciliation as a pure function of the row population, and the
+    //! calibration pair is the point: the swap must be caught while every count stays equal.
+
+    use super::*;
+
+    fn row(qualified: &str, expected_red: bool, outcome: ClaimOutcome) -> ClaimTerminalRow {
+        ClaimTerminalRow {
+            qualified: qualified.to_string(),
+            expected_red,
+            outcome,
+        }
+    }
+
+    /// Calls THE PRODUCTION reconciliation. Not a paraphrase of it: a control that shares only
+    /// a name with its subject cannot see the subject drift.
+    fn reconcile<'a>(
+        planned: &[&str],
+        rows: &'a [ClaimTerminalRow],
+    ) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
+        let owned: HashSet<String> = planned.iter().map(|q| q.to_string()).collect();
+        let (m, f, d) = reconcile_terminal_ledger(&owned, rows);
+        (
+            m.into_iter().map(|s| leak(s)).collect(),
+            f.into_iter().map(|s| leak(s)).collect(),
+            d.into_iter().map(|s| leak(s)).collect(),
+        )
+    }
+
+    fn leak(s: &str) -> &'static str {
+        Box::leak(s.to_string().into_boxed_str())
+    }
+
+    #[test]
+    fn a_duplicate_replacing_an_omission_is_caught_while_every_count_stays_equal() {
+        let planned = ["m.a", "m.b", "m.c"];
+        let healthy = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.b", false, ClaimOutcome::Pass),
+            row("m.c", false, ClaimOutcome::Pass),
+        ];
+        // `m.c` never reached the ledger; `m.a` was written twice.
+        let swapped = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.b", false, ClaimOutcome::Pass),
+            row("m.a", false, ClaimOutcome::Pass),
+        ];
+
+        // EVERY COUNT IS EQUAL. This is the whole point of the test: the numbers cannot tell
+        // these apart, so anything that only counts is green over the broken one.
+        assert_eq!(healthy.len(), swapped.len());
+        let passed_of = |rows: &[ClaimTerminalRow]| {
+            rows.iter()
+                .filter(|r| claim_disposition(r) == ClaimDisposition::Passed)
+                .count()
+        };
+        assert_eq!(passed_of(&healthy), passed_of(&swapped));
+        assert_eq!(passed_of(&swapped), planned.len());
+
+        let (missing, foreign, duplicated) = reconcile(&planned, &healthy);
+        assert!(missing.is_empty() && foreign.is_empty() && duplicated.is_empty());
+
+        let (missing, foreign, duplicated) = reconcile(&planned, &swapped);
+        assert_eq!(missing, vec!["m.c"], "the omitted identity must be named");
+        assert!(foreign.is_empty());
+        assert_eq!(
+            duplicated,
+            vec!["m.a"],
+            "the duplicated identity must be named"
+        );
+    }
+
+    #[test]
+    fn a_terminal_row_for_an_unplanned_identity_is_foreign_execution() {
+        let planned = ["m.a"];
+        let rows = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.stray", false, ClaimOutcome::Pass),
+        ];
+        let (missing, foreign, duplicated) = reconcile(&planned, &rows);
+        assert!(missing.is_empty());
+        assert_eq!(foreign, vec!["m.stray"]);
+        assert!(duplicated.is_empty());
+    }
+
+    /// The projection must not merge arms the floor reports as separate counters. A collapsed
+    /// projection could not derive `host_tool_unresolved` or the route-gap counters at all.
+    #[test]
+    fn every_terminal_shape_projects_to_its_own_disposition() {
+        use ClaimDisposition::*;
+        let cases = [
+            (ClaimOutcome::Pass, false, Passed),
+            (ClaimOutcome::Pass, true, KnownRedNowPassing),
+            (ClaimOutcome::Fail, false, Failed),
+            (ClaimOutcome::Fail, true, KnownRedHeld),
+            (
+                ClaimOutcome::RuntimeError {
+                    message: "boom".into(),
+                },
+                false,
+                RuntimeErroredBeforeVerdict,
+            ),
+            (
+                ClaimOutcome::NotBool { got: "unit".into() },
+                false,
+                ObservationUnreadableBeforeVerdict,
+            ),
+            (
+                ClaimOutcome::HostToolUnresolved {
+                    name: "rustfmt".into(),
+                    probed: vec![],
+                },
+                false,
+                HostToolUnresolvedBeforeVerdict,
+            ),
+        ];
+        let mut produced: Vec<ClaimDisposition> = Vec::new();
+        for (outcome, red, want) in cases {
+            let got = claim_disposition(&row("m.x", red, outcome));
+            assert_eq!(got, want);
+            produced.push(got);
+        }
+        // A projection that merged two of these would show up here as a repeat.
+        let mut deduped = produced.clone();
+        deduped.dedup();
+        assert_eq!(
+            deduped.len(),
+            produced.len(),
+            "two terminal shapes projected onto the same disposition"
+        );
+    }
 }

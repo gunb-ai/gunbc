@@ -48,6 +48,68 @@ fn runner_slot_add_steps_ordered() -> List<RunnerSlotAddStep> {
   ]
 }
 
+type RunnerSlotAddSequence
+  = GitHubRunnerAddSequence { steps: List<RunnerSlotAddStep> }
+  | FabricSlotProvisioningNotModeled { reason: String }
+  | SlotIsNotACommittedMember { reason: String }
+
+// REGISTRATION IS DERIVED FROM PURPOSE, WHICH IS THE HALF THAT MAKES THE PURPOSE FIELD REAL. A
+// purpose that does not gate the step is a label: it would record which slots we INTENDED not to
+// register while leaving the add sequence able to register every one of them. So the sequence is
+// selected by purpose and a compute-fabric slot has no arm that reaches
+// AddStepGitHubRegistrationQuery -- not an arm that skips it, no arm at all.
+//
+// THE FABRIC ARM REFUSES RATHER THAN FILTERING, AND THAT IS THE LOAD-BEARING CHOICE. The tempting
+// shape is to return the GitHub steps minus the three GitHub-specific ones, which reads as
+// economical and is wrong: this sequence fetches an actions-runner release, verifies its arch
+// digest and starts an actions-runner unit, so the filtered remainder would provision a slot that
+// downloads GitHub's runner in order never to run GitHub's runner. A compute-fabric slot is a
+// different payload, not a GitHub runner with pieces removed, and its provisioning sequence is not
+// modeled yet. Answering with a plausible subsequence would be the fabricated-plausible-output
+// failure DESIGN section 5 forbids; refusing names the gap and stops the line.
+//
+// NEXT-RUNG TRIGGER: the fabric slot's own provisioning sequence -- whatever installs and starts
+// the fabric executor -- landing as its own arm here. Until then this refusal is the honest
+// terminal state for the one fabric slot that exists (srv3-06), and it is why that slot is
+// declared but not yet convergeable.
+// THIS GATE HAS NO PRODUCTION CALLER TODAY, AND SAYING SO IS THE DIFFERENCE BETWEEN A WALL AND A
+// CLAIM ABOUT A WALL. Only its witness calls it. The apply path never reaches a step sequence at
+// all: gunbc.runner_capacity_realize matches RunnerSlotAdd and discards the identity, counting adds
+// and returning a scaffold refusal.
+//
+// THE SAFETY PROPERTY IS NOT VACUOUS -- IT IS HELD ONE LAYER EARLIER, ON A PATH THAT IS LIVE. The
+// chain gunbc.apply -> runner_capacity_plan -> plan_runner_capacity_host -> addition_actions ->
+// desired_github_identities is reachable from the CLI, and that last function filters by purpose,
+// so a fabric execution slot is never placed in a RunnerSlotAdd to begin with. Nothing downstream
+// can register it whether or not it consults this gate.
+//
+// SO THERE ARE TWO WALLS WITH DIFFERENT STATUSES AND THEY MUST NOT BE QUOTED AS ONE. The planner
+// filter is what makes "the plan can never add a fabric slot" true today. This gate is a second,
+// independent wall at the step-selection seam, and it is defence in depth for a path that cannot
+// currently produce a fabric add anyway. Describing registration as "derived from purpose" without
+// that split implies this function holds the line; it does not, yet.
+//
+// TRIGGER: it becomes load-bearing the moment anything in production selects a step sequence --
+// which is the same event that makes the fabric provisioning arm below necessary. Until then its
+// witness is the only thing executing it, and a witness is not a consumer.
+fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
+  match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+      SlotIsNotACommittedMember {
+        reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"
+      }
+    CommittedSlotMember { identity: _, purpose: p } =>
+      match p {
+        SlotServesGitHubActions =>
+          GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
+        SlotServesFabricExecution =>
+          FabricSlotProvisioningNotModeled {
+            reason: "fabric execution slot: the GitHub runner add sequence does not apply and no fabric provisioning sequence is modeled yet; refusing rather than returning a filtered subsequence that would install an actions-runner for a slot that never serves Actions"
+          }
+      }
+  }
+}
+
 fn runner_slot_add_step_index(step: RunnerSlotAddStep) -> Int {
   match step {
     AddStepReachIdentityPrivilege => 1

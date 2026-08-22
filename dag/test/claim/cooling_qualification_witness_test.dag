@@ -3,23 +3,23 @@ module test.claim.cooling_qualification_witness
 
 // The live srv3 realization, rebuilt here from the same cited catalog rows the fleet binds, so
 // each mutation below perturbs exactly one field and leaves the rest at their real values.
-data srv3_installed_cooling: product.cooling_qualification.InstalledCoolingRealization = product.cooling_qualification.InstalledCoolingRealization {
-  host: gunbc.fleet_physical_inventory.host_srv3,
-  cooler_asset: gunbc.fleet_physical_inventory.cooler_srv3,
-  cooler: extdeps.cooling.dynatron.dynatron_w1_catalog,
-  processor: extdeps.cpu.ampere.altra_max_m12830_catalog,
-  baseboard_model: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+data srv3_installed_cooling: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization = product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
+  host: gunbc.fleet_intent_network.operator_host_srv3,
+  cooler_asset: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.cooler_srv3,
+  cooler: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog,
+  processor: extdeps.boards.types.extdeps.cpu.ampere.altra_max_m12830_catalog,
+  baseboard_model: extdeps.boards.types.extdeps.boards.types.AsrockRackAltrad8ud1l2t,
 }
 
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
 // M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
 // 250 W design power covers the M128-30's 183 W TDP.
-test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
-  match product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
-    CoolingCatalogRefused { host: _, cause: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+test fn installed_srv3_cooling_is_catalog_compatible() -> std.types.Bool {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -28,18 +28,18 @@ test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
 // designation, ILM4189 against the board's ILM4926. The name and comment used to say socket, which
 // stopped being true when the qualifier moved to the mount -- a control that describes a mechanism
 // it no longer exercises is the same stale-claim class this PR corrects in the model.
-test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool {
-  let wrong_mount_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4189, cooling_mount: extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.ampere.ampere_vendor, designation: "ILM4189" } },
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
-    supported_motherboards: extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
+test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> std.types.Bool {
+  let wrong_mount_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cpu.types.CpuSocket { platform_owner: extdeps.boards.types.extdeps.vendor.ampere.ampere_vendor, termination: extdeps.boards.types.extdeps.cpu.types.SocketedLandGrid, contact_count: 4189, cooling_mount: extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.ampere.ampere_vendor, designation: "ILM4189" } },
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
+    supported_motherboards: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
   }
-  match product.cooling_qualification.cooling_catalog_verdict(
-    realization: product.cooling_qualification.InstalledCoolingRealization {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+    realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
       host: srv3_installed_cooling.host,
       cooler_asset: srv3_installed_cooling.cooler_asset,
       cooler: wrong_mount_cooler,
@@ -47,39 +47,39 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    CoolingCatalogRefused { host: _, cause: cause } =>
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        CoolerMountDoesNotMatchProcessorMount {
+        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => true
-        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
-        CoolerDesignPowerBelowProcessorTdp {
+        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
 // Control 3: emptying the supported-board population refuses. This is the control that would
 // have passed vacuously while supported_motherboards was a bare string list compared against a
 // differently-spelled label — grounding it on BaseboardModel is what makes the check real.
-test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
-  let unsupported_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
+test fn baseboard_absent_from_supported_population_is_refused() -> std.types.Bool {
+  let unsupported_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
     supported_motherboards: [],
   }
-  match product.cooling_qualification.cooling_catalog_verdict(
-    realization: product.cooling_qualification.InstalledCoolingRealization {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+    realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
       host: srv3_installed_cooling.host,
       cooler_asset: srv3_installed_cooling.cooler_asset,
       cooler: unsupported_cooler,
@@ -87,38 +87,38 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    CoolingCatalogRefused { host: _, cause: cause } =>
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
-        CoolerMountDoesNotMatchProcessorMount {
+        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
+        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => false
-        CoolerDesignPowerBelowProcessorTdp {
+        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
-// Control 4: lowering design power below the processor TDP refuses. 182 W sits one watt under
+// Control 4: lowering design power below the processor TDP refuses. 182 W sits one std.measure.watt under
 // the M128-30's cited 183 W, so this also proves the comparison is not a coarse bucket.
-test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
-  let underrated_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+test fn design_power_one_watt_below_tdp_is_refused() -> std.types.Bool {
+  let underrated_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
     max_design_power: std.measure.watt(182),
-    supported_motherboards: extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
+    supported_motherboards: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
   }
-  match product.cooling_qualification.cooling_catalog_verdict(
-    realization: product.cooling_qualification.InstalledCoolingRealization {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+    realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
       host: srv3_installed_cooling.host,
       cooler_asset: srv3_installed_cooling.cooler_asset,
       cooler: underrated_cooler,
@@ -126,38 +126,38 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    CoolingCatalogRefused { host: _, cause: cause } =>
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        CoolerDesignPowerBelowProcessorTdp {
+        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => true
-        CoolerMountDoesNotMatchProcessorMount {
+        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => false
-        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
 // Boundary: design power exactly equal to TDP is admitted, so the comparison is >= and not >.
-test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
-  let exact_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+test fn design_power_exactly_equal_to_tdp_is_admitted() -> std.types.Bool {
+  let exact_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.socket,
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
     max_design_power: std.measure.watt(183),
-    supported_motherboards: extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
+    supported_motherboards: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
   }
-  product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-    verdict: product.cooling_qualification.cooling_catalog_verdict(
-      realization: product.cooling_qualification.InstalledCoolingRealization {
+  product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+    verdict: product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+      realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
         host: srv3_installed_cooling.host,
         cooler_asset: srv3_installed_cooling.cooler_asset,
         cooler: exact_cooler,
@@ -171,36 +171,36 @@ test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
 // Control 1: removing the installed cooler makes qualification incomplete rather than passing.
 // srv1 carries no cooler row in the live fleet inventory, so this reads the real population and
 // proves absence resolves to Unobserved — not to a silent compatibility.
-test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
-  match product.cooling_qualification.installed_cooling_verdict_for_host(
-    host: gunbc.fleet_physical_inventory.host_srv1,
-    realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations,
+test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> std.types.Bool {
+  match product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(
+    host: gunbc.fleet_intent_network.operator_host_srv1,
+    realizations: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.installed_cooling_realizations,
   ) {
-    InstalledCoolingUnobserved { host: _ } => true
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    CoolingCatalogRefused { host: _, cause: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => true
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
   }
 }
 
-// And the same absence must refuse qualification, since InstalledCoolingUnobserved is the arm a
+// And the same absence must refuse qualification, since product.cooling_qualification.InstalledCoolingUnobserved is the arm a
 // gate would be tempted to treat as "nothing wrong here".
-test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
-  !product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-    verdict: product.cooling_qualification.installed_cooling_verdict_for_host(
-      host: gunbc.fleet_physical_inventory.host_srv1,
-      realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations,
+test fn unobserved_installed_cooling_does_not_admit_qualification() -> std.types.Bool {
+  !product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+    verdict: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(
+      host: gunbc.fleet_intent_network.operator_host_srv1,
+      realizations: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.installed_cooling_realizations,
     ),
   )
 }
 
 // The live srv3 row resolves through the real fleet population, not just the locally rebuilt
 // specimen — so the production path and this witness read the same facts.
-test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool {
-  product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-    verdict: product.cooling_qualification.installed_cooling_verdict_for_host(
-      host: gunbc.fleet_physical_inventory.host_srv3,
-      realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations,
+test fn live_fleet_population_resolves_srv3_to_compatible() -> std.types.Bool {
+  product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+    verdict: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(
+      host: gunbc.fleet_intent_network.operator_host_srv3,
+      realizations: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.installed_cooling_realizations,
     ),
   )
 }
@@ -209,67 +209,67 @@ test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool {
 // structural claim, not a behavioural one — the verdict coproduct carries no temperature, tach,
 // duty, or monitoring-window field, so no consumer can read a runtime outcome out of it. If a
 // later edit adds such a field, this witness is where the substitution becomes visible.
-data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
+data cooling_catalog_carries_no_runtime_evidence_note: std.types.Bool = true
 
-// CoolingCatalogCompatible's entire payload is host + cooler asset identity. Reading it back
+// product.cooling_qualification.CoolingCatalogCompatible's entire payload is host + cooler asset identity. Reading it back
 // from those two fields alone demonstrates there is nothing else in the verdict to mistake for
 // a measurement.
-test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
-  match product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
-      host == gunbc.fleet_physical_inventory.host_srv3 && asset == gunbc.fleet_physical_inventory.cooler_srv3
-    CoolingCatalogRefused { host: _, cause: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> std.types.Bool {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
+    product.cooling_qualification.CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
+      host == gunbc.fleet_intent_network.operator_host_srv3 && asset == gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.cooler_srv3
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
-data ambiguity_witness_note: String = "installed_cooling_verdict_for_host previously returned on the FIRST row whose host matched, so two cooler rows bound to one host were resolved by authoring order: one won silently and the other sat in the inventory affecting nothing. It presented as a clean Compatible. A host carries at most one heat-pickup realization, so two rows are an inventory error and must refuse rather than resolve. The control below is ORDER-INDEPENDENT on purpose - it asserts the same refusal with the duplicate pair in both orders, because a witness using a single ordering would pass just as well against the first-match-wins implementation it exists to refuse."
+data ambiguity_witness_note: std.types.String = "installed_cooling_verdict_for_host previously returned on the FIRST row whose host matched, so two cooler rows bound to one host were resolved by authoring order: one won silently and the other sat in the inventory affecting nothing. It presented as a clean Compatible. A host carries at most one heat-pickup realization, so two rows are an inventory error and must refuse rather than resolve. The control below is ORDER-INDEPENDENT on purpose - it asserts the same refusal with the duplicate pair in both orders, because a witness using a single ordering would pass just as well against the first-match-wins implementation it exists to refuse."
 
-data duplicate_cooling_ab: List<product.cooling_qualification.InstalledCoolingRealization> = [
+data duplicate_cooling_ab: std.types.List<product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization> = [
   srv3_installed_cooling,
-  product.cooling_qualification.InstalledCoolingRealization {
-    host: gunbc.fleet_physical_inventory.host_srv3,
-    cooler_asset: gunbc.fleet_physical_inventory.cooler_srv3,
-    cooler: extdeps.cooling.dynatron.dynatron_w1_catalog,
-    processor: extdeps.cpu.ampere.altra_max_m12830_catalog,
-    baseboard_model: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+  product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
+    host: gunbc.fleet_intent_network.operator_host_srv3,
+    cooler_asset: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.cooler_srv3,
+    cooler: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog,
+    processor: extdeps.boards.types.extdeps.cpu.ampere.altra_max_m12830_catalog,
+    baseboard_model: extdeps.boards.types.extdeps.boards.types.AsrockRackAltrad8ud1l2t,
   },
 ]
 
-data duplicate_cooling_ba: List<product.cooling_qualification.InstalledCoolingRealization> = [
-  product.cooling_qualification.InstalledCoolingRealization {
-    host: gunbc.fleet_physical_inventory.host_srv3,
-    cooler_asset: gunbc.fleet_physical_inventory.cooler_srv3,
-    cooler: extdeps.cooling.dynatron.dynatron_w1_catalog,
-    processor: extdeps.cpu.ampere.altra_max_m12830_catalog,
-    baseboard_model: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+data duplicate_cooling_ba: std.types.List<product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization> = [
+  product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
+    host: gunbc.fleet_intent_network.operator_host_srv3,
+    cooler_asset: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.cooler_srv3,
+    cooler: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog,
+    processor: extdeps.boards.types.extdeps.cpu.ampere.altra_max_m12830_catalog,
+    baseboard_model: extdeps.boards.types.extdeps.boards.types.AsrockRackAltrad8ud1l2t,
   },
   srv3_installed_cooling,
 ]
 
-fn verdict_is_ambiguous(v: product.cooling_qualification.CoolingCatalogVerdict) -> Bool {
+fn verdict_is_ambiguous(v: product.cooling_qualification.product.cooling_qualification.CoolingCatalogVerdict) -> std.types.Bool {
   match v {
-    InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    CoolingCatalogRefused { host: _, cause: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
-test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> Bool {
-  verdict_is_ambiguous(v: product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_physical_inventory.host_srv3, realizations: duplicate_cooling_ab))
-    && verdict_is_ambiguous(v: product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_physical_inventory.host_srv3, realizations: duplicate_cooling_ba))
-    && !product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-         verdict: product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_physical_inventory.host_srv3, realizations: duplicate_cooling_ab))
+test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> std.types.Bool {
+  verdict_is_ambiguous(v: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_intent_network.operator_host_srv3, realizations: duplicate_cooling_ab))
+    && verdict_is_ambiguous(v: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_intent_network.operator_host_srv3, realizations: duplicate_cooling_ba))
+    && !product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+         verdict: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_intent_network.operator_host_srv3, realizations: duplicate_cooling_ab))
 }
 
-test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
-  product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-    verdict: product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_physical_inventory.host_srv3, realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations))
-    && !product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-         verdict: product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_physical_inventory.host_srv1, realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations))
+test fn witness_single_row_still_resolves_after_ambiguity_gate() -> std.types.Bool {
+  product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+    verdict: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_intent_network.operator_host_srv3, realizations: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.installed_cooling_realizations))
+    && !product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+         verdict: product.cooling_qualification.product.cooling_qualification.installed_cooling_verdict_for_host(host: gunbc.fleet_intent_network.operator_host_srv1, realizations: gunbc.fleet_physical_inventory.gunbc.fleet_physical_inventory.installed_cooling_realizations))
 }
 
 // THE CROSS-PLATFORM COLLISION, REFUSED. This cooler agrees with the Ampere processor on BOTH
@@ -280,18 +280,18 @@ test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
 //
 // It is not hypothetical that the industry makes this mistake: Dynatron sells LGA4926 cold plates
 // listed as Intel parts, and the contact count is the whole of what makes that label look right.
-test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
-  let foreign_platform_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926, cooling_mount: extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.amd.amd, designation: "ILM4926" } },
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
-    supported_motherboards: extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
+test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> std.types.Bool {
+  let foreign_platform_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cpu.types.CpuSocket { platform_owner: extdeps.boards.types.extdeps.vendor.amd.amd, termination: extdeps.boards.types.extdeps.cpu.types.SocketedLandGrid, contact_count: 4926, cooling_mount: extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.amd.amd, designation: "ILM4926" } },
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
+    supported_motherboards: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
   }
-  match product.cooling_qualification.cooling_catalog_verdict(
-    realization: product.cooling_qualification.InstalledCoolingRealization {
+  match product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+    realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
       host: srv3_installed_cooling.host,
       cooler_asset: srv3_installed_cooling.cooler_asset,
       cooler: foreign_platform_cooler,
@@ -299,23 +299,23 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    CoolingCatalogRefused { host: _, cause: cause } =>
+    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        CoolerMountDoesNotMatchProcessorMount {
+        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: cm,
           processor_mount: pm,
         } =>
           cm.designation == pm.designation
             && cm.platform_owner != pm.platform_owner
-        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
-        CoolerDesignPowerBelowProcessorTdp {
+        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
       }
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    InstalledCoolingUnobserved { host: _ } => false
-    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
+    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -327,68 +327,68 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
 // show the new rule works. The gap between the two IS the defect this change removes.
 // THE SAME CASE THROUGH THE PRODUCTION QUALIFIER, which is what makes the claim about behaviour
 // rather than about the data model. Review 52714 caught that the witness below proves only
-// !cpu_socket_eq && cooling_mount_eq -- true facts that would hold even if cooling_catalog_verdict
+// !extdeps.cpu.types.cpu_socket_eq && extdeps.cpu.types.cooling_mount_eq -- true facts that would hold even if product.cooling_qualification.cooling_catalog_verdict
 // never read the mount. It did not read it: the production comparison was still socket equality, and
 // this witness is what forced that to be found rather than assumed.
 //
-// An AM4 cooler on an AM5 processor is CoolingCatalogCompatible. Under socket equality the same
+// An AM4 cooler on an AM5 processor is product.cooling_qualification.CoolingCatalogCompatible. Under socket equality the same
 // realization refuses, and the sibling assertion pins that the two sockets really are unequal, so
 // the admission cannot be explained by the fixture having accidentally made them the same socket.
-test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> Bool {
-  let am4_cooler: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
-    model: extdeps.cooling.dynatron.dynatron_w1_catalog.model,
-    manufacturer: extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
-    socket: extdeps.cpu.amd.ryzen_5_3600_catalog.socket,
-    active_passive_switchable: extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
-    minimum_rack_units: extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
-    supported_motherboards: extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
+test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> std.types.Bool {
+  let am4_cooler: extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.boards.types.extdeps.cooling.types.CpuCoolerCatalogRow {
+    model: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.model,
+    manufacturer: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.manufacturer,
+    socket: extdeps.boards.types.extdeps.cpu.amd.ryzen_5_3600_catalog.socket,
+    active_passive_switchable: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.max_design_power,
+    supported_motherboards: extdeps.boards.types.extdeps.cooling.dynatron.dynatron_w1_catalog.supported_motherboards,
   }
-  !extdeps.cpu.types.cpu_socket_eq(a: extdeps.cpu.amd.ryzen_5_3600_catalog.socket, b: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.socket)
-    && product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
-         verdict: product.cooling_qualification.cooling_catalog_verdict(
-           realization: product.cooling_qualification.InstalledCoolingRealization {
+  !extdeps.boards.types.extdeps.cpu.types.cpu_socket_eq(a: extdeps.boards.types.extdeps.cpu.amd.ryzen_5_3600_catalog.socket, b: extdeps.boards.types.extdeps.cpu.amd.ryzen_9_7950x3d_catalog.socket)
+    && product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict_admits_qualification(
+         verdict: product.cooling_qualification.product.cooling_qualification.cooling_catalog_verdict(
+           realization: product.cooling_qualification.product.cooling_qualification.InstalledCoolingRealization {
              host: srv3_installed_cooling.host,
              cooler_asset: srv3_installed_cooling.cooler_asset,
              cooler: am4_cooler,
-             processor: extdeps.cpu.amd.ryzen_9_7950x3d_catalog,
+             processor: extdeps.boards.types.extdeps.cpu.amd.ryzen_9_7950x3d_catalog,
              baseboard_model: srv3_installed_cooling.baseboard_model,
            },
          ))
 }
 
-test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool {
-  let am4_socket = extdeps.cpu.types.CpuSocket {
-    platform_owner: extdeps.vendor.amd.amd,
-    termination: extdeps.cpu.types.SocketedPinGrid,
+test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> std.types.Bool {
+  let am4_socket = extdeps.boards.types.extdeps.cpu.types.CpuSocket {
+    platform_owner: extdeps.boards.types.extdeps.vendor.amd.amd,
+    termination: extdeps.boards.types.extdeps.cpu.types.SocketedPinGrid,
     contact_count: 1331,
-    cooling_mount: extdeps.cpu.amd.amd_am4_cooling_mount,
+    cooling_mount: extdeps.boards.types.extdeps.cpu.amd.amd_am4_cooling_mount,
   }
-  let am5_socket = extdeps.cpu.types.CpuSocket {
-    platform_owner: extdeps.vendor.amd.amd,
-    termination: extdeps.cpu.types.SocketedLandGrid,
+  let am5_socket = extdeps.boards.types.extdeps.cpu.types.CpuSocket {
+    platform_owner: extdeps.boards.types.extdeps.vendor.amd.amd,
+    termination: extdeps.boards.types.extdeps.cpu.types.SocketedLandGrid,
     contact_count: 1718,
-    cooling_mount: extdeps.cpu.amd.amd_am4_cooling_mount,
+    cooling_mount: extdeps.boards.types.extdeps.cpu.amd.amd_am4_cooling_mount,
   }
-  !extdeps.cpu.types.cpu_socket_eq(a: am4_socket, b: am5_socket)
-    && extdeps.cpu.types.cooling_mount_eq(a: am4_socket.cooling_mount, b: am5_socket.cooling_mount)
+  !extdeps.boards.types.extdeps.cpu.types.cpu_socket_eq(a: am4_socket, b: am5_socket)
+    && extdeps.boards.types.extdeps.cpu.types.cooling_mount_eq(a: am4_socket.cooling_mount, b: am5_socket.cooling_mount)
 }
 
 // RED control: sharing a platform owner is not sharing a mount. Two Ampere sockets with different
 // retention designations must not qualify each other, or the mount axis would have collapsed into
 // the platform axis it sits beside.
-test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> Bool {
-  let ilm4926 = extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.ampere.ampere_vendor, designation: "ILM4926" }
-  let ilm4189 = extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.ampere.ampere_vendor, designation: "ILM4189" }
-  extdeps.cpu.types.cooling_mount_eq(a: ilm4926, b: ilm4926)
-    && !extdeps.cpu.types.cooling_mount_eq(a: ilm4926, b: ilm4189)
+test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> std.types.Bool {
+  let ilm4926 = extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.ampere.ampere_vendor, designation: "ILM4926" }
+  let ilm4189 = extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.ampere.ampere_vendor, designation: "ILM4189" }
+  extdeps.boards.types.extdeps.cpu.types.cooling_mount_eq(a: ilm4926, b: ilm4926)
+    && !extdeps.boards.types.extdeps.cpu.types.cooling_mount_eq(a: ilm4926, b: ilm4189)
 }
 
 // RED control: the same retention designation under two platform owners is not one mount either.
 // A designation is a name inside a vendor's scheme, not a global identifier.
-test fn w_red_one_designation_under_two_platforms_is_not_one_mount() -> Bool {
-  !extdeps.cpu.types.cooling_mount_eq(
-    a: extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.ampere.ampere_vendor, designation: "ILM4926" },
-    b: extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.vendor.amd.amd, designation: "ILM4926" },
+test fn w_red_one_designation_under_two_platforms_is_not_one_mount() -> std.types.Bool {
+  !extdeps.boards.types.extdeps.cpu.types.cooling_mount_eq(
+    a: extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.ampere.ampere_vendor, designation: "ILM4926" },
+    b: extdeps.boards.types.extdeps.cpu.types.ProcessorCoolingMount { platform_owner: extdeps.boards.types.extdeps.vendor.amd.amd, designation: "ILM4926" },
   )
 }

@@ -104,31 +104,122 @@ test fn a_wait_still_producing_is_not_settled() -> Bool {
   !attach_wait_settled(acc: AttachStillProducing)
 }
 
-// RECOVERY ON A SUCCESSFUL SWAP IS A BROKEN LEASE, and it names the holder it removed so the receipt says whose lease was broken rather than merely that one was.
+// The fixture hex decodes, so the Absent arm is not the state under test -- and it is written to
+// REFUSE rather than to substitute a plausible observation, so a fixture that stopped decoding
+// fails these witnesses instead of silently changing which arm they exercise.
+fn lease_break_other_observed() -> GitRefObservation {
+  match git_object_id_from_untagged_hex(hex: lease_break_other_hex) {
+    Absent =>
+      GitRefObservationRefused {
+        exit_code: 0,
+        stderr: "the fixture object id did not decode",
+      }
+    Present { value: oid } => GitRefObserved { oid: oid }
+  }
+}
+
+data lease_break_holder_hex: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+data lease_break_other_hex: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn lease_break_outcome(exit_code: Int, stderr: String, observed_after: GitRefObservation) -> GitRefMutationOutcome? {
+  match git_object_id_from_untagged_hex(hex: lease_break_holder_hex) {
+    Absent => none
+    Present { value: holder } =>
+      Present {
+        value: git_ref_mutation_outcome(
+          mutation: GitDeleteRefIfExpected {
+            name: "refs/devboot/lease/fnv1a64-deadbeef" as GitRefName,
+            expected_old: holder,
+          },
+          exit_code: exit_code,
+          stderr: stderr,
+          observed_after: observed_after,
+        ),
+      }
+  }
+}
+
+fn lease_recovery_of(exit_code: Int, stderr: String, observed_after: GitRefObservation) -> LeaseRecovery? {
+  match lease_break_outcome(exit_code: exit_code, stderr: stderr, observed_after: observed_after) {
+    Absent => none
+    Present { value: outcome } =>
+      Present {
+        value: lease_recovery_from_outcome(
+          outcome: outcome,
+          token: "fnv1a64-deadbeef",
+          expected_holder: lease_break_holder_hex,
+        ),
+      }
+  }
+}
+
+fn lease_recovery_refusal_text(recovery: LeaseRecovery?) -> String? {
+  match recovery {
+    Absent => none
+    Present { value: settled } =>
+      match settled {
+        LeaseBroken { token, former_holder } => none
+        LeaseRecoveryRefused { detail } => Present { value: detail }
+      }
+  }
+}
+
+// RECOVERY ON A SUCCESSFUL SWAP IS A BROKEN LEASE, and it names the holder it removed so the receipt says whose lease was broken rather than merely that one was. The delete's desired state is ABSENCE, so this is also the arm that could not be expressed by comparing observed object ids -- absence has to be a value for a delete to be confirmable at all.
 test fn a_successful_swap_reports_the_lease_broken() -> Bool {
-  match lease_recovery_from_outcome(
-    succeeded: true,
-    exit_code: 0,
-    stderr: "",
-    token: "fnv1a64-deadbeef",
-    expected_holder: "30e357d2",
-  ) {
-    LeaseBroken { token, former_holder } => token == "fnv1a64-deadbeef" && former_holder == "30e357d2"
-    LeaseRecoveryRefused { detail } => false
+  match lease_recovery_of(exit_code: 0, stderr: "", observed_after: GitRefAbsent) {
+    Absent => false
+    Present { value: settled } =>
+      match settled {
+        LeaseBroken { token, former_holder } =>
+          token == "fnv1a64-deadbeef" && former_holder == lease_break_holder_hex
+        LeaseRecoveryRefused { detail } => false
+      }
   }
 }
 
 // AND A FAILED SWAP REFUSES RATHER THAN REPORTING A BREAK. This is the safety half: git refuses the delete when the lease is not at the expected value, which is what stops two coordinators reacting to one stalled producer from breaking each other's newly started builds. A mapping that reported success on a failed swap would reintroduce exactly the race the lease exists to prevent, through the machinery meant to repair it.
 test fn a_failed_swap_refuses_and_names_the_expected_holder() -> Bool {
-  match lease_recovery_from_outcome(
-    succeeded: false,
-    exit_code: 1,
-    stderr: "error: cannot lock ref: is at aaaa but expected bbbb",
-    token: "fnv1a64-deadbeef",
-    expected_holder: "bbbb",
+  match lease_recovery_refusal_text(
+    recovery: lease_recovery_of(
+      exit_code: 128,
+      stderr: "error: cannot lock ref: is at bbbb but expected aaaa",
+      observed_after: lease_break_other_observed(),
+    ),
   ) {
-    LeaseBroken { token, former_holder } => false
-    LeaseRecoveryRefused { detail } => string_contains(s: detail, pattern: "bbbb")
+    Absent => false
+    Present { value: detail } => string_contains(s: detail, pattern: lease_break_holder_hex)
+  }
+}
+
+data one_exit_code_two_causes_note: String = "THE DISCRIMINATING PAIR, AND IT USED TO BE ONE ANSWER. This mapping decided from a Bool derived from the exit status and then reported, as fact, that the lease `was not held by <holder> at the moment of the break`. `update-ref -d` exits 128 BOTH when the expected old value no longer matches AND when it could not reach the store, so an unreachable store was reported as a lease someone else had taken -- and the two remedies are opposite: wait for the other producer, versus fix the store. The two claims below hand the mapping the SAME exit code and the SAME stderr and differ only in what the read-back saw. A decision derived from the process result alone cannot separate them and would have to pick one sentence for both, which is what it did."
+
+test fn an_unreachable_store_is_not_reported_as_someone_elses_lease() -> Bool {
+  match lease_recovery_refusal_text(
+    recovery: lease_recovery_of(
+      exit_code: 128,
+      stderr: "error: cannot lock ref: is at bbbb but expected aaaa",
+      observed_after: GitRefObservationRefused { exit_code: 128, stderr: "not a git repository" },
+    ),
+  ) {
+    Absent => false
+    Present { value: detail } =>
+      string_contains(s: detail, pattern: "could not be read")
+        && !string_contains(s: detail, pattern: "was not held by")
+  }
+}
+
+// A ZERO EXIT IS NOT A RECEIPT FOR A DELETE EITHER. The ref is still there; the process merely ended.
+test fn a_delete_that_reported_success_and_left_the_ref_present_refuses() -> Bool {
+  match lease_recovery_refusal_text(
+    recovery: lease_recovery_of(
+      exit_code: 0,
+      stderr: "",
+      observed_after: lease_break_other_observed(),
+    ),
+  ) {
+    Absent => false
+    Present { value: detail } => string_contains(s: detail, pattern: "still present")
   }
 }
 

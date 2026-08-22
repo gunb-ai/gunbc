@@ -158,6 +158,10 @@ fn compile_bundle_error(message: String) -> v1.std.core.ErrorNode {
 }
 
 fn emit_artifact(typed: v1.compiler.infer_items.ResolvedGraph, artifact: v1.compiler.artifact.Artifact) -> v1.compiler.emit_core_support.EmitResult {
+  let unmodeled_transports = unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target)
+  if unmodeled_transports |> count > 0 {
+    return v1.compiler.emit_core_support.EmitResult { files: [], diagnostics: unmodeled_transports }
+  }
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)

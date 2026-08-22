@@ -33,22 +33,6 @@ fn host_disk_observation(host: product.placement_supply.HostIdentity) -> HostDis
   host_disk_observed_producer(host: host)
 }
 
-fn host_disk_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match host_disk_observation(host: h) {
-        DiskUnobserved { reason: _ } => true
-        DiskObserved { free_bytes: _, observed_on: _ } => false
-        DiskObservationRefused { detail: _ } => false
-      },
-  ).length()
-}
-
-fn host_disk_fleet_unobserved_count() -> Int {
-  host_disk_unobserved_count(hosts: fleet_subsumption_hosts)
-}
-
 data host_disk_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {

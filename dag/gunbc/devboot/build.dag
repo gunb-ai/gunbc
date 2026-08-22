@@ -57,28 +57,19 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
     bin_path: "mkdir",
     args: ["-p", out_dir],
   )
-  let loaded = devboot_witness_run(
-    site: retained_devboot_git_read_tree,
-    workdir: repo_root,
-    bin_path: "env",
-    args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", join([ref_name, "^\{tree}"], "")],
+  let loaded = git.Plumbing.ReadTreeIntoIndex(
+    address: devboot_repo_address(repo_root: repo_root),
+    index: index_path as FilePath,
+    treeish: join([ref_name, "^\{tree}"], ""),
   )
-  if !loaded.success {
+  if !(loaded.exit_code == 0) {
     false
   } else {
-    devboot_witness_run(
-      site: retained_devboot_git_checkout_index,
-      workdir: repo_root,
-      bin_path: "env",
-      args: [
-        concat("GIT_INDEX_FILE=", index_path),
-        "git",
-        "checkout-index",
-        "-a",
-        "-f",
-        concat("--prefix=", join([out_dir, "/"], "")),
-      ],
-    ).success
+    git.Plumbing.CheckoutIndexToPrefix(
+      address: devboot_repo_address(repo_root: repo_root),
+      index: index_path as FilePath,
+      prefix: join([out_dir, "/"], ""),
+    ).exit_code == 0
   }
 }
 
@@ -246,13 +237,12 @@ fn poll_budget() -> std.measure.Second {
 }
 
 fn poll_once(repo_root: String, endpoint: String, ref_name: String) -> PollState {
-  let fetched = devboot_witness_run(
-    site: retained_devboot_git_fetch,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["fetch", "--quiet", "--force", endpoint, join([ref_name, ":", ref_name], "")],
+  let fetched = git.Core.FetchForcedRefInRepo(
+    repo: repo_root as FilePath,
+    remote: endpoint,
+    refspec: join([ref_name, ":", ref_name], ""),
   )
-  if fetched.success {
+  if fetched.exit_code == 0 {
     PollAnswered { ref_name: ref_name }
   } else {
     if string_contains(s: fetched.stderr, pattern: "couldn't find remote ref") {
@@ -297,12 +287,10 @@ fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
     bin_path: "mkdir",
     args: ["-p", client_repo_dir(work_root: work_root)],
   )
-  devboot_witness_run(
-    site: retained_devboot_git_init,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["init", "--quiet", client_repo_dir(work_root: work_root)],
-  ).success
+  git.Plumbing.InitAt(
+    address: devboot_repo_address(repo_root: repo_root),
+    path: client_repo_dir(work_root: work_root) as FilePath,
+  ).exit_code == 0
 }
 
 // THE TEXT ENTRIES ARE WRITTEN THROUGH THE TYPED FILESYSTEM SURFACE, not through a shell. Rendering a subject into a shell command means the subject's own bytes become part of a command line -- a quoting question at a runtime-present site, where a typed write exists and answers it structurally. The write's own report is not consulted because the hash immediately after it is the stronger observation: hash-object refuses on a file that is not there, so a failed write cannot pass for a staged entry.
@@ -320,33 +308,25 @@ fn stage_text_blob(repo_root: String, path: String, text: String) -> GitOidOutco
 }
 
 fn hash_blob_file(repo_root: String, path: String) -> GitOidOutcome {
-  let hashed = devboot_witness_run(
-    site: retained_devboot_git_hash_object,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["hash-object", "-w", path],
+  let hashed = git.Plumbing.HashObjectWrite(
+    address: devboot_repo_address(repo_root: repo_root),
+    path: path as FilePath,
   )
-  if !hashed.success {
+  if !(hashed.exit_code == 0) {
     GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) }
   } else {
-    GitOidPresent { oid: trim(s: hashed.stdout) }
+    GitOidPresent { oid: trim(s: hashed.oid) }
   }
 }
 
 fn stage_blob_entry(repo_root: String, index_path: String, oid: String, entry: String, mode: String) -> Bool {
-  devboot_witness_run(
-    site: retained_devboot_git_update_index,
-    workdir: repo_root,
-    bin_path: "env",
-    args: [
-      concat("GIT_INDEX_FILE=", index_path),
-      "git",
-      "update-index",
-      "--add",
-      "--cacheinfo",
-      join([mode, ",", oid, ",", entry], ""),
-    ],
-  ).success
+  git.Plumbing.UpdateIndexCacheInfo(
+    address: devboot_repo_address(repo_root: repo_root),
+    index: index_path as FilePath,
+    mode: mode,
+    oid: oid,
+    path: entry,
+  ).exit_code == 0
 }
 
 type GitTreeOutcome
@@ -354,16 +334,14 @@ type GitTreeOutcome
   | GitTreeCommandFailed { exit_code: Int, stderr: String }
 
 fn write_staged_tree(repo_root: String, index_path: String) -> GitTreeOutcome {
-  let written = devboot_witness_run(
-    site: retained_devboot_git_write_tree,
-    workdir: repo_root,
-    bin_path: "env",
-    args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
+  let written = git.Plumbing.WriteTreeFromIndex(
+    address: devboot_repo_address(repo_root: repo_root),
+    index: index_path as FilePath,
   )
-  if !written.success {
+  if !(written.exit_code == 0) {
     GitTreeCommandFailed { exit_code: written.exit_code, stderr: trim(s: written.stderr) }
   } else {
-    GitTreePresent { tree_hex: trim(s: written.stdout) }
+    GitTreePresent { tree_hex: trim(s: written.tree) }
   }
 }
 
@@ -372,16 +350,16 @@ type GitCommitOutcome
   | GitCommitCommandFailed { exit_code: Int, stderr: String }
 
 fn commit_tree_parentless(repo_root: String, tree_hex: String, message: String) -> GitCommitOutcome {
-  let committed = devboot_witness_run(
-    site: retained_devboot_git_commit_tree,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["commit-tree", tree_hex, "-m", message],
+  let committed = git.Plumbing.CommitTree(
+    address: devboot_repo_address(repo_root: repo_root),
+    tree: tree_hex,
+    parents: GitNoParents,
+    message: message,
   )
-  if !committed.success {
+  if !(committed.exit_code == 0) {
     GitCommitCommandFailed { exit_code: committed.exit_code, stderr: trim(s: committed.stderr) }
   } else {
-    GitCommitPresent { commit_hex: trim(s: committed.stdout) }
+    GitCommitPresent { commit_hex: trim(s: committed.commit) }
   }
 }
 
@@ -422,19 +400,13 @@ fn publish_request(
         GitOidCommandFailed { exit_code, stderr } =>
           RequestPublicationRefused { detail: join(["could not stage the requested program: ", stderr], "") }
         GitOidPresent { oid: program_oid } =>
-          let loaded = devboot_witness_run(
-            site: retained_devboot_git_read_tree,
-            workdir: repo_root,
-            bin_path: "env",
-            args: [
-              concat("GIT_INDEX_FILE=", index_path),
-              "git",
-              "read-tree",
-              concat("--prefix=", request_source_entry),
-              tree_hex,
-            ],
+          let loaded = git.Plumbing.ReadTreeIntoIndexPrefixed(
+            address: devboot_repo_address(repo_root: repo_root),
+            index: index_path as FilePath,
+            prefix: request_source_entry,
+            treeish: tree_hex,
           )
-          if !loaded.success {
+          if !(loaded.exit_code == 0) {
             RequestPublicationRefused {
               detail: snapshot_step_refusal(step: "read-tree --prefix=source", exit_code: loaded.exit_code, stderr: loaded.stderr),
             }
@@ -452,19 +424,12 @@ fn publish_request(
                     GitCommitCommandFailed { exit_code, stderr } =>
                       RequestPublicationRefused { detail: join(["could not form the request commit: ", stderr], "") }
                     GitCommitPresent { commit_hex: request_commit } =>
-                      let pushed = devboot_witness_run(
-                        site: retained_devboot_git_push,
-                        workdir: repo_root,
-                        bin_path: "git",
-                        args: [
-                          "push",
-                          "--quiet",
-                          "--force",
-                          endpoint,
-                          join([request_commit, ":", request_ref_of(token: token)], ""),
-                        ],
+                      let pushed = git.Core.PushForcedRefInRepo(
+                        repo: repo_root as FilePath,
+                        remote: endpoint,
+                        refspec: join([request_commit, ":", request_ref_of(token: token)], ""),
                       )
-                      if !pushed.success {
+                      if !(pushed.exit_code == 0) {
                         RequestPublicationRefused {
                           detail: join(["push to the producer failed: ", trim(s: pushed.stderr)], ""),
                         }
@@ -738,20 +703,18 @@ type RequestEntryOutcome
   | RequestEntryReadFailed { exit_code: Int, stderr: String }
 
 fn read_request_entry(repo_root: String, ref_name: String, entry: String) -> RequestEntryOutcome {
-  let shown = devboot_witness_run(
-    site: retained_devboot_git_cat_file,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["cat-file", "blob", join([ref_name, ":", entry], "")],
+  let shown = git.Plumbing.CatFileBlob(
+    address: devboot_repo_address(repo_root: repo_root),
+    object: join([ref_name, ":", entry], ""),
   )
-  if !shown.success {
+  if !(shown.exit_code == 0) {
     if string_contains(s: shown.stderr, pattern: "Not a valid object name") {
       RequestEntryAbsent
     } else {
       RequestEntryReadFailed { exit_code: shown.exit_code, stderr: trim(s: shown.stderr) }
     }
   } else {
-    RequestEntryPresent { text: trim(s: shown.stdout) }
+    RequestEntryPresent { text: trim(s: shown.content) }
   }
 }
 
@@ -761,13 +724,11 @@ type SourceTreeOutcome
   | SourceTreeResolveFailed { exit_code: Int, stderr: String }
 
 fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOutcome {
-  let resolved = devboot_witness_run(
-    site: retained_devboot_git_rev_parse,
-    workdir: repo_root,
-    bin_path: "git",
-    args: ["rev-parse", join([ref_name, ":", request_source_entry], "")],
+  let resolved = git.Core.RevParseInRepo(
+    repo: repo_root as FilePath,
+    target: join([ref_name, ":", request_source_entry], "") as GitRef,
   )
-  if !resolved.success {
+  if !(resolved.exit_code == 0) {
     if string_contains(s: resolved.stderr, pattern: "not a git repository")
       || resolved.exit_code == git_repository_unusable_exit_code
         && !string_contains(s: resolved.stderr, pattern: "does not exist in")
@@ -783,7 +744,71 @@ fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOu
       SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
     }
   } else {
-    SourceTreePresent { tree_hex: trim(s: resolved.stdout) }
+    SourceTreePresent { tree_hex: trim(s: resolved.revision) }
+  }
+}
+
+// WHY THE ANSWER REF IS CREATED AND NEVER OVERWRITTEN. This ref is per-request-token and
+// holds ONE build answer, and this function is reached from both the success path and
+// serve_refusal. Written unconditionally -- which is what `update-ref <ref> <commit>` does --
+// a re-serve of one token silently replaces a previously published answer, so a client that
+// read the old one and a client reading the new one disagree with NO SIGNAL. The ref is
+// write-once by intent, so the transition is GitCreateRefIfAbsent and a second publish for
+// one token is a real conflict that refuses loudly (DESIGN section 5: a failure arm refuses,
+// it does not widen).
+//
+// The outcome is decided by READ-BACK and not by the exit code, because losing the
+// create race and failing to reach the store both exit 128 -- see
+// extdeps.git.plumbing git_ref_mutation_outcome for the table.
+type ProducedPublication
+  = ProducedPublished
+  | ProducedPublicationRefused { detail: String }
+
+fn produced_publication_refused(detail: String) -> ProducedPublication {
+  ProducedPublicationRefused { detail: detail }
+}
+
+fn publish_answer_ref(repo_root: String, token: String, produced_commit: String) -> ProducedPublication {
+  match git_object_id_from_untagged_hex(hex: produced_commit) {
+    Absent =>
+      produced_publication_refused(
+        detail: join(["commit-tree returned an object id this build cannot decode: ", produced_commit], ""),
+      )
+    Present { value: commit_oid } =>
+      let mutation = GitCreateRefIfAbsent {
+        name: produced_ref_of(token: token) as GitRefName,
+        new: commit_oid,
+      }
+      let attempted = git.Plumbing.CreateRefIfAbsent(
+        address: devboot_repo_address(repo_root: repo_root),
+        ref_name: produced_ref_of(token: token),
+        new: produced_commit,
+      )
+      let outcome = git_ref_mutation_outcome(
+        mutation: mutation,
+        exit_code: attempted.exit_code,
+        stderr: trim(s: attempted.stderr),
+        observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: produced_ref_of(token: token)),
+      )
+      if git_ref_mutation_applied(outcome: outcome) {
+        ProducedPublished
+      } else {
+        produced_publication_refused(detail: render_ref_mutation_refusal(outcome: outcome, token: token))
+      }
+  }
+}
+
+fn render_ref_mutation_refusal(outcome: GitRefMutationOutcome, token: String) -> String {
+  match outcome {
+    GitRefMutationApplied { mutation } => join(["the answer ref for ", token, " was published"], "")
+    GitRefMutationPreconditionNotHeld { mutation, observed } =>
+      join(["an answer for ", token, " is already published; this token is write-once and a second answer would silently replace the first"], "")
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } =>
+      join(["the answer ref for ", token, " could not be written: ", stderr], "")
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } =>
+      join(["the answer ref for ", token, " could not be read back, so whether it was published is unknown: ", stderr], "")
+    GitRefMutationReadBackMismatch { mutation, observed } =>
+      join(["the answer ref for ", token, " reported success but does not hold the published commit"], "")
   }
 }
 
@@ -795,7 +820,7 @@ fn publish_produced_tree(
   artifact_path: String,
   artifact_sha256: std.content_hash.Sha256Digest?,
   refusal_text: String,
-) -> Bool {
+) -> ProducedPublication {
   let staging = join([work_root, "/", token, "/produced"], "")
   let index_path = join([work_root, "/", token, "/produced.index"], "")
   let fresh = devboot_witness_run(
@@ -811,11 +836,13 @@ fn publish_produced_tree(
     args: ["-p", staging],
   )
   match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
-    GitOidCommandFailed { exit_code, stderr } => false
+    GitOidCommandFailed { exit_code, stderr } =>
+      produced_publication_refused(detail: join(["could not stage the produced subject: ", stderr], ""))
     GitOidPresent { oid: subject_oid } =>
       let staged_subject = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: subject_oid, entry: produced_subject_entry, mode: "100644")
       match stage_text_blob(repo_root: repo_root, path: join([staging, "/host"], ""), text: observed_producer_host(repo_root: repo_root)) {
-        GitOidCommandFailed { exit_code, stderr } => false
+        GitOidCommandFailed { exit_code, stderr } =>
+          produced_publication_refused(detail: join(["could not stage the producing host: ", stderr], ""))
         GitOidPresent { oid: host_oid } =>
           let staged_host = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: host_oid, entry: produced_host_entry, mode: "100644")
           let bound_body =
@@ -846,20 +873,17 @@ fn publish_produced_tree(
               }
             }
           if !(staged_subject && staged_host && bound_body) {
-            false
+            produced_publication_refused(detail: "could not stage the produced entries")
           } else {
             match write_staged_tree(repo_root: repo_root, index_path: index_path) {
-              GitTreeCommandFailed { exit_code, stderr } => false
+              GitTreeCommandFailed { exit_code, stderr } =>
+                produced_publication_refused(detail: join(["could not write the produced tree: ", stderr], ""))
               GitTreePresent { tree_hex: produced_tree } =>
                 match commit_tree_parentless(repo_root: repo_root, tree_hex: produced_tree, message: "devboot build answer") {
-                  GitCommitCommandFailed { exit_code, stderr } => false
+                  GitCommitCommandFailed { exit_code, stderr } =>
+                    produced_publication_refused(detail: join(["could not form the answer commit: ", stderr], ""))
                   GitCommitPresent { commit_hex: produced_commit } =>
-                    devboot_witness_run(
-                      site: retained_devboot_git_update_ref,
-                      workdir: repo_root,
-                      bin_path: "git",
-                      args: ["update-ref", produced_ref_of(token: token), produced_commit],
-                    ).success
+                    publish_answer_ref(repo_root: repo_root, token: token, produced_commit: produced_commit)
                 }
             }
           }
@@ -1069,7 +1093,7 @@ fn devboot_serve_built(
           detail: join(["the build reported success but produced no readable artifact at ", path], ""),
         )
       FileSha256Present { digest: artifact_sha256 } =>
-        if !publish_produced_tree(
+        match publish_produced_tree(
           repo_root: repo_root,
           work_root: work_root,
           token: token,
@@ -1078,9 +1102,8 @@ fn devboot_serve_built(
           artifact_sha256: Present { value: artifact_sha256 },
           refusal_text: "",
         ) {
-          ServeRefused { token: token, detail: "the artifact could not be published to the store" }
-        } else {
-          ServeProduced { token: token, sha256: artifact_sha256 }
+          ProducedPublicationRefused { detail } => ServeRefused { token: token, detail: detail }
+          ProducedPublished => ServeProduced { token: token, sha256: artifact_sha256 }
         }
     }
   }

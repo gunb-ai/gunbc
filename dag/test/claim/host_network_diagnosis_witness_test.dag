@@ -109,12 +109,21 @@ fn witness_persistence_bar_discriminates() -> Bool {
     && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: srv4_lan_interface)
 }
 
-data witness_axis_cell_note: String = "The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather than guessing while no producer exists. Every enrolled host answers UnknownRefused and the fleet tally equals the full fleet — a deficit that is counted, and therefore rankable, instead of one whose frequency is zero by construction. The tally is asserted against the enrolled host list rather than against a literal, so enrolling a host moves it without editing this witness. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a healthy observation reaches Converged and a dead link reaches Drifted through the same projection the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold that answers UnknownRefused to everything."
+data witness_axis_cell_note: String = "The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather than guessing while no producer exists. Every enrolled host answers UnknownRefused, and the frontier is asserted as the SET of those hosts rather than as a tally — a deficit that is named, and therefore rankable and diffable, instead of one whose frequency is zero by construction. The set is joined against the enrolled host list rather than a literal, so enrolling a host moves it without editing this witness, and a producer landing removes a NAMED host instead of decrementing a number. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a healthy observation reaches Converged and a dead link reaches Drifted through the same projection the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold that answers UnknownRefused to everything."
+
+// The frontier is asserted as a SET OF NAMED HOSTS rather than a count (DESIGN section 5:
+// completeness is an identity join, not a count equality). The count this replaces could say six
+// hosts were unobserved but not WHICH, so a producer landing moved a number and the diff could not
+// name what acquired one. All six enrolled hosts are real machines, srv5 and srv6 included -- both
+// DGX Spark units are live on the operator LAN -- so the six was never wrong; what was wrong is that
+// a count cannot be checked against the prose beside it, having no members to disagree about.
+fn network_unobserved_hosts() -> List<HostIdentity> {
+  filter(fleet_subsumption_hosts, h => host_network_verdict(host: h) == UnknownRefused)
+}
 
 fn witness_network_axis_cell_refuses_and_counts() -> Bool {
-  let unobserved = host_network_fleet_unobserved_count()
   let enrolled = fleet_subsumption_hosts.length()
-  unobserved == enrolled
+  network_unobserved_hosts() == fleet_subsumption_hosts
     && enrolled > 0
     && observation_verdict_eq(
       a: network_diagnosis_verdict(

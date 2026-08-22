@@ -1,0 +1,129 @@
+module v2.workflow.floor_terminal_ledger_test
+
+
+fn ident(f: String) -> v2.workflow.floor2_prepared_subject.WitnessIdentity {
+  v2.workflow.floor2_prepared_subject.WitnessIdentity { module_path: "test.claim.example", function: f }
+}
+
+fn row(f: String, expectation: v2.workflow.floor_terminal_ledger.ClaimExpectation, holds: v2.std.logic.Bool) -> v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+  v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+    identity: ident(f: f),
+    expectation: expectation,
+    terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: holds } }
+  }
+}
+
+fn hash(h: String) -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.Fnv1a64Structural { digest: h as std.content_hash.Fnv1a64StructuralDigestHex }
+}
+
+fn ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPublication) -> v2.workflow.floor_terminal_ledger.TerminalLedger {
+  v2.workflow.floor_terminal_ledger.TerminalLedger {
+    binding: v2.workflow.floor_terminal_ledger.LedgerBinding {
+      repository_snapshot: hash(h: "0123456789abcdef"),
+      prepared_subject: hash(h: "fedcba9876543210"),
+      roster_identity: hash(h: "0f1e2d3c4b5a6978")
+    },
+    rows: [],
+    publication: publication
+  }
+}
+
+fn empty_reconciliation() -> v2.workflow.floor_terminal_ledger.LedgerReconciliation {
+  v2.workflow.floor_terminal_ledger.LedgerReconciliation {
+    planned_without_terminal: [],
+    terminal_without_planned: [],
+    terminal_duplicated: []
+  }
+}
+
+// THE PROJECTION IS TOTAL OVER (expectation x observation), and each of the four cells is asserted
+// to a DISTINCT disposition rather than to a v2.std.logic.Bool. A Boolean assertion here would pass for three
+// different wrong mappings; naming the constructor each cell must produce is what makes the test
+// able to fail for the right reason.
+test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> v2.std.logic.Bool {
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "a", expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold, holds: 0 == 0)) == v2.workflow.floor_terminal_ledger.Passed
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "b", expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.Failed
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "c", expectation: v2.workflow.floor_terminal_ledger.ExpectedRed, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.KnownRedHeld
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "d", expectation: v2.workflow.floor_terminal_ledger.ExpectedRed, holds: 0 == 0)) == v2.workflow.floor_terminal_ledger.KnownRedNowPassing
+}
+
+// AN ATTEMPT THAT RETURNED WITHOUT A READABLE VERDICT IS NOT A FAILING WITNESS. Collapsing
+// `v2.workflow.floor_terminal_ledger.ObservationUnrepresentable` into `v2.workflow.floor_terminal_ledger.Failed` is the fabricated plausible output -- it reports a
+// witness that answered wrongly where the truth is a witness whose answer was never in a shape the
+// floor could read, and the two have different remedies.
+test fn an_unreadable_observation_is_refused_not_failed() -> v2.std.logic.Bool {
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+    identity: ident(f: "e"),
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservationUnrepresentable { reason: "not-a-process-exit" } }
+  }) == v2.workflow.floor_terminal_ledger.ObservationUnreadableBeforeVerdict
+}
+
+// A CLAIM REFUSED BEFORE ANY VERDICT EXISTED IS NOT A FAILING CLAIM EITHER, and this arm is
+// separate from the unreadable-observation one above because their remedies differ: an
+// unreadable observation is a witness to repair, a budget refusal is a cost to pay or a limit to
+// raise. Collapsing them would leave `budget_refused` underivable from the rows, which is the
+// counter dual-authority this whole change exists to remove.
+test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> v2.std.logic.Bool {
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+    identity: ident(f: "f"),
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+      safety: v2.workflow.required_floor.SafetyInterrupted {
+        raised_by: "wall",
+        elapsed_cpu_at_least: 0,
+        elapsed_wall_at_least: 0
+      }
+    }
+  }) == v2.workflow.floor_terminal_ledger.BudgetRefusedBeforeVerdict
+}
+
+// THE LOAD-BEARING TEST: A DUPLICATE REPLACING AN OMISSION, WITH EVERY COUNT UNCHANGED.
+//
+// One planned identity never reached the ledger and another was written twice. Row count equals
+// planned count. Every aggregate in the run summary is identical to a correct run. A count-based
+// completeness check is GREEN over this, and the missing witness is reported as covered.
+//
+// This is the discriminating RED for the whole reconciliation: replace the identity join with
+// `terminal_rows.length() == planned.length()` and this test goes green while the ledger is wrong.
+test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> v2.std.logic.Bool {
+  let swapped = v2.workflow.floor_terminal_ledger.LedgerReconciliation {
+    planned_without_terminal: [ident(f: "lost")],
+    terminal_without_planned: [],
+    terminal_duplicated: [ident(f: "written_twice")]
+  }
+  !v2.workflow.floor_terminal_ledger.ledger_is_complete(r: swapped)
+    && v2.workflow.floor_terminal_ledger.ledger_is_complete(r: empty_reconciliation())
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
+         ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
+         reconciliation: swapped,
+         planned: [ident(f: "lost"), ident(f: "written_twice")]
+       ) == v2.workflow.floor_terminal_ledger.EvidenceReconciliationFailed { reconciliation: swapped }
+}
+
+// A FAILED PUBLICATION IS NOT GREEN EVEN WHEN EVERY WITNESS PASSED. Otherwise the instrumentation
+// is optional exactly when it fails, which is the failure arm that widens instead of refusing.
+test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> v2.std.logic.Bool {
+  v2.workflow.floor_terminal_ledger.ledger_green_admission(
+    ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPartial { reason: "killed-before-finalize" }),
+    reconciliation: empty_reconciliation(),
+    planned: [ident(f: "a")]
+  ) == v2.workflow.floor_terminal_ledger.EvidenceUnfinalized { reason: "killed-before-finalize" }
+}
+
+// THE FOOTER COUNT IS CHECKED AGAINST THE PLANNED POPULATION, not against itself. A truncation
+// that dropped rows and rewrote the footer to match would agree with itself; it cannot agree with
+// the planned population the caller independently holds.
+test fn a_footer_count_below_the_planned_population_is_not_green() -> v2.std.logic.Bool {
+  v2.workflow.floor_terminal_ledger.ledger_green_admission(
+    ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }),
+    reconciliation: empty_reconciliation(),
+    planned: [ident(f: "a"), ident(f: "b")]
+  ) == v2.workflow.floor_terminal_ledger.EvidenceFooterCountDisagrees { footer_rows: 1, planned_rows: 2 }
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
+         ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
+         reconciliation: empty_reconciliation(),
+         planned: [ident(f: "a"), ident(f: "b")]
+       ) == v2.workflow.floor_terminal_ledger.EvidenceComplete
+}

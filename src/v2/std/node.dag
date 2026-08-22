@@ -264,12 +264,19 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   }
 }
 
-fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
+// The child COUNT is the only thing about the children this reads, so the count-taking form is the
+// authority and the Edge-taking form projects onto it. That is what lets the content-hash
+// canonicalizer -- which sees labels and hashes, never Edges -- ask the same question without a
+// second copy of the answer.
+fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -> EdgeDiscipline {
   match c {
-    Atom { identity: _ } =>
-      atom_connective_edge_discipline(child_count: count(children))
+    Atom { identity: _ } => atom_connective_edge_discipline(child_count: child_count)
     _ => connective_edge_discipline(c: c)
   }
+}
+
+fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
+  connective_edge_discipline_for_child_count(c: c, child_count: count(children))
 }
 
 fn is_named(e: Edge) -> Bool {
@@ -633,124 +640,137 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   }
 }
 fn node_edge_discipline(n: Node) -> EdgeDiscipline {
-  match n.kind {
-    TypeNode { connective: c } =>
-      connective_edge_discipline_for_children(c: c, children: n.children)
-    ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
-  }
+  kind_edge_discipline(kind: n.kind, child_count: count(n.children))
 }
-fn named_edge_sort_key(e: Edge) -> Symbol {
-  match e.label {
+// THE CANONICAL CHILD ORDER IS A FUNCTION OF THE LABELS AND THE KIND, AND OF NOTHING ELSE.
+//
+// Every rule below reads `label_of(x)` and the child COUNT; none of them reads a child's target. So
+// the ordering is stated once, generically, and BOTH consumers instantiate it: `Edge` for
+// canonicalize_node_for_content_hash, and `LabeledChildHash` for content_hash_of_children, whose
+// caller obligation this dissolves. An Edge-shaped ordering with a second hash-shaped copy beside it
+// would be two authorities for one identity rule (DESIGN section 3) -- agreeing exactly until one is
+// edited, and disagreeing as objects unreachable by the identity they were stored under.
+fn label_sort_key(label: EdgeLabel) -> Symbol {
+  match label {
     Named { name: sym } => sym
     Positional => ^canonical_tag_positional_edge
   }
 }
 
-fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Positional => true
-      Named { name: _ } => false
-    }
-  })
+fn named_edge_sort_key(e: Edge) -> Symbol {
+  label_sort_key(label: e.label)
 }
-fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Named { name: sym } => sym == ^arrow_body_edge
-      Positional => false
-    }
-  })
+
+fn labeled_is_positional<T>(x: T, label_of: fn(T) -> EdgeLabel) -> Bool {
+  match label_of(x) {
+    Positional => true
+    Named { name: _ } => false
+  }
 }
-fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  sort_by(
-    filter(children, fn(e) {
-      match e.label {
-        Named { name: sym } => sym != ^arrow_body_edge
-        Positional => false
-      }
-    }),
-    fn(e) { named_edge_sort_key(e: e) }
-  )
+
+fn labeled_named_is<T>(x: T, label_of: fn(T) -> EdgeLabel, wanted: Symbol) -> Bool {
+  match label_of(x) {
+    Named { name: sym } => sym == wanted
+    Positional => false
+  }
 }
-fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+
+fn labeled_named_is_not<T>(x: T, label_of: fn(T) -> EdgeLabel, excluded: Symbol) -> Bool {
+  match label_of(x) {
+    Named { name: sym } => sym != excluded
+    Positional => false
+  }
+}
+
+fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  sort_by(items, fn(x) { label_sort_key(label: label_of(x)) })
+}
+
+// Arrow: positional signature first, then the other named edges in label order, then the body. The
+// body sorts LAST by construction rather than by its name's collating position, so renaming
+// ^arrow_body_edge cannot silently reorder every arrow's identity.
+fn canonicalize_arrow_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   concat(
-    arrow_signature_edges_for_content_hash(children: children),
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
     concat(
-      arrow_other_named_edges_for_content_hash(children: children),
-      arrow_body_edges_for_content_hash(children: children)
+      sort_labeled(
+        items: filter(items, fn(x) {
+          labeled_named_is_not(x: x, label_of: label_of, excluded: ^arrow_body_edge)
+        }),
+        label_of: label_of
+      ),
+      filter(items, fn(x) { labeled_named_is(x: x, label_of: label_of, wanted: ^arrow_body_edge) })
     )
   )
 }
-fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Positional => true
-      Named { name: _ } => false
-    }
-  })
-}
-fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Named { name: sym } => sym == ^loop_bound_edge
-      Positional => false
-    }
-  })
-}
-fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  sort_by(
-    filter(children, fn(e) {
-      match e.label {
-        Named { name: sym } => sym != ^loop_bound_edge
-        Positional => false
-      }
-    }),
-    fn(e) { named_edge_sort_key(e: e) }
-  )
-}
-fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+
+fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   concat(
-    loop_body_edges_for_content_hash(children: children),
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
     concat(
-      loop_other_named_edges_for_content_hash(children: children),
-      loop_bound_edges_for_content_hash(children: children)
+      sort_labeled(
+        items: filter(items, fn(x) {
+          labeled_named_is_not(x: x, label_of: label_of, excluded: ^loop_bound_edge)
+        }),
+        label_of: label_of
+      ),
+      filter(items, fn(x) { labeled_named_is(x: x, label_of: label_of, wanted: ^loop_bound_edge) })
     )
   )
 }
+
+// The discipline depends on the kind and the child COUNT -- never on a child's target -- which is
+// exactly why this generalizes. node_edge_discipline delegates here rather than duplicating it.
+fn kind_edge_discipline(kind: NodeKind, child_count: Int) -> EdgeDiscipline {
+  match kind {
+    TypeNode { connective: c } =>
+      connective_edge_discipline_for_child_count(c: c, child_count: child_count)
+    ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
+  }
+}
+
+fn canonicalize_labeled_for_content_hash<T>(
+  kind: NodeKind,
+  items: List<T>,
+  label_of: fn(T) -> EdgeLabel
+) -> List<T> {
+  match kind_edge_discipline(kind: kind, child_count: count(items)) {
+    LabeledEdges => sort_labeled(items: items, label_of: label_of)
+    NoEdges => items
+    PositionalEdges => items
+    ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
+    LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
+  }
+}
+
+// THE PROJECTIONS ARE NAMED TOP-LEVEL FUNCTIONS, NOT INLINE LAMBDAS, and that is forced rather than
+// stylistic: an inline `fn(e) { e.label }` in this argument position refuses with `no field 'label'
+// on type 'T'` -- the lambda's parameter type is not inferred from the generic instantiation. The
+// corpus already spells this the same way wherever a named function is passed as an argument
+// (`eq: string_eq`, `predicate: claim_asserts_green`), so this follows the existing route rather
+// than working around the inference gap with a respelling.
+fn edge_label_of(e: Edge) -> EdgeLabel {
+  e.label
+}
+
+fn labeled_child_hash_label_of(c: LabeledChildHash) -> EdgeLabel {
+  c.label
+}
+
+fn canonicalize_edges_for_content_hash(kind: NodeKind, children: List<Edge>) -> List<Edge> {
+  canonicalize_labeled_for_content_hash(
+    kind: kind,
+    items: children,
+    label_of: edge_label_of
+  )
+}
+
 fn canonicalize_node_for_content_hash(n: Node) -> Node {
   let base = node_for_structural_equality(n: n)
-  match node_edge_discipline(n: n) {
-    LabeledEdges =>
-      Node {
-        kind: base.kind,
-        children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
-        occurrence_id: SyntheticOccurrence
-      }
-    NoEdges =>
-      Node {
-        kind: base.kind,
-        children: base.children,
-        occurrence_id: SyntheticOccurrence
-      }
-    PositionalEdges =>
-      Node {
-        kind: base.kind,
-        children: base.children,
-        occurrence_id: SyntheticOccurrence
-      }
-    ArrowBodyEdges =>
-      Node {
-        kind: base.kind,
-        children: canonicalize_arrow_children_for_content_hash(children: base.children),
-        occurrence_id: SyntheticOccurrence
-      }
-    LoopBoundEdges =>
-      Node {
-        kind: base.kind,
-        children: canonicalize_loop_children_for_content_hash(children: base.children),
-        occurrence_id: SyntheticOccurrence
-      }
+  Node {
+    kind: base.kind,
+    children: canonicalize_edges_for_content_hash(kind: base.kind, children: base.children),
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -1596,15 +1616,31 @@ fn content_hash_step(acc: Hash, label: EdgeLabel, child: Hash) -> Hash {
   )
 }
 
-// Assemble a node's content hash from its kind and its children's ALREADY-COMPUTED hashes, in
-// canonical child order. The caller owns the obligation that `children` is the canonical order and
-// that each hash is that child's `content_hash` -- this function cannot check either, and says so
-// rather than pretending to: it is the same fold `content_hash` performs, exposed for callers that
-// already paid for the child hashes.
+// Assemble a node's content hash from its kind and its children's ALREADY-COMPUTED hashes. It is
+// the same fold `content_hash` performs, exposed for callers that already paid for the child hashes.
+//
+// THIS FUNCTION CANONICALIZES THE CHILD ORDER ITSELF, and that is a construction wall rather than a
+// convenience. An earlier revision placed the canonical-order obligation on the caller and could not
+// check it, which was honest and was still the wrong shape: a caller reading children from an
+// untrusted document -- a decoded SCM image, say -- cannot discharge an obligation about an order
+// it did not choose, so a permuted document could mint an ObjectId under a non-canonical fold and
+// then fail to match the canonical content_hash of the very node it reconstructed. Ordering here
+// makes that state unwritable instead of detectable (DESIGN section 5), and costs nothing for the
+// callers who were already passing canonical order, because canonicalizing a canonical list is
+// identity.
+//
+// The remaining caller obligation is the one that CANNOT be discharged here: each hash must be that
+// child's own `content_hash`. This function says so rather than pretending otherwise.
 fn content_hash_of_children(kind: NodeKind, children: List<LabeledChildHash>) -> Hash {
-  fold(children, init: canonical_hash_of_node_kind(kind: kind), f: fn(acc, c) {
-    content_hash_step(acc: acc, label: c.label, child: c.hash)
-  })
+  fold(
+    canonicalize_labeled_for_content_hash(
+      kind: kind,
+      items: children,
+      label_of: labeled_child_hash_label_of
+    ),
+    init: canonical_hash_of_node_kind(kind: kind),
+    f: fn(acc, c) { content_hash_step(acc: acc, label: c.label, child: c.hash) }
+  )
 }
 
 fn content_hash(n: Node) -> Hash {

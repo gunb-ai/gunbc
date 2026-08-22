@@ -157,7 +157,7 @@ test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
 }
 
 test fn srv1_measured_adapter_absent_specimen() -> Bool {
-  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: host_srv1) {
+  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: operator_host_srv1) {
     Present { value: srv1 } =>
       match srv1.wireless {
         WirelessAdapterAbsent =>

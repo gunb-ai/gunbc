@@ -123,16 +123,6 @@ fn host_toolchain_completeness_verdict(host: product.placement_supply.HostIdenti
   )
 }
 
-fn toolchain_completeness_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h => gunbc.host_phase_status.observation_verdict_eq(a: host_toolchain_completeness_verdict(host: h), b: std.upsert_decision.UnknownRefused),
-  ).length()
-}
-
-fn toolchain_completeness_fleet_unobserved_count() -> Int {
-  toolchain_completeness_unobserved_count(hosts: gunbc.host_phase_status.fleet_subsumption_hosts)
-}
 
 data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
 

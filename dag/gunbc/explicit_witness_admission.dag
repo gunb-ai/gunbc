@@ -125,6 +125,14 @@ data explicit_witness_admissions: List<gunbc.explicit_witness_admission.Explicit
     dissolution: unbound_dissolution(description: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall")
   ),
   known_red_probe(
+    entry: "dag/test/claim/coproduct_payload_soundness_witness_test.dag",
+    f: "cpp_payload_where_coproduct_required_must_refuse",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "A COPRODUCT PAYLOAD CAN INHABIT ITS PARENT COPRODUCT FIELD AND NOTHING REFUSES IT -- the general form of the defect #8853 repaired at one site. There, a std.occurrence_identity.OccurrenceId (the payload carried inside MintedOccurrence) was declared as a parameter and assigned into Node.occurrence_id, whose type is the NodeOccurrenceId coproduct; nothing refused it, and the consequence surfaced one pipeline stage away as `non-exhaustive pattern match on: OccurrenceId` in sixteen floor claims. MEASURED GENERALLY, minimal pair, no Node and no compiler internals: CppHolder { subject: cpp_inner() } is ACCEPTED BY TYPING and dies at runtime with PatternMatchFailure, while the correct spelling CppHolder { subject: CppWrapped { inner: cpp_inner() } } compiles and executes -- so the mechanism is neither Node-specific nor occurrence-specific. This is BELOW FLOOR, not a rung: DESIGN section 4b places `values inhabit declared types` in the ordinary compiler floor, and a floor failure is a below-baseline safety regression rather than a class sitting at mitigatable. Red BY DESIGN and not relaxable: the only edit that may green it is making the ill-typed construction refuse. Its positive control (cpp_payload_inside_its_own_arm_still_compiles) is enrolled as an ordinary green claim so the red measures the distinction rather than a blanket refusal. Owner: the compiler type-soundness lane. THIS ROW DOCUMENTS THE RED AND ITS DISSOLUTION; the required floor is gated by the identity's row in v2.workflow.floor_expected_red, per the ruling at floor_expected_red_chunk_13. Both rows delete together when the wall lands.",
+    dissolution: unbound_dissolution(description: "the construction refuses with a located, blocking type diagnostic -- this row deletes in the change that lands the wall, promoting the witness to ordinary DiscoverySelection as the permanent regression control DESIGN section 4b(4) requires stay enrolled")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag",
     f: "observation_emit_frontier_is_zero",
     kind: CorpusWitnessKind,

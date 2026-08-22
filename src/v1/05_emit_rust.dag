@@ -10841,7 +10841,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
 fn emit_transport_call(transport: v1.std.core.Node, op_name: String, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, depth: Int, inferred: v1.std.core.Node, service_item: v1.std.core.Node, op_node: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, shared_types: std.types.Set<String>, env: v1.compiler.infer_env.TypeEnv) -> String {
   if v1.std.core.is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if v1.std.core.is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if v1.std.core.is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
+  else if v1.std.core.is_file_transport(t: transport, source_indices: source_indices) { emit_unmodeled_file_transport_refusal(op_name: op_name, target: Rust) }
   else { emit_local_call(op_name: op_name) }
 }
 
@@ -11520,20 +11520,6 @@ fn unwrap_single_field_product(n: v1.std.core.Node) -> v1.std.core.Node {
       Absent => n
     }
   } else { n }
-}
-
-fn emit_file_call(op_name: String, inferred: v1.std.core.Node) -> String {
-  let effective = unwrap_single_field_product(n: inferred)
-  let is_product = v1.compiler.infer_types.is_product_type(n: effective)
-  let parse_line = if is_product && effective.children |> count > 1 {
-    "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
-  } else {
-    "Ok(content)"
-  }
-  concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    v1.compiler.emit.emit_ident(name: op_name, target: v1.compiler.artifact.Rust), "\");\n",
-    "let content = std::fs::read_to_string(&path)?;\n",
-    parse_line)
 }
 
 fn emit_local_call(op_name: String) -> String {

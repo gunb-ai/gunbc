@@ -152,14 +152,6 @@ fn unit_active_width_for_host(host: product.placement_supply.HostIdentity) -> In
   materialized_width_for_host(host: host)
 }
 
-data incident_materialized_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5]
-
-data seven_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5, 6, 7]
-
-data one_slot_index: List<std.nat.Nat> = [1]
-
-data empty_nat_list: List<std.nat.Nat> = []
-
 data converged_seven_roster_observed_on: std.types.NonEmptyStr = "converged-seven-fixture" as std.types.NonEmptyStr
 
 fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> std.types.NonEmptyStr {
@@ -167,15 +159,7 @@ fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, 
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
-  if width >= 7 {
-    seven_slot_indices
-  } else if width >= 5 {
-    incident_materialized_slot_indices
-  } else if width >= 1 {
-    one_slot_index
-  } else {
-    empty_nat_list
-  }
+  nat_range_inclusive(lo: 1, hi: width)
 }
 
 fn count_host_registrations_at_width(
@@ -290,19 +274,10 @@ fn organization_runner_roster_materialized_slots_online_evidence() -> Organizati
 }
 
 fn local_incarnations_for_host(host: product.placement_supply.HostIdentity, width: Int) -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
-  if width == 7 {
-    map(
-      seven_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
-    )
-  } else if width == 5 {
-    map(
-      incident_materialized_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
-    )
-  } else {
-    []
-  }
+  map(
+    slot_indices_for_managed_width(width: width),
+    i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
+  )
 }
 
 fn local_runner_slot_incarnations() -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {

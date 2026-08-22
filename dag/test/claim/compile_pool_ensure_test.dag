@@ -66,7 +66,8 @@ test fn witness_an_absent_slice_is_admitted_with_rendered_lines() -> Bool {
   ensure_yields_slice(admission: a)
     && unit_declares_line(
       lines: match a {
-        EnsureCompilePoolAdmitted { slice_unit: _, sized_bytes: _, slice_lines: lines } => lines
+        EnsureCompilePoolAdmitted { slice_unit: _, sized_bytes: _, slice_unit_file: f } =>
+          systemd_unit_file_lines(file: f)
         _ => [],
       },
       needle: "MemoryMax=17179869184",

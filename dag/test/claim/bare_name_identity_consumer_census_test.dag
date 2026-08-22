@@ -1,0 +1,95 @@
+module test.claim.bare_name_identity_consumer_census_test
+
+
+// WHAT THIS WITNESS IS, AND -- MORE IMPORTANTLY -- WHAT IT IS NOT.
+//
+// It does NOT measure the emitter. It cannot: the roster it guards is a hand sweep of source text,
+// and no assertion here would move if a new bare-name decision were authored tomorrow. Saying so
+// first is the point, because a green witness sitting next to a census is exactly the artifact a
+// reader mistakes for "the census is verified".
+//
+// What it DOES guard is the roster's internal consistency, at the two places the carrier's types
+// could not make a bad row unwritable. Both assertions have a reachable RED, and the RED WAS RUN
+// rather than asserted: against a green control, planting a sibling claim on the one row whose
+// identity is UnavailableNoNodeAtSite flips the first assertion to false, and setting one row's
+// call_site_count to zero flips the second, both on a binary built from this tree (receipt:
+// docs/probes/bare-name-identity-consumer-census-2026-08-22.md). A claimed-but-unrun RED is the
+// specification-without-execution trap DESIGN section 5 names, and it is the one this file would be
+// most likely to fall into, since every assertion here is about the file next to it.
+//
+// THE SAME PROBE MEASURED ONE ASSERTION FAILING TO DISCRIMINATE, recorded rather than dropped: under
+// the zero-call-site mutant, derived_counts_bounded_by_roster STAYS TRUE. That is correct -- the
+// bound it checks is not violated by a zero -- and it is why that assertion is described below as
+// the weakest in the file rather than as a third guard.
+//
+// NO COUNT IS ASSERTED AGAINST A LITERAL. Every number here is a fold over the rows compared to
+// another fold over the same rows, so adding a row cannot make this file stale and cannot be
+// silenced by editing a number -- which is the failure mode DESIGN section 5 names when a test's
+// entire content is a copied measurement.
+
+// A SIBLING YOU CANNOT FEED IS NOT SITTING BESIDE THE SITE UNUSED.
+//
+// The sibling column exists to answer "is the terminal repair routing, or does the authority have to
+// be built first". A row claiming an identity-keyed sibling while also reporting that no declaration
+// identity is obtainable at the site is claiming both answers at once, and the histogram would then
+// report a routing candidate that cannot be routed. RED case: file any row with a
+// SiblingPresentButOrdered and an UnavailableNoNodeAtSite.
+fn every_sibling_claim_has_an_identity_to_feed_it() -> std.types.Bool {
+  gunbc.bare_name_identity_consumer_census.bare_name_identity_consumers |> all(c =>
+    if gunbc.bare_name_identity_consumer_census.consumer_has_unused_identity_sibling(c: c) { gunbc.bare_name_identity_consumer_census.consumer_identity_was_available(c: c) } else { true }
+  )
+}
+
+// A MEMBER WITH NO CALL SITE IS NOT A MEMBER.
+//
+// call_site_count is the only field carrying how much of the emitter each row actually decides for,
+// and a zero would let a row into the histogram while contributing nothing a reader could go and
+// look at. RED case: file a row with call_site_count 0.
+fn every_member_has_at_least_one_call_site() -> std.types.Bool {
+  gunbc.bare_name_identity_consumer_census.bare_name_identity_consumers |> all(c => c.call_site_count > 0)
+}
+
+// THE DERIVED HISTOGRAM ADDS UP AGAINST THE ROSTER IT IS DERIVED FROM.
+//
+// Each of the four columns is a filter over the same list, so each count must lie between zero and
+// the member count, and the call-site total must be at least the member count given the assertion
+// above. This is the weakest assertion in the file and it is kept for one reason: it is what reds if
+// a future column is added with a fold that drops a variant arm, which is the one way a derived
+// histogram can silently under-report.
+fn derived_counts_are_bounded_by_the_roster() -> std.types.Bool {
+  let n = gunbc.bare_name_identity_consumer_census.census_member_count()
+  gunbc.bare_name_identity_consumer_census.census_identity_available_count() <= n
+    && gunbc.bare_name_identity_consumer_census.census_unused_sibling_count() <= n
+    && gunbc.bare_name_identity_consumer_census.census_wrong_answer_today_count() <= n
+    && gunbc.bare_name_identity_consumer_census.census_measured_reach_count() <= n
+    && gunbc.bare_name_identity_consumer_census.census_call_site_total() >= n
+}
+
+// THE INTERSECTION CELL IS DERIVED FROM THE SAME TWO PREDICATES ITS COLUMNS ARE.
+//
+// gunbc.bare_name_identity_consumer_census.census_reachable_and_wrong_today is the cell the brief asks to be interrupted for, so it is the
+// one most likely to be edited by hand into a curated list later. This pins it to its definition:
+// every row in it satisfies both predicates, and it is no larger than either column. RED case:
+// replace the filter with an authored list.
+fn the_interrupt_cell_is_exactly_its_two_predicates() -> std.types.Bool {
+  let cell = gunbc.bare_name_identity_consumer_census.census_reachable_and_wrong_today()
+  (cell |> all(c => gunbc.bare_name_identity_consumer_census.consumer_reach_is_measured(c: c) && gunbc.bare_name_identity_consumer_census.consumer_answers_wrongly_today(c: c)))
+    && (cell |> count) <= gunbc.bare_name_identity_consumer_census.census_measured_reach_count()
+    && (cell |> count) <= gunbc.bare_name_identity_consumer_census.census_wrong_answer_today_count()
+}
+
+test fn sibling_claim_has_an_identity_to_feed_it() -> std.types.Bool {
+  every_sibling_claim_has_an_identity_to_feed_it()
+}
+
+test fn member_has_at_least_one_call_site() -> std.types.Bool {
+  every_member_has_at_least_one_call_site()
+}
+
+test fn derived_counts_bounded_by_roster() -> std.types.Bool {
+  derived_counts_are_bounded_by_the_roster()
+}
+
+test fn interrupt_cell_is_exactly_its_two_predicates() -> std.types.Bool {
+  the_interrupt_cell_is_exactly_its_two_predicates()
+}

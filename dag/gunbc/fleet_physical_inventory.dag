@@ -29,13 +29,26 @@ data switch_01: product.placement_supply.PhysicalAssetIdentity = "switch-01" as 
 data pdu_01: product.placement_supply.PhysicalAssetIdentity = "pdu-01" as product.placement_supply.PhysicalAssetIdentity
 data pi_controller: product.placement_supply.PhysicalAssetIdentity = "pi-controller" as product.placement_supply.PhysicalAssetIdentity
 
-data host_srv1: product.placement_supply.HostIdentity = "srv1" as product.placement_supply.HostIdentity
-data host_srv2: product.placement_supply.HostIdentity = "srv2" as product.placement_supply.HostIdentity
-data host_srv3: product.placement_supply.HostIdentity = "srv3" as product.placement_supply.HostIdentity
-data host_srv4: product.placement_supply.HostIdentity = "srv4" as product.placement_supply.HostIdentity
-data host_srv5: product.placement_supply.HostIdentity = "srv5" as product.placement_supply.HostIdentity
-data host_srv6: product.placement_supply.HostIdentity = "srv6" as product.placement_supply.HostIdentity
 
+// THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
+// They declared "srv1" through "srv6" as product.placement_supply.HostIdentity, byte-for-byte the values
+// gunbc.fleet_intent_network already declares as operator_host_srv1 through operator_host_srv6.
+// Two names, one concept, one set of values -- the section 3 nicknaming violation, and the reason
+// nothing ever caught it is that the two agreed EXACTLY. Any check anyone thought to write would
+// have compared them and passed. A fork of VALUES rather than of behaviour is invisible to
+// comparison, and these two authorings were never once in the same scope, so no site existed at
+// which the duplication could have been noticed at all.
+//
+// THE BRAND DID NOT HELP, AND THE REASON IS SHARPER THAN THE BRAND BEING WEAK. product.placement_supply.HostIdentity is a
+// branded NonEmptyStr and BOTH authorings used it. A brand constrains what a value IS; it cannot
+// require that a value be authored ONCE, because nothing compels a would-be author to reach for an
+// existing declaration rather than write a new one of the same type. The brand made both
+// declarations look deliberate.
+//
+// WHAT THIS MODULE OWNS IS PHYSICAL FACTS, NOT IDENTITY. The rows below key spatial facts, chassis
+// containment, cooling realizations, and DIMM and processor expectations BY host -- the identity is
+// an INDEX into this module's facts, never a fact this module establishes. That is why the repoint
+// is mechanical and why no verdict moves: nothing here reads a property OF the identity.
 data srv1_chassis_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: chassis_srv1,
   catalog: std.decl_ref.DeclarationRef {
@@ -73,7 +86,7 @@ data rack_01_unobserved_residence: product.placement_supply.RackResidence = Rack
 
 data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> = [
   product.placement_supply.HostSpatialFacts {
-    host: host_srv1,
+    host: operator_host_srv1,
     asset: chassis_srv1,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterAbsent,
@@ -81,7 +94,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     bootstrap_need: BootstrapNotNeeded,
   },
   product.placement_supply.HostSpatialFacts {
-    host: host_srv2,
+    host: operator_host_srv2,
     asset: chassis_srv2,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
@@ -89,7 +102,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     bootstrap_need: BootstrapNotNeeded,
   },
   product.placement_supply.HostSpatialFacts {
-    host: host_srv3,
+    host: operator_host_srv3,
     asset: chassis_srv3,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
@@ -97,7 +110,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     bootstrap_need: BootstrapNotNeeded,
   },
   product.placement_supply.HostSpatialFacts {
-    host: host_srv4,
+    host: operator_host_srv4,
     asset: chassis_srv4,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
@@ -105,7 +118,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     bootstrap_need: BootstrapNotNeeded,
   },
   product.placement_supply.HostSpatialFacts {
-    host: host_srv5,
+    host: operator_host_srv5,
     asset: chassis_srv5_placeholder,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
@@ -113,7 +126,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     bootstrap_need: BootstrapNeeded,
   },
   product.placement_supply.HostSpatialFacts {
-    host: host_srv6,
+    host: operator_host_srv6,
     asset: chassis_srv6_placeholder,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
@@ -159,8 +172,8 @@ data srv4_cooler_asset: product.placement_supply.PhysicalAsset = product.placeme
 }
 
 data installed_cooler_containments: List<product.placement_supply.PhysicalContainment> = [
-  product.placement_supply.HostContainsComponent { host: host_srv3, component: cooler_srv3 },
-  product.placement_supply.HostContainsComponent { host: host_srv4, component: cooler_srv4 },
+  product.placement_supply.HostContainsComponent { host: operator_host_srv3, component: cooler_srv3 },
+  product.placement_supply.HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
 ]
 
 // srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and
@@ -169,14 +182,14 @@ data installed_cooler_containments: List<product.placement_supply.PhysicalContai
 // obligation stays loud instead of defaulting to a pass.
 data installed_cooling_realizations: List<product.cooling_qualification.InstalledCoolingRealization> = [
   product.cooling_qualification.InstalledCoolingRealization {
-    host: host_srv3,
+    host: operator_host_srv3,
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: srv3_baseboard.catalog.model,
   },
   product.cooling_qualification.InstalledCoolingRealization {
-    host: host_srv4,
+    host: operator_host_srv4,
     cooler_asset: cooler_srv4,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
@@ -230,47 +243,47 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 // ---------------------------------------------------------------------------
 
 data fleet_dimm_expectations: List<product.installed_bom_reconcile.HostDimmExpectation> = [
-  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
 ]
 
 data srv1_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
-  host: host_srv1,
+  host: operator_host_srv1,
   rows: srv1_memory_population.rows,
 }
 
 data srv2_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
-  host: host_srv2,
+  host: operator_host_srv2,
   rows: srv2_memory_population.rows,
 }
 
 data srv3_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
-  host: host_srv3,
+  host: operator_host_srv3,
   rows: srv3_memory_population.rows,
 }
 
 data srv4_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmObservationAbsent {
-  host: host_srv4,
+  host: operator_host_srv4,
   cause: "no per-DIMM read of srv4 exists at either grain: the BMC Redfish read of 192.168.1.195 was never authenticated (gunbc.fleet_intent srv4_memory_population_deferral) and no dmidecode receipt has been supplied",
 }
 
 data fleet_dimm_verdicts: List<product.installed_bom_reconcile.DimmReconcileVerdict> = [
   dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv1_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv2_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv3_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
     observation: srv4_dimm_observation,
   ),
 ]
@@ -282,37 +295,37 @@ data fleet_dimm_verdicts: List<product.installed_bom_reconcile.DimmReconcileVerd
 // four rows below say so, and they are what a dmidecode -t processor receipt
 // dissolves.
 data fleet_processor_expectations: List<product.installed_bom_reconcile.HostProcessorExpectation> = [
-  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
+  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
 ]
 
 data fleet_processor_observation_absent_cause: std.types.NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
 
 data fleet_processor_observations: List<product.installed_bom_reconcile.HostProcessorObservation> = [
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
+  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
 ]
 
 data fleet_processor_verdicts: List<product.installed_bom_reconcile.ProcessorReconcileVerdict> = [
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
+    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
   ),
 ]
 
@@ -375,10 +388,10 @@ type FleetLotAllocationIntent {
 }
 
 data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
-  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv1, intended_quantity: 8 },
-  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv2, intended_quantity: 8 },
-  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv3, intended_quantity: 8 },
-  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv4, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv1, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv2, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv3, intended_quantity: 8 },
+  FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv4, intended_quantity: 8 },
 ]
 
 fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> std.nat.Nat {

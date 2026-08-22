@@ -172,20 +172,15 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: std.types.SourceSpan }
   | OccurrenceTransportViolation { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: std.types.SourceSpan }
-  | UseLineCandidateRefused { name: String, cause: UseLineCandidateRefusalCause, span: std.types.SourceSpan }
-
-// The three ways a use-line candidate can fail to reach a synthesized use-line.
-// They are separate arms rather than one counter because they are different
-// deficits with different repairs: a name the registry cannot resolve at all, a
-// name whose registry row points back at the consuming module, and a name whose
-// provider is known but whose export surface does not prove it. A single total
-// over the three would reproduce, one level up, exactly the state-space
-// conflation the split exists to remove -- and there is deliberately no residual
-// arm, because an "other" bucket is where the next uncounted class hides.
-type UseLineCandidateRefusalCause
-  = UseLineRegistryResolveFailed
-  | UseLineRegistryResolvesToSelf
-  | UseLineProviderExportProofUnproven
+  | TransportEmissionNotModeled {
+      transport_kind: String,
+      service: String,
+      operation: String,
+      declaring_module: String,
+      target: String,
+      missing_realization_fact: String,
+      span: std.types.SourceSpan
+    }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -328,6 +323,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
         Absent => no_span()
       }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
   }
 }
 
@@ -402,6 +398,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
       concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
+      concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
   }
 }
 

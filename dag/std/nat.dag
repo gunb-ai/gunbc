@@ -42,3 +42,34 @@ fn nat_max(a: Nat, b: Nat) -> Nat {
 fn nat_min(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
+
+// AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat
+// rather than beside any consumer because the run is a fact about the naturals, not about runner
+// slots or DRAM channels; two consumers had each open-coded it as a bucket over hardcoded literal
+// lists, and both buckets were stranded at the widths their author happened to enumerate.
+//
+// AN EMPTY RUN IS AN ANSWER, NOT AN ABSENCE. lo > hi means the run between them is genuinely
+// empty -- there is no naturals-shaped question this function cannot express, so it never needs a
+// could-not-say arm and a caller reading [] here is reading a computed emptiness. That is the
+// property the bucketed forms did not have: they returned [] both for a genuinely empty run and
+// for a width they could not spell, which is the empty-observation narrow DESIGN section 5 names.
+// Callers that must distinguish "no work" from "cannot express the work" must not get that
+// distinction from this function; it has only the first meaning.
+// THE ACCUMULATOR IS THE COST SHAPE AND IT IS NOT INCIDENTAL. The naive form,
+// concat([lo], nat_range_inclusive(lo + 1, hi)), is QUADRATIC on this runtime: rc_list_concat
+// extends its LEFT operand by cloning every element of its RIGHT one, so consing a singleton onto
+// the recursive tail copies the whole tail at every step. Accumulating the other way round makes
+// the long list the left operand and the singleton the right, which clones one element per step.
+// DESIGN section 6 fixes a proven cost-shape defect regardless of the realized n -- n is 7 here
+// today, but a run of naturals is substrate and its n is whatever a future caller wants.
+fn nat_range_inclusive(lo: Nat, hi: Nat) -> List<Nat> {
+  nat_range_accumulate(lo: lo, hi: hi, acc: [])
+}
+
+fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
+  if lo > hi {
+    acc
+  } else {
+    nat_range_accumulate(lo: lo + 1, hi: hi, acc: concat(acc, [lo]))
+  }
+}

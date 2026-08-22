@@ -14,14 +14,14 @@ type CompilePoolEnsureRefusal
 
 type EnsureCompilePoolAdmission
   = EnsureCompilePoolAlreadyConverged { slice_unit: std.types.NonEmptyStr, sized_bytes: std.measure.ByteSize }
-  | EnsureCompilePoolAdmitted { slice_unit: std.types.NonEmptyStr, sized_bytes: std.measure.ByteSize, slice_lines: List<String> }
+  | EnsureCompilePoolAdmitted { slice_unit: std.types.NonEmptyStr, sized_bytes: std.measure.ByteSize, slice_unit_file: SystemdUnitFile }
   | EnsureCompilePoolRefused { reason: CompilePoolEnsureRefusal }
 
 data cache_placement_unknown_refuses_note: String = "A SERVER WHOSE PLACEMENT CANNOT BE ESTABLISHED IS NOT A CONVERGED SERVER, and ensuring a compile pool beside it would be deciding to parent every cache-miss compiler under a slice whose sibling cache endpoint may still be runner-owned or unread. ServerPlacementUnknown therefore refuses BEFORE slice observation is consulted — the same ordering build_cache_ensure uses for placement-unknown before path state, and for the same reason: unknown is not a positive reading that permits host mutation."
 
 type EnsureCompilePoolAdmissionFold<R> {
   already_converged: fn(std.types.NonEmptyStr, ByteSize) -> R
-  admitted: fn(std.types.NonEmptyStr, ByteSize, List<String>) -> R
+  admitted: fn(std.types.NonEmptyStr, ByteSize, SystemdUnitFile) -> R
   refused: fn(CompilePoolEnsureRefusal) -> R
 }
 
@@ -32,8 +32,8 @@ fn ensure_compile_pool_admission_fold<R>(
   match admission {
     EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: b } =>
       fold.already_converged(u, b)
-    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: b, slice_lines: lines } =>
-      fold.admitted(u, b, lines)
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: b, slice_unit_file: f } =>
+      fold.admitted(u, b, f)
     EnsureCompilePoolRefused { reason: r } => fold.refused(r)
   }
 }
@@ -79,7 +79,7 @@ fn ensure_compile_pool_slice_from_observation(
           EnsureCompilePoolAdmitted {
             slice_unit: declared as std.types.NonEmptyStr,
             sized_bytes: sized,
-            slice_lines: render_compile_pool_slice(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
+            slice_unit_file: compile_pool_slice_unit_file(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
           }
         CompilePoolSliceObserved { slice_unit: obs, limits: _ } =>
           match (obs as String) == declared {
@@ -94,7 +94,7 @@ fn ensure_compile_pool_slice_from_observation(
               EnsureCompilePoolAdmitted {
                 slice_unit: declared as std.types.NonEmptyStr,
                 sized_bytes: sized,
-                slice_lines: render_compile_pool_slice(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
+                slice_unit_file: compile_pool_slice_unit_file(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
               }
           }
       }

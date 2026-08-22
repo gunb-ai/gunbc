@@ -24,7 +24,7 @@ type EnsureBuildCacheAdmission
   | EnsureBuildCacheAdmitted {
       desired: gunbc.build_cache_instance.BuildCacheInstance
       preflight: EndpointPreflight
-      unit_lines: List<String>
+      unit_file: SystemdUnitFile
     }
   | EnsureBuildCacheRefused { instance: gunbc.build_cache_instance.BuildCacheInstance, reason: EnsureRefusal }
 
@@ -44,7 +44,7 @@ fn endpoint_preflight_fold<R>(preflight: EndpointPreflight, fold: EndpointPrefli
 
 type EnsureBuildCacheAdmissionFold<R> {
   already_converged: fn(BuildCacheInstance, std.types.NonEmptyStr) -> R
-  admitted: fn(BuildCacheInstance, EndpointPreflight, List<String>) -> R
+  admitted: fn(BuildCacheInstance, EndpointPreflight, SystemdUnitFile) -> R
   refused: fn(BuildCacheInstance, EnsureRefusal) -> R
 }
 
@@ -54,8 +54,8 @@ fn ensure_build_cache_admission_fold<R>(
 ) -> R {
   match admission {
     EnsureAlreadyConverged { desired, unit } => fold.already_converged(desired, unit)
-    EnsureBuildCacheAdmitted { desired, preflight, unit_lines } =>
-      fold.admitted(desired, preflight, unit_lines)
+    EnsureBuildCacheAdmitted { desired, preflight, unit_file } =>
+      fold.admitted(desired, preflight, unit_file)
     EnsureBuildCacheRefused { instance, reason } => fold.refused(instance, reason)
   }
 }
@@ -144,6 +144,8 @@ fn owned_but_not_serving(
   }
 }
 
+data admission_carries_a_unit_not_its_text_note: String = "THE ADMISSION DECIDES; IT DOES NOT SPELL. This arm carried unit_lines: List<String> -- the rendered systemd unit text -- so a value whose whole job is to answer 'may this ensure proceed, and under what preflight' also carried a serialized artifact of one particular realization. That is transport leaking into a semantic request: the same admission is the right answer whether the daemon is supervised by systemd, by a container runtime, or by something not yet written, and none of that changes whether the endpoint is clear to bind. Carrying the text made the decision unusable by any realization that does not spell systemd INI, and it put a second copy of the unit's bytes inside a decision type where nothing would ever compare it against the one the realizer installs.\n\nIt now carries a SystemdUnitFile: still systemd-specific, and deliberately so -- BuildCacheInstance names a .service unit and a .slice compile pool, so this vertical has exactly one realization family today and pretending otherwise would be modeling a choice nobody has. What changed is the GRAIN: a modeled unit is projectable, diffable and refusable, and its bytes are produced by extdeps.systemd.unit_file's single serializer at the moment of writing rather than frozen into the decision. When a second family exists, this field is what moves behind it; the rendered text could not have.\n\nStated plainly so the boundary is not overread: this change narrows what the REQUEST CARRIES and nothing else. It does not decide, and does not claim, anything about whether the realize path consumes this admission -- that is a separate lane's question, its answer moves independently of this row, and the authority for it is the next-consumer paragraph of the migration note above rather than this one. This row deliberately does not restate that status, because a second place asserting it is a second place for it to go stale."
+
 data placement_unknown_refuses_before_the_path_note: String = "ServerPlacementUnknown REFUSES RATHER THAN FALLING THROUGH TO THE PATH. The other four non-converged placements are all POSITIVE readings — a runner owns it, something unsupervised owns it, nothing owns it, or a managed unit that is not ours owns it — and in each of those the path state is the right next question, because we know we must act and only need to know whether the endpoint is clear. Unknown is not a reading at all: the observer could not classify the owner's cgroup. Proceeding on it would mean deciding to write and restart a unit on a host whose current state we failed to read, which is the absorbing fallback in its most expensive form — the widen here is not a rerun, it is a host mutation.\n\nThe distinction is worth the extra arm precisely because Unknown and Absent are easy to conflate: both mean 'we found no managed owner', but Absent means we LOOKED and there is none, while Unknown means the looking failed."
 
 fn ensure_from_path(
@@ -156,7 +158,7 @@ fn ensure_from_path(
       EnsureBuildCacheAdmitted {
         desired: desired,
         preflight: EndpointClearForBind,
-        unit_lines: render_build_cache_unit(instance: desired),
+        unit_file: build_cache_unit_file(instance: desired),
       }
     EndpointListening { owner: o } =>
       EnsureBuildCacheRefused { instance: desired, reason: EnsureEndpointOccupied { owner: o } }
@@ -180,7 +182,7 @@ fn ensure_from_path(
           EnsureBuildCacheAdmitted {
             desired: desired,
             preflight: EndpointClearedByUnlink { stale_detail: sd },
-            unit_lines: render_build_cache_unit(instance: desired),
+            unit_file: build_cache_unit_file(instance: desired),
           }
       }
   }

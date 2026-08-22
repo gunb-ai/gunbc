@@ -3,16 +3,25 @@ module test.claim.spark_managed_grant_reconcile_witness
 
 // srv6's actual listing shape, and the reason the reboot leg failed: linger is granted, reboot is
 // not, and nothing computed the difference.
-data srv6_listing_before: String = "Matching Defaults entries for gunbc-automation on srv6:\n    env_reset\n\nUser gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger\n"
+//
+// THESE TWO FIXTURES WERE WRONG, and the way they were wrong is the reason this file needed
+// changing. They were written from the model's own sudoers_command rather than captured from a
+// host, so they said "/usr/bin/loginctl enable-linger" with no subject -- a line srv5 and srv6 have
+// never held. A fixture derived from the thing it is supposed to be an oracle for cannot refute
+// that thing; it agrees with it by construction, including when it is wrong. Both now carry the
+// line measured on both hosts 2026-08-22 via `sudo -n -l`:
+//
+//     (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation
+data srv6_listing_before: String = "Matching Defaults entries for gunbc-automation on srv6:\n    env_reset\n\nUser gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n"
 
-data srv6_listing_after: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
+data srv6_listing_after: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
 
 test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   let missing = spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
   missing.length() == 1
     && any(missing, m => match m {
          RebootThisHost => true
-         EnableLingerForOwnAccount => false
+         EnableLingerForOwnAccount { subject: _ } => false
        })
 }
 
@@ -60,18 +69,70 @@ test fn nothing_to_install_does_not_imply_converged() -> Bool {
     && spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
 }
 
-// THE INSTALLED LINE AND THE ARGV COME FROM ONE ROW, which is the whole point of the carrier: the
-// sudoers entry authorizes exactly the command the actuator runs. Asserting the containment is what
-// makes a drift between them impossible to land silently.
+// The subject the live hosts actually grant. Named once so the assertions below join against one
+// value rather than each re-spelling the login.
+fn linger_grant() -> SparkManagedGrant {
+  EnableLingerForOwnAccount { subject: "gunbc-automation" as NonEmptyStr }
+}
+
+// THE LINE THIS REPOSITORY WOULD INSTALL, held against the line srv5 and srv6 ACTUALLY HOLD,
+// captured 2026-08-22 by `sudo -n -l` as the grantee. This is the oracle the old test lacked: an
+// independently observed string, not a second reading of the model.
+data measured_installed_linger_command: String = "/usr/bin/loginctl enable-linger gunbc-automation"
+data measured_installed_reboot_command: String = "/usr/bin/systemctl reboot"
+
+// THE OLD TEST HERE WAS VACUOUS AND ITS NAME CLAIMED OTHERWISE. It asserted
+//
+//     any(spark_managed_grant_argv(grant: g).skip(n: 2), w => string_contains(command, w))
+//
+// under the name the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs. An ANY over
+// substring containment: "loginctl" is inside "/usr/bin/loginctl enable-linger", so it passed. It
+// would have passed with the argv truncated to [sudo, -n, loginctl], with a bogus word appended, and
+// -- as it did for however long it stood -- with the subject account missing from both sides while
+// the hosts required it. "Exactly" was a word in an identifier over a body asserting almost nothing.
+//
+// The replacement joins at ARGV GRAIN and against the MEASURED line: every word of the argv after
+// `sudo -n` must appear in the command in order, and the command must equal what the host holds.
+test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
+  spark_managed_grant_sudoers_command(grant: linger_grant()) as String == measured_installed_linger_command
+    && spark_managed_grant_sudoers_command(grant: RebootThisHost) as String == measured_installed_reboot_command
+}
+
+// THE ARGV AND THE COMMAND ARE THE SAME WORDS, asserted as an equality over the word list rather
+// than as containment. The argv is `sudo -n <words>`; the command is those same <words> with the
+// binary made absolute. Reconstructing one from the other and comparing is what the old ANY could
+// not do.
 test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
-    let content = spark_managed_grant_sudoers_content(grant: g)
+    let words = spark_managed_grant_argv(grant: g).skip(n: 2)
     let command = spark_managed_grant_sudoers_command(grant: g) as String
+    let content = spark_managed_grant_sudoers_content(grant: g)
     acc
+      && spark_managed_grant_argv(grant: g).length() == words.length() + 2
+      && command == concat(systemd_binary_directory as String, concat("/", join(words, " ")))
       && string_contains(content, "gunbc-automation ALL=(root) NOPASSWD: ")
       && string_contains(content, command)
-      && any(spark_managed_grant_argv(grant: g).skip(n: 2), w => string_contains(command, w))
   })
+}
+
+// THE DISCRIMINATING RED. The pre-change spelling -- the subject dropped from the command -- must
+// FAIL the assertion above. Without this the new test could be as vacuous as the one it replaces and
+// nothing would say so: a test that greens a correct change is indistinguishable from one that
+// greens the next wrong change unless a known-wrong input is shown to red it.
+test fn the_pre_change_spelling_without_the_subject_is_refused() -> Bool {
+  let pre_change = "/usr/bin/loginctl enable-linger"
+  pre_change != measured_installed_linger_command
+    && !string_contains(pre_change, "gunbc-automation")
+    && spark_managed_grant_sudoers_command(grant: linger_grant()) as String != pre_change
+}
+
+// AND THE MIRROR OF IT ON THE ARGV, because the two halves of the fork failed differently: the
+// command dropped the subject, the argv dropped the subject AND the absolute path. An argv that
+// cannot execute under the installed grant must not be derivable.
+test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool {
+  join(spark_managed_grant_argv(grant: linger_grant()), " ")
+    == "sudo -n loginctl enable-linger gunbc-automation"
+    && join(spark_managed_grant_argv(grant: RebootThisHost), " ") == "sudo -n systemctl reboot"
 }
 
 // Narrow on every axis sudoers offers. A wildcard command would make the population decorative,
@@ -87,7 +148,7 @@ test fn no_grant_is_written_as_a_wildcard() -> Bool {
 // would differ from the first.
 test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
   spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String
-    != spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount) as String
+    != spark_managed_grant_dropin_path(grant: linger_grant()) as String
     && string_contains(spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String, "/etc/sudoers.d/")
 }
 
@@ -103,7 +164,7 @@ test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
 
 test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
   match spark_managed_grant_standing_from_outcome(
-    grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount,
+    grant: linger_grant(),
     outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before },
   ) {
     GrantHeld { grant: _ } => true

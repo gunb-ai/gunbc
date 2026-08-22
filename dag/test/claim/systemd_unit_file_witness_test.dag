@@ -216,3 +216,113 @@ test fn environment_and_environment_file_are_distinct_directives() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.EnvironmentFile { path: "/etc/x.env" as std.types.NonEmptyStr })
     != extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Environment { assignment: "/etc/x.env" as std.types.NonEmptyStr })
 }
+
+
+
+// THE ADDED DIRECTIVES RENDER SYSTEMD'S OWN NAMES, asserted one directive at a time rather than
+// through a rendered file, so a failure names which directive drifted instead of only that some
+// byte moved. `Before=` and `Requires=` are systemd.unit(5); `Slice=` is systemd.resource-control(5)
+// and is why that citation was added to this module's declared scope.
+test fn the_added_unit_directives_render_their_own_systemd_names() -> Bool {
+  systemd_unit_directive_line(directive: Before { target: "slices.target" as NonEmptyStr })
+      == "Before=slices.target"
+    && systemd_unit_directive_line(directive: Requires { target: "a.service" as NonEmptyStr })
+      == "Requires=a.service"
+}
+
+test fn the_slice_directive_renders_in_the_service_section() -> Bool {
+  systemd_service_directive_line(directive: ServiceSlice { name: "p.slice" as NonEmptyStr })
+    == "Slice=p.slice"
+}
+
+test fn each_slice_directive_renders_its_own_systemd_name() -> Bool {
+  systemd_slice_directive_line(directive: SliceMemoryMax { bytes: "17179869184" as NonEmptyStr })
+      == "MemoryMax=17179869184"
+    && systemd_slice_directive_line(directive: SliceMemoryHigh { bytes: "17179869184" as NonEmptyStr })
+      == "MemoryHigh=17179869184"
+}
+
+fn slice_sample() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc managed compile pool" as NonEmptyStr },
+      Before { target: "slices.target" as NonEmptyStr },
+    ],
+    slice: [
+      SliceMemoryMax { bytes: "17179869184" as NonEmptyStr },
+      SliceMemoryHigh { bytes: "17179869184" as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }
+}
+
+// EXACT BYTES for the new unit type, on the same reading as the keystone above: a slice file is
+// delivered to a host and compared byte-for-byte, so the claim is equality with a literal rather
+// than a shape check. The [Slice] header, the section order, the blank separator and the terminating
+// newline are all load-bearing and all asserted here at once.
+test fn a_slice_unit_file_serializes_to_exactly_these_bytes() -> Bool {
+  serialize_systemd_unit_file(file: slice_sample())
+    == "[Unit]\nDescription=gunbc managed compile pool\nBefore=slices.target\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=17179869184\n"
+}
+
+// THE DISCRIMINATING CONTROL FOR THE SECTION WALL, and it is a control rather than a restatement.
+//
+// The claim the section-scoped directive types make is that a slice unit CANNOT carry a [Service]
+// section and a service unit CANNOT carry a [Slice] one. That claim is not testable by constructing
+// the bad value -- it has no constructor, which is the whole point -- so what is asserted instead is
+// the observable consequence: the two unit types produce different section headers from the same
+// [Unit] section, and neither emits the other's. A serializer that fell back to one section renderer
+// for both arms would green a shape check and red this.
+test fn a_slice_unit_and_a_service_unit_emit_disjoint_sections() -> Bool {
+  let slice_text = serialize_systemd_unit_file(file: slice_sample())
+  let service_text = serialize_systemd_unit_file(file: sample())
+  string_contains(s: slice_text, pattern: "[Slice]")
+    && !string_contains(s: slice_text, pattern: "[Service]")
+    && string_contains(s: service_text, pattern: "[Service]")
+    && !string_contains(s: service_text, pattern: "[Slice]")
+}
+
+// THE LINE VIEW AND THE BYTES CANNOT DISAGREE, which is the property that let the build-cache render
+// stop keeping its own List<String> renderer. Asserted as an identity between the two projections
+// rather than by comparing each against a literal separately -- two literals can be updated together
+// and stay consistent while both drift from the code.
+test fn the_line_view_joins_back_to_exactly_the_serialized_bytes() -> Bool {
+  join(systemd_unit_file_lines(file: sample()), "\n") == serialize_systemd_unit_file(file: sample())
+    && join(systemd_unit_file_lines(file: slice_sample()), "\n")
+      == serialize_systemd_unit_file(file: slice_sample())
+}
+
+// A DROP-IN CARRIES THE SECTIONS IT WAS GIVEN AND NO OTHERS. The subset property is the reason the
+// type exists, so it is asserted directly: a unit-only fragment emits no [Service], a service-only
+// fragment emits no [Unit], and neither acquires an [Install] the way a whole unit file would.
+test fn a_drop_in_emits_only_the_sections_it_carries() -> Bool {
+  let unit_only = serialize_systemd_drop_in(
+    drop_in: SystemdDropIn {
+      sections: [DropInUnitSection { directives: [Requires { target: "c.service" as NonEmptyStr }] }],
+    },
+  )
+  let service_only = serialize_systemd_drop_in(
+    drop_in: SystemdDropIn {
+      sections: [
+        DropInServiceSection { directives: [ServiceSlice { name: "p.slice" as NonEmptyStr }] },
+      ],
+    },
+  )
+  unit_only == "[Unit]\nRequires=c.service\n"
+    && service_only == "[Service]\nSlice=p.slice\n"
+    && !string_contains(s: unit_only, pattern: "[Service]")
+    && !string_contains(s: service_only, pattern: "[Unit]")
+    && !string_contains(s: unit_only, pattern: "[Install]")
+}
+
+// AN EMPTY SECTION IS NOT AN ABSENT ONE, and this is the witness that keeps the section LIST from
+// being simplified back into a record of optional directive lists. A drop-in carrying an empty
+// [Service] emits the header; one carrying no service section at all emits nothing. Under a record
+// of lists both would be the empty list and these two artifacts would be indistinguishable.
+test fn an_empty_drop_in_section_is_distinct_from_an_absent_one() -> Bool {
+  let empty_service = serialize_systemd_drop_in(
+    drop_in: SystemdDropIn { sections: [DropInServiceSection { directives: [] }] },
+  )
+  let no_service = serialize_systemd_drop_in(drop_in: SystemdDropIn { sections: [] })
+  (empty_service == "[Service]\n") && (no_service == "") && (empty_service != no_service)
+}

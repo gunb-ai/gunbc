@@ -1,14 +1,13 @@
 module test.claim.fleet_converge_plan_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data witness_host_srv1: std.types.NonEmptyStr = "srv1" as std.types.NonEmptyStr
+data witness_host_srv1: v2.std.live_tree.std.types.NonEmptyStr = "srv1" as v2.std.live_tree.std.types.NonEmptyStr
 
-data witness_host_srv2: std.types.NonEmptyStr = "srv2" as std.types.NonEmptyStr
+data witness_host_srv2: v2.std.live_tree.std.types.NonEmptyStr = "srv2" as v2.std.live_tree.std.types.NonEmptyStr
 
-test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
+test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> std.types.Bool {
   let foreign = gunbc.host_axis_caps.CapMember {
-    dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as std.types.NonEmptyStr,
+    dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=1\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -25,17 +24,17 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
   }
 }
 
-test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
+test fn timer_retirement_plan_lists_removed_legacy_timer() -> std.types.Bool {
   let observed = [
-    gunbc.fleet_converge_plan.TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as std.types.NonEmptyStr },
+    gunbc.fleet_converge_plan.TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as v2.std.live_tree.std.types.NonEmptyStr },
   ]
   let plan = gunbc.fleet_converge_plan.timer_retirement_plan(observed: observed)
-  any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
+  any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m.unit_name as std.types.String == "ctrl-fleet-converge.timer"  _ => false })
 }
 
-test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
+test fn plan_artifact_hash_is_stable_for_fixed_observation() -> std.types.Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -68,9 +67,9 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
   }
 }
 
-test fn observed_baseline_cas_refuses_after_drift() -> Bool {
+test fn observed_baseline_cas_refuses_after_drift() -> std.types.Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -82,7 +81,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
   ) {
     Present { value: artifact } => {
       let drifted = gunbc.host_axis_caps.CapMember {
-        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
       !gunbc.fleet_converge_plan.fleet_converge_observed_baseline_matches(
@@ -97,7 +96,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
   }
 }
 
-test fn plan_body_names_subject_host_and_generation() -> Bool {
+test fn plan_body_names_subject_host_and_generation() -> std.types.Bool {
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 4,
@@ -115,9 +114,9 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
   }
 }
 
-test fn cross_host_apply_refuses_subject_identity() -> Bool {
+test fn cross_host_apply_refuses_subject_identity() -> std.types.Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -139,9 +138,9 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
   }
 }
 
-test fn same_host_different_generation_changes_plan_hash() -> Bool {
+test fn same_host_different_generation_changes_plan_hash() -> std.types.Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -174,7 +173,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
   }
 }
 
-test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
+test fn second_concurrent_apply_refuses_generation_gate() -> std.types.Bool {
   let prior = 5
   let planned = 6
   gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
@@ -182,9 +181,9 @@ test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
     && gunbc.fleet_converge_plan.fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
 }
 
-test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
+test fn member_set_fingerprint_mismatch_refuses_identity() -> std.types.Bool {
   let observed_cap = gunbc.host_axis_caps.CapMember {
-    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
@@ -196,11 +195,11 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
   ) {
     Present { value: artifact } => {
       let drifted = gunbc.host_axis_caps.CapMember {
-        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as v2.std.live_tree.std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
       !gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
-        planned_fingerprint_text: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+        planned_fingerprint_text: v2.std.live_tree.std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as std.types.String,
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [drifted],
@@ -211,17 +210,17 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
   }
 }
 
-test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
+test fn plan_content_hash_path_is_apply_interlock_sidecar() -> std.types.Bool {
   gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
 }
 
-test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
+test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> std.types.Bool {
   string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_content.hex")
     && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
     && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "apply.sh")
 }
 
-test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
+test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> std.types.Bool {
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
@@ -240,13 +239,13 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
             plan_body: artifact.plan_body,
             apply_shell: artifact.apply_shell,
             spark_typed_actions_wire: "",
-            claimed_hex: hex as String,
+            claimed_hex: hex as std.types.String,
           )
             && !gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
               plan_body: artifact.plan_body,
               apply_shell: concat(artifact.apply_shell, "# tamper"),
               spark_typed_actions_wire: "",
-              claimed_hex: hex as String,
+              claimed_hex: hex as std.types.String,
             )
         Absent => false
       }
@@ -254,7 +253,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
   }
 }
 
-test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
+test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> std.types.Bool {
   match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "42") {
     Present { value: n } => n == 42
     Absent => false
@@ -273,39 +272,126 @@ test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
     }
 }
 
-test fn generation_from_store_content_missing_is_zero_corrupt_refuses() -> Bool {
-  match gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: false, content: "") {
-    Present { value: 0 } => true
+// THE THREE STATES ARE THREE VALUES, and this is the RED that the old two-valued reader could not
+// express: an absent store and a present-unreadable one used to be the same answer, and that
+// answer was a number. Here they are different variants, and neither of the not-observed ones
+// carries a generation at all.
+test fn generation_observation_separates_absent_from_unreadable() -> std.types.Bool {
+  match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: false, content: "") {
+    gunbc.fleet_converge_plan.GenerationStoreAbsent => true
     _ => false
   }
-    && match gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: true, content: "garbage") {
-      Absent => true
-      Present { value: _ } => false
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "garbage") {
+      gunbc.fleet_converge_plan.GenerationUnobserved { reason: _ } => true
+      _ => false
+    }
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "7") {
+      gunbc.fleet_converge_plan.GenerationObserved { generation: n } => n == 7
+      _ => false
     }
 }
 
-test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
+// The decision, not the read, is where "no store yet" becomes a number — and an unreadable store
+// never becomes one.
+test fn generation_admission_admits_absent_as_first_and_refuses_unreadable() -> std.types.Bool {
+  match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+    observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: false, content: ""),
+  ) {
+    gunbc.fleet_converge_plan.GenerationAdmitted { generation: n } => n == gunbc.fleet_converge_plan.fleet_converge_first_generation
+    gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => false
+  }
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+      observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "garbage"),
+    ) {
+      gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => true
+      gunbc.fleet_converge_plan.GenerationAdmitted { generation: _ } => false
+    }
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+      observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "9"),
+    ) {
+      gunbc.fleet_converge_plan.GenerationAdmitted { generation: n } => n == 9
+      gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => false
+    }
+}
+
+test fn locked_apply_script_serializes_generation_under_flock() -> std.types.Bool {
   let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
-  string_contains(s: script, pattern: "flock -x")
-    && string_contains(s: script, pattern: "[ \"$CURRENT\" != \"4\" ]")
-    && string_contains(s: script, pattern: "LeaseGenerationStale planned=5")
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: script, pattern: "flock")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
     && string_contains(s: script, pattern: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path)
+    && inner != gunbc.fleet_converge_plan.fleet_converge_locked_apply_emit_refused_poison
+    && script != gunbc.fleet_converge_plan.fleet_converge_locked_apply_emit_refused_poison
 }
 
-test fn subject_host_matches_same_host() -> Bool {
+// THE INNER PROGRAM ENTERS THE OUTER ONE AS A WORD, NOT AS SPLICED TEXT, and that is what these
+// two assert. The inner body appears in the outer script only under the serializer's own
+// encoding, so the raw inner text — which is what a hand-typed `bash -c '` ++ inner ++ `'` would
+// have produced — is NOT a substring of the emitted script. That second clause is the RED: it
+// fails the moment anyone reintroduces the splice.
+test fn locked_apply_inner_program_is_quoted_not_spliced() -> std.types.Bool {
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: script, pattern: extdeps.posix.shell_command_language.posix_single_quote(spelling: inner))
+    && !string_contains(s: script, pattern: concat("'", concat(inner, "'")))
+}
+
+// THE EMITTED GUARD MUST NOT CARRY THE COERCION THE MODEL REFUSES. `|| echo 0` and a discarded
+// stderr on the store read are exactly the two spellings that turned an unreadable store into
+// generation zero; the default now comes from gunbc.fleet_converge_plan.fleet_converge_first_generation and the store is
+// read only where it exists.
+test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> std.types.Bool {
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  !string_contains(s: inner, pattern: "|| echo 0")
+    && !string_contains(s: inner, pattern: "2>/dev/null")
+    && string_contains(s: inner, pattern: "-e")
+    && string_contains(s: inner, pattern: to_string(gunbc.fleet_converge_plan.fleet_converge_first_generation))
+}
+
+// The operands the emitted comparison uses are the modelled ones. The comparison is still spelled
+// twice (see fleet_converge_locked_apply_current_var's note); this witness is what keeps the two
+// spellings from drifting apart silently.
+test fn locked_apply_guard_compares_the_modelled_prior_generation() -> std.types.Bool {
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: inner, pattern: to_string(4))
+    && string_contains(s: inner, pattern: "planned=5")
+    && !gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 5)
+    && gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 4)
+}
+
+test fn subject_host_matches_same_host() -> std.types.Bool {
   gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv1)
 }
 
-test fn subject_host_matches_refuses_cross_host() -> Bool {
+test fn subject_host_matches_refuses_cross_host() -> std.types.Bool {
   !gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv2)
 }
 
-test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
+test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> std.types.Bool {
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
@@ -322,4 +408,17 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
         && !string_contains(s: artifact.apply_shell, pattern: "/etc/systemd/system/")
     Absent => false
   }
+}
+
+// The stale diagnostic names the observed generation as ONE word. Split across two echo
+// arguments it renders `observed= 4`, which reads as an empty observation followed by a
+// number — precisely the confusion this PR removes from the guard itself (review 54519).
+test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> std.types.Bool {
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
+  )
+  !string_contains(s: inner, pattern: "observed= ")
+    && string_contains(s: inner, pattern: "observed=")
 }

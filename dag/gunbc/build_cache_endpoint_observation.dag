@@ -51,20 +51,6 @@ fn build_cache_ci_placement_observation(host: product.placement_supply.HostIdent
   )
 }
 
-fn build_cache_ci_endpoint_unavailable_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match build_cache_ci_endpoint_observation(host: h) {
-        EndpointObservationUnavailable { instance: _, reason: _ } => true
-        _ => false
-      },
-  ).length()
-}
-
-fn build_cache_ci_endpoint_fleet_unavailable_count() -> Int {
-  build_cache_ci_endpoint_unavailable_count(hosts: fleet_subsumption_hosts)
-}
 
 fn build_cache_ci_placement_unknown_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(

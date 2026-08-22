@@ -189,14 +189,41 @@ type SparkGrantOutcome
   | GrantAbsent { detail: String }
   | GrantProbeRefused { cause: String }
 
+// THE SUBJECT IS CARRIED IN THE VARIANT, and the account axis is why. `loginctl enable-linger`
+// takes the account whose linger is being enabled; `systemctl reboot` takes nothing, because it
+// reboots the host the grant is installed on. A grant authority parameterized by a subject
+// UNIFORMLY would put an account on reboot, authorizing an argument sudo would then refuse to
+// match. Carrying it per-variant makes that arity difference structural instead of something every
+// derivation below has to remember.
+//
+// It also makes the variant's own name answerable. "ForOwnAccount" was a claim living in an
+// identifier that nothing could check: with no subject in the value there was no account to
+// compare the executor's login against. Whether subject equals the executor's own login is now a
+// question the model can be asked. This change does not ask it -- it stops the question being
+// unaskable.
 type SparkManagedGrant
-  = EnableLingerForOwnAccount
+  = EnableLingerForOwnAccount { subject: NonEmptyStr }
   | RebootThisHost
 
+// THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
+// "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
+// ["loginctl", "enable-linger"], and NEITHER carried the subject account. Measured against srv5 and
+// srv6 on 2026-08-22, the installed grant is
+//
+//     (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation
+//
+// and `sudo -n -l loginctl enable-linger` is REFUSED on both hosts while the same argv with the
+// subject appended is ALLOWED. So the argv this module derived could not execute under the grant
+// this module installs, and the grant this module installs is narrower than the one the hosts hold.
+//
+// Both now fold the same upstream rows -- extdeps.systemd.loginctl and .systemctl own each binary's
+// name, path and verb -- so the absolute/bare divergence and the subject divergence are no longer
+// two functions remembering to agree. Absolute for the sudoers Cmnd_Spec, bare for the argv, one
+// authority for both, because that is one binary rendered for two consumers and not two facts.
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount => "/usr/bin/loginctl enable-linger" as std.types.NonEmptyStr
-    RebootThisHost => "/usr/bin/systemctl reboot" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
+    RebootThisHost => systemctl_reboot_command()
   }
 }
 
@@ -206,21 +233,21 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> std.types.List<String> 
   concat(
     ["sudo", "-n"],
     match grant {
-      EnableLingerForOwnAccount => ["loginctl", "enable-linger"]
-      RebootThisHost => ["systemctl", "reboot"]
+      EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_argv(subject: s)
+      RebootThisHost => systemctl_reboot_argv()
     },
   )
 }
 
 fn spark_managed_grant_wire(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount => "enable-linger for this account only" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount { subject: _ } => "enable-linger for this account only" as std.types.NonEmptyStr
     RebootThisHost => "reboot this host" as std.types.NonEmptyStr
   }
 }
 
 data spark_managed_grant_population: std.types.List<SparkManagedGrant> = [
-  EnableLingerForOwnAccount,
+  EnableLingerForOwnAccount { subject: spark_managed_executor_login as std.types.NonEmptyStr },
   RebootThisHost,
 ]
 
@@ -239,7 +266,10 @@ fn derive_spark_bootstrap_plan(
         more: [
           InstallFleetAuthorizedKey { occurrence: m, public_material_identity: fleet_public_material_identity },
           ProveKeyOnlyAuthentication { occurrence: m },
-          InstallNarrowPrivilegeGrant { occurrence: m, grant: EnableLingerForOwnAccount },
+          InstallNarrowPrivilegeGrant {
+            occurrence: m,
+            grant: EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
+          },
           InstallNarrowPrivilegeGrant { occurrence: m, grant: RebootThisHost },
           CreateNoLoginServiceIdentity {
             occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: h, principal: gunbc.fleet_posix_accounts.FleetAccountInferenceService },

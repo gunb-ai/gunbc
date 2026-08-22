@@ -48,6 +48,20 @@ data systemd_exec_directive_authority: extdeps.external_authority.ExternalAuthor
   }
 }
 
+// Slice=, MemoryMax= and MemoryHigh= belong to none of the three subjects above. systemd.unit owns
+// [Unit] and [Install], systemd.service owns [Service]'s execution directives, and systemd.exec owns
+// the execution environment -- but the cgroup RESOURCE CONTROL vocabulary is its own upstream
+// specification, and it is the one that defines both the slice a service joins and the memory limits
+// a [Slice] unit carries. Adding those directives without adding this citation would claim a grammar
+// wider than the declared scope, which is the extdeps citation duty (DESIGN section 3), not
+// bookkeeping.
+data systemd_resource_control_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html"
+  }
+}
+
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
@@ -61,6 +75,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     systemd_service_directive_authority,
     systemd_timer_directive_authority,
     systemd_exec_directive_authority,
+    systemd_resource_control_directive_authority,
   ]
 }
 
@@ -81,7 +96,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
 type SystemdUnitDirective
   = Description { text: std.types.NonEmptyStr }
   | After { target: std.types.NonEmptyStr }
+  | Before { target: std.types.NonEmptyStr }
   | Wants { target: std.types.NonEmptyStr }
+  | Requires { target: std.types.NonEmptyStr }
 
 type SystemdServiceDirective
   = ServiceType { mode: std.types.NonEmptyStr }
@@ -92,6 +109,7 @@ type SystemdServiceDirective
   | WorkingDirectory { path: std.types.NonEmptyStr }
   | ServiceUser { name: std.types.NonEmptyStr }
   | ServiceGroup { name: std.types.NonEmptyStr }
+  | ServiceSlice { name: std.types.NonEmptyStr }
 
 // `ServiceUser`/`ServiceGroup` follow `ServiceType`'s precedent exactly, and for the same reason it
 // exists: `User` and `Group` are words this corpus uses for other subjects, and the wire name is
@@ -122,6 +140,21 @@ type SystemdInstallDirective
   = WantedBy { target: std.types.NonEmptyStr }
   | RequiredBy { target: std.types.NonEmptyStr }
 
+// A [Slice] UNIT'S DIRECTIVES. `MemoryMax=` is the hard ceiling the kernel enforces on the cgroup;
+// `MemoryHigh=` is a throttling watermark the kernel permits to be exceeded. They are two directives
+// with two meanings, so they are two variants rather than one `MemoryLimit { key, value }` -- fusing
+// them would put the difference between a bound and a watermark back into a string, and a consumer
+// comparing an observed limit against a declared one has to know which of the two it read.
+//
+// They are deliberately NOT shared with [Service], even though systemd.resource-control permits both
+// directives in either section. That is this module's established reading, stated at
+// `SystemdUnitDirective`: one directive type per section, so a misplaced directive has no
+// representation. Sharing one resource-control type across both sections would buy a little reuse and
+// sell the property the whole module is built on.
+type SystemdSliceDirective
+  = SliceMemoryMax { bytes: NonEmptyStr }
+  | SliceMemoryHigh { bytes: NonEmptyStr }
+
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
 
@@ -129,7 +162,9 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
   match directive {
     Description { text: v } => join(["Description=", v as String], "")
     After { target: v } => join(["After=", v as String], "")
+    Before { target: v } => join(["Before=", v as String], "")
     Wants { target: v } => join(["Wants=", v as String], "")
+    Requires { target: v } => join(["Requires=", v as String], "")
   }
 }
 
@@ -143,6 +178,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
     ServiceUser { name: v } => join(["User=", v as String], "")
     ServiceGroup { name: v } => join(["Group=", v as String], "")
+    ServiceSlice { name: v } => join(["Slice=", v as String], "")
   }
 }
 
@@ -158,6 +194,13 @@ fn systemd_timer_directive_line(directive: SystemdTimerDirective) -> String {
     AccuracySec { duration: v } => join(["AccuracySec=", v as String], "")
     RandomizedDelaySec { duration: v } => join(["RandomizedDelaySec=", v as String], "")
     Persistent { enabled: v } => if v { "Persistent=true" } else { "Persistent=false" }
+  }
+}
+
+fn systemd_slice_directive_line(directive: SystemdSliceDirective) -> String {
+  match directive {
+    SliceMemoryMax { bytes: v } => join(["MemoryMax=", v as String], "")
+    SliceMemoryHigh { bytes: v } => join(["MemoryHigh=", v as String], "")
   }
 }
 
@@ -207,12 +250,19 @@ type SystemdUnitFile
       timer: List<SystemdTimerDirective>,
       install: SystemdInstallSection,
     }
+  | SliceUnitFile {
+      unit: List<SystemdUnitDirective>,
+      slice: List<SystemdSliceDirective>,
+      install: SystemdInstallSection,
+    }
 
 data systemd_unit_section_header: String = "[Unit]"
 
 data systemd_service_section_header: String = "[Service]"
 
 data systemd_timer_section_header: String = "[Timer]"
+
+data systemd_slice_section_header: String = "[Slice]"
 
 data systemd_install_section_header: String = "[Install]"
 
@@ -240,17 +290,27 @@ fn systemd_install_section_block(section: SystemdInstallSection) -> List<List<St
 // a final directive without a newline is the classic silently-truncated last line. Because an
 // already-delivered unit is observed by comparing bytes against exactly this output, both the
 // separators and the terminator are load-bearing for convergence, not cosmetic.
-fn systemd_sections_text(sections: List<List<String>>) -> String {
-  join(
-    fold(sections, init: [], f: (acc, section) => concat(acc, concat(section, [""]))),
-    "\n",
-  )
+fn systemd_section_lines(sections: List<List<String>>) -> List<String> {
+  fold(sections, init: [], f: (acc, section) => concat(acc, concat(section, [""])))
 }
 
-fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
+fn systemd_sections_text(sections: List<List<String>>) -> String {
+  join(systemd_section_lines(sections: sections), "\n")
+}
+
+// THE LINE VIEW AND THE BYTES ARE ONE ASSEMBLY READ AT TWO GRAINS, NOT TWO RENDERERS.
+//
+// Consumers exist that want to ask whether a unit declares a particular directive without comparing
+// whole files, and before this projection existed the only way to get one was to keep a second
+// hand-rolled renderer producing `List<String>` -- which is precisely how a product module becomes a
+// second systemd authority. So the section assembly is named once and `serialize_systemd_unit_file`
+// is defined as its join: a directive cannot appear in the line view and not in the bytes, or render
+// one way in one and another way in the other, because there is only one place either could come
+// from.
+fn systemd_unit_file_lines(file: SystemdUnitFile) -> List<String> {
   match file {
     ServiceUnitFile { unit: u, service: sv, install: inst } =>
-      systemd_sections_text(
+      systemd_section_lines(
         sections: concat(
           [
             concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
@@ -260,7 +320,7 @@ fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
         ),
       )
     TimerUnitFile { unit: u, timer: tm, install: inst } =>
-      systemd_sections_text(
+      systemd_section_lines(
         sections: concat(
           [
             concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
@@ -269,5 +329,70 @@ fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
           systemd_install_section_block(section: inst),
         ),
       )
+    SliceUnitFile { unit: u, slice: sl, install: inst } =>
+      systemd_section_lines(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_slice_section_header], map(sl, d => systemd_slice_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
   }
+}
+
+fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
+  join(systemd_unit_file_lines(file: file), "\n")
+}
+
+// A DROP-IN IS A FRAGMENT, NOT A UNIT, AND CONFLATING THE TWO WOULD BREAK THE COPRODUCT ABOVE.
+//
+// systemd.unit(5) specifies drop-in files under <unit>.d/: they carry any SUBSET of the sections a
+// unit file may carry, and they are merged over an existing unit rather than loaded as one. That is
+// why a drop-in cannot be a `SystemdUnitFile` arm. `SystemdUnitFile` is a coproduct over the unit
+// TYPE, and its whole guarantee is that the type decides which sections exist -- a `.service` has a
+// [Service], a `.slice` has a [Slice]. A fragment has no unit type at all, so admitting one as an arm
+// would mean adding a variant for which that guarantee is vacuously true, and the next reader would
+// reasonably conclude the guarantee had loosened for every other arm too.
+//
+// THE SECTION LIST IS WHAT MAKES "SUBSET" REPRESENTABLE, and it is why this is not a record of
+// optional sections. A drop-in that carries only [Service] and one that carries an EMPTY [Service]
+// are different artifacts -- the first says nothing about the section, the second emits a header --
+// and a record of lists cannot tell them apart, exactly as `SystemdInstallSection` above exists
+// because an empty list could not say whether a unit was installable. Absence here is absence from
+// the list; presence with nothing under it stays writable and stays distinct.
+//
+// The known-fragment kinds are enumerated rather than left open for the same reason the directive
+// vocabulary is: an unmodeled section should read as "not modeled yet", which is what adding an arm
+// fixes, rather than as a string a consumer may spell freely.
+type SystemdDropInSection
+  = DropInUnitSection { directives: List<SystemdUnitDirective> }
+  | DropInServiceSection { directives: List<SystemdServiceDirective> }
+
+type SystemdDropIn {
+  sections: List<SystemdDropInSection>
+}
+
+fn systemd_drop_in_section_block(section: SystemdDropInSection) -> List<String> {
+  match section {
+    DropInUnitSection { directives: ds } =>
+      concat([systemd_unit_section_header], map(ds, d => systemd_unit_directive_line(directive: d)))
+    DropInServiceSection { directives: ds } =>
+      concat([systemd_service_section_header], map(ds, d => systemd_service_directive_line(directive: d)))
+  }
+}
+
+// A drop-in serializes through the same section machinery as a whole unit -- same headers, same blank
+// separator, same terminating newline -- because systemd's parser is the same parser. Rendering a
+// fragment by a second route would be exactly the divergence this module exists to prevent, one
+// nesting level down.
+fn systemd_drop_in_lines(drop_in: SystemdDropIn) -> List<String> {
+  systemd_section_lines(
+    sections: map(drop_in.sections, sec => systemd_drop_in_section_block(section: sec)),
+  )
+}
+
+fn serialize_systemd_drop_in(drop_in: SystemdDropIn) -> String {
+  join(systemd_drop_in_lines(drop_in: drop_in), "\n")
 }

@@ -102,6 +102,14 @@ fn cap_upsert_stmts(m: gunbc.host_axis_caps.CapMember) -> List<Node> {
   ]
 }
 
+// WHAT THIS RENDERS IS READ BY A HUMAN, NOT RUN BY CONVERGE — and that changed on 2026-08-21
+// rather than always having been true. Its execution consumer was
+// gunbc.host_converge_realize's PerSlotMemoryCap arm, which is deleted; its remaining production
+// consumer is gunbc.fleet_converge_plan cap_apply_line, which renders these lines into plan.txt
+// for review and deliberately does NOT emit them into apply.sh
+// (fleet_converge_cap_apply_shell_note). The drop-in writes themselves are deploy-principal
+// authority. The rendering is still built as a modeled bash program rather than joined text,
+// because a line an operator may copy is a line that must be correct to copy.
 fn cap_upsert_script(m: gunbc.host_axis_caps.CapMember) -> String {
   cap_script_from_stmts(stmts: cap_upsert_stmts(m: m))
 }
@@ -207,16 +215,13 @@ fn derived_runner_memory_cap_members() -> List<gunbc.host_axis_caps.CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
-fn runner_memory_cap_author_stmts() -> List<Node> {
-  concat(
-    cap_upsert_stmts(m: derived_runner_memory_max_cap_member()),
-    cap_upsert_stmts(m: derived_runner_memory_high_cap_member()),
-  )
-}
-
-fn runner_memory_cap_author_script() -> String {
-  cap_script_from_stmts(stmts: runner_memory_cap_author_stmts())
-}
+// runner_memory_cap_author_script AND runner_memory_cap_author_stmts WERE HERE. They rendered
+// both derived drop-ins as one converge-side authoring script, and after the converge apply arm
+// was deleted (2026-08-21) their only remaining readers were witnesses. Production code whose
+// only consumer is a test asserting it exists is not covered, it is unowned, so they are deleted
+// rather than kept for the witnesses' sake. The deploy-side authoring
+// (deploy_runner_memory_cap_author_script, which the live_deploy apply really emits) is
+// untouched, and the per-member cap_upsert_script survives for the plan.txt rendering below.
 
 fn cap_observed_contains_derived_member(observed: List<gunbc.host_axis_caps.CapMember>, derived: gunbc.host_axis_caps.CapMember) -> Bool {
   fold(observed, init: false, f: (acc, o) =>

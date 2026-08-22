@@ -34,11 +34,19 @@ func observe_host_short_wet() -> std.types.NonEmptyStr?
     ProcessRefused { exit_code: _, stderr: _ } => none  }
 }
 
-func observe_generation_store_wet() -> Int?
+// The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
+// (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
+// that invents a number.
+func observe_generation_store_wet() -> GenerationAdmission
   uses net: std.resources.Network
 {
   let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.fleet_converge_plan.fleet_converge_generation_store_path)
-  gunbc.fleet_converge_plan.fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
+  fleet_converge_generation_admission(
+    observation: fleet_converge_generation_observation(
+      store_present: read.success,
+      content: read.content,
+    ),
+  )
 }
 
 func observe_timer_members_wet() -> std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>
@@ -74,9 +82,8 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
     Present { value: host } => {
   let host_short = host as String
   match observe_generation_store_wet() {
-    Absent =>
-      std.process.exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
-    Present { value: prior_generation } => {
+    GenerationAdmissionRefused { reason: why } => std.process.exit_failure(reason: why)
+    GenerationAdmitted { generation: prior_generation } => {
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
   match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(

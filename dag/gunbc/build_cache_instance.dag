@@ -41,6 +41,15 @@ type RunnerSlotIdentity {
   slot_index: std.nat.Nat
 }
 
+// EQUALITY LIVES WITH THE IDENTITY IT IS ABOUT. Two consumers had each grown their own spelling --
+// runner_capacity_plan slot_identity_eq and runner_slot_allocation runner_slot_identity_equal --
+// which is one concept under two names, the nicknaming DESIGN section 3 forbids. Comparing on BOTH
+// coordinates is the substance: an equality blind to slot_index would report any slot on a host as
+// the host's fabric member.
+fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
+  (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
+}
+
 type RunnerSlotLifecycle
   = DesiredRunnerSlot
   | RetiredRunnerSlot

@@ -1,0 +1,379 @@
+module gunbc.quarantine_probe_disposition
+
+
+// WHICH MECHANISM HOLDS A QUARANTINE PROBE, DERIVED TOTALLY -- NOT "IS IT IN THE ROSTER".
+//
+// gunbc.explicit_witness_admission RECORDS that a witness is a known-red quarantine probe.
+// Recording is not gating: the required floor decides a probe's fate through
+// v2.workflow.floor_expected_red, and no relation between the two carriers is claimed by
+// either of them. An admission row can therefore assert known-red while nothing enforces it,
+// and the row reads as covered for as long as nobody joins the two by hand. That is the
+// AUTHORITY-SUBSTITUTION failure mode (DESIGN recurring failure modes, gunbc#8880): fact F
+// lives in carrier A, operation O is governed by carrier B, A is cited as evidence about O,
+// and only the arrow between them is missing.
+//
+// THE LIVE INSTANCE THIS MODULE WAS BUILT AGAINST, and it is the reason the guard is a JOIN
+// rather than a membership test: test.claim.legacy_test_behavior_disposition_acceptance_test
+// legacy_test_behavior_unclassified_frontier_is_zero carried a known-red admission row and was
+// PASSING on main. Nothing was red, nothing named it for removal, and the claim went quietly
+// true -- the quarantine's own removal path (a rostered row that passes reds the build) never
+// fired, because the row was never on that roster in the first place.
+//
+// WHY NOT THE OBVIOUS GUARD. "Every std.witness_admission.QuarantineProbeExpectRed admission must appear in
+// floor_expected_red" is the version this lane was first given and it is WRONG, measured: of
+// the 19 live rows, 6 are legitimately held by the route-gap machinery and 7 by the floor's
+// long-home decline, so that predicate produces 13 false positives on its first run and grows
+// one bolted-on exception per holder forever. DESIGN's own entry for this failure mode says
+// the fix is never a broad guard joining every A row to B, because that manufactures exactly
+// the entailment being invented. The question is not WHICH ROSTER holds the row; it is WHETHER
+// EXACTLY ONE DECLARED MECHANISM DOES.
+//
+// THE MEASURED PARTITION at 967b5bc1b92 (origin/main), 19 rows, exactly one holder each:
+// 5 FloorExpectedRedHeld, 6 RouteGapHeldNoVerdict, 7 NeverRunDeclinedByHomePolicy, 1 NeverRunDeclinedByLiveTreeRead,
+// 0 NeverRunPathExcluded, 0 held by nothing, 0 held by more than one.
+//
+// AND THE LIVE INSTANCE ABOVE IS NOT WHAT IT LOOKED LIKE, which is the finding this module was
+// actually built on. The lane's acceptance target was that the legacy row is PASSING and
+// therefore stale. It is not: its entry declares ReadsLiveTree, so the floor DECLINES it -- it
+// is never planned, never executed, and never in `passed`. Run directly
+// (`claim_batch --entry dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag
+// --function legacy_test_behavior_unclassified_frontier_is_zero`) it returns FAIL, exactly as
+// its admission row says. The deduction that made it look stale was sound in every step except
+// an unstated premise -- that a discovered identity is either planned or long-declined -- and
+// the floor's own receipt line names three arms. Deleting the row on that reading would have
+// discarded a live red control.
+data quarantine_probe_disposition_authority_note: v2.std.text.String = "The total disposition join over gunbc.explicit_witness_admission rows whose cadence is QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION, and refuses both of the ways that question can fail to have one answer: no mechanism holds it (the probe is not gated anywhere, so a green run says nothing about it) and more than one does (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION and none of the populations, and a caller that can only supply three of the four axes says so by what it passes rather than by the fold quietly assuming the fourth."
+
+// THE FOUR DECLARED HOLDERS, and the fold is total over them by construction.
+//
+// FloorExpectedRedHeld -- the identity is enrolled in v2.workflow.floor_expected_red, which
+// EXECUTES it every run and holds its failure as agreement. This is the only holder that keeps
+// the witness executing against its subject.
+//
+// RouteGapHeldNoVerdict -- the identity is enrolled in v2.workflow.floor_route_gap: it executes and
+// reaches a host effect the hermetic route has no arm for, so it produces no verdict at all.
+// A route gap is NOT the enrolled failure and the two rosters are different axes; a probe held
+// here is held against a claim that never reached its subject, which is weaker than the arm
+// above and is why the two are named apart rather than summed.
+//
+// NeverRunDeclinedByHomePolicy -- the identity's authored module name begins with one of the required
+// floor's long-home prefixes, so the floor never plans it. The probe is not gated; it is not
+// run.
+//
+// NeverRunDeclinedByLiveTreeRead -- the identity's ENTRY FILE declares
+// `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree`, and the floor declines
+// every site in such a file. This arm was NOT in the specification this lane was given, and it
+// was found by reading the floor's own receipt rather than its model: main run 32553487573
+// reports `offered=11812 routed=10439 declined_long=543 declined_live=830 — every discovered
+// site is exactly one of these`, so the floor's decline vocabulary has three arms and not two.
+// `v2.workflow.required_floor` describes this arm as staged for deletion and its own header
+// records that an earlier revision asserted the deletion as DONE while the host still returned
+// it -- which is exactly why it must be read from the producer.
+//
+// HELD IS NOT CHECKED, AND THE ARM NAMES CARRY THAT RATHER THAN A COMMENT. Every arm prefixed
+// NeverRun holds a probe's obligation only in the sense that NOTHING RUNS THE WITNESS, so a
+// green floor says nothing whatsoever about the claim. RouteGapHeldNoVerdict is the middle
+// state: the witness executes but reaches a host effect the hermetic route cannot serve, so it
+// produces no verdict either. Only FloorExpectedRedHeld means the witness ran and its failure
+// was asserted. `quarantine_probe_verification_standing` derives that distinction totally from
+// the holder, so a consumer asking "is this claim checked" never has to read prose to find out.
+//
+// THE HEADLINE MEASUREMENT OF THIS LANE, and it is a coverage finding about the quarantine
+// system rather than a caveat about this fold: EIGHT OF THE NINETEEN live quarantine probes are
+// held by a mechanism that means the witness never runs -- 7 NeverRunDeclinedByHomePolicy,
+// 1 NeverRunDeclinedByLiveTreeRead -- and a further 6 execute without ever reaching a verdict
+// (RouteGapHeldNoVerdict). FIVE of nineteen are checked in the sense the admission rows imply:
+// the witness runs and its red is asserted every floor run. That is the number a reader should
+// carry away from this module.
+//
+// NeverRunPathExcluded -- the identity's entry path is excluded from the floor's prepared subject.
+// ZERO ROWS INHABIT THIS ARM TODAY, measured at 967b5bc1b92; and, separately, the .dag side has
+// no readable authority to feed it, for a bootstrap reason rather than a modelling gap: the
+// floor's exclusion list decides which modules ENTER the prepared subject, so a list evaluated
+// from inside that subject cannot be consulted before the subject exists. The one list the
+// floor consults is the Rust literal `floor_prepared_subject_exclusions` in `cli_run.rs`, whose
+// own comment records that adding rows to gunbc.ci_layer_roots witness_exclusion_frontier had
+// no effect at all. Mirroring that literal here would be a second representation of one fact
+// (DESIGN section 3) that drifts silently, which is worse than an arm with no production
+// producer, so the substrings stay a PARAMETER.
+//
+// THE TWO STATES THIS ARM IS IN ARE DIFFERENT AND BOTH ARE TRUE. Its inhabitant count over the
+// live rows is measured ZERO. Its inhabitant count IN PRODUCTION is UNMEASURED, because no
+// production caller supplies the list -- the witness supplies a fixture list, which exercises
+// the arm's derivation without observing the live population. Unmeasured and zero are the two
+// states this repository most often conflates, and this guard exists to refuse exactly that
+// class of conflation, so it does not commit it in its own carrier.
+//
+// TRIGGER: when this fold acquires a production caller with access to the floor's own exclusion
+// list, that caller passes it and the arm's population becomes measured. Until then the count
+// is unmeasured-in-production, not zero-in-production.
+//
+// AND AN EMPTY ARM IS NOT A DEAD ARM. If someone later proposes deleting NeverRunPathExcluded because
+// nothing inhabits it, the answer is that the fold must stay TOTAL over the disposition space:
+// a three-arm fold would classify a future path-excluded row as held-by-nothing and refuse a
+// legitimate exclusion as an alarm. Totality is the property; inhabitant counts are not.
+type QuarantineProbeHolder =
+    FloorExpectedRedHeld
+  | RouteGapHeldNoVerdict
+  | NeverRunDeclinedByHomePolicy { matched_prefix: v2.std.text.String }
+  | NeverRunDeclinedByLiveTreeRead { entry: v2.std.text.String }
+  | NeverRunPathExcluded { matched_substring: v2.std.text.String }
+
+// THE SUBJECT: one probe, named the way the floor names it.
+//
+// `module` is the entry file's AUTHORED module declaration, never derived from its path -- the
+// two disagree in this corpus (src/v2/test/claim/manual/english_emit_add_test.dag declares
+// v2.test.manual.english_emit_add), and a path-shaped guess would silently miss the roster it
+// is joining against. The caller supplies it from the same declaration the floor reads.
+type QuarantineProbeSubject {
+  module: v2.std.text.String
+  entry: v2.std.text.String
+  function: v2.std.text.String
+}
+
+// THE SUPPLIED FACTS. Four populations, four owners, none of them this module.
+type QuarantineProbeHoldingFacts {
+  expected_red_roster: v2.std.collection.List<v2.std.text.String>
+  route_gap_roster: v2.std.collection.List<v2.std.text.String>
+  home_prefixes: v2.std.collection.List<v2.std.text.String>
+  live_tree_declined_entries: v2.std.collection.List<v2.std.text.String>
+  path_exclusion_substrings: v2.std.collection.List<v2.std.text.String>
+}
+
+// THE ALARM IS AN ARM OF THE OUTCOME, NEVER A STABLE DISPOSITION.
+//
+// `QuarantineProbeNowPassing` is what a probe held by nothing derives, and it names the remedy:
+// delete the admission row, or reclassify it onto a mechanism that actually holds it. There is
+// deliberately no accepting arm for this state. A `StaleButAccepted` would NORMALISE the exact
+// condition the guard exists to expose -- the absorbing fallback in miniature, the deficit's
+// frequency zeroed by construction so nothing ever ranks for repair -- so the type is
+// structurally unable to describe the guard's own failure mode as acceptable.
+//
+// `QuarantineProbeHeldByMoreThanOne` refuses, and refusing is the ruled-correct answer rather
+// than a false positive: two mechanisms holding one obligation is two authorities for one fact,
+// and someone has to decide which actually holds it. It carries every holder it found so that
+// decision is made against the evidence rather than re-derived. No live row exercises it today,
+// so this arm is about the future rather than the present.
+type QuarantineProbeDisposition =
+    HeldByExactlyOne { identity: v2.std.text.String, holder: QuarantineProbeHolder }
+  | QuarantineProbeNowPassing { identity: v2.std.text.String, entry: v2.std.text.String, function: v2.std.text.String }
+  | QuarantineProbeHeldByMoreThanOne { identity: v2.std.text.String, holders: v2.std.collection.List<QuarantineProbeHolder> }
+
+// WHAT A HOLDER ESTABLISHES ABOUT THE CLAIM, derived totally from the holder and never stored.
+// Three states, because "the witness ran and failed as declared", "the witness ran and produced
+// no verdict" and "the witness did not run" are three different amounts of evidence with three
+// different remedies -- and collapsing them into "held" is precisely the conflation that let an
+// admission row read as covered while nothing enforced it.
+type QuarantineProbeVerificationStanding =
+    RedAssertedByExecution
+  | ExecutedWithoutVerdict
+  | WitnessNeverRuns
+
+fn quarantine_probe_verification_standing(holder: QuarantineProbeHolder) -> QuarantineProbeVerificationStanding {
+  match holder {
+    FloorExpectedRedHeld => RedAssertedByExecution {}
+    RouteGapHeldNoVerdict => ExecutedWithoutVerdict {}
+    NeverRunDeclinedByHomePolicy { matched_prefix: p } => WitnessNeverRuns {}
+    NeverRunDeclinedByLiveTreeRead { entry: e } => WitnessNeverRuns {}
+    NeverRunPathExcluded { matched_substring: sub } => WitnessNeverRuns {}
+  }
+}
+
+fn quarantine_probe_identity(module: v2.std.text.String, function: v2.std.text.String) -> v2.std.text.String {
+  concat(module, concat(".", function))
+}
+
+fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> v2.std.text.String {
+  quarantine_probe_identity(module: subject.module, function: subject.function)
+}
+
+// EXACT MEMBERSHIP, NEVER CONTAINMENT. Both populations joined this way -- the two qualified-name
+// rosters and the entry-path list -- are keyed by full identity and joined by EQUALITY. A probe
+// whose function name is a prefix or a substring of an enrolled one is NOT held by it, and a
+// file whose path merely contains a declined one is not declined. Containment proves neither
+// identity nor multiplicity, which is the weakness the exact-admission authority was built to
+// remove in the first place, and it is why the two arms that genuinely are substring-shaped
+// (home prefix, path exclusion) are matched by their own functions and carry what they matched.
+fn exact_member(needle: v2.std.text.String, population: v2.std.collection.List<v2.std.text.String>) -> v2.std.logic.Bool {
+  v2.std.algebra.fold_list(
+    xs: population,
+    empty: false,
+    cons: fn(acc, row) { acc || row == needle }
+  )
+}
+
+fn first_matching_prefix(module: v2.std.text.String, prefixes: v2.std.collection.List<v2.std.text.String>) -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.fold_list(
+    xs: prefixes,
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, prefix) {
+      match acc {
+        v2.std.algebra.Cons { head: h, tail: t } => acc
+        v2.std.algebra.Empty {} =>
+          if module.starts_with(prefix: prefix) {
+            v2.std.algebra.Cons { head: prefix, tail: v2.std.algebra.Empty {} }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+fn first_matching_substring(entry: v2.std.text.String, substrings: v2.std.collection.List<v2.std.text.String>) -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.fold_list(
+    xs: substrings,
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, needle) {
+      match acc {
+        v2.std.algebra.Cons { head: h, tail: t } => acc
+        v2.std.algebra.Empty {} =>
+          if entry.contains(needle) {
+            v2.std.algebra.Cons { head: needle, tail: v2.std.algebra.Empty {} }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+// EVERY HOLDER THAT CLAIMS THIS PROBE, collected before any of them is allowed to answer.
+// Deciding on the first hit would make the arm ORDER the authority and would hide the
+// two-mechanisms case entirely, which is the one case the ruling says must refuse.
+fn quarantine_probe_holders(
+  subject: QuarantineProbeSubject,
+  facts: QuarantineProbeHoldingFacts
+) -> v2.std.collection.List<QuarantineProbeHolder> {
+  let identity = quarantine_probe_subject_identity(subject: subject)
+  let floor_held =
+    if exact_member(needle: identity, population: facts.expected_red_roster) {
+      v2.std.algebra.Cons { head: FloorExpectedRedHeld {}, tail: v2.std.algebra.Empty {} }
+    } else {
+      v2.std.algebra.Empty {}
+    }
+  let route_held =
+    if exact_member(needle: identity, population: facts.route_gap_roster) {
+      v2.std.algebra.Cons { head: RouteGapHeldNoVerdict {}, tail: v2.std.algebra.Empty {} }
+    } else {
+      v2.std.algebra.Empty {}
+    }
+  let home_declined = v2.std.algebra.fold_list(
+    xs: first_matching_prefix(module: subject.module, prefixes: facts.home_prefixes),
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, prefix) { v2.std.algebra.Cons { head: NeverRunDeclinedByHomePolicy { matched_prefix: prefix }, tail: acc } }
+  )
+  let live_declined =
+    if exact_member(needle: subject.entry, population: facts.live_tree_declined_entries) {
+      v2.std.algebra.Cons { head: NeverRunDeclinedByLiveTreeRead { entry: subject.entry }, tail: v2.std.algebra.Empty {} }
+    } else {
+      v2.std.algebra.Empty {}
+    }
+  let path_excluded = v2.std.algebra.fold_list(
+    xs: first_matching_substring(entry: subject.entry, substrings: facts.path_exclusion_substrings),
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, needle) { v2.std.algebra.Cons { head: NeverRunPathExcluded { matched_substring: needle }, tail: acc } }
+  )
+  concat_holders(
+    a: floor_held,
+    b: concat_holders(
+      a: route_held,
+      b: concat_holders(
+        a: home_declined,
+        b: concat_holders(a: live_declined, b: path_excluded)
+      )
+    )
+  )
+}
+
+fn concat_holders(a: v2.std.collection.List<QuarantineProbeHolder>, b: v2.std.collection.List<QuarantineProbeHolder>) -> v2.std.collection.List<QuarantineProbeHolder> {
+  match a {
+    v2.std.algebra.Empty {} => b
+    v2.std.algebra.Cons { head: h, tail: t } => v2.std.algebra.Cons { head: h, tail: concat_holders(a: t, b: b) }
+  }
+}
+
+// EXACTLY ONE, DERIVED FROM THE SHAPE OF THE HOLDER LIST rather than from a count compared
+// against a literal. Zero and two-or-more are different failures with different remedies, so
+// they are different arms; neither is a variant of "not one".
+fn quarantine_probe_disposition(
+  subject: QuarantineProbeSubject,
+  facts: QuarantineProbeHoldingFacts
+) -> QuarantineProbeDisposition {
+  let holders = quarantine_probe_holders(subject: subject, facts: facts)
+  match holders {
+    v2.std.algebra.Empty {} => QuarantineProbeNowPassing {
+      identity: quarantine_probe_subject_identity(subject: subject),
+      entry: subject.entry,
+      function: subject.function
+    }
+    v2.std.algebra.Cons { head: h, tail: t } =>
+      match t {
+        v2.std.algebra.Empty {} => HeldByExactlyOne {
+          identity: quarantine_probe_subject_identity(subject: subject),
+          holder: h
+        }
+        v2.std.algebra.Cons { head: h2, tail: t2 } => QuarantineProbeHeldByMoreThanOne {
+          identity: quarantine_probe_subject_identity(subject: subject),
+          holders: holders
+        }
+      }
+  }
+}
+
+fn quarantine_probe_disposition_holds(disposition: QuarantineProbeDisposition) -> v2.std.logic.Bool {
+  match disposition {
+    HeldByExactlyOne { identity: i, holder: h } => true
+    QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
+    QuarantineProbeHeldByMoreThanOne { identity: i, holders: hs } => false
+  }
+}
+
+fn quarantine_probe_dispositions(
+  subjects: v2.std.collection.List<QuarantineProbeSubject>,
+  facts: QuarantineProbeHoldingFacts
+) -> v2.std.collection.List<QuarantineProbeDisposition> {
+  v2.std.algebra.fold_list(
+    xs: subjects,
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, subject) {
+      v2.std.algebra.Cons { head: quarantine_probe_disposition(subject: subject, facts: facts), tail: acc }
+    }
+  )
+}
+
+fn quarantine_probe_dispositions_all_hold(
+  subjects: v2.std.collection.List<QuarantineProbeSubject>,
+  facts: QuarantineProbeHoldingFacts
+) -> v2.std.logic.Bool {
+  v2.std.algebra.fold_list(
+    xs: quarantine_probe_dispositions(subjects: subjects, facts: facts),
+    empty: true,
+    cons: fn(acc, disposition) { acc && quarantine_probe_disposition_holds(disposition: disposition) }
+  )
+}
+
+// THE SUBJECT SELECTOR. Cadence, not expectation: this guard is about the rows that name the
+// quarantine-probe consumer, which is the population the admission carrier claims a known red
+// for. The expectation axis answers a different question (which verdict is agreement) and is
+// deliberately not read here.
+fn admission_is_quarantine_probe(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> v2.std.logic.Bool {
+  match row.cadence {
+    std.witness_admission.QuarantineProbeExpectRed => true
+    _ => false
+  }
+}
+
+fn quarantine_probe_admissions(rows: v2.std.collection.List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> v2.std.collection.List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
+  v2.std.algebra.fold_list(
+    xs: rows,
+    empty: v2.std.algebra.Empty {},
+    cons: fn(acc, row) {
+      if admission_is_quarantine_probe(row: row) {
+        v2.std.algebra.Cons { head: row, tail: acc }
+      } else {
+        acc
+      }
+    }
+  )
+}

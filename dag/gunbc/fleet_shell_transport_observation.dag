@@ -117,21 +117,6 @@ fn fleet_shell_transport_observation(host: product.placement_supply.HostIdentity
   }
 }
 
-fn shell_transport_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match fleet_shell_transport_observation(host: h) {
-        ShellTransportUnobserved { reason: _ } => true
-        ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-        ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      },
-  ).length()
-}
-
-fn fleet_shell_transport_unobserved_count() -> Int {
-  shell_transport_unobserved_count(hosts: fleet_subsumption_hosts)
-}
 
 fn srv3_network_reach_realizable() -> Bool {
   srv3_reach_is_realizable()

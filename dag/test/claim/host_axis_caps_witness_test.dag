@@ -103,12 +103,19 @@ test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
     && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
 }
 
-test fn witness_runner_memory_cap_author_script_derived() -> Bool {
+// witness_runner_memory_cap_author_script_derived WAS HERE. Its subject
+// (runner_memory_cap_author_script, the converge-side authoring script) is deleted along with the
+// converge apply arm, so the witness goes with it. What it actually checked — that the authored
+// bytes are derived from gunbc.runner_slot_allocation and carry no revert — is still checked on
+// the deploy-side script, which is the one that executes, by
+// witness_cap_author_before_shadow_revert_enforced_in_axis_caps and the two wrong-order REDs
+// below.
+test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bool {
   let desired = gunbc_runner_slot_desired()
-  string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
-    && string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
+  string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
     && !string_contains(
-      s: runner_memory_cap_author_script(),
+      s: deploy_runner_memory_cap_author_script(),
       pattern: deploy_memory_cap_shadow_revert_script(units: [shadow_unit]),
     )
 }
@@ -169,6 +176,5 @@ test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool
 
 test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool {
   !string_contains(s: cap_upsert_script(m: apostrophe_cap_member), pattern: "printf '%s' '")
-    && !string_contains(s: runner_memory_cap_author_script(), pattern: "printf '%s' '")
     && !string_contains(s: deploy_runner_memory_cap_author_script(), pattern: "printf '%s' '")
 }

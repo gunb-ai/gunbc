@@ -98,3 +98,26 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
   runner_slot_instance_name(slot: slot) == "srv3-06"
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
 }
+
+fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
+  match seq {
+    GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
+    FabricSlotProvisioningNotModeled { reason: _ } => false
+    SlotIsNotACommittedMember { reason: _ } => false
+  }
+}
+
+// A COMPUTE-FABRIC SLOT HAS NO ARM THAT REACHES GitHub REGISTRATION -- not an arm that skips it,
+// no arm at all. This is the half that makes the purpose field real: a purpose that does not gate
+// the add sequence would record which slots we INTENDED not to register while leaving every one of
+// them registrable.
+//
+// BOTH DIRECTIONS ARE ASSERTED BECAUSE ONLY ONE OF THEM IS THE SAFETY CLAIM AND ONLY THE OTHER
+// PROVES THE GATE IS NOT VACUOUS. A gate that refused everything would satisfy the fabric row
+// alone; srv4-06 is the control -- the same slot index on a host of the same committed width --
+// and it must still receive the full twelve-step GitHub sequence.
+test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bool {
+  !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
+    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
+    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 5))
+}

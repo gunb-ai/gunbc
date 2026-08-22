@@ -117,7 +117,7 @@ fn admission_is_refused_with_placement_unknown(admission: EnsureBuildCacheAdmiss
         EnsureUnlinkRefused { detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
   }
 }
 
@@ -129,7 +129,7 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
     cgroup_text: observe_managed_unit_cgroup_text,
   ) {
     EnsureAlreadyConverged { desired: _, unit: u } => (u as String) == "gunbc-build-cache-ci.service"
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
     EnsureBuildCacheRefused { instance: _, reason: _ } => false
   }
 }
@@ -189,7 +189,7 @@ test fn witness_runner_owned_endpoint_is_not_admitted() -> Bool {
         EnsureOwnedButNotServing { unit: _, detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
   }
 }
 
@@ -200,9 +200,9 @@ test fn witness_absent_endpoint_is_admitted() -> Bool {
     holder_read: observe_no_holder_read(),
     cgroup_text: observe_managed_unit_cgroup_text,
   ) {
-    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: lines } =>
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_file: rendered } =>
       match p {
-        EndpointClearForBind => lines.count() > 0
+        EndpointClearForBind => systemd_unit_file_lines(file: rendered).count() > 0
         EndpointClearedByUnlink { stale_detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
@@ -294,7 +294,7 @@ test fn witness_stale_socket_is_admitted_behind_an_unlink() -> Bool {
     holder_read: observe_no_holder_read(),
     cgroup_text: observe_managed_unit_cgroup_text,
   ) {
-    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: _ } =>
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_file: _ } =>
       match p {
         EndpointClearedByUnlink { stale_detail: _ } => true
         EndpointClearForBind => false
@@ -323,7 +323,7 @@ test fn witness_socket_held_open_without_listening_is_not_unlinked() -> Bool {
         EnsureOwnedButNotServing { unit: _, detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
   }
 }
 
@@ -346,7 +346,7 @@ test fn witness_our_own_unit_holding_an_unlistened_socket_refuses_as_not_serving
         EnsurePlacementUnknown { detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
   }
 }
 
@@ -383,7 +383,7 @@ test fn witness_non_socket_at_the_endpoint_path_is_a_conflict() -> Bool {
         EnsureOwnedButNotServing { unit: _, detail: _ } => false
       }
     EnsureAlreadyConverged { desired: _, unit: _ } => false
-    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_file: _ } => false
   }
 }
 
@@ -463,4 +463,3 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
 }
 
 data holder_argv_construction_note: String = "WHY THE ARGV IS ASSERTED AND NOT ONLY THE DECODE. Every other witness in this file runs the decode against fixture text, so all of them stay green if the argv that gathers that text on a real host regresses to `-lname \"socket:[N]\"` -- which silently matches nothing, which the decode then reads as a licensed unlink. The fixtures cannot see that; only the argv can. Asserting the exact pattern also pins the two shapes that would reintroduce a shell (an `sh -c` wrapper), because a shell would expand the glob itself and this lane may not grow emitted shell."
-

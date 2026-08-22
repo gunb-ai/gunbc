@@ -104,7 +104,7 @@ fn spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.
 // whose second run differs from its first is not a reconcile.
 fn spark_managed_grant_dropin_name(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as std.types.NonEmptyStr
     RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
   }
 }

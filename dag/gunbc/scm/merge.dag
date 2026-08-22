@@ -260,16 +260,16 @@ fn target_roles(store: gunbc.scm.object_store.ObjectStore, target: gunbc.scm.che
     Absent => TargetUnreadable { cause: TargetRootMissing { identity: target.root } }
     Present { value: record } =>
       TargetRead {
-        roles: fold(record.children, init: [], f: fn(acc, stored) {
+        roles: reverse(fold(record.children, init: [], f: fn(acc, stored) {
           match edge_label_role(label: stored.label) {
             Absent => acc
             Present { value: role } =>
-              concat(acc, [ResolvedRole {
+              concat([ResolvedRole {
                 role: role,
                 value: PreservedFromTarget { object: stored.target },
-              }])
+              }], acc)
           }
-        }),
+        })),
       }
   }
 }
@@ -299,14 +299,16 @@ fn role_is_present(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol
   }
 }
 
+// A REPLACEMENT IS A MAP, NOT A FOLD THAT REBUILDS. Written as a fold with concat-at-end this copied
+// the accumulator once per incoming.role, making a single replacement O(roles^2); as a map it is O(roles) and
+// the intent -- every incoming.role kept, one substituted -- is visible in the shape rather than reconstructed
+// by reading the accumulator.
+fn replaced_role_or_original(r: ResolvedRole, incoming: ResolvedRole) -> ResolvedRole {
+  if (r.role as String) == (incoming.role as String) { incoming } else { r }
+}
+
 fn replace_role(roles: std.types.List<ResolvedRole>, incoming: ResolvedRole) -> std.types.List<ResolvedRole> {
-  fold(roles, init: [], f: fn(acc, r) {
-    if (r.role as String) == (incoming.role as String) {
-      concat(acc, [incoming])
-    } else {
-      concat(acc, [r])
-    }
-  })
+  map(roles, r => replaced_role_or_original(r: r, incoming: incoming))
 }
 
 fn upsert_role(roles: std.types.List<ResolvedRole>, incoming: ResolvedRole) -> std.types.List<ResolvedRole> {
@@ -355,26 +357,30 @@ fn alternatives_contain(alternatives: std.types.List<DesiredRoleValue>, desired:
 // for one ordering and (F3,F2) for another. Both are true statements and neither is the fact, and
 // order deciding which one survives is precisely what this lane forbids. Accumulating every
 // distinct alternative makes the reported set complete under any permutation.
+fn authored_with_alternative(
+  a: AuthoredRoleState,
+  role: Symbol,
+  desired: DesiredRoleValue,
+) -> AuthoredRoleState {
+  if (a.role as String) != (role as String) {
+    a
+  } else if alternatives_contain(alternatives: a.alternatives, desired: desired) {
+    a
+  } else {
+    AuthoredRoleState {
+      role: a.role,
+      alternatives: concat(a.alternatives, [desired]),
+    }
+  }
+}
+
 fn record_alternative(
   authored: std.types.List<AuthoredRoleState>,
   role: v2.std.node.Symbol,
   desired: DesiredRoleValue,
 ) -> std.types.List<AuthoredRoleState> {
   if already_authored(authored: authored, role: role) {
-    fold(authored, init: [], f: fn(acc, a) {
-      if (a.role as String) == (role as String) {
-        if alternatives_contain(alternatives: a.alternatives, desired: desired) {
-          concat(acc, [a])
-        } else {
-          concat(acc, [AuthoredRoleState {
-            role: a.role,
-            alternatives: concat(a.alternatives, [desired]),
-          }])
-        }
-      } else {
-        concat(acc, [a])
-      }
-    })
+    map(authored, a => authored_with_alternative(a: a, role: role, desired: desired))
   } else {
     concat(authored, [AuthoredRoleState { role: role, alternatives: [desired] }])
   }
@@ -489,13 +495,13 @@ fn effective_dependencies(
   authored: std.types.List<v2.std.node.Symbol>,
 ) -> std.types.List<MergeDependency> {
   concat(
-    fold(target_dependencies, init: [], f: fn(acc, dep) {
+    reverse(fold(target_dependencies, init: [], f: fn(acc, dep) {
       if role_name_listed(names: authored, role: dep.dependent) {
         acc
       } else {
-        concat(acc, [dep])
+        concat([dep], acc)
       }
-    }),
+    })),
     proposal_dependencies,
   )
 }
@@ -572,7 +578,7 @@ fn root_edge_for(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, r
       }
     CheckedOut { program: program } =>
       MergeRootAcc {
-        edges: concat(acc.edges, [v2.std.node.Edge { label: v2.std.node.Named { name: role }, target: program }]),
+        edges: concat([v2.std.node.Edge { label: v2.std.node.Named { name: role }, target: program }], acc.edges),
         refusal: none,
       }
   }
@@ -632,12 +638,28 @@ fn merge(
   }
 }
 
+// A PROJECTION IS A MAP. As a fold with concat-at-end this was O(authored^2) to answer a question
+// that is one field read per element.
 fn authored_role_names(authored: std.types.List<AuthoredRoleState>) -> std.types.List<v2.std.node.Symbol> {
-  fold(authored, init: [], f: fn(acc, a) { concat(acc, [a.role]) })
+  map(authored, a => authored_role_name(a: a))
 }
 
+fn authored_role_name(a: AuthoredRoleState) -> v2.std.node.Symbol {
+  a.role
+}
+
+// A FLATTEN IS STILL A COPY PER STEP. An earlier revision of this sweep left this fold alone with a
+// comment claiming that appending a LIST rather than an element made it linear. That is false --
+// concat(acc, xs) copies acc whatever xs is, so the total stayed quadratic in the number of
+// p.dependencies -- and it is recorded here because the wrong reason was more dangerous than the
+// defect: a justified exception stops being re-examined.
+//
+// Prepending each proposal's p.dependencies REVERSED, then reversing once at the end, restores the
+// original order at a total cost proportional to the output.
 fn all_proposal_dependencies(proposals: std.types.List<Proposal>) -> std.types.List<MergeDependency> {
-  fold(proposals, init: [], f: fn(acc, p) { concat(acc, p.dependencies) })
+  reverse(
+    fold(proposals, init: [], f: fn(acc, p) { concat(reverse(p.dependencies), acc) })
+  )
 }
 
 fn finish_merge(
@@ -663,7 +685,7 @@ fn finish_merge(
         Absent =>
           match gunbc.scm.object_store.store_node(
             store: applied.store,
-            n: root_node_of(edges: built.edges),
+            n: root_node_of(edges: reverse(built.edges)),
           ) {
             LocatorCollision { identity: identity, existing: _, incoming: _ } =>
               MergeRefused {

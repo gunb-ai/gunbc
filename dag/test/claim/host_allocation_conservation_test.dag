@@ -1,215 +1,338 @@
 module test.claim.host_allocation_conservation
 
 
+// THIS MODULE PREVIOUSLY DECLARED NO IMPORTS AT ALL and resolved every name by bare whole-tree
+// lookup, which the flat namespace permits. The cost is that it could not be run under an entry
+// scope -- every witness in it died on NoSuchFunction locally, independent of any change here -- so
+// the only way to execute a row was a whole-tree floor run. The imports below are what it was
+// already using; making them explicit costs nothing and buys a witness you can execute while you
+// are writing it, which is the difference between finding a defect now and finding it in CI.
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-test fn allocation_conserves_when_pools_fit() -> Bool {
-  host_allocation_conserves(
-    host: byte_size(134217728000),
-    overhead: byte_size(17179869184),
-    headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0)
-  )
-}
-
-data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 7 (srv3's boundary moved down one slot with the 2026-08-17 16GiB ruling): srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
-
-fn usable_ram_of(host: product.placement_supply.HostIdentity) -> std.measure.ByteSize {
-  match host_usable_ram_or_refusal(host: host, r: gunbc_ci_host_usable_ram_for(host: host)) {
-    HostUsableRamResolved { bytes: b } => b
-    HostUsableRamUnresolved { reason: _ } => byte_size(0)
+// WHY THIS PROJECTION LIVES IN THE WITNESS FILE AND NOT IN gunbc.fleet_host_budget. The std.types.Bool form
+// used to be a production function, and every production caller is gone -- gunbc.ci_runner_placement
+// now consumes gunbc.fleet_host_budget.host_allocation_verdict directly so an unmeasured claim reports "unchargeable"
+// instead of borrowing the over-committed string. Leaving the std.types.Bool in the production module would
+// leave a convenient re-entry point for exactly the collapse that change removed: the next caller
+// that wants a yes/no would find one already written and would lose the remedy again without
+// authoring anything that looks like a mistake. So it dissolves there and is re-declared HERE, where
+// its only honest consumers are, and where a production import of it would be visibly wrong
+// (DESIGN 4b: a climb deletes the lower-rung production machinery it obsoletes, never the evidence).
+// These witnesses genuinely ask a std.types.Bool question -- does this arithmetic conserve -- and the two
+// refusal causes are discriminated by the pair in test.claim.runner_placement_witness, not here.
+fn witness_allocation_conserves(
+  host: std.measure.ByteSize,
+  overhead: std.measure.ByteSize,
+  headroom: std.measure.ByteSize,
+  runner_pool: std.measure.ByteSize,
+  session_pool: std.measure.ByteSize,
+  compile_pool: std.measure.ByteSize,
+  control_plane: HostFabricControlPlaneClaim
+) -> std.types.Bool {
+  match gunbc.fleet_host_budget.host_allocation_verdict(
+    host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
+    session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane
+  ) {
+    gunbc.fleet_host_budget.HostAllocationConserves => true
+    gunbc.fleet_host_budget.HostAllocationOversubscribed => false
+    gunbc.fleet_host_budget.HostAllocationUnchargeable { cause: _ } => false
   }
 }
 
-fn conserves_at_width(host: product.placement_supply.HostIdentity, slots: Int) -> Bool {
-  host_allocation_conserves(
-    host: usable_ram_of(host: host),
-    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
-    headroom: oomd_actuation_floor(host: usable_ram_of(host: host)),
-    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
-      slots: slots,
-      per_slot: gunbc_runner_slot_desired().memory_max
-    ),
-    session_pool: host_session_slice_bytes(host: host),
-    compile_pool: byte_size(0)
+test fn allocation_conserves_when_pools_fit() -> std.types.Bool {
+  witness_allocation_conserves(
+    host: std.measure.byte_size(134217728000),
+    overhead: std.measure.byte_size(17179869184),
+    headroom: std.measure.byte_size(8589934592),
+    runner_pool: gunbc.fleet_host_budget.gunbc_runner_pool_budget_for(host: gunbc.fleet_intent_network.operator_host_srv1),
+    session_pool: std.measure.byte_size(0),
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.ControlPlaneNotPlaced
   )
 }
 
-test fn committed_width_fits_on_every_host() -> Bool {
+data per_host_width_red_controls_note: std.types.String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 7 (srv3's boundary moved down one slot with the 2026-08-17 16GiB ruling): srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
+
+fn usable_ram_of(host: product.placement_supply.HostIdentity) -> std.measure.ByteSize {
+  match gunbc.ci_runner_placement.host_usable_ram_or_refusal(host: host, r: gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: host)) {
+    gunbc.ci_runner_placement.HostUsableRamResolved { bytes: b } => b
+    gunbc.ci_runner_placement.HostUsableRamUnresolved { reason: _ } => std.measure.byte_size(0)
+  }
+}
+
+fn conserves_at_width(host: product.placement_supply.HostIdentity, slots: std.types.Int) -> std.types.Bool {
+  witness_allocation_conserves(
+    host: usable_ram_of(host: host),
+    overhead: gunbc.ci_runner_placement.host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: host)),
+    headroom: gunbc.fleet_host_budget.oomd_actuation_floor(host: usable_ram_of(host: host)),
+    runner_pool: gunbc.runner_slot_allocation.gunbc_runner_slot_demand_sum_memory_max(
+      slots: slots,
+      per_slot: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: gunbc.ci_runner_placement.host_session_slice_bytes(host: host),
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.host_fabric_control_plane_claim(host: host)
+  )
+}
+
+test fn committed_width_fits_on_every_host() -> std.types.Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc.runner_slot_allocation.gunbc_committed_runner_slot_allocations(),
     a => conserves_at_width(host: a.host, slots: a.slots_per_host)
   )
 }
 
-data boundary_is_pinned_on_the_memory_axis_note: String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle runner_width_disk_preflight — so memory admission and committed width both read 7; the control stays on the memory axis where it belongs."
+data boundary_is_pinned_on_the_memory_axis_note: std.types.String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle runner_width_disk_preflight — so memory admission and committed width both read 7; the control stays on the memory axis where it belongs."
 
-test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
+test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> std.types.Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
-    a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
+    gunbc.runner_slot_allocation.gunbc_committed_runner_slot_allocations(),
+    a => !conserves_at_width(host: a.host, slots: gunbc.runner_slot_allocation.host_memory_admitted_width(host: a.host) + 1)
   )
 }
 
-data committed_width_never_exceeds_memory_admission_note: String = "The minimum cannot exceed either of its arguments, and this row is the executable form of that: no host may commit a width its RAM does not admit. It goes red if a future axis is folded into gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a constraint into a grant."
+data committed_width_never_exceeds_memory_admission_note: std.types.String = "The minimum cannot exceed either of its arguments, and this row is the executable form of that: no host may commit a width its RAM does not admit. It goes red if a future axis is folded into gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a constraint into a grant."
 
-test fn committed_width_never_exceeds_memory_admission() -> Bool {
+test fn committed_width_never_exceeds_memory_admission() -> std.types.Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
-    a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
+    gunbc.runner_slot_allocation.gunbc_committed_runner_slot_allocations(),
+    a => a.slots_per_host <= gunbc.runner_slot_allocation.host_memory_admitted_width(host: a.host)
   )
 }
 
-data srv4_disk_gated_at_apply_not_allocation_note: String = "srv4 COMMITS SIX AT THE MEMORY AXIS LIKE srv3 (seven before the 2026-08-17 16GiB ruling); the retired disk row-pin no longer lowers allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to five."
+data srv4_disk_gated_at_apply_not_allocation_note: std.types.String = "srv4 COMMITS SIX AT THE MEMORY AXIS LIKE srv3 (seven before the 2026-08-17 16GiB ruling); the retired disk row-pin no longer lowers allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to five."
 
-test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
-    && match host_disk_admitted_width(host: operator_host_srv4) {
-      DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
-      DiskAdmitsWidth { slots: _, provenance: _ } => false
+test fn srv4_commits_memory_width_disk_gated_at_apply() -> std.types.Bool {
+  gunbc.runner_slot_allocation.host_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv4) == 6
+    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv4) == 6
+    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv3) == 6
+    && match gunbc.runner_slot_allocation.host_disk_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv4) {
+      gunbc.runner_slot_allocation.DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
+      gunbc.runner_slot_allocation.DiskAdmitsWidth { slots: _, provenance: _ } => false
     }
 }
 
-test fn session_hosts_refuse_the_managed_width() -> Bool {
-  conserves_at_width(host: operator_host_srv3, slots: 6)
-    && !conserves_at_width(host: operator_host_srv3, slots: 7)
-    && !conserves_at_width(host: operator_host_srv1, slots: 6)
-    && !conserves_at_width(host: operator_host_srv2, slots: 6)
+test fn session_hosts_refuse_the_managed_width() -> std.types.Bool {
+  conserves_at_width(host: gunbc.fleet_intent_network.operator_host_srv3, slots: 6)
+    && !conserves_at_width(host: gunbc.fleet_intent_network.operator_host_srv3, slots: 7)
+    && !conserves_at_width(host: gunbc.fleet_intent_network.operator_host_srv1, slots: 6)
+    && !conserves_at_width(host: gunbc.fleet_intent_network.operator_host_srv2, slots: 6)
 }
 
-test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> Bool {
-  host_allocation_conserves(
-    host: usable_ram_of(host: operator_host_srv1),
-    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: operator_host_srv1)),
-    headroom: oomd_actuation_floor(host: usable_ram_of(host: operator_host_srv1)),
-    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
+test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> std.types.Bool {
+  witness_allocation_conserves(
+    host: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv1),
+    overhead: gunbc.ci_runner_placement.host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: gunbc.fleet_intent_network.operator_host_srv1)),
+    headroom: gunbc.fleet_host_budget.oomd_actuation_floor(host: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv1)),
+    runner_pool: gunbc.runner_slot_allocation.gunbc_runner_slot_demand_sum_memory_max(
       slots: 6,
-      per_slot: gunbc_runner_slot_desired().memory_max
+      per_slot: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max
     ),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0)
+    session_pool: std.measure.byte_size(0),
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.ControlPlaneNotPlaced
   )
-    && !conserves_at_width(host: operator_host_srv1, slots: 6)
+    && !conserves_at_width(host: gunbc.fleet_intent_network.operator_host_srv1, slots: 6)
 }
 
-test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
-  !host_allocation_conserves(
-    host: byte_size(134217728000),
-    overhead: byte_size(17179869184),
-    headroom: byte_size(8589934592),
-    runner_pool: byte_size(128849018880),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0)
+test fn allocation_unsound_when_runner_pool_overcommits() -> std.types.Bool {
+  !witness_allocation_conserves(
+    host: std.measure.byte_size(134217728000),
+    overhead: std.measure.byte_size(17179869184),
+    headroom: std.measure.byte_size(8589934592),
+    runner_pool: std.measure.byte_size(128849018880),
+    session_pool: std.measure.byte_size(0),
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.ControlPlaneNotPlaced
   )
 }
 
-test fn sessions_subtract_from_the_same_budget() -> Bool {
-  !host_allocation_conserves(
-    host: byte_size(134217728000),
-    overhead: byte_size(17179869184),
-    headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
+test fn sessions_subtract_from_the_same_budget() -> std.types.Bool {
+  !witness_allocation_conserves(
+    host: std.measure.byte_size(134217728000),
+    overhead: std.measure.byte_size(17179869184),
+    headroom: std.measure.byte_size(8589934592),
+    runner_pool: gunbc.fleet_host_budget.gunbc_runner_pool_budget_for(host: gunbc.fleet_intent_network.operator_host_srv1),
     session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40),
-    compile_pool: byte_size(0)
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.ControlPlaneNotPlaced
   )
 }
 
-test fn max_concurrent_sessions_falls_out_of_pool() -> Bool {
+test fn max_concurrent_sessions_falls_out_of_pool() -> std.types.Bool {
   max_concurrent_sessions(session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 12)) == 12
 }
 
-data per_host_usable_ram_controls_note: String = "THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still resolves to the same substitution figure today — that is deliberate, and committed_width_fits_on_every_host above already pins that the derived widths did not move. What these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead of borrowing, which is the property the old fleet-level read could not have.\n\nThe refusal control is the load-bearing one. The function it replaces took no host argument at all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown host reaching this wall now produces a located refusal, the same shape the overhead axis beside it already had."
+data per_host_usable_ram_controls_note: std.types.String = "THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still resolves to the same substitution figure today — that is deliberate, and committed_width_fits_on_every_host above already pins that the derived widths did not move. What these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead of borrowing, which is the property the old fleet-level read could not have.\n\nThe refusal control is the load-bearing one. The function it replaces took no host argument at all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown host reaching this wall now produces a located refusal, the same shape the overhead axis beside it already had."
 
-data differential_witness_note: String = "ASSERTING THAT FOUR LOOKUPS RETURN A POSITIVE NUMBER DOES NOT TEST A PER-HOST GRAIN, which is what the first version of this witness did. Four branches returning one shared declaration satisfy it exactly as well as four independent host facts do, so it would have passed unchanged against the fleet constant this change replaces — a witness that cannot fail for the reason it exists.\n\nThe grain is only observable DIFFERENTIALLY: perturb one host and prove that host's answer moves while the others hold. Since all four rows deliberately carry the same figure today, the perturbation has to come from a synthetic lookup rather than the live rows, so what is pinned is the SHAPE of the dispatch — that it is keyed by host at all — which is precisely the property the old signature could not have had, since it took no host argument."
+data differential_witness_note: std.types.String = "ASSERTING THAT FOUR LOOKUPS RETURN A POSITIVE NUMBER DOES NOT TEST A PER-HOST GRAIN, which is what the first version of this witness did. Four branches returning one shared declaration satisfy it exactly as well as four independent host facts do, so it would have passed unchanged against the fleet constant this change replaces — a witness that cannot fail for the reason it exists.\n\nThe grain is only observable DIFFERENTIALLY: perturb one host and prove that host's answer moves while the others hold. Since all four rows deliberately carry the same figure today, the perturbation has to come from a synthetic lookup rather than the live rows, so what is pinned is the SHAPE of the dispatch — that it is keyed by host at all — which is precisely the property the old signature could not have had, since it took no host argument."
 
 fn synthetic_usable_ram_for(host: product.placement_supply.HostIdentity) -> gunbc.ci_floor_measurement.HostUsableRam {
-  if (host as String) == (operator_host_srv3 as String) {
-    gunbc.ci_floor_measurement.HostUsableRamMeasured { bytes: byte_size(268435456000), provenance: "synthetic fixture: srv3 alone perturbed to prove the lookup is keyed by host" }
+  if (host as std.types.String) == (gunbc.fleet_intent_network.operator_host_srv3 as std.types.String) {
+    gunbc.ci_floor_measurement.HostUsableRamMeasured { bytes: std.measure.byte_size(268435456000), provenance: "synthetic fixture: srv3 alone perturbed to prove the lookup is keyed by host" }
   } else {
-    gunbc_ci_host_usable_ram_for(host: host)
+    gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: host)
   }
 }
 
-fn synthetic_bytes_of(host: product.placement_supply.HostIdentity) -> Int {
-  match host_usable_ram_or_refusal(host: host, r: synthetic_usable_ram_for(host: host)) {
-    HostUsableRamResolved { bytes: b } => byte_size_count(b: b)
-    HostUsableRamUnresolved { reason: _ } => 0
+fn synthetic_bytes_of(host: product.placement_supply.HostIdentity) -> std.types.Int {
+  match gunbc.ci_runner_placement.host_usable_ram_or_refusal(host: host, r: synthetic_usable_ram_for(host: host)) {
+    gunbc.ci_runner_placement.HostUsableRamResolved { bytes: b } => byte_size_count(b: b)
+    gunbc.ci_runner_placement.HostUsableRamUnresolved { reason: _ } => 0
   }
 }
 
-test fn every_enrolled_host_resolves_its_own_usable_ram() -> Bool {
-  byte_size_count(b: usable_ram_of(host: operator_host_srv1)) > 0
-    && byte_size_count(b: usable_ram_of(host: operator_host_srv2)) > 0
-    && byte_size_count(b: usable_ram_of(host: operator_host_srv3)) > 0
-    && byte_size_count(b: usable_ram_of(host: operator_host_srv4)) > 0
+test fn every_enrolled_host_resolves_its_own_usable_ram() -> std.types.Bool {
+  byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv1)) > 0
+    && byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv2)) > 0
+    && byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv3)) > 0
+    && byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv4)) > 0
 }
 
-test fn perturbing_one_host_moves_only_that_host() -> Bool {
-  synthetic_bytes_of(host: operator_host_srv3) == 268435456000
-    && synthetic_bytes_of(host: operator_host_srv1) == byte_size_count(b: usable_ram_of(host: operator_host_srv1))
-    && synthetic_bytes_of(host: operator_host_srv2) == byte_size_count(b: usable_ram_of(host: operator_host_srv2))
-    && synthetic_bytes_of(host: operator_host_srv4) == byte_size_count(b: usable_ram_of(host: operator_host_srv4))
-    && synthetic_bytes_of(host: operator_host_srv3) != byte_size_count(b: usable_ram_of(host: operator_host_srv3))
+test fn perturbing_one_host_moves_only_that_host() -> std.types.Bool {
+  synthetic_bytes_of(host: gunbc.fleet_intent_network.operator_host_srv3) == 268435456000
+    && synthetic_bytes_of(host: gunbc.fleet_intent_network.operator_host_srv1) == byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv1))
+    && synthetic_bytes_of(host: gunbc.fleet_intent_network.operator_host_srv2) == byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv2))
+    && synthetic_bytes_of(host: gunbc.fleet_intent_network.operator_host_srv4) == byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv4))
+    && synthetic_bytes_of(host: gunbc.fleet_intent_network.operator_host_srv3) != byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv3))
 }
 
-test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> std.types.Bool {
+  match gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: gunbc.fleet_intent_network.operator_host_srv3) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamUnmeasured => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
-      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv3))
+      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: gunbc.fleet_intent_network.operator_host_srv3))
   }
 }
 
-test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
-  match host_usable_ram_or_refusal(
+test fn unclassified_host_refuses_rather_than_borrowing() -> std.types.Bool {
+  match gunbc.ci_runner_placement.host_usable_ram_or_refusal(
     host: "srv-not-enrolled" as product.placement_supply.HostIdentity,
-    r: gunbc_ci_host_usable_ram_for(host: "srv-not-enrolled" as product.placement_supply.HostIdentity)
+    r: gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: "srv-not-enrolled" as product.placement_supply.HostIdentity)
   ) {
-    HostUsableRamResolved { bytes: _ } => false
-    HostUsableRamUnresolved { reason: r } => string_contains(s: r, pattern: "srv-not-enrolled")
+    gunbc.ci_runner_placement.HostUsableRamResolved { bytes: _ } => false
+    gunbc.ci_runner_placement.HostUsableRamUnresolved { reason: r } => string_contains(s: r, pattern: "srv-not-enrolled")
   }
 }
 
-test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+test fn middle_arm_is_a_bound_not_a_measurement() -> std.types.Bool {
+  match gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: gunbc.fleet_intent_network.operator_host_srv3) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
     HostUsableRamUnmeasured => false
   }
 }
 
-data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
+data derived_width_probe_note: std.types.String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
 
-fn derived_memory_admitted_width(host: product.placement_supply.HostIdentity) -> Int {
+fn derived_memory_admitted_width(host: product.placement_supply.HostIdentity) -> std.types.Int {
   let usable = usable_ram_of(host: host)
   let after_overhead = byte_size_saturating_sub(
     total: usable,
-    reserved: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host))
+    reserved: gunbc.ci_runner_placement.host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: host))
   )
   let after_session = byte_size_saturating_sub(
     total: after_overhead,
-    reserved: host_session_slice_bytes(host: host)
+    reserved: gunbc.ci_runner_placement.host_session_slice_bytes(host: host)
   )
   let available = byte_size_saturating_sub(
     total: after_session,
-    reserved: oomd_actuation_floor(host: usable)
+    reserved: gunbc.fleet_host_budget.oomd_actuation_floor(host: usable)
   )
-  measure_fit_count_floor(capacity: available, each: gunbc_runner_slot_desired().memory_max)
+  measure_fit_count_floor(capacity: available, each: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max)
 }
 
-test fn derived_width_reproduces_every_authored_literal() -> Bool {
-  derived_memory_admitted_width(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
-    && derived_memory_admitted_width(host: operator_host_srv2) == host_memory_admitted_width(host: operator_host_srv2)
-    && derived_memory_admitted_width(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
-    && derived_memory_admitted_width(host: operator_host_srv4) == host_memory_admitted_width(host: operator_host_srv4)
+test fn derived_width_reproduces_every_authored_literal() -> std.types.Bool {
+  derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv1) == gunbc.runner_slot_allocation.host_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv1)
+    && derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv2) == gunbc.runner_slot_allocation.host_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv2)
+    && derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv3) == gunbc.runner_slot_allocation.host_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv3)
+    && derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv4) == gunbc.runner_slot_allocation.host_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv4)
 }
 
-test fn derived_width_reproduces_the_two_host_classes() -> Bool {
-  derived_memory_admitted_width(host: operator_host_srv1) == 5
-    && derived_memory_admitted_width(host: operator_host_srv3) == 6
+test fn derived_width_reproduces_the_two_host_classes() -> std.types.Bool {
+  derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv1) == 5
+    && derived_memory_admitted_width(host: gunbc.fleet_intent_network.operator_host_srv3) == 6
+}
+
+// THE PLACEMENT DECISION IS ARITHMETIC, AND THIS RUNS IT RATHER THAN CITING IT. The control plane's
+// host was being chosen by which machine got named first in a conversation. These rows replace that
+// with a measurement: what does a statically pinned resident of a given size COST, in sellable
+// slots, on each host. The answer is not uniform, and that asymmetry is the whole finding -- the
+// legacy pair carries about 1.0GiB of margin against 5x16GiB while the managed pair carries about
+// 15.4GiB against 6x16GiB, so the same resident is free on one pair and costs a slot on the other.
+//
+// A CANDIDATE SIZE IS NOT A MEASUREMENT AND IS NOT TREATED AS ONE. Two gibibytes below is a PROBE
+// VALUE chosen to sit just above the legacy margin, so these rows measure the SHAPE of the cost
+// function rather than asserting what the broker uses. The real envelope is unmeasured and the model
+// refuses on it rather than guessing; nothing here licenses writing it down.
+fn conserves_at_width_charging(host: product.placement_supply.HostIdentity, slots: std.types.Int, control_plane: std.measure.ByteSize) -> std.types.Bool {
+  witness_allocation_conserves(
+    host: usable_ram_of(host: host),
+    overhead: gunbc.ci_runner_placement.host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: host)),
+    headroom: gunbc.fleet_host_budget.oomd_actuation_floor(host: usable_ram_of(host: host)),
+    runner_pool: gunbc.runner_slot_allocation.gunbc_runner_slot_demand_sum_memory_max(
+      slots: slots,
+      per_slot: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max
+    ),
+    session_pool: gunbc.ci_runner_placement.host_session_slice_bytes(host: host),
+    compile_pool: std.measure.byte_size(0),
+    control_plane: gunbc.fabric_control_plane_charge.ControlPlaneClaimResolved { memory: control_plane }
+  )
+}
+
+// THE LITERAL 1..8 IS A SEARCH BOUND, NOT A WIDTH ENUMERATION, and the distinction matters because
+// a sibling PR is currently deleting bucketed width enumerators for being exactly the wrong shape.
+// Those buckets answered "which slots does width N have" and silently returned nothing for a width
+// they could not spell. This is the range a probe SEARCHES for the largest admissible width, it is
+// deliberately wider than any host can reach, and a host admitting 8 would fail the paired control
+// below rather than pass quietly. It is also written as a literal so this lane does not depend on
+// std.nat.nat_range_inclusive landing first, which would couple two independent changes' merge order.
+fn admitted_width_charging(host: product.placement_supply.HostIdentity, control_plane: std.measure.ByteSize) -> std.types.Int {
+  fold(
+    [1, 2, 3, 4, 5, 6, 7, 8],
+    init: 0,
+    f: (best, w) =>
+      if conserves_at_width_charging(host: host, slots: w, control_plane: control_plane) { w } else { best }
+  )
+}
+
+data control_plane_probe_bytes: std.measure.ByteSize = std.measure.byte_size(2147483648)
+
+// THE PAIR IS THE WITNESS. A row showing only that srv1 loses a slot would be satisfied by a charge
+// that breaks every host, which would argue for placing the control plane nowhere rather than for
+// placing it on the managed pair. The srv3 half is what makes it a placement finding: the SAME
+// resident, the SAME arithmetic, no cost at all.
+test fn the_same_control_plane_costs_a_slot_on_the_legacy_pair_and_nothing_on_the_managed_pair() -> std.types.Bool {
+  admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv1, control_plane: control_plane_probe_bytes) == 4
+    && admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv2, control_plane: control_plane_probe_bytes) == 4
+    && admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv3, control_plane: control_plane_probe_bytes) == 6
+    && admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv4, control_plane: control_plane_probe_bytes) == 6
+}
+
+// THE UNCHARGED CONTROL, without which the row above cannot distinguish "the charge cost srv1 a
+// slot" from "srv1 only ever admitted four".
+test fn the_legacy_pair_admits_five_when_nothing_is_charged() -> std.types.Bool {
+  admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv1, control_plane: std.measure.byte_size(0)) == 5
+    && admitted_width_charging(host: gunbc.fleet_intent_network.operator_host_srv3, control_plane: std.measure.byte_size(0)) == 6
+}
+
+// AN UNMEASURED ENVELOPE REFUSES RATHER THAN CHARGING ZERO, on every host, including the one with
+// fifteen gibibytes of room. Unmeasured is not a small number and a host with margin is not a reason
+// to skip the question -- the refusal is about ignorance, not capacity, and merging those two is how
+// a fabricated cap gets chosen to keep a plan green.
+test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_ones() -> std.types.Bool {
+  all(
+    [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4],
+    h => !witness_allocation_conserves(
+      host: usable_ram_of(host: h),
+      overhead: gunbc.ci_runner_placement.host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: h)),
+      headroom: gunbc.fleet_host_budget.oomd_actuation_floor(host: usable_ram_of(host: h)),
+      runner_pool: gunbc.runner_slot_allocation.gunbc_runner_slot_demand_sum_memory_max(slots: 1, per_slot: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max),
+      session_pool: gunbc.ci_runner_placement.host_session_slice_bytes(host: h),
+      compile_pool: std.measure.byte_size(0),
+      control_plane: gunbc.fabric_control_plane_charge.ControlPlaneClaimUnmeasured { cause: "probe" }
+    )
+  )
 }

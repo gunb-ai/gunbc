@@ -115,6 +115,7 @@ pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
+    pub transparent_alias_rep: Rc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -127,6 +128,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
+        transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
     })
 }
 
@@ -247,6 +249,7 @@ pub fn symbol_index_insert(
         ),
         global_bare: index.global_bare.clone(),
         services: index.services.clone(),
+        transparent_alias_rep: index.transparent_alias_rep.clone(),
     })
 }
 
@@ -270,6 +273,7 @@ pub fn symbol_index_insert_decl(
             binding.clone(),
         ),
         services: index.services.clone(),
+        transparent_alias_rep: index.transparent_alias_rep.clone(),
     })
 }
 
@@ -290,6 +294,7 @@ pub fn symbol_index_insert_service(
                 item: item.clone(),
             }),
         ),
+        transparent_alias_rep: index.transparent_alias_rep.clone(),
     })
 }
 

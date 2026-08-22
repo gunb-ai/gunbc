@@ -1,0 +1,942 @@
+module gunbc.emit_summary_map_consumer_partition
+
+
+// THE READ SIDE OF THE EMIT SUMMARY MAP, PARTITIONED ON TWO QUESTIONS RATHER THAN ONE.
+//
+// SUBJECT. `v1.compiler.infer_emit_info` `build_emit_graph_info` folds every module in the closure
+// into one Map<std.types.String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
+// arm: two declarations sharing a spelling resolve last-write-wins in fold order. That map is the
+// denominator gunbc.bare_name_identity_consumer_census ranks first, and this carrier is the
+// measurement that must precede re-keying it.
+//
+// THE TWO COLUMNS, AND WHY ONE IS NOT ENOUGH. Whether a consumer HOLDS a resolved node at the
+// moment it queries the map (the ASK) is a different question from whether the summary it gets back
+// is then re-keyed on a spelling (the USE). A site that passes the first and fails the second is
+// not repaired by an identity-keyed map: it looks up correctly, then throws the identity away one
+// line later. Scoring only the ask would have sized this lane as "most sites are fine".
+//
+// NOTHING HERE IS REPAIRED. Per the sequencing rule gunbc.bare_name_identity_consumer_census states
+// for its own roster, the sweep precedes the refusal; a refusal landed ahead of its population
+// trades an uncounted silence for an uncounted red.
+
+// WHAT THE CONSUMER HOLDS AT THE ASK.
+//
+// NodeHeldAtAsk is the repairable arm: a Node whose resolved declaration identity is derivable is
+// in scope at the call, so the lookup could pass identity if the key accepted it. A row may not
+// claim it without naming the expression that holds the node.
+//
+// CompositeOfTwoSpellings is the enum-name-plus-variant-name key. The lookup side has already
+// conceded here that one spelling is insufficient, so the call shape survives an identity key
+// unchanged -- but only if BOTH parts get one, and the enum half arrives from a bare-name-derived
+// map (variant_to_enum), so this arm is not self-sufficient.
+//
+// SpellingOnlyFromMapValue is the severed arm: the key is a std.types.String the consumer pulled out of a
+// TypeSummary field, and nothing declaration-shaped is in scope. It names WHERE the severance
+// happened, because that is where the repair is, not here.
+//
+// NoKeyWholeMapScan is not a key question at all: the site iterates every summary. It is on the
+// roster because its ANSWER is a name, so it re-enters the bare-name world at its output rather
+// than at its input, and a re-key alone does not reach it.
+type AskIdentity
+  = NodeHeldAtAsk { holder_expression: std.types.String }
+  | CompositeOfTwoSpellings { parts: std.types.String, second_part_source: std.types.String }
+  | SpellingOnlyFromMapValue { severed_at: std.decl_ref.DeclarationRef, map_field: std.types.String }
+  | NoKeyWholeMapScan { what_is_scanned: std.types.String }
+
+// WHAT HAPPENS TO THE SUMMARY ONCE THE SITE HAS IT.
+//
+// TerminalAtSite is the only arm an identity-keyed map repairs on its own: the summary decides a
+// std.types.Bool or is consumed structurally, and no spelling leaves the site.
+//
+// ReKeyedIntoSameMap is the kind-3 class wearing a better hat: the site queried with a node in hand
+// and then keys a SECOND lookup on a std.types.String drawn out of the summary it just received.
+//
+// SpellingEscapesToCaller is the same defect one frame up: the site RETURNS a name out of the
+// summary and its caller decides on that spelling.
+//
+// ReKeyedIntoForeignNameTable is the arm re-keying cannot reach at all: the spelling leaves this
+// map and keys a different bare-name authority, which has no identity parameter to accept one.
+type UseDisposition
+  = TerminalAtSite { what_is_decided: std.types.String }
+  | ReKeyedIntoSameMap { second_key_source: std.types.String, second_lookup_decides: std.types.String }
+  | SpellingEscapesToCaller { escapes_as: std.types.String, consumed_by: std.decl_ref.DeclarationRef }
+  | ReKeyedIntoForeignNameTable { table: std.decl_ref.DeclarationRef, why_a_rekey_cannot_reach_it: std.types.String }
+
+type SummaryMapConsumer {
+  site: std.decl_ref.DeclarationRef
+  keys_on: std.types.String
+  ask: AskIdentity
+  use: UseDisposition
+  lookup_expression_count: std.types.Int
+}
+
+// THE ROSTER. Every row was read in the live tree on 2026-08-22; the selector and its blind spot are
+// in emit_summary_map_partition_basis below, and the method is in
+// docs/probes/emit-summary-map-consumer-partition-2026-08-22.md. Rows are ordered by module and
+// then by position in it, never by severity.
+data emit_summary_map_consumers: std.types.List<SummaryMapConsumer> = [
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "lookup_emit_type_summary"),
+    keys_on: "the bare type_name parameter",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- this is the shared accessor, and it accepts only a String, so every caller is forced through a spelling whatever it holds" },
+    use: SpellingEscapesToCaller { escapes_as: "the whole TypeSummary, to four callers scored separately below", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "positional_payload_scrut_type") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_belongs_to_enum"),
+    keys_on: "the bare enum_name, then the variant spelling against that summary's variant_name_set",
+    ask: CompositeOfTwoSpellings { parts: "enum_name and variant_name, as two String parameters", second_part_source: "callers pass a variant spelling read off a record-literal head or a match pattern" },
+    use: TerminalAtSite { what_is_decided: "a Bool -- whether this variant belongs to that enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_enum_in_summaries"),
+    keys_on: "the bare type_name",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- a String parameter with no node beside it in the signature" },
+    use: TerminalAtSite { what_is_decided: "a Bool -- whether the name is an enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "type_summary_reaches_fn"),
+    keys_on: "the bare name, then recursively on every name in the summary's field_type_map and field_import_surface_names",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"), map_field: "field_type_map and field_import_surface_names" },
+    use: ReKeyedIntoSameMap { second_key_source: "the field type names carried in the summary just fetched", second_lookup_decides: "the whole transitive closure -- this is a fixpoint over spellings, so one collision anywhere in the closure is inherited by every type that reaches it" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    keys_on: "every key of the map in turn",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_keys(summaries), rewriting has_fn_fields for each" },
+    use: ReKeyedIntoSameMap { second_key_source: "type_summary_reaches_fn on that same key", second_lookup_decides: "has_fn_fields, which decides whether the emitted struct derives serde" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
+    keys_on: "nothing -- it folds every summary and re-keys the RESULT on the bare variant spelling",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(summaries), reading variant_name_set off each enum summary" },
+    use: SpellingEscapesToCaller { escapes_as: "a Map from bare variant spelling to bare enum spelling, with the empty string written where two enums claim one spelling", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_qualify_type_leaf_name") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
+    keys_on: "nothing -- it scans every summary asking whether ANY enum has this variant spelling",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), testing each variant_name_set for the name" },
+    use: TerminalAtSite { what_is_decided: "a Bool, deliberately quantified over the whole closure -- so the more collisions the map holds, the more often it answers true" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer", decl_name: "enum_variant_shape_sets_for_item"),
+    keys_on: "authored_name_at of the item being folded",
+    ask: NodeHeldAtAsk { holder_expression: "item -- the declaration Node itself, together with its own module's source_indices" },
+    use: SpellingEscapesToCaller { escapes_as: "concat(item_name, colon-colon, variant name) inserted into the fielded and positional_payload sets", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_has_fields") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types"),
+    keys_on: "nothing -- it folds every summary and emits a Set of bare names",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), selecting names whose repr and recursion make them Rc-shared" },
+    use: SpellingEscapesToCaller { escapes_as: "a Set<String> of bare names, later tested with set_contains at 27 render sites -- of which only 6 pass an expression already reduced to a leaf, the rest passing a name binding that may be dotted (counted on main, 2026-08-22)", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_from_children") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "anonymous_record_lit_surface_name"),
+    keys_on: "the authored name of the literal's resolved type node, as a membership test",
+    ask: NodeHeldAtAsk { holder_expression: "rt -- resolved_type(n: n), guarded by rt.ident_span != none on the same line" },
+    use: SpellingEscapesToCaller { escapes_as: "the bare name, returned as the struct head the emitter will render", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "record_lit_variant_payload_struct_surfaces"),
+    keys_on: "variant_summary_key of the enum and variant spellings",
+    ask: CompositeOfTwoSpellings { parts: "enum_name and variant_name", second_part_source: "enum_name comes from variant_to_enum, itself keyed on the bare variant spelling" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_values(summary.field_type_map)", second_lookup_decides: "which field types are structs and therefore need a use-line" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_anonymous_record_lit_heads"),
+    keys_on: "emit_inferred_type_leaf_name of the literal, as a membership test",
+    ask: NodeHeldAtAsk { holder_expression: "n -- the record-literal expression node the walk is standing on" },
+    use: SpellingEscapesToCaller { escapes_as: "the head name, admitted as an attested use-line candidate", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_use_lines") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_items_field_import_surface_names"),
+    keys_on: "a surface type name, then variant_summary_key when the first lookup misses",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"), map_field: "field_import_surface_names, produced by a node walk that returns List<String>" },
+    use: ReKeyedIntoSameMap { second_key_source: "summary.field_import_surface_names", second_lookup_decides: "which of those names are structs" },
+    lookup_expression_count: 3,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_record_lit_field_struct_surfaces"),
+    keys_on: "variant_record_lit_summary_key of the parent literal",
+    ask: CompositeOfTwoSpellings { parts: "the parent's enum and variant spellings", second_part_source: "variant_to_enum again" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_get(summary.field_type_map, field_name)", second_lookup_decides: "whether that field's type is a struct" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "expand_variant_payload_struct_imports"),
+    keys_on: "variant_summary_key built from a bare name and its variant_to_enum parent",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set, projected into variant_to_enum by derive_variant_to_enum" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_values(summary.field_type_map)", second_lookup_decides: "which payload field types are structs" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
+    keys_on: "the bare enum_name",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set" },
+    use: ReKeyedIntoSameMap { second_key_source: "each variant spelling from variant_name_set, looked up in variant_to_enum", second_lookup_decides: "whether the module spells a variant that binds unambiguously back to this enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "module_data_field_struct_import_names"),
+    keys_on: "the authored name of a data item's type annotation",
+    ask: NodeHeldAtAsk { holder_expression: "ta -- the type_annotation node of the data item being folded" },
+    use: ReKeyedIntoSameMap { second_key_source: "summary.field_import_surface_names", second_lookup_decides: "which field types are structs, before an export-surface proof" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_has_fn_fields"),
+    keys_on: "the bare name parameter",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- a String parameter, though its own caller emit_struct_from_children is rendering a declaration it holds" },
+    use: TerminalAtSite { what_is_decided: "a Bool that decides whether the emitted struct derives serde" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "positional_payload_scrut_type"),
+    keys_on: "variant_summary_key of the parent enum and variant, falling back to the bare variant name when no parent is known",
+    ask: CompositeOfTwoSpellings { parts: "parent_enum and variant_name", second_part_source: "the parent arrives as String? from the match arm; Absent degrades the key to the bare variant spelling" },
+    use: SpellingEscapesToCaller { escapes_as: "field_type_map slot zero, returned as the scrutinee TYPE NAME", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_pattern_rc_prelude_parent_enums") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_optional_struct_field"),
+    keys_on: "the bare struct_name",
+    ask: SpellingOnlyFromMapValue { severed_at: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- callers pass variant_summary_name, a spelling assembled earlier in emit_typed_record_lit" },
+    use: TerminalAtSite { what_is_decided: "whether the field value is wrapped in Some(..)" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_field_value_with_context"),
+    keys_on: "authored_name_at of the struct node, guarded by its ident_span",
+    ask: NodeHeldAtAsk { holder_expression: "struct_node -- the resolved type node of the enclosing literal" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_get(summary.field_type_map, field_name), whose value is then passed to variant_belongs_to_enum as enum_name", second_lookup_decides: "which enum a nested variant literal is corrected to -- a THIRD hop keyed on the spelling the second returned" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "struct_candidates_by_field_names"),
+    keys_on: "nothing -- it scans every summary matching on field-name sets",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), filtered by field-name signature" },
+    use: SpellingEscapesToCaller { escapes_as: "summary.name, returned as the canonical struct head for an anonymous literal", consumed_by: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "find_struct_name_by_fields") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
+    keys_on: "the resolved type's authored name as a membership test, the chosen head name as a second membership test, and variant_summary_name for the defaults pass",
+    ask: NodeHeldAtAsk { holder_expression: "resolved_type -- held throughout, and already gated on resolved_type.ident_span != none" },
+    use: ReKeyedIntoForeignNameTable { table: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_zero_value"), why_a_rekey_cannot_reach_it: "the field type spelling from field_type_map is passed to a name-keyed zero-value table that takes no identity parameter, so an identity-keyed summary map changes nothing at this hop until that table is keyed too" },
+    lookup_expression_count: 3,
+  },
+]
+
+fn consumer_holds_node_at_ask(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.ask {
+    NodeHeldAtAsk { holder_expression: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_spelling_only(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.ask {
+    SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_composite(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.ask {
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_scan(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.ask {
+    NoKeyWholeMapScan { what_is_scanned: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_is_terminal(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.use {
+    TerminalAtSite { what_is_decided: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_rekeys(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.use {
+    ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_escapes(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.use {
+    SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.use {
+    ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => true
+    _ => false
+  }
+}
+
+fn partition_member_count() -> std.types.Int {
+  emit_summary_map_consumers |> count
+}
+
+fn partition_lookup_expression_total() -> std.types.Int {
+  emit_summary_map_consumers |> fold(init: 0, f: (acc, c) => acc + c.lookup_expression_count)
+}
+
+fn partition_holds_node_count() -> std.types.Int {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c)) |> count
+}
+
+fn partition_spelling_only_count() -> std.types.Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_spelling_only(c: c)) |> count
+}
+
+fn partition_composite_count() -> std.types.Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_composite(c: c)) |> count
+}
+
+fn partition_scan_count() -> std.types.Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_scan(c: c)) |> count
+}
+
+fn partition_terminal_use_count() -> std.types.Int {
+  emit_summary_map_consumers |> filter(c => consumer_use_is_terminal(c: c)) |> count
+}
+
+// THE CELL THE BRIEF ASKS FOR, AND THE ONE THAT CHANGES THE SIZING: a site that holds a node at the
+// ask and STILL re-keys on a spelling afterwards. Scoring the ask alone files these as repaired by
+// the re-key; they are not.
+fn partition_holds_node_but_rekeys() -> std.types.List<SummaryMapConsumer> {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && !consumer_use_is_terminal(c: c))
+}
+
+// THE SET AN IDENTITY-KEYED MAP REPAIRS BY ITSELF: identity obtainable at the ask, and nothing
+// spelling-shaped leaving the site. Everything outside it needs the summary's own VALUES to carry
+// identity, not just its keys.
+fn partition_repaired_by_rekey_alone() -> std.types.List<SummaryMapConsumer> {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && consumer_use_is_terminal(c: c))
+}
+
+// THREE THINGS A LATER READER IS MOST LIKELY TO LOSE, kept here rather than in a hand-off message.
+//
+// FIRST, the severance is FOUR folds and not one, and the correction is directional: an earlier
+// read made this look like one fold storing a name where it could store an identity. It is three of
+// the summary's own fields plus the map key, and collect_type_node_import_surface_names returns a
+// std.types.List<std.types.String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
+// and larger shape of change than the other three.
+//
+// SECOND, is_known_variant is the sharpest row on the roster: it quantifies over the whole closure
+// deliberately, so it answers true MORE OFTEN the more collisions the map holds. That is not a
+// lookup bug, it is an instrument that inverts under load -- its confidence rises exactly as its
+// input degrades.
+//
+// THIRD, emit_typed_record_lit reaching rust_zero_value is not merely unkeyed but UNKEYABLE without
+// a signature change, which is what makes that row a PREREQUISITE for its consumer rather than a
+// peer of it. Same shape as emit_container, which is the useful pointer for whoever takes it.
+
+// THE build_shared_types ROW NOW HAS A PRODUCTION RECEIPT, and it is the strongest evidence on this
+// roster that a whole-map SCAN is not repaired by a better key. Measured by the namespace-cut lane
+// on 2026-08-22 (integration/namespace-cut, head 45fb8c80b8e), not by me: with names spelled dotted
+// on that branch, a dotted spelling missed the bare-keyed set, so the type rendered UNWRAPPED at
+// that site while a caller reaching the same type through a leaf-reduced site rendered it WRAPPED.
+// The emitted tree disagreed with itself about one type in both directions.
+//
+//   source_indices Rc-wrapped / unwrapped   main 717/0 -- before 343/371 -- after 714/0
+//
+// The split collapsing to zero in the direction main already holds is the discriminator: a fix that
+// merely moved the disagreement would not land on main's shape. What I verified independently is
+// the mechanism's surface on main -- 27 set_contains(shared_types, ..) sites, only 6 passing an
+// already-leaf-reduced expression. The wrapped/unwrapped measurements are theirs and are cited, not
+// re-derived.
+//
+// THE RECEIPT SURVIVED ITS OWN CONFOUND, WHICH IS WHY IT IS ON THE ROSTER AT ALL. Those trees were
+// emitted by a BOOTSTRAP binary of an older vintage -- one whose mirrors contain no
+// type_reference_decl_file, decl_identity_file or numeric_realization_declaring_modules at all -- and
+// an older emitter is a MAIN-LIKE emitter, whose wrapping is consistent by construction. So "the old
+// binary produced the consistency" was a live alternative explanation for the 714/0, independent of
+// any leaf-reduction. The lane ran the control: same binary vintage, same tree, same roots, the
+// leaf-reduction the only difference. WITH it, 714/0; WITHOUT it, 343/371 -- the original split
+// reproduced exactly. The old emitter alone does not produce main's shape. The attribution holds
+// because of that arm, not because the after-number looks like main's.
+//
+// WHAT THE CONTROL DOES NOT LICENSE, recorded so this row is not read as covering more than it does:
+// the same vintage confound retired that lane's separate Nat-versus-i64 realization diagnosis, which
+// was measured on a tree emitted by a binary lacking the identity machinery the diagnosis is about.
+// Nothing on this roster rests on that diagnosis. And the mirrors at that head are PROVISIONAL --
+// regenerated by the vintage-behind binary -- so only the controlled shared_types delta is claimed
+// from them; everything else there carries an unenumerated emitter difference.
+//
+// WHY IT BELONGS HERE RATHER THAN IN THEIR LANE: shared_types is FOLDED FROM this map and inherits
+// its bare key, and the failure is at the CONSUMPTION of a name the scan returned, not at any
+// lookup into the map. Re-keying the map's keys cannot reach it. That is the scan row's structural
+// claim with an artifact attached.
+
+// WHERE THE IDENTITY WAS DISCARDED. Every spelling-only row above is severed at one of these folds,
+// and each fold holds the resolved node on the line it stores a name -- so the repair is upstream
+// and shared, not one campaign per consumer. holder_at_discard names the binding that is in scope
+// at the discarding expression; a row without one would be a claim a reader cannot check.
+type SeverancePoint {
+  fold: std.decl_ref.DeclarationRef
+  holder_at_discard: std.types.String
+  stores_instead: std.types.String
+  fills_summary_field: std.types.String
+}
+
+data emit_summary_map_severance_points: std.types.List<SeverancePoint> = [
+  {
+    fold: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"),
+    holder_at_discard: "ft, bound by the arm Present { value: Resolved { node: ft } } on the child's inferred type",
+    stores_instead: "authored_name_at of normalize_access_type_node(n: ft)",
+    fills_summary_field: "field_type_map",
+  },
+  {
+    fold: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"),
+    holder_at_discard: "peeled, and the Resolved rt it recurses into",
+    stores_instead: "authored_name_at of each, accumulated as a List<String>",
+    fills_summary_field: "field_import_surface_names",
+  },
+  {
+    fold: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"),
+    holder_at_discard: "child, each variant declaration node of the item being summarised",
+    stores_instead: "authored_name_at of the variant, as a map key",
+    fills_summary_field: "variant_name_set",
+  },
+  {
+    fold: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"),
+    holder_at_discard: "item, together with the typed module the fold is standing in",
+    stores_instead: "summary.name, the bare authored declaration name, as the map key",
+    fills_summary_field: "the map key itself",
+  },
+]
+
+// THE JOIN BETWEEN THE TWO ROSTERS, derived here so a spelling-only row cannot name a fold that the
+// severance roster does not carry. Without it a row could file "the identity is gone" without
+// saying where it went.
+fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> std.types.Bool {
+  match c.ask {
+    SpellingOnlyFromMapValue { severed_at: sa, map_field: _ } =>
+      emit_summary_map_severance_points |> any(s => s.fold.decl_name == sa.decl_name && s.fold.module_path == sa.module_path)
+    _ => true
+  }
+}
+
+fn partition_severance_point_count() -> std.types.Int {
+  emit_summary_map_severance_points |> count
+}
+
+// THE COLLISION POPULATION, AND THE GRAIN IS THE POOL RULE RATHER THAN "THE CLOSURE".
+//
+// The refusal a re-key would arm fires when two declarations SHARE A SPELLING IN ONE FOLDED
+// POPULATION. That population is not one thing: the v1 emitter builds it three different ways, and
+// the collision count differs by an order of magnitude between them. A row therefore names the
+// pool rule it was measured under, because "the closure" is ambiguous between all three.
+//
+// RULE 1 -- IMPORT-ONLY UNION OF A ROOT (the seed emitting itself): every .dag under src/v1 seeded
+// at once, imports followed through a module index over src/v1 and dag. This is
+// `v1_compiler.cli_run` `regen_input_sources` and it is exact -- no import in that population names
+// a module outside the index, so nothing is silently dropped.
+//
+// RULE 2 -- SINGLE ENTRY, IMPORTS PLUS A REFERENCE EXTENSION: `load_sources_for_entry_with_index`
+// resolves the import closure and then calls `extend_with_reference_closure`, which scans each
+// source for DOTTED module paths outside strings and annotations and pulls in each named module's
+// own import closure. An import-edge-only walk understates this population, measured: 152 modules
+// and 23 colliding names for src/v2/compiler/00_compile.dag by imports alone, 161 and 25 once the
+// reference extension is applied.
+//
+// RULE 2 IS NOT AS OBJECTIVE AS THE OTHER TWO, AND A READER WILL ASSUME IT IS. Its population is a
+// function of which dotted references the SOURCE spells, so it inherits any mis-qualification
+// upstream of it: a reference qualified to the wrong declarer pulls in a module the program never
+// meant to name, and the pool grows by exactly that mistake. Receipt, measured by another lane on
+// 2026-08-22: four dotted references in src/v1/05_emit_rust.dag (two v2.std.node.Arrow, two
+// v2.std.node.Bind) had been qualified to the wrong declarer by a repair pass -- main spells all
+// four BARE and v1.std.core declares both names -- and those four references alone pulled v2.std.node
+// into the seed pool. Rules 1 and 3 cannot move that way: rule 1 follows declared import edges and
+// rule 3 takes everything. So a rule-2 count measures the tree AND the correctness of its
+// qualifications, and the two are not separable from the number.
+
+// AND ONE AMBIGUITY IN RULE 2 THAT IS REAL IN PRINCIPLE AND MEASURED AT ZERO HERE, checked rather
+// than assumed after a sibling lane's instrument returned 1,350 sites of which essentially all were
+// ordinary FIELD ACCESSES whose leaf collided with a parameter name (the true population was 8).
+// The same confusion is available to this walk and to the host scanner it mirrors: both accept a
+// dotted chain whose prefix resolves in the module index, and `binder.field` is spelled exactly like
+// `module.member`. Measured on the live tree: every module path in the corpus begins with one of 16
+// root segments, and the number of sites where a LOCAL BINDER shares one of those roots AND the
+// two-segment path it forms is a real module is ONE -- `tools.readme`, inside dag/tools/readme.dag,
+// which is a module naming itself rather than a field access. So the rule-2 populations here are not
+// inflated by field accesses today. The guard is not structural: a future parameter named `config`
+// or `std` beside a matching two-segment module would re-open it silently, which is why the number
+// is carried rather than the reassurance.
+
+// RULE 3 -- WHOLE-TREE UNION over the three roots. This is the upper bound, and it is the ONLY
+// population measured here in which v1.std.core and v2.std.node are co-resident.
+type CollisionPopulation
+  = WholeTreeUpperBound { distinct_colliding_names: std.types.Int, total_type_declarations: std.types.Int, measurement: std.types.String, why_not_the_refusal_population: std.types.String }
+  | PoolMeasured { pool_rule: std.types.String, pool_subject: std.types.String, modules_in_pool: std.types.Int, type_declarations: std.types.Int, distinct_colliding_names: std.types.Int, specimens: std.types.String }
+
+// INSTRUMENT CONTROL: the compiler's own resolver reports `resolved 6 sources` for this carrier's
+// own entry, and the walk independently counts 6 modules for it under both rule 1 and rule 2, so
+// it is not measuring a different graph from the one the compiler builds.
+data emit_summary_map_collision_population: std.types.List<CollisionPopulation> = [
+  WholeTreeUpperBound {
+    distinct_colliding_names: 116,
+    total_type_declarations: 9480,
+    measurement: "every module-scope `type NAME` under dag/, src/v1/ and src/v2/ on 2026-08-22: 9480 declarations, 9352 distinct names, 116 declared more than once -- and the two grains agree, since every repeated name is also declared by more than one MODULE",
+    why_not_the_refusal_population: "no emitted population is the whole tree, so this bounds every row below from above and can neither confirm nor refute one; a per-pool count is the only thing a refusal can be sized against",
+  },
+  PoolMeasured {
+    pool_rule: "rule 1 -- import-only union of every .dag under src/v1, indexed over src/v1 and dag (regen_input_sources)",
+    pool_subject: "the stage0 regen population, what build_emit_graph_info folds when the seed emits itself",
+    modules_in_pool: 128,
+    type_declarations: 974,
+    distinct_colliding_names: 1,
+    specimens: "Cardinality, declared Required | Optional in std.constructors and Required | CardOptional in v1.std.core -- two DIFFERENT unit-only enums under one key, so the map's variant_name_set for Cardinality is whichever module the fold reached last, and is_known_variant, derive_variant_to_enum and variant_belongs_to_enum all answer from that one",
+  },
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "src/v2/compiler/00_compile.dag",
+    modules_in_pool: 161,
+    type_declarations: 1182,
+    distinct_colliding_names: 25,
+    specimens: "the dual-tree homonyms DESIGN section 3 already names -- Int (std.integer vs v2.std.integer), Nat (std.nat vs v2.std.nat), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std versus v2.std.cardinality), Compose, the ten machine-width integer rows, plus NonNegativeInt and PositiveInt which only the reference extension pulls in",
+  },
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "src/v2/workflow/required_floor.dag",
+    modules_in_pool: 45,
+    type_declarations: 430,
+    distinct_colliding_names: 20,
+    specimens: "the same dual-tree family, minus Unit, TerminationProof and RankingDimension",
+  },
+  PoolMeasured {
+    pool_rule: "rule 1 root list plus the reference extension -- every src/v1 module seeded, indexed over THREE roots (src/v1, dag, src/v2) because regen_source_roots carries src/v2 on that branch",
+    pool_subject: "the stage0 regen population at integration/namespace-cut, head 48b55fa2d70 (PR 8282) -- the branch where the wrong emitted use-lines live",
+    modules_in_pool: 126,
+    type_declarations: 990,
+    distinct_colliding_names: 3,
+    specimens: "Cardinality, Connective and Node. v2.std.node is the ONE v2 module the reference extension pulls in and it brings two of the three: Connective (v1.std.core Conj | Disj | NoConnective | Arrow versus v2.std.node's own) and Node (declared in both). Import-only on the same tree gives 54 modules and ZERO collisions, because that branch has deleted its imports -- so on this pool the reference extension is not a refinement, it is the whole closure",
+  },
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "dag/gunbc/design_document.dag",
+    modules_in_pool: 127,
+    type_declarations: 481,
+    distinct_colliding_names: 3,
+    specimens: "Bool, List and String -- the dag/std versus src/v2/std pairs only",
+  },
+]
+
+// WHAT THE POOL ROWS SETTLE, AND IT IS THE SEQUENCING QUESTION RATHER THAN THE DESIGN ONE.
+// A refusal on collision would refuse ONE name in the seed's own emit population and TWENTY-PLUS in
+// every v2 entry pool that spans both std trees. Those twenty are not accidents to be repaired one
+// at a time: they ARE the two-tree migration, so the refusal is downstream of it, and landing the
+// refusal first would red the compiler's own pool against a population nobody had counted.
+
+// A SECOND SPECIMEN WAS OFFERED FOR THIS MAP AND IS WITHDRAWN. THE OBSERVATION SURVIVES; THE
+// ATTRIBUTION DOES NOT. This paragraph previously filed the 13 rustc E0063 "missing field _phantom"
+// on the namespace-cut branch as a second failure mode of this map -- a MISSING answer from a bare
+// key that could never match a qualified spelling. That explanation was falsified by its own repair,
+// by the lane that offered it, and the correction is recorded here rather than deleted because two
+// receipts were landed citing it.
+//
+// THE FALSIFIER, and it is the right kind: they leaf-reduced the phantom lookup's key -- exactly the
+// move that worked for shared_types -- bootstrapped, re-emitted, and measured ZERO change. 13 E0063
+// before and after, 382 total before and after, 0 _phantom lines emitted either way. If the key were
+// the defect, keying it correctly would have moved something. It moved nothing, and they reverted it
+// rather than leave an inert change inside a repair narrative.
+//
+// THE DISCRIMINATOR IS MODULE LOCALITY, NOT KEY SPELLING. The phantom lookup is
+// lookup_type_by_name(env: scope.type_env, ..) -- the MODULE-LOCAL type env, not this map at all.
+// Counted over every generic type constructed anywhere in the corpus, by whether the constructing
+// module is the declaring one: all six failing types are EXCLUSIVELY foreign-constructed
+// (TargetCapabilityShapeRow 0 same-module / 8 foreign, and likewise for the other five), while
+// Measure -- whose phantom fields do emit, 50 lines in std_measure.rs -- is 48 same-module against 31
+// foreign. So the specimen belongs to a different lookup, and NO PRODUCTION INSTANCE OF THIS MAP'S
+// HARM IS ESTABLISHED BY IT. It is not counted as one.
+//
+// WHAT STILL STANDS, because it was measured rather than explained. The executed two-arm control is
+// untouched: TargetCapabilityShapeRow on main has 8 construction sites, all BARE, and its committed
+// mirror carries 8 emitted literals with 9 _phantom lines; the cut branch spells the same 8 sites
+// QUALIFIED and emits none. That observation is real -- what was wrong is reading the spelling as the
+// cause, when spelling and import CO-VARIED in it and only one of the two was the operative half.
+// Confirmed here by code read, not by execution, and offered as direction rather than proof: the
+// binding table lookup_type_by_name consults carries an ancestry layer built from import ancestry
+// (04_env's ancestry_str_bindings and its cross-parent union note, which speaks of names reachable
+// from two PEER IMPORTS), which is consistent with imports being what populates it. The lane that
+// found this flagged the executed two-arm test as still missing, and it still is.
+//
+// AND MY OWN MEASUREMENTS FROM THAT ROUND, WHICH ARE UNAFFECTED because they are about the membership
+// test rather than the phantom lookup: every qualified record literal misses
+// map_contains_key(type_summaries, tn) -- 1341 sites over 101 distinct types on main -- and of the 36
+// phantom-bearing struct types in main's mirror, ZERO are ever constructed with a qualified spelling.
+// The membership miss is real and corpus-wide; ITS CONSEQUENCE IS UNMEASURED, and this carrier now
+// says so rather than borrowing a consequence from a retracted attribution.
+//
+// ONE FALSE POSITIVE OF MY OWN FROM THE SAME ROUND, kept because it is this carrier's subject turned
+// on its author: my first intersection of those two sets joined on the LEAF NAME and reported one
+// exposed type, Group. It is not one. The phantom-bearing Group is std.algebra.Group; the qualified
+// construction is std.render.Group, a different declaration sharing a leaf. Joining on a spelling
+// produced a wrong answer inside a measurement about joining on a spelling. Corrected count: zero.
+
+// THE PRODUCER HALF: EXECUTED, LIVE, AND NARROWER THAN THIS CARRIER FIRST RECORDED IT -- INCLUDING A
+// SPECIMEN OF MINE THAT WAS WRONG.
+//
+// THE MECHANISM IS EXECUTED. add_emit_item_summary does map_insert(with_variants, summary.name,
+// summary) into one corpus-wide Map<std.types.String, TypeSummary>, so a second declaration sharing a spelling
+// OVERWRITES the first and one declaration is destroyed before any consumer runs. Run on the real
+// interpreter: two map_insert calls under one key return the SECOND value and leave the map with ONE
+// key.
+//
+// AND IT IS LIVE, measured by a sibling lane inside a real emit of the 03_ingest closure with both
+// roots (instrumented build_emit_graph_info, tree pinned inside the run): modules=171,
+// top_level_summaries=1059, distinct_names=1056, colliding_names=3 -- std.types.Bool (dag/std/types.dag versus
+// src/v2/std/logic.dag), RankingDimension and TerminationProof (dag/std/termination.dag versus
+// src/v2/std/cardinality.dag). 1059 minus 1056 is 3, so the arithmetic closes on three genuinely
+// destroyed summaries.
+//
+// MY OWN SPECIMEN WAS WRONG AND IS REPLACED. This carrier previously offered Nat -- co-resident as
+// std.nat and v2.std.nat in the 161-module 00_compile pool -- as the executed co-residency arm. Nat
+// is NOT a collision in the map, and the reason is decidable from the declarations: dag/std/nat.dag
+// declares `type Nat = CommutativeSemiring<Magnitude>`, an ALIAS, and build_type_summary returns none
+// when item.connective == NoConnective, so the seed's Nat never becomes a summary and there is no
+// second entry to destroy. Co-residency of two DECLARATIONS is not co-residency of two SUMMARIES, and
+// I conflated them. std.types.Bool is the specimen that survives: coproduct against coproduct, both
+// summary-producing, and in the live three.
+//
+// THE STATIC BOUND NARROWS, AND THE NARROWING IS ROBUST WHILE THE NUMBER IS NOT. Of the 116
+// whole-tree colliding names, the ones the map can be exposed to at all are those whose BOTH sides
+// are in a summary-producing form; the rest are invisible to it by construction. Two INDEPENDENT
+// textual classifiers were run over the same 116 and they disagree: 79 both-sides / 13 one-side / 24
+// neither here, against 83 / 11 / 22 from the lane that reproduced it. Both partitions sum to 116, so
+// neither dropped rows -- four names are classified differently, and the gap is exactly the width of
+// the proxy, because BOTH classifiers are textual stand-ins for a CONNECTIVE that neither read.
+// build_type_summary's real predicate is item.connective == NoConnective || Arrow || transport
+// present. So the honest statement is ROUGHLY 80, by two classifiers that disagree by four, and this
+// carrier does not quote 79 as exact.
+//
+// ONE PART OF IT IS SETTLED BY READING THE PRODUCER RATHER THAN GUESSING, and it is the shape that
+// was in dispute: a bodyless `type X` -- no brace, no equals -- is built by v1.compiler.parse with
+// connective: NoConnective and an inferred leaf type (the EatUnchanged arm of the type-body parse),
+// so it produces NO summary. Both classifiers happened to count it that way, so it is not the gap;
+// it is recorded because it was decidable from the parser and was being guessed at from the text.
+//
+// WHAT WOULD SETTLE THE REST is reporting item.connective per colliding declaration -- the predicate
+// itself instead of a stand-in for it. That probe exists in the other lane and needs only its
+// filename filter removed. Until it runs, the narrowing is a mechanism-level fact and the count is an
+// approximation, and this carrier says which is which.
+//
+// PRICING, IN BOTH DIRECTIONS. The 3 is ONE closure's live damage: it is a FLOOR, not a ceiling. It
+// refutes "the static census measures live damage"; it does not establish that live damage is small,
+// and n=3 cannot support any claim about what fraction of collisions are seed-versus-v2.
+
+// AND THE REFRAME THAT MATTERS MOST FOR THIS CARRIER'S OWN RESULT, verified here rather than relayed:
+// shared_types is NOT a projection of type_summaries. build_shared_types folds map_values over it AND
+// THEN INJECTS to_pascal of every key of rust_container_templates -- container names that are not
+// declarations at all. So the two carriers are KEYED ALIKE AND POPULATED FROM DIFFERENT DOMAINS, and a
+// name can be in shared_types while absent from type_summaries entirely. That is why a composite key
+// on the map cannot reach the shared_types membership row however carefully it is composed: identity
+// has to reach the SET and the test, not the map they were partly derived from.
+//
+// SO THE EARLIER "ONE CHANGE, TWO NECESSARY HALVES" FRAMING ON THIS CARRIER IS WITHDRAWN. It read the
+// producer and consumer defects as two halves of one repair. They are two CARRIERS with three
+// dispositions: the type_summaries key collision, where a composite key IS the repair and the live
+// population is 3; the shared_types membership test, which the key does not reach; and the static
+// census, an upper bound narrowed by summary-producing form and again by closure membership.
+
+// GROUND TRUTH ARRIVED FOR THE ALIAS EXCLUSION, AND IT IS THE MECHANISM RATHER THAN THE RUN. A probe
+// reading item.connective itself -- not a textual stand-in for it -- inside the same instrumented emit
+// reports BOTH nat modules present in the closure (dag/std/nat.dag and src/v2/std/nat.dag), with
+// dag/std/nat.dag conn=NoConnective summary=false and src/v2/std/nat.dag conn=Disj summary=true. So
+// co-residency is refuted as the explanation and alias exclusion is confirmed as the cause: every
+// alias-versus-coproduct collision in the corpus is invisible to type_summaries BY CONSTRUCTION, not
+// by accident of which modules a closure pulls.
+//
+// AND std.types.Int IS EXCLUDED ON BOTH SIDES: dag/std/integer.dag and src/v2/std/integer.dag are both
+// conn=NoConnective, summary=false. std.types.Int cannot be in type_summaries at all, and therefore cannot
+// reach shared_types through the summary fold. That independently corroborates a third lane's
+// consumer-side trace finding zero shared-type sites for std.types.Int, arrived at by tracing producers rather
+// than by reading connectives -- and the connective is the explanation for both.
+//
+// WHAT THIS DOES TO THE POOL ROWS ABOVE, said explicitly because I have already made this conflation
+// once. Those rows count DECLARATION collisions in a pool: that is what the walk measures and it is
+// the right denominator for the question they answer. They are NOT map collisions. std.types.Int and Nat are
+// both named there as specimens and both are now known to be alias-excluded, so neither is a live
+// collision in type_summaries. std.types.Bool, RankingDimension and TerminationProof are the three that are.
+//
+// THE FIVE NAMES GROUND TRUTH COVERS VALIDATE BOTH CLASSIFIERS AND DISCRIMINATE NEITHER, and this
+// clause previously overstated that. It read as a five-point validation OF THIS CARRIER'S classifier,
+// which is the sentence that would have travelled and would have been taken as support for 79. The
+// other lane ran its own classifier on the same five and also scored five of five. THE VALIDATION SET
+// IS DRAWN ENTIRELY FROM THE REGION WHERE THE TWO INSTRUMENTS ALREADY AGREE, and a set assembled from
+// agreement measures neither of them: it is evidence that both are broadly right and ZERO evidence
+// about whose four names are wrong, which is the only open question between 79 and 83.
+//
+// WHAT THE FIVE DO ESTABLISH, kept because it is real: both classifiers agree with the connective on
+// std.types.Int (alias/alias, neither side produces), Nat (alias/coproduct, exactly one), and std.types.Bool,
+// RankingDimension and TerminationProof (both sides producing -- exactly the live three). So the
+// four-name disagreement lies OUTSIDE every name ground truth has been read for. That is a constraint
+// on WHERE the gap is and carries nothing about WHOSE side it falls on.
+//
+// THE GENERAL FORM, which outlives this count: a validation set assembled from cases two instruments
+// agree on measures neither. To discriminate, the set must be drawn from the DISAGREEMENT -- here,
+// the connective for the four names the two partitions assign differently, not the run's rows at
+// large. Four rows decide it and the rest is confirmation of what is already agreed.
+//
+// SO THAT THE DIFF CAN BE TAKEN WITHOUT A ROUND TRIP, this carrier's two smaller buckets are
+// enumerated here; with the 116-name set they determine the partition completely.
+// EXACTLY-ONE side produces a summary (13): AdmissionState, Byte, FilePath, FixedPointCheck, Float32,
+// Float64, Json, Nat, NonNegativeInt, ObjectId, PositiveInt, ReservedWordStrategy, SourceSpan.
+// NEITHER side produces one (24): Compose, CoreNode, Float, std.types.Int, Int128, Int16, Int32, Int64, Int8,
+// IntPlatform, std.types.List, MachineWidth, PointerWidth, RustPrimitive, ShapeFromCatalogInput, std.types.String, UInt,
+// UInt128, UInt16, UInt32, UInt64, UInt8, UIntPlatform, Unit.
+
+// THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
+//
+// The open question this paragraph previously carried was WHICH pool holds both declarations. It is
+// `regen_source_roots` on integration/namespace-cut (head 48b55fa2d70, PR 8282), which returns
+// THREE roots -- src/v1, dag AND src/v2 -- where main returns two. So rule 3 IS the regen pool on
+// that branch, and my earlier "co-resident in no pool" was correct for every pool reachable from
+// main and wrong for the branch the artifact lives on. Verified by reading that branch: the root
+// list carries src/v2, and 36 stage0 mirrors there reference crate::v2_std_node.
+//
+// MEASURED ON THAT BRANCH'S TREE, and the two rules answer very differently because the imports are
+// gone: seeding every src/v1 module and following IMPORTS ONLY gives 54 modules and ZERO collisions
+// -- the import walk has nothing left to walk. Following the reference extension as well gives 126
+// modules, 990 type declarations and THREE colliding names: Cardinality, Connective and Node. One
+// v2 module enters the pool, v2.std.node, and it alone brings two of the three.
+//
+// THAT THIRD NAME IS A CONTRIBUTION BACK, not a restatement: Node is declared in BOTH v1.std.core
+// and v2.std.node, so it collapses exactly as Connective does. The lane that traced the artifact
+// could account for Connective and not for Node, and filed Node as entering by an unidentified
+// third path. It is the same path. Edge and NamedEdgeTargetLookup are declared ONLY in v2.std.node,
+// do not collide, and remain unaccounted for -- one emitted use-line, at least two causes.
+//
+// THE GENERALISATION, and it is worth more than the specimen: the folded population is a function
+// of the ROOT LIST, not of the module graph. Adding one root to a Vec changed the emitter's
+// identity answers, and the doc comment beside that root list still describes the two-root closure.
+// A map keyed on identity would be indifferent to which roots were passed; a map keyed on a
+// spelling is not.
+//
+// AND THE SENTENCE THAT SURVIVES ALL OF IT, from the lane that traced it: A FAIL-CLOSED GUARD
+// DOWNSTREAM OF A LOSSY INDEX IS NOT FAIL-CLOSED. derive_variant_to_enum implements its ambiguity
+// wall correctly -- a second writer of a variant spelling overwrites with the empty sentinel so
+// neither parent is admitted -- and the wall cannot fire, because the collision it exists to detect
+// was destroyed by the index one layer above it. It reads as coverage on the ledger, which is worse
+// than an absent guard: an absent guard ranks for building. is_known_variant is the same inversion
+// from the other side.
+//
+// ONE ACCOUNT CORRECTED RATHER THAN CARRIED: main is NOT silent about Connective because something
+// suppressed the synthesis. Main's own v1_compiler_infer.rs emits
+// `use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}` -- the path runs and
+// answers correctly, because only one Connective is in main's pool. The deficit did not exist until
+// the pool admitted the homonym.
+
+// THE TWO-PART GUARD TEST, APPLIED AS ITS OWN ROSTER RATHER THAN AS A COLUMN ON EVERY ROW.
+//
+// A guard deserves system-level credit only if BOTH hold:
+//   TRIGGER PRESERVATION -- every raw state that SHOULD trigger it stays distinguishable in the
+//                           guard's INPUT;
+//   REFUSAL              -- it refuses every trigger it can distinguish.
+//
+// The separation is what makes this worth a roster: a reviewer reads derive_variant_to_enum, sees
+// correct fail-closed logic, and stops -- because the failure is not IN the guard, it is in what
+// reached it. Nothing about the fold's own text is wrong. Its input arrived through a map that had
+// already merged the two declarations by spelling, so the state that should have fired the wall was
+// gone before the wall could look at it.
+//
+// The rule for reading these rows: a row failing trigger preservation needs a FAITHFUL INPUT, and a
+// row failing refusal needs a BETTER CHECK. Those are different repairs, and a single "this row is
+// broken" column would have put them in the same bucket.
+type GuardCondition
+  = HoldsHere { how: std.types.String }
+  | FailsHere { what_merged_the_input: std.decl_ref.DeclarationRef, what_is_lost: std.types.String }
+  | NotAGuard { what_it_does_instead: std.types.String }
+
+type GuardRow {
+  site: std.decl_ref.DeclarationRef
+  trigger_preservation: GuardCondition
+  refusal: GuardCondition
+  return_type_can_express_the_answer: std.types.Bool
+}
+
+data emit_summary_map_guard_rows: std.types.List<GuardRow> = [
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "two enums declaring one spelling occupy ONE map entry, so the fold sees a single enum and its ambiguity arm is unreachable for exactly the case it exists for" },
+    refusal: HoldsHere { how: "a second writer of a variant spelling overwrites with the empty-string sentinel, so an ambiguous variant admits neither parent" },
+    return_type_can_express_the_answer: true,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "it quantifies over every summary, so a merged entry does not merely mislead it -- it makes the quantifier answer true MORE often as the input degrades" },
+    refusal: NotAGuard { what_it_does_instead: "it answers a Bool and never refuses" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_belongs_to_enum"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the enum half of the composite key is a spelling, so a homonym enum answers for the one the caller meant" },
+    refusal: NotAGuard { what_it_does_instead: "answers false on a miss, which is indistinguishable from answering false on a wrong-provider hit" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), what_is_lost: "the variant_name_set it reads is keyed on bare variant spellings, and it then re-consults variant_to_enum, which inherits the same merge" },
+    refusal: HoldsHere { how: "it requires the variant to bind back to this exact enum, so an ambiguous variant is refused -- when the ambiguity survives to be seen" },
+    return_type_can_express_the_answer: true,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_has_fn_fields"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the name may name either declaration and nothing at the site can tell which answered" },
+    refusal: NotAGuard { what_it_does_instead: "answers false when the name is absent, which decides whether the emitted struct derives serde" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_optional_struct_field"),
+    trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the struct name is a spelling assembled by the caller, so a homonym decides whether a field value is wrapped in Some" },
+    refusal: NotAGuard { what_it_does_instead: "answers false and the value is emitted unwrapped" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_qualified_item_registry"),
+    trigger_preservation: HoldsHere { how: "it keys on the qualified module.leaf, so two declarations sharing a leaf remain two entries and a genuine duplicate is still distinguishable" },
+    refusal: HoldsHere { how: "an exact duplicate key inserts duplicate_qualified_item_registry_marker, which its consumers refuse through emit_error_expr -- define-and-consume" },
+    return_type_can_express_the_answer: true,
+  },
+]
+
+// is_known_variant's return type is the half a repaired map does not reach. Even with a faithful
+// index a std.types.Bool cannot distinguish UNIQUELY KNOWN from AMBIGUOUSLY KNOWN, so the caller cannot refuse
+// what it cannot be told. "Fix the map and this row is fine" is the natural inference and it is
+// wrong; the same holds for variant_belongs_to_enum, type_has_fn_fields and is_optional_struct_field,
+// whose false arm already conflates absent with wrong-provider.
+
+fn guard_fails_trigger_preservation(g: GuardRow) -> std.types.Bool {
+  match g.trigger_preservation {
+    FailsHere { what_merged_the_input: _, what_is_lost: _ } => true
+    _ => false
+  }
+}
+
+fn guard_refuses(g: GuardRow) -> std.types.Bool {
+  match g.refusal {
+    HoldsHere { how: _ } => true
+    _ => false
+  }
+}
+
+fn guard_row_count() -> std.types.Int {
+  emit_summary_map_guard_rows |> count
+}
+
+// THE CELL THE TEST EXISTS TO EXPOSE: a guard whose refusal is correctly written and whose trigger
+// never reaches it. These are the rows a reviewer signs off on and a system still gets wrong.
+fn guards_written_correctly_but_unable_to_fire() -> std.types.List<GuardRow> {
+  emit_summary_map_guard_rows |> filter(g => guard_refuses(g: g) && guard_fails_trigger_preservation(g: g))
+}
+
+fn guards_preserving_their_trigger() -> std.types.List<GuardRow> {
+  emit_summary_map_guard_rows |> filter(g => !guard_fails_trigger_preservation(g: g))
+}
+
+// THE POPULATION-STATE VOCABULARY, adopted because neither "passing" nor "failing" describes the
+// middle state and both retired formulations were wrong in opposite directions. "Main is correct and
+// the branch broke it" understates the defect; "the deficit existed but was masked on main"
+// overstates it, since nothing was masking anything -- the mechanism returned the right answer for
+// the input it had.
+type PopulationCorrectness
+  = PopulationIndependentCorrectness { why: std.types.String }
+  | PopulationConditionalCorrectness { unenforced_premise: std.types.String, who_could_violate_it: std.types.String }
+  | TriggeredWrongAnswer { population: std.types.String, observed: std.types.String }
+
+data emit_summary_map_population_state: std.types.List<PopulationCorrectness> = [
+  PopulationConditionalCorrectness {
+    unenforced_premise: "every declaration name in the folded population is unique",
+    who_could_violate_it: "anyone adding a module, or a root, that introduces a homonym -- measured cost of violating it on the namespace-cut branch: one element appended to regen_source_roots",
+  },
+  TriggeredWrongAnswer {
+    population: "the stage0 regen pool at integration/namespace-cut head 48b55fa2d70, three roots, 126 modules, three colliding names",
+    observed: "36 stage0 mirrors carrying pub use crate::v2_std_node lines for names their modules never reference; the tracing lane attributes 10334 of 10821 rustc errors on that branch to the 26 of those it measured",
+  },
+]
+
+// THE TIE BETWEEN THE GRAINS, derived rather than asserted: every pool is a subset of the tree, so
+// no pool row may report more colliding names than the whole-tree bound. The two
+// numbers were taken by different walks over different populations, so this is a real consistency
+// check between them and not a restatement.
+fn collision_row_colliding_names(r: CollisionPopulation) -> std.types.Int {
+  match r {
+    WholeTreeUpperBound { distinct_colliding_names: n, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => n
+    PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: n, specimens: _ } => n
+  }
+}
+
+fn collision_row_is_pool_measured(r: CollisionPopulation) -> std.types.Bool {
+  match r {
+    PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
+    _ => false
+  }
+}
+
+fn whole_tree_collision_upper_bound() -> std.types.Int {
+  emit_summary_map_collision_population
+    |> filter(r => !collision_row_is_pool_measured(r: r))
+    |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
+}
+
+fn largest_measured_pool_collision_count() -> std.types.Int {
+  emit_summary_map_collision_population
+    |> filter(r => collision_row_is_pool_measured(r: r))
+    |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
+}
+
+fn measured_pool_row_count() -> std.types.Int {
+  emit_summary_map_collision_population |> filter(r => collision_row_is_pool_measured(r: r)) |> count
+}
+
+// BASIS AND BLIND SPOT. The selector is mechanical, so it can be re-run: every expression in the v1
+// compiler that reads the summary map -- map_get or map_contains_key against type_summaries, every
+// call of lookup_emit_type_summary, and every map_values or map_keys scan of it -- with the
+// enclosing top-level fn as the row.
+//
+// WHAT IT DOES NOT REACH, named rather than left silent: a consumer that reads a value DERIVED from
+// the map (variant_to_enum, shared_types, fielded_variants, positional_payload_variants) without
+// touching the map itself is outside the selector. Those derived carriers inherit the bare key and
+// have their own consumers, several of them counted only indirectly here through the escape arm.
+type PartitionBasis
+  = SweptByMechanicalSelector { selector: std.types.String, modules_read: std.types.String, known_blind_spot: std.types.String }
+  | DerivedByLens { lens: std.types.String }
+
+data emit_summary_map_partition_basis: PartitionBasis = SweptByMechanicalSelector {
+  selector: "map_get or map_contains_key against type_summaries, every lookup_emit_type_summary call, and every map_values or map_keys scan of the map, grouped by enclosing top-level fn",
+  modules_read: "v1.compiler.infer_emit_info, v1.compiler.infer, v1.compiler.emit_rust, v1.compiler.emit, v1.compiler.coercion",
+  known_blind_spot: "consumers of the maps DERIVED from this one -- variant_to_enum, shared_types, fielded_variants, positional_payload_variants -- inherit the bare key without reading the map, and are outside the selector",
+}
+
+// RUNG. The CLASS is unchanged by this carrier and sits at mitigatable: nothing refuses on a
+// collision anywhere in the read side. The CARRIER is a hand sweep of a mechanical selector, so a
+// newly authored lookup moves no number here and nothing detects the omission.
+//
+// What this carrier holds by construction rather than by trust: an ask cannot be scored as
+// node-holding without naming the expression that holds the node, a spelling-only ask cannot be
+// filed without naming the fold that severed it, and the use column has no arm meaning "not
+// followed" -- so a row cannot be filed by scoring the ask alone, which is the failure this lane
+// exists to avoid.
+data emit_summary_map_partition_next_rung_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: the summary map is keyed on a resolved declaration identity and its values carry identity rather than spellings, so the ask and use columns have no remaining spelling arm to score and this partition has nothing left to report. Not satisfied by re-keying the map alone: the rows filed as ReKeyedIntoSameMap, SpellingEscapesToCaller and ReKeyedIntoForeignNameTable each still decide from a spelling after a correct lookup, and the derived carriers named in the basis blind spot inherit the bare key independently.")

@@ -143,16 +143,6 @@ fn host_network_verdict(host: product.placement_supply.HostIdentity) -> std.upse
   }
 }
 
-fn host_network_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h => observation_verdict_eq(a: host_network_verdict(host: h), b: UnknownRefused),
-  ).length()
-}
-
-fn host_network_fleet_unobserved_count() -> Int {
-  host_network_unobserved_count(hosts: fleet_subsumption_hosts)
-}
 
 data subsumption_persistence_bar_note: String = "The acceptance bar this feeds, stated so the modelling has a consumer rather than being a description of a past incident. A host is not subsumed because its network works NOW; it is subsumed when its network configuration is present, applied, and PROVEN to survive a power cycle — the configuration is a file the applier reads at boot, so the only honest proof is a boot. That is a dry-provable property here (config present and applied implies the same diagnosis after a restart, since no input to the fold is runtime state) and a wet one on a live host. Note what this bar would NOT have caught: srv4's fault was physical, so a persistence proof would have passed on it right up until the link died. The two mechanisms are complementary and neither substitutes for the other — persistence catches applied-but-not-persisted, a liveness cell catches works-then-stops."
 
