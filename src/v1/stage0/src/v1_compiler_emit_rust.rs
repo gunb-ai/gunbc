@@ -3,6 +3,7 @@
 
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
+use self::IterOwnedReceiverCloneDisposition::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -18950,44 +18951,49 @@ pub fn emit_typed_expr_base(
                                     }
                                 }
                             }
-                            None => match lookup_item_for_value_ref(
-                                value_ref_normalize_self_module(
+                            None => {
+                                let resolved_name = value_ref_normalize_self_module(
                                     n.clone(),
                                     scope.module_name.clone(),
-                                ),
-                                registry.clone(),
-                            ) {
-                                Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
-                                    } else {
+                                );
+                                match lookup_item_for_value_ref(
+                                    resolved_name.clone(),
+                                    registry.clone(),
+                                ) {
+                                    Some(info) => {
+                                        if is_duplicate_qualified_item_registry_marker(info.clone())
                                         {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
+                                            value_ref_item_info_refusal(info.clone())
+                                        } else {
+                                            {
+                                                let is_data =
+                                                    (info.kind.clone() == ItemKind::DataItem);
+                                                if is_data.clone() {
+                                                    v1_rt::concat(
+                                                        emit_value_ref_ident(
+                                                            n.clone(),
+                                                            registry.clone(),
+                                                            emit_info.clone(),
+                                                        ),
+                                                        "()".to_string(),
+                                                    )
+                                                } else {
                                                     emit_value_ref_ident(
-                                                        n.clone(),
+                                                        resolved_name.clone(),
                                                         registry.clone(),
                                                         emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
-                                            } else {
-                                                emit_value_ref_ident(
-                                                    n.clone(),
-                                                    registry.clone(),
-                                                    emit_info.clone(),
-                                                )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
+                                    None => emit_value_ref_ident(
+                                        resolved_name.clone(),
+                                        registry.clone(),
+                                        emit_info.clone(),
+                                    ),
                                 }
-                                None => emit_value_ref_ident(
-                                    n.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                ),
-                            },
+                            }
                         }
                     }
                 }
@@ -21435,6 +21441,104 @@ pub fn emit_nested_rt_concat(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum IterOwnedReceiverCloneDisposition {
+    IterOwnedReceiverCloneDropped,
+    IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String },
+    IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
+}
+impl IterOwnedReceiverCloneDisposition {
+    pub fn receiver_name(&self) -> String {
+        match self {
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => panic!("no receiver_name on unit variant"),
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: __val, .. } => __val.clone(),
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedNotSimpleIdentifier => panic!("no receiver_name on unit variant"),
+        }
+    }
+}
+
+pub fn iter_owned_receiver_clone_disposition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch) renders its receiver through the general identifier renderer (emit_var_ref), which clones any resolved-type, non-moved identifier unconditionally -- correct in owned position, but sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a real reference and is treated as one) -- retains today's clone. Fail-open by construction: the disposition can only ever retain an unnecessary clone, never drop a needed one. Named per DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather than a single collapsed default, so the retained-for-downstream-reference population (must never be silently indistinguishable from an ordinary unoptimized site) is separately countable from the retained-for-non-simple-receiver population. The decision never consults movable, Read, or any ownership classification -- the syntactic position of the receiver as a sharing.iter_owned argument is itself the borrow-position proof, which is what keeps this sound where a disposition keyed on the ownership pass's Read edge kind would not be (Read fires on genuine by-value-consuming positions too, not only borrow positions).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn iter_owned_receiver_clone_disposition(
+    receiver: Rc<Node>,
+    downstream: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<IterOwnedReceiverCloneDisposition> {
+    match (*receiver.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = expr_var_name_at(receiver.clone(), source_indices.clone());
+            if {
+                let mut __found = false;
+                for n in downstream.clone().iter().cloned() {
+                    if expr_references_var(n.clone(), name.clone(), source_indices.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new(IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference {
+    receiver_name: name.clone(),
+})
+            } else {
+                Rc::new(IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped)
+            }
+        }
+        _ => Rc::new(
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
+        ),
+    }
+}
+
+pub fn emit_typed_iter_owned_receiver(
+    receiver: Rc<Node>,
+    downstream: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let disposition = iter_owned_receiver_clone_disposition(
+            receiver.clone(),
+            downstream.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        match (*disposition.clone()).clone() {
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => {
+                emit_typed_expr_base(
+                    receiver.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => emit_typed_expr(
+                receiver.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
+        }
+    }
+}
+
 pub fn emit_typed_for_each(
     variable: String,
     collection: Rc<Node>,
@@ -21447,14 +21551,14 @@ pub fn emit_typed_for_each(
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let coll_str = emit_typed_expr(
+        let coll_str = emit_typed_iter_owned_receiver(
             collection.clone(),
+            Rc::new(vec![body.clone()]),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type = for_each_element_type_node(
             resolved_type(collection.clone()),
@@ -22028,14 +22132,14 @@ pub fn emit_rust_fold_method_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type_str = collection_element_type(
             receiver.inferred.clone(),
@@ -22498,14 +22602,14 @@ pub fn emit_rust_sort_by_method_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type_str = match receiver.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -22661,7 +22765,17 @@ pub fn emit_rust_map_method_call(
         } else {
             {
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-                let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str.clone());
+                let iter_recv_str = emit_typed_iter_owned_receiver(
+                    receiver.clone(),
+                    args.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                );
+                let iter_str =
+                    apply_type_template1(sharing.iter_owned.clone(), iter_recv_str.clone());
                 match args.clone().first().cloned() {
                     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
                         ExprData::ExprLambda => {
@@ -22754,14 +22868,14 @@ pub fn emit_rust_higher_order_method(
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let first_arg_str = emit_typed_first_arg(
             args.clone(),
