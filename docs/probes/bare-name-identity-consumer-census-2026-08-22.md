@@ -283,3 +283,48 @@ instrument and **cannot be run on that host**, because the function it would ins
 it is gated on that tree compiling, not on anyone's willingness. This is the instrument-vintage trap,
 and it is recorded here rather than quietly deleted because I had already written the superseded
 version into this receipt.
+
+## A control I ran, published, and have to qualify: spelling and import co-varied
+
+Recorded at the end because it is the sharpest methodological finding of the exchange and it is
+against my own measurement.
+
+A neighbouring lane reported a second production specimen on the bare-keyed map — 13 `E0063`
+missing-`_phantom` diagnostics — with the mechanism *"the construction site spells the type
+qualified, so it misses the bare key and the phantom lookup answers `Absent`"*. They could not build
+the discriminating arm on a branch with no imports. I built it here and reported it:
+
+| arm | sites | `_phantom` emitted | E0063 |
+|---|---:|---:|---:|
+| bare (main's committed mirror) | 8 | 8 | 0 |
+| qualified (their branch) | same 8 | 0 | 8 |
+
+**The observation stands. The inference I attached to it does not.** They then repaired the thing
+the mechanism named — leaf-reducing that lookup's key, the exact move that fixed the
+`build_shared_types` row — and the emitted output **did not change by one line**: 0 phantom lines,
+13 `E0063`, 382 total, all unchanged. A key that is not the defect does not repair when corrected.
+
+**The real discriminator is module locality, not spelling.** That lookup consults the *module-local*
+type env. Every failing type is exclusively **foreign**-constructed (8/1/5/2/3/3 foreign against 0
+same-module); the one type whose phantom fields *do* emit is overwhelmingly same-module (`Measure`,
+48 same-module to 31 foreign).
+
+**What that costs this census, which is the part worth carrying.** I described my two arms as *"same
+sites, one spelling difference"*. They were not. Main's spelling came **with an import**; the
+branch's came without one. **Spelling and import co-varied across my arms**, so a control I
+published as isolating one variable isolated neither — and I read the half that matched the map I
+was already looking at. The arithmetic was right, the arms were real, and the design could not
+support the conclusion. A control earns its name by differing in *exactly one* thing, and the way to
+check that is to enumerate what else changed between the arms before reporting, not after someone
+repairs the mechanism and nothing moves.
+
+**Consequence for the roster:** that specimen is *not* counted as a production instance of this
+map's harm, and the row carries no second outcome mode on its account. What remains true and
+unaffected is the `Connective` collapse mechanism and the `build_shared_types` result, which has its
+own same-binary control.
+
+*And one measurement nobody has run yet, flagged so it is not inherited as settled:* that main's env
+population came specifically **from the import statement** rather than from something else co-varying
+with it is a reading of the lookup's scope argument plus the locality split — not an executed two-arm
+test.
+
