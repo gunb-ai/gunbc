@@ -1,6 +1,6 @@
 module extdeps.exec.command
 
-import std.types { NonEmptyStr, String, List, Int }
+import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -55,6 +55,14 @@ type ArgvCommand sole_constructor {
 // tar_extract_command, make_command, sed_in_place_command, cp_command) are GONE from this file and
 // live in extdeps.tools.{curl,mkdir,tar,make,sed,gnu_coreutils}: sealing the record while keeping
 // the product rows in the hub would have made this module the one place every tool's flags collect.
+//
+// TWO CONCRETE PRODUCTS DO STILL LIVE IN THIS FILE -- sshpass and OpenSSH's ssh/scp -- and that is a
+// stated exception rather than an oversight in the rule above. They are not here as tools a caller
+// picks; they are the REALIZATION of the CommandTransport coproduct this module declares, so
+// command_over_transport cannot compose an SshExec without naming them. Moving them out would leave
+// the transport unable to build its own outer invocation, or force an import cycle to get it back.
+// If a second ssh realization ever lands, that is the moment this becomes a real product
+// enumeration and the pair moves to extdeps.ssh with the transport dispatching over them.
 //
 // No test declaration is admitted. A witness obtains an ArgvCommand through a production builder,
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
