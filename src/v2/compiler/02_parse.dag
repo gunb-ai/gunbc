@@ -2043,9 +2043,11 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
 // and dropping the lift put a value outside the coproduct into every int-literal node the parser
 // built, which the required floor reported as a non-exhaustive match at run time.
 //
-// This annotation is here because the type judgment that would refuse the unwrapped form does not
-// run: module_skips_direct_call_arg_check exempts every v2.* caller from the direct-call
-// argument-type check. Until that exemption is deleted, nothing mechanical stands at this site.
+// This annotation was written while the type judgment that would refuse the unwrapped form did
+// not run here: a v2.*-prefixed arm in v1.compiler.infer switched the direct-call argument-type
+// check off for every v2.* caller. That arm is DELETED, so the judgment now runs at this site and
+// the refusal is mechanical rather than annotated. The annotation is kept because it records WHY
+// the wrap is load-bearing, which the declaration does not say.
 fn parse_expr_terminal(
   token_class: Symbol,
   stamp: TerminalStampMode,
