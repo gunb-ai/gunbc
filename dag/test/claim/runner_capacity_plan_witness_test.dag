@@ -448,3 +448,31 @@ test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
   )
 }
+
+// THE REGISTRATION-WITHOUT-A-LOCAL-UNIT CASE, WHICH WENT FROM UNSAYABLE TO SAYABLE-AND-DROPPED
+// BEFORE IT WAS REFUSED. connectivity_actions_for_observed asks find_local_incarnation_for_slot,
+// which searches a dense local prefix bounded by materialized_width_for_host. While the observation
+// was synthesized FROM that prefix, every observed slot had a local incarnation by construction and
+// an Absent could only mean "healthy, nothing to do". Decoding the roster broke that identity:
+// measured, srv4 observed six GitHub registrations against five local incarnations and the fold
+// returned ZERO actions -- srv4-06 registered, no local unit, planner silent.
+//
+// THAT IS STRICTLY WORSE THAN THE GAP IT CAME FROM. A case with no representation is a modeling
+// gap; the same case dropped inside a fold is an answer that is wrong, and the fold's own caller
+// cannot tell the two apart. The arm refuses now, and this pair is what proves the refusal is about
+// the unaccounted registration rather than about the planner disliking every roster.
+test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being_dropped() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv4,
+    width: 5,
+    roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05", "srv4-06"]),
+  )
+}
+
+test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv4,
+    width: 5,
+    roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05"]),
+  )
+}

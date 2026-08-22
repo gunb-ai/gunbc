@@ -220,23 +220,62 @@ fn connectivity_replace_action(
   }
 }
 
+// THIS FOLD SILENTLY DROPPED AN OBSERVED REGISTRATION WITH NO LOCAL UNIT, AND IT BECAME ABLE TO DO
+// SO ONLY WHEN THE OBSERVATION BECAME REAL. connectivity_replace_action asks
+// find_local_incarnation_for_slot, which searches a DENSE LOCAL PREFIX bounded by
+// materialized_width_for_host. While `observed` was synthesized FROM that same prefix, every
+// observed slot had a local incarnation by construction and Absent could only ever mean "healthy,
+// no action needed". Decoding the roster broke that identity: measured on the converged fixture,
+// srv4 observes SIX GitHub registrations against FIVE local incarnations and this fold returned
+// ZERO actions -- srv4-06 is registered with GitHub, has no local unit, and the planner said
+// nothing about it at all.
+//
+// THAT IS THE REGISTRATION-WITHOUT-INCARNATION CASE, the one gunbc.fleet_runner_connectivity records
+// as having no arm in RunnerSlotConnectivityVerdict. It was previously UNSAYABLE, which is a
+// modeling gap; routed through here it became SAYABLE AND DROPPED, which is strictly worse, because
+// a gap that cannot be expressed at least cannot be mistaken for an answer. So the arm refuses.
+//
+// THE OPTION IS REPLACED BECAUSE IT WAS ALREADY CARRYING TWO MEANINGS AND WOULD NOW CARRY THREE.
+// `none` meant "roster unavailable"; the new state is "an observed registration has no local
+// incarnation", and folding it into the same Absent is the state-space conflation that produced this
+// defect one level down.
+type ConnectivityActionsOutcome
+  = ConnectivityActionsPlanned { actions: List<RunnerCapacityAction> }
+  | ConnectivityActionsRosterUnavailable { reason: String }
+  | ConnectivityActionsUnaccountedRegistration { slot: RunnerSlotIdentity }
+
+fn accumulate_connectivity_action(
+  roster: OrganizationRunnerRosterEvidence,
+  acc: ConnectivityActionsOutcome,
+  slot: RunnerSlotIdentity,
+) -> ConnectivityActionsOutcome {
+  match acc {
+    ConnectivityActionsRosterUnavailable { reason: r } => ConnectivityActionsRosterUnavailable { reason: r }
+    ConnectivityActionsUnaccountedRegistration { slot: s } => ConnectivityActionsUnaccountedRegistration { slot: s }
+    ConnectivityActionsPlanned { actions: acts } =>
+      match find_local_incarnation_for_slot(slot: slot) {
+        Absent => ConnectivityActionsUnaccountedRegistration { slot: slot }
+        Present { value: _ } =>
+          match connectivity_replace_action(slot: slot, roster: roster) {
+            Present { value: a } => ConnectivityActionsPlanned { actions: concat(acts, [a]) }
+            Absent => ConnectivityActionsPlanned { actions: acts }
+          }
+      }
+  }
+}
+
 fn connectivity_actions_for_observed(
   roster: OrganizationRunnerRosterEvidence,
   observed: List<RunnerSlotIdentity>,
-) -> List<RunnerCapacityAction>? {
+) -> ConnectivityActionsOutcome {
   match roster {
-    RosterReadUnavailable { reason: r } => none
+    RosterReadUnavailable { reason: r } => ConnectivityActionsRosterUnavailable { reason: r }
     RosterObserved { observed_on: _, registrations: _ } =>
-      Present {
-        value: flat_map(
-          observed,
-          slot =>
-            match connectivity_replace_action(slot: slot, roster: roster) {
-              Present { value: a } => [a]
-              Absent => []
-            }
-        )
-      }
+      fold(
+        observed,
+        init: ConnectivityActionsPlanned { actions: [] },
+        f: (acc, slot) => accumulate_connectivity_action(roster: roster, acc: acc, slot: slot)
+      )
   }
 }
 
@@ -485,11 +524,15 @@ fn plan_runner_capacity_host_against_observation(
           HostCapacityPlanRefused { reason: r }
         SlotPopulationReconciled =>
           match connectivity_actions_for_observed(roster: roster, observed: observed) {
-            Absent =>
+            ConnectivityActionsRosterUnavailable { reason: _ } =>
               HostCapacityPlanRefused {
                 reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
               }
-            Present { value: repairs } =>
+            ConnectivityActionsUnaccountedRegistration { slot: s } =>
+              HostCapacityPlanRefused {
+                reason: join(["GitHub holds a registration for slot ", runner_slot_instance_name(slot: s), " that has no local runner incarnation, so this host's population cannot be accounted for: planning against it would either ignore a live registration or propose adding a slot GitHub already holds"], "")
+              }
+            ConnectivityActionsPlanned { actions: repairs } =>
               HostCapacityPlanReady {
                 plan: RunnerCapacityHostPlan {
                   host: host,

@@ -327,42 +327,6 @@ data converged_seven_managed_registrations: List<GitHubSelfHostedRunnerRegistrat
   converged_seven_srv4_registrations,
 )
 
-// A CONVERGED ROSTER AT THE COMMITTED WIDTH, REPLACING THE SEVEN-WIDE ONE. The seven fixture
-// describes a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations
-// are DECODED against the committed population rather than counted, it stops being merely stale and
-// becomes actively wrong: srv3-07 resolves to no committed slot, so the decoder correctly reports a
-// registration the fleet cannot account for and the planner refuses. That refusal is right and the
-// fixture is what is wrong.
-//
-// CONVERGED MEANS DIFFERENT MEMBERS ON THE TWO HOSTS, which is the part a width cannot express and
-// is why this is authored per host rather than generated from a number. srv3 is converged at FIVE
-// GitHub registrations because its sixth committed slot is the compute-fabric member and is never
-// registered; srv4 has no fabric member and is converged at SIX. Same committed width, different
-// converged rosters.
-data converged_six_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 3601, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 3602, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 3603, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 3604, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 3605, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data converged_six_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 4601, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 4602, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 4603, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 4604, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 4605, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 4606, name: "srv4-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-fn organization_runner_roster_converged_six_evidence() -> OrganizationRunnerRosterEvidence {
-  RosterObserved {
-    observed_on: "converged-six-fixture" as NonEmptyStr,
-    registrations: concat(converged_six_srv3_registrations, converged_six_srv4_registrations),
-  }
-}
-
 fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
     observed_on: converged_seven_roster_observed_on,

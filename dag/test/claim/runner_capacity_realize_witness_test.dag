@@ -10,7 +10,6 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
-  organization_runner_roster_converged_six_evidence,
   organization_runner_roster_materialized_slots_online_evidence,
 }
 import gunbc.runner_capacity_realize {
@@ -170,17 +169,29 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
   )
 }
 
-// MOVED OFF THE SEVEN-WIDE FIXTURE, AND THE MOVE IS THE FINDING RATHER THAN A REPAIR. Seven is not
-// a width any host is admitted to carry, and once the observation is decoded rather than counted a
-// srv3-07 registration resolves to no committed slot at all -- so the old fixture made the planner
-// refuse, correctly, and this row was asserting convergence against a fleet that cannot exist.
-// It now runs against a roster converged at the COMMITTED width, which is five GitHub members on
-// srv3 (its sixth is the fabric slot and is never registered) and six on srv4.
+// MOVED OFF THE SEVEN-WIDE FIXTURE, AND WHERE IT LANDED TOOK TWO TRIES WORTH RECORDING. Seven is not
+// a width any host is admitted to carry, and once registrations are decoded rather than counted,
+// srv3-07 resolves to no committed slot -- so the old fixture made the planner refuse, correctly,
+// and this row was asserting convergence against a fleet that cannot exist.
+//
+// I FIRST REPLACED IT WITH A CONVERGED-SIX ROSTER AND THAT WAS ALSO WRONG, for a reason worth more
+// than the fix. A six-wide GitHub roster puts srv4-06 in the observation, and there is no LOCAL
+// incarnation for it: local_incarnations_for_host is bounded by materialized_width_for_host, which
+// is a hardcoded FIVE on every host. So the planner refused with an unaccounted registration, and it
+// was right again. Convergence is not a property of the GitHub roster alone -- it is agreement
+// between the desired population, the GitHub population AND the local one, and the local side is
+// still a synthesized constant. A converged fleet at six is therefore not representable today, and
+// authoring a fixture that claimed otherwise would have been asserting a state the fleet cannot be in.
+//
+// AND THE FIXTURE I NEEDED ALREADY EXISTED. organization_runner_roster_materialized_slots_online_evidence
+// is exactly this: both managed hosts registered 01-05 and online, converged at the materialized
+// width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
+// module's own authority note forbids -- caught by trying to make it green rather than by review.
 test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 6,
-    srv4_width: 6,
-    roster: organization_runner_roster_converged_six_evidence(),
+    srv3_width: 5,
+    srv4_width: 5,
+    roster: organization_runner_roster_materialized_slots_online_evidence(),
   )
   match plan {
     PlanReady { hosts: _ } =>
