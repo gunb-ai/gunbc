@@ -72,7 +72,17 @@ type RunnerSlotIdentity {
 // convert a dormant collision into a live one on the commit that first lets a rented host exist.
 //
 // DERIVED RATHER THAN REFUSED, because a refusal would still be a second representation of a rule
-// the arithmetic already states. There is no fall-through to reach: the pad is total over Nat.
+// the arithmetic already states -- it concedes the bad state is writable and then guards it.
+// Deriving leaves no fall-through to route, so there is nothing to guard and nothing to forget.
+//
+// THIS FUNCTION IS TOTAL ON PURPOSE AND ITS TOTALITY IS NOT A MISSING BOUND. Index 99 gets a
+// well-formed name here, for a slot that should not exist, and that is CORRECT: whether index 99
+// exists is the ADMISSION CEILING's question, answered by gunbc.runner_slot_allocation from the
+// host's memory and disk admissions. Naming names; admission admits. A bound added here would be a
+// second representation of the ceiling, free to disagree with it, and it would re-create in this
+// function exactly the fall-through this change removed -- because any bound needs an else arm, and
+// that arm has no honest answer to return. If you are reading this because a name looked wrong for
+// an index that should not exist, the defect is upstream at the ceiling, not here.
 fn runner_slot_index_suffix(index: Nat) -> String {
   if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
 }
