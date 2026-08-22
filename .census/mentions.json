@@ -1,0 +1,465 @@
+{
+ "direct_rust_door_ingest_fixture": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v2/compiler/self_host/direct_rust_door_fixture.dag"
+ ],
+ "examples.gunbhub_serve_program": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "extdeps.bmc.mock_corpus": [
+  "dag/extdeps/diagnostic_mock_corpus.dag",
+  "dag/gunbc/extdeps_scope_frontier.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "extdeps.ebay.mock_corpus": [
+  "dag/gunbc/extdeps_scope_frontier.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "extdeps.linux.mock_corpus": [
+  "dag/extdeps/diagnostic_mock_corpus.dag",
+  "dag/gunbc/extdeps_scope_frontier.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "extdeps.tcgplayer.mock_corpus": [
+  "dag/gunbc/extdeps_scope_frontier.dag",
+  "docs/plans/extdeps-std-grounding-inventory.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.apply": [
+  "dag/gunbc/runner_capacity_realize.dag",
+  "dag/gunbc/runner_lifecycle.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.assimilate.bmc_wif_canary_bootstrap": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.auth.credentials": [
+  "dag/gunbc/tailscale_acl_phase2_credential.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/bin/parse_witness.rs"
+ ],
+ "gunbc.auth.optional_impersonation": [
+  "dag/gunbc/tailscale_acl_phase2_credential.dag",
+  "dag/test/claim/tailscale_acl_phase2_design_witness_test.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.auth.patterns": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.char_at_scaling_probe_support": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/Cargo.toml",
+  "src/v1/stage0/src/bin/char_at_scaling_probe.rs"
+ ],
+ "gunbc.ci_build_job_v1_compiler_unit_receipt": [
+  "dag/gunbc/ci_spec.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.cursor_sdk_secure_api_key": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.devboot.vertical_receipt": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.floor_resolve_realization": [
+  "docs/plans/floor-cut-replacement-plan.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.githooks_pre_push_cli": [
+  "dag/gunbc/githooks_pre_push_fmt_transport_scaffold.dag",
+  "dag/std/emit_on_demand.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/cli_run.rs",
+  "src/v1/stage0/src/pre_push.rs"
+ ],
+ "gunbc.language_subject_scope_scaffold": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.namespace_census_receipt": [
+  "dag/gunbc/doc_graph_roots.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "docs/probes/namespace_census_2026-07-31.md"
+ ],
+ "gunbc.p1_retention_cohort_receipt": [
+  "dag/gunbc/doc_graph_roots.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.p3a1_self_fork_homonym_disposition": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.parse_allowlist": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.plans.affected_set_self_confirmation": [
+  "docs/plans/floor-cut-replacement-plan.md",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.plans.fleet_subsumption_manual_gaps": [
+  "dag/gunbc/auth/materialized_secret.dag",
+  "dag/gunbc/build_cache_instance.dag",
+  "dag/gunbc/ci_floor_measurement.dag",
+  "dag/gunbc/doc_graph_roots.dag",
+  "dag/gunbc/fleet_intent_network.dag",
+  "dag/gunbc/fleet_shell_transport_observation.dag",
+  "dag/gunbc/host_reach_identity_probe.dag",
+  "dag/gunbc/retained_shell_script.dag",
+  "dag/gunbc/runner_capacity_realize.dag",
+  "dag/gunbc/runner_host_deploy.dag",
+  "dag/gunbc/session_residency.dag",
+  "dag/test/claim/retained_shell_script_witness_test.dag",
+  "docs/plans/srvn-buildcache-provisioning-design.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.plans.host_convergence_circuit_residue": [
+  "dag/gunbc/host_converge.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.plans.transport_argv_anemia_dissolution": [
+  "dag/extdeps/exec/command.dag",
+  "dag/extdeps/git/git.dag",
+  "docs/plans/cli-invocation-emission-design.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.pr_digests": [
+  "docs/plans/review-surface-subject-map.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.provider_standing_live_probes": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.seed_closed_vocabulary_wildcard_census": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.site.interaction": [
+  "dag/gunbc/design/interaction.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.site.register_principles": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.srv4_seeded_install_media_artifact": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.test_node_wall_clock_ratchet": [
+  "dag/gunbc/plans/structural_quadratic_wall_coverage_audit.dag",
+  "docs/plans/structural-quadratic-wall-coverage-audit.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.tools.bmc_onboard_validate": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.tools.grounding_confirm": [
+  "docs/plans/model-grounding-lens-extract.md",
+  "docs/plans/review-surface-subject-map.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.tools.roadmap_spawn_request": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "gunbc.v1_maintenance_standing": [
+  "DESIGN.md",
+  "dag/gunbc/ci_layer_roots.dag",
+  "dag/gunbc/documentary_refs.dag",
+  "dag/gunbc/roadmap_serve.dag",
+  "dag/gunbc/whole_corpus_compile_admission.dag",
+  "dag/test/claim/documentary_refs_witness_test.dag",
+  "dag/test/claim/match_arm_pattern_identity_emission_witness_test.dag",
+  "docs/plans/parsed-body-projection-increment-spec.md",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/module_path_index/index.rs"
+ ],
+ "gunbc.witness_family_fanout": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "shared.dag_util": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.behavioral": [
+  "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+  "docs/plans/extdeps-std-grounding-inventory.md",
+  "docs/plans/namespace-resolution-design.md",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/bin/parse_witness.rs"
+ ],
+ "std.binding": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.containers": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.exec_format": [
+  "dag/extdeps/boot/emit.dag",
+  "dag/extdeps/boot/freestanding_payload.dag",
+  "dag/extdeps/boot/freestanding_witness.dag",
+  "dag/extdeps/formats/elf/primitives.dag",
+  "dag/extdeps/formats/elf/segments.dag",
+  "dag/extdeps/formats/elf/types.dag",
+  "docs/plans/extdeps-std-grounding-inventory.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.import": [
+  "dag/gunbc/commit_workflow.dag",
+  "docs/plans/namespace-cut-replacement-plan.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.list": [
+  "docs/plans/algebra-grounding-unification-design.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.methods": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/compiler_tests_rust.dag",
+  "src/v1/stage0/src/compiler_tests.rs",
+  "src/v1/stage0/src/v1_compiler_compiler_tests_rust.rs"
+ ],
+ "std.rational": [
+  "dag/gunbc/doc_graph_roots.dag",
+  "dag/gunbc/econ/acquisition.dag",
+  "docs/plans/groupcompletion-pair-construction-design.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "std.stack": [
+  "dag/gunbc/witness_floor_workflow.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/bin/parse_witness.rs"
+ ],
+ "std.verification": [
+  "dag/gunbc/plans/realization_measurement_loop.dag",
+  "dag/gunbc/plans/resolver_type_name_collision_wall.dag",
+  "docs/plans/realization-measurement-loop.md",
+  "docs/plans/resolver-type-name-collision-wall.md",
+  "docs/plans/unconsumed-module-census.md",
+  "docs/probes/builtin_shadow_and_callable_return_2026-08-18.md",
+  "src/v2/test/fixture/frontier_probe_elision_boundary_overlay.dag"
+ ],
+ "tools.build": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "tools.ci_heal_dispatch": [
+  "dag/gunbc/ci_spec.dag",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "tools.codegen": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "tools.gunbc_ci": [
+  "dag/std/emit_on_demand.dag",
+  "docs/plans/floor-cut-replacement-plan.md",
+  "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/main.rs",
+  "src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag"
+ ],
+ "tools.readme": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "tools.roadmap_dispatch": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.bin.main": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formats.csv": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formats.json_schema": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formats.openapi": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formats.toml": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formats.yaml": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.black": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.clang_format": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.gofmt": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.google_java_format": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.ktfmt": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.lean4_format": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.prettier": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.rustfmt": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.formatters.swift_format": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.languages.ecmascript": [
+  "dag/gunbc/language_target_registry.dag",
+  "docs/plans/gunb-ai-site-subsumption-design.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.languages.ptx": [
+  "dag/gunbc/language_target_registry.dag",
+  "docs/plans/machine-shape-orthogonal-scheduling.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.typecheckers.mypy": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.extdeps.typecheckers.pyright": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.std.datetime": [
+  "dag/extdeps/pin.dag",
+  "docs/plans/hermetic-tool-provisioning-design.md",
+  "docs/plans/nat-grounding-unification-design.md",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/examples/parse_compiled_scale.rs",
+  "src/v2/test/manual/parse_forensics_scaling_witness.dag"
+ ],
+ "v2.std.generic_instantiation": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.std.inhabitant_bridge": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.std.probe_selector": [
+  "dag/gunbc/non_fold_residue.dag",
+  "dag/gunbc/plans/dag_v2_defork_audit.dag",
+  "docs/plans/affected-set-precompute-pruning.md",
+  "docs/plans/dag-v2-defork-audit.md",
+  "docs/plans/non-fold-irreducible-residue-catalogue.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.std.rust_leaf_model_claim": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.std.type_expr_projection_row_schema": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.algebra_laws.zip_eq_list_equality": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.go_r1": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.go_r2a": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.go_r2b": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.go_r3_external": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.python_cross_runtime_drift": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.python_l2_cross_target_parity": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.python_r2a": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.python_r2b": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.python_r3_external": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.rust": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.rust_r2a": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.rust_r2b": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.rust_r3_external": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.typescript_r2a": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.typescript_r2b": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.language_model.typescript_r3_external": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.nat_semiring.rung_l1_go_compiler_slice": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.nat_semiring.rung_l1_python_runtime": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.qualified_name.from_node": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.test.workflow.glob_discovery_law": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag"
+ ],
+ "v2.test.workflow.host_discovered_owned_data_manifest": [
+  "docs/plans/parse-grammar-choice-overlap-residue-finding.md",
+  "docs/plans/shell-dag-census-0a-projection-blocker.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.ci_stage0_partition_compile_gate_emit": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.class_b_import_closure_transport": [
+  "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/src/cli_run.rs",
+  "src/v2/workflow/class_b_import_closure_probe.dag"
+ ],
+ "v2.workflow.compiler_closure_ingest_transport": [
+  "dag/gunbc/ci_layer_roots.dag",
+  "dag/gunbc/explicit_witness_admission.dag",
+  "dag/tools/ci_gates.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag"
+ ],
+ "v2.workflow.floor2_prepared_subject": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.phase_profile_proof_plan": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v1/stage0/tests/phase_profile_claim_executor.rs"
+ ],
+ "v2.workflow.probe_selector_host_health": [
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.product_receipt_stage": [
+  "docs/plans/unconsumed-module-census.md",
+  "src/v2/workflow/product_receipt_transport.dag"
+ ],
+ "v2.workflow.source_root_ingest_gate": [
+  "dag/gunbc/explicit_witness_admission.dag",
+  "dag/test/claim/guarantee_rung_drop_witness_test.dag",
+  "dag/tools/ci_gates.dag",
+  "docs/plans/mechanism-inventory-red-controls.md",
+  "docs/plans/unconsumed-module-census.md"
+ ],
+ "v2.workflow.source_root_ingest_transport": [
+  "dag/tools/ci_gates.dag",
+  "docs/plans/unconsumed-module-census.md",
+  "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag"
+ ]
+}

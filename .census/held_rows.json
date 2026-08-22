@@ -1,0 +1,410 @@
+{
+ "direct_rust_door_ingest_fixture": [
+  "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag",
+  6,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 src/v2/compiler/self_host/direct_rust_door_fixture.dag"
+ ],
+ "extdeps.bmc.mock_corpus": [
+  "dag/extdeps/bmc/mock_corpus.dag",
+  71,
+  "DEAD-CONSUMER-ONLY",
+  "NAMED-IN-LIVE-DAG \u2014 dag/extdeps/diagnostic_mock_corpus.dag, dag/gunbc/extdeps_scope_frontier.dag"
+ ],
+ "extdeps.boot.emit": [
+  "dag/extdeps/boot/emit.dag",
+  127,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.boot.framebuffer": [
+  "dag/extdeps/boot/framebuffer.dag",
+  15,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.boot.freestanding_payload": [
+  "dag/extdeps/boot/freestanding_payload.dag",
+  19,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.boot.linux_x86_boot": [
+  "dag/extdeps/boot/linux_x86_boot.dag",
+  37,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.cloud.gcp.sts": [
+  "dag/extdeps/cloud/gcp/sts.dag",
+  111,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.colo.types": [
+  "dag/extdeps/colo/types.dag",
+  110,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.container.oci.image_config": [
+  "dag/extdeps/container/oci/image_config.dag",
+  100,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.container.oci.linux": [
+  "dag/extdeps/container/oci/linux.dag",
+  156,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.container.oci.manifest": [
+  "dag/extdeps/container/oci/manifest.dag",
+  98,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.container.oci.runtime_config": [
+  "dag/extdeps/container/oci/runtime_config.dag",
+  97,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.ebay.ebay_contracts": [
+  "dag/extdeps/ebay/ebay_contracts.dag",
+  34,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.ebay.mock_corpus": [
+  "dag/extdeps/ebay/mock_corpus.dag",
+  79,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/extdeps_scope_frontier.dag"
+ ],
+ "extdeps.formats.elf.encode": [
+  "dag/extdeps/formats/elf/encode.dag",
+  201,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.formats.elf.hello_static_witness": [
+  "dag/extdeps/formats/elf/hello_static_witness.dag",
+  259,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.formats.elf.primitives": [
+  "dag/extdeps/formats/elf/primitives.dag",
+  61,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.formats.elf.segments": [
+  "dag/extdeps/formats/elf/segments.dag",
+  79,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.formats.elf.types": [
+  "dag/extdeps/formats/elf/types.dag",
+  190,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.github.mergeable_state_contracts": [
+  "dag/extdeps/github/mergeable_state_contracts.dag",
+  18,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.linux.mock_corpus": [
+  "dag/extdeps/linux/mock_corpus.dag",
+  15,
+  "DEAD-CONSUMER-ONLY",
+  "NAMED-IN-LIVE-DAG \u2014 dag/extdeps/diagnostic_mock_corpus.dag, dag/gunbc/extdeps_scope_frontier.dag"
+ ],
+ "extdeps.posix.rusage": [
+  "dag/extdeps/posix/rusage.dag",
+  66,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.runtime.local": [
+  "dag/extdeps/runtime/local.dag",
+  22,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "extdeps.tcgplayer.mock_corpus": [
+  "dag/extdeps/tcgplayer/mock_corpus.dag",
+  63,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/extdeps_scope_frontier.dag"
+ ],
+ "extdeps.tcgplayer.tcgplayer": [
+  "dag/extdeps/tcgplayer/tcgplayer.dag",
+  82,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "gunbc.apply": [
+  "dag/gunbc/apply.dag",
+  118,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/runner_capacity_realize.dag, dag/gunbc/runner_lifecycle.dag"
+ ],
+ "gunbc.auth.credentials": [
+  "dag/gunbc/auth/credentials.dag",
+  89,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/tailscale_acl_phase2_credential.dag"
+ ],
+ "gunbc.auth.optional_impersonation": [
+  "dag/gunbc/auth/optional_impersonation.dag",
+  20,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/tailscale_acl_phase2_credential.dag, dag/test/claim/tailscale_acl_phase2_design_witness_test.dag"
+ ],
+ "gunbc.auth.patterns": [
+  "dag/gunbc/auth/patterns.dag",
+  113,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.char_at_scaling_probe_support": [
+  "dag/gunbc/char_at_scaling_probe_support.dag",
+  58,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/src/bin/char_at_scaling_probe.rs"
+ ],
+ "gunbc.ci_build_job_v1_compiler_unit_receipt": [
+  "dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag",
+  21,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/ci_spec.dag"
+ ],
+ "gunbc.githooks_pre_push_cli": [
+  "dag/gunbc/githooks_pre_push_cli.dag",
+  10,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/githooks_pre_push_fmt_transport_scaffold.dag, dag/std/emit_on_demand.dag"
+ ],
+ "gunbc.hand_lens_host_bridge_scaffold_index": [
+  "dag/gunbc/hand_lens_host_bridge_scaffold_index.dag",
+  23,
+  "DEAD-CONSUMER-ONLY",
+  "CITED-AUTHORITY (citation may be the deliverable; census B6+, one island per PR)"
+ ],
+ "gunbc.namespace_census_receipt": [
+  "dag/gunbc/namespace_census_receipt.dag",
+  74,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/doc_graph_roots.dag"
+ ],
+ "gunbc.p1_retention_cohort_receipt": [
+  "dag/gunbc/p1_retention_cohort_receipt.dag",
+  8,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/doc_graph_roots.dag"
+ ],
+ "gunbc.plans.affected_set_self_confirmation": [
+  "dag/gunbc/plans/affected_set_self_confirmation.dag",
+  29,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.plans.fleet_subsumption_manual_gaps": [
+  "dag/gunbc/plans/fleet_subsumption_manual_gaps.dag",
+  196,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/auth/materialized_secret.dag, dag/gunbc/build_cache_instance.dag, dag/gunbc/ci_floor_measurement.dag +9"
+ ],
+ "gunbc.plans.host_convergence_circuit_residue": [
+  "dag/gunbc/plans/host_convergence_circuit_residue.dag",
+  75,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/host_converge.dag"
+ ],
+ "gunbc.plans.transport_argv_anemia_dissolution": [
+  "dag/gunbc/plans/transport_argv_anemia_dissolution.dag",
+  89,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/extdeps/exec/command.dag, dag/extdeps/git/git.dag"
+ ],
+ "gunbc.scm.commit_closure_store": [
+  "dag/gunbc/scm/commit_closure_store.dag",
+  203,
+  "STILL-UNCONSUMED",
+  "CENSUS-DEFERRED \u2014 the census named this row and declined to disposition it (replacement-migration leftover, #8820 author intent)"
+ ],
+ "gunbc.seed_closed_vocabulary_wildcard_census": [
+  "dag/gunbc/seed_closed_vocabulary_wildcard_census.dag",
+  175,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/src/cli_run.rs"
+ ],
+ "gunbc.site.interaction": [
+  "dag/gunbc/site/interaction.dag",
+  14,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/design/interaction.dag"
+ ],
+ "gunbc.spark.managed_access_apply": [
+  "dag/gunbc/spark/managed_access_apply.dag",
+  464,
+  "STILL-UNCONSUMED",
+  "SPARK-AREA (census excludes dag/gunbc/spark/: fierce-lynx-647 owns it)"
+ ],
+ "gunbc.test_node_wall_clock_ratchet": [
+  "dag/gunbc/test_node_wall_clock_ratchet.dag",
+  99,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/plans/structural_quadratic_wall_coverage_audit.dag"
+ ],
+ "gunbc.v1_maintenance_standing": [
+  "dag/gunbc/v1_maintenance_standing.dag",
+  83,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/ci_layer_roots.dag, dag/gunbc/documentary_refs.dag, dag/gunbc/roadmap_serve.dag +3"
+ ],
+ "std.behavioral": [
+  "dag/std/behavioral.dag",
+  51,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/src/bin/parse_witness.rs"
+ ],
+ "std.exec_format": [
+  "dag/std/exec_format.dag",
+  37,
+  "DEAD-CONSUMER-ONLY",
+  "NAMED-IN-LIVE-DAG \u2014 dag/extdeps/boot/emit.dag, dag/extdeps/boot/freestanding_payload.dag, dag/extdeps/boot/freestanding_witness.dag +3"
+ ],
+ "std.import": [
+  "dag/std/import.dag",
+  2,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/commit_workflow.dag"
+ ],
+ "std.methods": [
+  "dag/std/methods.dag",
+  67,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 src/v1/compiler_tests_rust.dag"
+ ],
+ "std.rational": [
+  "dag/std/rational.dag",
+  5,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/doc_graph_roots.dag, dag/gunbc/econ/acquisition.dag"
+ ],
+ "std.stack": [
+  "dag/std/stack.dag",
+  56,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/witness_floor_workflow.dag"
+ ],
+ "std.verification": [
+  "dag/std/verification.dag",
+  34,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/plans/realization_measurement_loop.dag, dag/gunbc/plans/resolver_type_name_collision_wall.dag, src/v2/test/fixture/frontier_probe_elision_boundary_overlay.dag"
+ ],
+ "tools.ci_heal_dispatch": [
+  "dag/tools/ci_heal_dispatch.dag",
+  48,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/ci_spec.dag"
+ ],
+ "tools.dag_compile_clean_seam_transport": [
+  "dag/tools/dag_compile_clean_seam_transport.dag",
+  124,
+  "DEAD-CONSUMER-ONLY",
+  "FROZEN-PENDING-RE-ADD (DESIGN \u00a73 frozen-X; the re-add queue exists to re-attach it)"
+ ],
+ "tools.gunbc_ci": [
+  "dag/tools/gunbc_ci.dag",
+  25,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/std/emit_on_demand.dag, src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag"
+ ],
+ "tools.merge_admission_capture_transport": [
+  "dag/tools/merge_admission_capture_transport.dag",
+  32,
+  "STILL-UNCONSUMED",
+  "FROZEN-PENDING-RE-ADD (DESIGN \u00a73 frozen-X; the re-add queue exists to re-attach it)"
+ ],
+ "tools.merge_admission_current_context": [
+  "dag/tools/merge_admission_current_context.dag",
+  134,
+  "STILL-UNCONSUMED",
+  "FROZEN-PENDING-RE-ADD (DESIGN \u00a73 frozen-X; the re-add queue exists to re-attach it)"
+ ],
+ "v2.extdeps.languages.ecmascript": [
+  "src/v2/extdeps/languages/ecmascript.dag",
+  1340,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/language_target_registry.dag"
+ ],
+ "v2.extdeps.languages.ptx": [
+  "src/v2/extdeps/languages/ptx.dag",
+  223,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/language_target_registry.dag"
+ ],
+ "v2.std.datetime": [
+  "src/v2/std/datetime.dag",
+  658,
+  "DEAD-CONSUMER-ONLY",
+  "NAMED-IN-LIVE-DAG \u2014 dag/extdeps/pin.dag, src/v2/test/manual/parse_forensics_scaling_witness.dag"
+ ],
+ "v2.std.probe_selector": [
+  "src/v2/std/probe_selector.dag",
+  674,
+  "DEAD-CONSUMER-ONLY",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/non_fold_residue.dag, dag/gunbc/plans/dag_v2_defork_audit.dag"
+ ],
+ "v2.test.workflow.glob_discovery_law": [
+  "src/v2/workflow/glob_discovery_law.dag",
+  113,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag"
+ ],
+ "v2.workflow.class_b_import_closure_transport": [
+  "src/v2/workflow/class_b_import_closure_transport.dag",
+  118,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag, src/v2/workflow/class_b_import_closure_probe.dag"
+ ],
+ "v2.workflow.compiler_closure_ingest_transport": [
+  "src/v2/workflow/compiler_closure_ingest_transport.dag",
+  150,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/ci_layer_roots.dag, dag/gunbc/explicit_witness_admission.dag, dag/tools/ci_gates.dag +1"
+ ],
+ "v2.workflow.phase_profile_proof_plan": [
+  "src/v2/workflow/phase_profile_proof_plan.dag",
+  22,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-SEED-RUST \u2014 src/v1/stage0/tests/phase_profile_claim_executor.rs"
+ ],
+ "v2.workflow.product_receipt_stage": [
+  "src/v2/workflow/product_receipt_stage.dag",
+  661,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 src/v2/workflow/product_receipt_transport.dag"
+ ],
+ "v2.workflow.source_root_ingest_gate": [
+  "src/v2/workflow/source_root_ingest_gate.dag",
+  18,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/gunbc/explicit_witness_admission.dag, dag/test/claim/guarantee_rung_drop_witness_test.dag, dag/tools/ci_gates.dag"
+ ],
+ "v2.workflow.source_root_ingest_transport": [
+  "src/v2/workflow/source_root_ingest_transport.dag",
+  90,
+  "STILL-UNCONSUMED",
+  "NAMED-IN-LIVE-DAG \u2014 dag/tools/ci_gates.dag, src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag"
+ ]
+}

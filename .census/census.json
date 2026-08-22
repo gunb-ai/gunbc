@@ -1,0 +1,1804 @@
+{
+ "buckets": {
+  "AMBIGUOUS-SHARED-ONLY": 74,
+  "CONSUMED-DECISIVE": 89,
+  "DEAD-CONSUMER-ONLY": 25,
+  "STILL-UNCONSUMED": 43
+ },
+ "modules_total": 3780,
+ "population": 231,
+ "reachable": 3549,
+ "roots_discovery": 1942,
+ "roots_entry": 362,
+ "roots_mirror": 87,
+ "rows": {
+  "config.codegen_paths": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_effect_realize",
+    "test.manual.mercurial_upstream_model_execution"
+   ],
+   "file": "dag/config/codegen_paths.dag"
+  },
+  "direct_rust_door_ingest_fixture": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
+  },
+  "examples.cost_estimate": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.cost_estimate_float_witness_test"
+   ],
+   "file": "dag/examples/cost_estimate/cost_estimate.dag"
+  },
+  "examples.html_markup_smoke": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.english_emit_add"
+   ],
+   "file": "dag/examples/html_markup_smoke/html_markup_smoke.dag"
+  },
+  "examples.interp_test": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.html_markup_smoke",
+    "examples.js_site",
+    "examples.nominal_distinctness_twin",
+    "examples.nominal_distinctness_witness"
+   ],
+   "file": "dag/examples/interp_test/interp_example.dag"
+  },
+  "examples.js_site": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.js_site_emit"
+   ],
+   "file": "dag/examples/js_site/js_site.dag"
+  },
+  "examples.js_site_emit": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.js_site_emit"
+   ],
+   "file": "dag/examples/js_site/js_site_emit.dag"
+  },
+  "examples.nominal_distinctness_twin": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.html_markup_smoke",
+    "examples.interp_test",
+    "examples.js_site",
+    "examples.nominal_distinctness_witness"
+   ],
+   "file": "dag/examples/nominal_distinctness_witness/twin.dag"
+  },
+  "examples.nominal_distinctness_witness": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.html_markup_smoke",
+    "examples.interp_test",
+    "examples.js_site",
+    "examples.nominal_distinctness_twin"
+   ],
+   "file": "dag/examples/nominal_distinctness_witness/witness.dag"
+  },
+  "examples.weather": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.interp_test",
+    "std.measure"
+   ],
+   "file": "dag/examples/weather/weather.dag"
+  },
+  "extdeps.access.aws_iam": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/access/aws_iam.dag"
+  },
+  "extdeps.access.zanzibar": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "extdeps.github.github",
+    "extdeps.llm.openai",
+    "extdeps.ssh.client_options",
+    "gunbc.fleet_known_hosts_anchor"
+   ],
+   "file": "dag/extdeps/access/zanzibar.dag"
+  },
+  "extdeps.audit.cloudevents": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/audit/cloudevents.dag"
+  },
+  "extdeps.bmc.ipmi": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/bmc/ipmi.dag"
+  },
+  "extdeps.bmc.mock_corpus": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.diagnostic.mock_corpus"
+   ],
+   "file": "dag/extdeps/bmc/mock_corpus.dag"
+  },
+  "extdeps.boot.emit": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.freestanding_witness"
+   ],
+   "file": "dag/extdeps/boot/emit.dag"
+  },
+  "extdeps.boot.framebuffer": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit"
+   ],
+   "file": "dag/extdeps/boot/framebuffer.dag"
+  },
+  "extdeps.boot.freestanding_payload": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.linux_x86_boot"
+   ],
+   "file": "dag/extdeps/boot/freestanding_payload.dag"
+  },
+  "extdeps.boot.freestanding_witness": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.html_markup_smoke",
+    "examples.interp_test",
+    "examples.js_site",
+    "examples.nominal_distinctness_twin"
+   ],
+   "file": "dag/extdeps/boot/freestanding_witness.dag"
+  },
+  "extdeps.boot.linux_x86_boot": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.freestanding_witness"
+   ],
+   "file": "dag/extdeps/boot/linux_x86_boot.dag"
+  },
+  "extdeps.cloud.gcp.iam_admin": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/cloud/gcp/iam_admin.dag"
+  },
+  "extdeps.cloud.gcp.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.gcp_mock_totality"
+   ],
+   "file": "dag/extdeps/cloud/gcp/mock_corpus.dag"
+  },
+  "extdeps.cloud.gcp.serviceusage": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/cloud/gcp/serviceusage.dag"
+  },
+  "extdeps.cloud.gcp.sts": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "gunbc.auth.patterns"
+   ],
+   "file": "dag/extdeps/cloud/gcp/sts.dag"
+  },
+  "extdeps.cloud_init.cloud_init": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_network_diagnosis"
+   ],
+   "file": "dag/extdeps/cloud_init/cloud_init.dag"
+  },
+  "extdeps.colo.centersquare": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/centersquare.dag"
+  },
+  "extdeps.colo.colocation_america": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/colocation_america.dag"
+  },
+  "extdeps.colo.coresite": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/coresite.dag"
+  },
+  "extdeps.colo.dataverge": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/dataverge.dag"
+  },
+  "extdeps.colo.digital_realty": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/digital_realty.dag"
+  },
+  "extdeps.colo.equinix": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/equinix.dag"
+  },
+  "extdeps.colo.evocative": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/evocative.dag"
+  },
+  "extdeps.colo.h5": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/h5.dag"
+  },
+  "extdeps.colo.halsey_165": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/halsey_165.dag"
+  },
+  "extdeps.colo.hivelocity": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/hivelocity.dag"
+  },
+  "extdeps.colo.interserver": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/interserver.dag"
+  },
+  "extdeps.colo.iron_mountain": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/iron_mountain.dag"
+  },
+  "extdeps.colo.natcoweb": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/natcoweb.dag"
+  },
+  "extdeps.colo.netrality": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/netrality.dag"
+  },
+  "extdeps.colo.qts": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/qts.dag"
+  },
+  "extdeps.colo.summit": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/summit.dag"
+  },
+  "extdeps.colo.three_sixty_five": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/three_sixty_five.dag"
+  },
+  "extdeps.colo.tierpoint": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/colo/tierpoint.dag"
+  },
+  "extdeps.colo.types": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.colo.centersquare",
+    "extdeps.colo.colocation_america",
+    "extdeps.colo.coresite",
+    "extdeps.colo.dataverge"
+   ],
+   "file": "dag/extdeps/colo/types.dag"
+  },
+  "extdeps.container.oci.ctrl_session_witness": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.html_markup_smoke",
+    "examples.interp_test",
+    "examples.js_site",
+    "examples.nominal_distinctness_twin"
+   ],
+   "file": "dag/extdeps/container/oci/ctrl_session_witness.dag"
+  },
+  "extdeps.container.oci.image_config": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.container.oci.ctrl_session_witness"
+   ],
+   "file": "dag/extdeps/container/oci/image_config.dag"
+  },
+  "extdeps.container.oci.linux": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.container.oci.ctrl_session_witness",
+    "extdeps.container.oci.runtime_config"
+   ],
+   "file": "dag/extdeps/container/oci/linux.dag"
+  },
+  "extdeps.container.oci.manifest": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.container.oci.ctrl_session_witness"
+   ],
+   "file": "dag/extdeps/container/oci/manifest.dag"
+  },
+  "extdeps.container.oci.runtime_config": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.container.oci.ctrl_session_witness"
+   ],
+   "file": "dag/extdeps/container/oci/runtime_config.dag"
+  },
+  "extdeps.cron.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.cron_mock_totality"
+   ],
+   "file": "dag/extdeps/cron/mock_corpus.dag"
+  },
+  "extdeps.currency.currency": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/currency/currency.dag"
+  },
+  "extdeps.darwin.rusage": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/darwin/rusage.dag"
+  },
+  "extdeps.darwin.sysctl": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/darwin/sysctl.dag"
+  },
+  "extdeps.diagnostic.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.diagnostic_mock_totality"
+   ],
+   "file": "dag/extdeps/diagnostic_mock_corpus.dag"
+  },
+  "extdeps.ebay.ebay": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ebay_listing_witness"
+   ],
+   "file": "dag/extdeps/ebay/ebay.dag"
+  },
+  "extdeps.ebay.ebay_contracts": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.ebay.ebay",
+    "extdeps.ebay.errors",
+    "extdeps.ebay.inventory"
+   ],
+   "file": "dag/extdeps/ebay/ebay_contracts.dag"
+  },
+  "extdeps.ebay.errors": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ebay_listing_witness"
+   ],
+   "file": "dag/extdeps/ebay/errors.dag"
+  },
+  "extdeps.ebay.inventory": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ebay_listing_witness"
+   ],
+   "file": "dag/extdeps/ebay/inventory.dag"
+  },
+  "extdeps.ebay.mock_corpus": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/extdeps/ebay/mock_corpus.dag"
+  },
+  "extdeps.ebay.oauth": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ebay_listing_witness"
+   ],
+   "file": "dag/extdeps/ebay/oauth.dag"
+  },
+  "extdeps.energy.nj_electricity": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/energy/nj_electricity.dag"
+  },
+  "extdeps.exec.xargs": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/exec/xargs.dag"
+  },
+  "extdeps.filesystem.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.filesystem_mock_totality"
+   ],
+   "file": "dag/extdeps/filesystem/mock_corpus.dag"
+  },
+  "extdeps.filesystem.ntfs": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.filesystem_entry_kind_witness"
+   ],
+   "file": "dag/extdeps/filesystem/ntfs.dag"
+  },
+  "extdeps.filesystem.posix": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.filesystem_entry_kind_witness"
+   ],
+   "file": "dag/extdeps/filesystem/posix.dag"
+  },
+  "extdeps.formats.elf.encode": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.freestanding_witness",
+    "extdeps.formats.elf.hello_static_witness"
+   ],
+   "file": "dag/extdeps/formats/elf/encode.dag"
+  },
+  "extdeps.formats.elf.hello_static_witness": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.freestanding_witness"
+   ],
+   "file": "dag/extdeps/formats/elf/hello_static_witness.dag"
+  },
+  "extdeps.formats.elf.primitives": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.freestanding_witness",
+    "extdeps.formats.elf.encode",
+    "extdeps.formats.elf.hello_static_witness"
+   ],
+   "file": "dag/extdeps/formats/elf/primitives.dag"
+  },
+  "extdeps.formats.elf.relocation": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/formats/elf/relocation.dag"
+  },
+  "extdeps.formats.elf.sections": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/formats/elf/sections.dag"
+  },
+  "extdeps.formats.elf.segments": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.freestanding_witness",
+    "extdeps.formats.elf.encode",
+    "extdeps.formats.elf.hello_static_witness"
+   ],
+   "file": "dag/extdeps/formats/elf/segments.dag"
+  },
+  "extdeps.formats.elf.types": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.freestanding_witness",
+    "extdeps.formats.elf.encode",
+    "extdeps.formats.elf.hello_static_witness"
+   ],
+   "file": "dag/extdeps/formats/elf/types.dag"
+  },
+  "extdeps.git.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.git_mock_totality"
+   ],
+   "file": "dag/extdeps/git/mock_corpus.dag"
+  },
+  "extdeps.git.versioning": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.extdeps_git_versioning_witness"
+   ],
+   "file": "dag/extdeps/git/versioning.dag"
+  },
+  "extdeps.github.auth": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/auth.dag"
+  },
+  "extdeps.github.ci": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/ci.dag"
+  },
+  "extdeps.github.gists": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/gists.dag"
+  },
+  "extdeps.github.github_contracts": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/github_contracts.dag"
+  },
+  "extdeps.github.issues": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/issues.dag"
+  },
+  "extdeps.github.mergeable_state": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.github_mergeable_state_witness"
+   ],
+   "file": "dag/extdeps/github/mergeable_state.dag"
+  },
+  "extdeps.github.mergeable_state_contracts": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.github.mergeable_state"
+   ],
+   "file": "dag/extdeps/github/mergeable_state_contracts.dag"
+  },
+  "extdeps.github.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.github_mock_totality"
+   ],
+   "file": "dag/extdeps/github/mock_corpus.dag"
+  },
+  "extdeps.github.workflows": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/github/workflows.dag"
+  },
+  "extdeps.gitignore": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/git/gitignore.dag"
+  },
+  "extdeps.languages.go.module": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.go_module_versioning_witness"
+   ],
+   "file": "dag/extdeps/languages/go/module.dag"
+  },
+  "extdeps.languages.go.primitives": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/languages/go/primitives.dag"
+  },
+  "extdeps.languages.python.primitives": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/languages/python/primitives.dag"
+  },
+  "extdeps.languages.rust.primitives": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/languages/rust/primitives.dag"
+  },
+  "extdeps.languages.typescript.primitives": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/languages/typescript/primitives.dag"
+  },
+  "extdeps.linux.edac": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/linux/edac.dag"
+  },
+  "extdeps.linux.mock_corpus": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.diagnostic.mock_corpus"
+   ],
+   "file": "dag/extdeps/linux/mock_corpus.dag"
+  },
+  "extdeps.linux.proc_meminfo": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "extdeps.linux.procfs",
+    "gunbc.host_budget_source",
+    "test.claim.host_budget_source_witness",
+    "test.claim.os_proc_meminfo_witness"
+   ],
+   "file": "dag/extdeps/linux/proc_meminfo.dag"
+  },
+  "extdeps.linux.rusage": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/linux/rusage.dag"
+  },
+  "extdeps.llm.anthropic_errors": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.extdeps_llm_type_grounding_witness"
+   ],
+   "file": "dag/extdeps/llm/anthropic_errors.dag"
+  },
+  "extdeps.llm.anthropic_rest": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/llm/anthropic_rest.dag"
+  },
+  "extdeps.llm.llm": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/llm/llm.dag"
+  },
+  "extdeps.llm.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.llm_mock_totality"
+   ],
+   "file": "dag/extdeps/llm/mock_corpus.dag"
+  },
+  "extdeps.llm.openai_contracts": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/llm/openai_contracts.dag"
+  },
+  "extdeps.llm.openai_errors": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.extdeps_llm_type_grounding_witness"
+   ],
+   "file": "dag/extdeps/llm/openai_errors.dag"
+  },
+  "extdeps.llm.openai_rest": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/llm/openai_rest.dag"
+  },
+  "extdeps.netplan.netplan": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_network_diagnosis"
+   ],
+   "file": "dag/extdeps/netplan/netplan.dag"
+  },
+  "extdeps.observability": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.fleet_intent_storage",
+    "test.claim.observability_channel_routing"
+   ],
+   "file": "dag/extdeps/observability.dag"
+  },
+  "extdeps.posix.rusage": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.darwin.rusage",
+    "extdeps.linux.rusage"
+   ],
+   "file": "dag/extdeps/posix/rusage.dag"
+  },
+  "extdeps.provisioning.ubuntu_seeded_install_media_toolchain": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.srv3_seeded_install_media"
+   ],
+   "file": "dag/extdeps/provisioning/ubuntu_seeded_install_media_toolchain.dag"
+  },
+  "extdeps.realestate.nj_industrial": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/realestate/nj_industrial.dag"
+  },
+  "extdeps.render.terminal_capability": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.terminal_capability_witness"
+   ],
+   "file": "dag/extdeps/render/terminal_capability.dag"
+  },
+  "extdeps.runtime.api.darwin": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/runtime/api/darwin.dag"
+  },
+  "extdeps.runtime.api.windows": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/runtime/api/windows.dag"
+  },
+  "extdeps.runtime.local": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "gunbc.auth.patterns"
+   ],
+   "file": "dag/extdeps/runtime/local.dag"
+  },
+  "extdeps.sec.edgar_rest": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/sec/edgar_rest.dag"
+  },
+  "extdeps.sec.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.sec_edgar_mock_totality"
+   ],
+   "file": "dag/extdeps/sec/mock_corpus.dag"
+  },
+  "extdeps.shell.credentials": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/shell/credentials.dag"
+  },
+  "extdeps.shell.mock_corpus": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.lens_mock_totality.shell_mock_totality"
+   ],
+   "file": "dag/extdeps/shell_mock_corpus.dag"
+  },
+  "extdeps.tailscale.acl": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.tailscale_acl_phase2_credential",
+    "test.claim.tailscale_acl_witness"
+   ],
+   "file": "dag/extdeps/tailscale/acl.dag"
+  },
+  "extdeps.tailscale.acl_api": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/tailscale/acl_api.dag"
+  },
+  "extdeps.tcgplayer.catalog": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.card_intake_risk_witness"
+   ],
+   "file": "dag/extdeps/tcgplayer/catalog.dag"
+  },
+  "extdeps.tcgplayer.mock_corpus": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/extdeps/tcgplayer/mock_corpus.dag"
+  },
+  "extdeps.tcgplayer.pricing": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/tcgplayer/pricing.dag"
+  },
+  "extdeps.tcgplayer.store": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/tcgplayer/store.dag"
+  },
+  "extdeps.tcgplayer.tcgplayer": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.tcgplayer.catalog",
+    "extdeps.tcgplayer.pricing",
+    "extdeps.tcgplayer.store"
+   ],
+   "file": "dag/extdeps/tcgplayer/tcgplayer.dag"
+  },
+  "extdeps.tools.diffutils": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/tools/diffutils.dag"
+  },
+  "extdeps.transports.sql": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/transports/sql.dag"
+  },
+  "extdeps.vendor.arm": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "extdeps.languages.rust.emit",
+    "gunbc.roadmap_sandbox",
+    "gunbc.v1_interpreter_primitive_surface",
+    "std.primitive_identity"
+   ],
+   "file": "dag/extdeps/vendor/arm.dag"
+  },
+  "extdeps.vendor.qualcomm": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.ampere.mt_collins_product_brief.platform",
+    "extdeps.ampere.mt_collins_product_brief.subject",
+    "extdeps.ampere.scp_diagnostic",
+    "extdeps.archive.format"
+   ],
+   "file": "dag/extdeps/vendor/qualcomm.dag"
+  },
+  "extdeps.version.pep440": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.python_pep440_version_witness"
+   ],
+   "file": "dag/extdeps/version/pep440.dag"
+  },
+  "gunbc.apply": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/apply.dag"
+  },
+  "gunbc.auth.credentials": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/auth/credentials.dag"
+  },
+  "gunbc.auth.optional_impersonation": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/auth/optional_impersonation.dag"
+  },
+  "gunbc.auth.patterns": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/auth/patterns.dag"
+  },
+  "gunbc.bootstrap": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.workflow.types",
+    "v2.compiler.self_host",
+    "v2.std.artifact",
+    "v2.std.change"
+   ],
+   "file": "dag/gunbc/bootstrap.dag"
+  },
+  "gunbc.char_at_scaling_probe_support": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/char_at_scaling_probe_support.dag"
+  },
+  "gunbc.ci_build_job_v1_compiler_unit_receipt": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag"
+  },
+  "gunbc.ci_input_envelope": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.input_envelope_admission"
+   ],
+   "file": "dag/gunbc/ci_input_envelope.dag"
+  },
+  "gunbc.ci_oom_reclassify": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ci_oom_reclassify_witness"
+   ],
+   "file": "dag/gunbc/ci_oom_reclassify.dag"
+  },
+  "gunbc.code_change_workflow": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.code_change_workflow_witness_test"
+   ],
+   "file": "dag/gunbc/code_change_workflow.dag"
+  },
+  "gunbc.compile_source_model": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.compile_source_model_witness"
+   ],
+   "file": "dag/gunbc/compile_source_model.dag"
+  },
+  "gunbc.deployed_intent_v0": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_identity_adopt",
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/deployed_intent_v0.dag"
+  },
+  "gunbc.deployed_intent_v1": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/deployed_intent_v1.dag"
+  },
+  "gunbc.design_argument": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.design_argument_witness"
+   ],
+   "file": "dag/gunbc/design_argument.dag"
+  },
+  "gunbc.empty_decl_file_checkpoint_bypass": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.untyped_fold_init_accumulator"
+   ],
+   "file": "dag/gunbc/empty_decl_file_checkpoint_bypass.dag"
+  },
+  "gunbc.githooks_pre_push_cli": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/githooks_pre_push_cli.dag"
+  },
+  "gunbc.hand_lens_host_bridge_scaffold_index": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "gunbc.hand_lens_host_bridge_scaffold_watchdog"
+   ],
+   "file": "dag/gunbc/hand_lens_host_bridge_scaffold_index.dag"
+  },
+  "gunbc.hand_lens_host_bridge_scaffold_watchdog": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.hand_lens_host_bridge_scaffold_watchdog"
+   ],
+   "file": "dag/gunbc/hand_lens_host_bridge_scaffold_watchdog.dag"
+  },
+  "gunbc.host_authorized_keys_reconcile": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.srv3_subsumption"
+   ],
+   "file": "dag/gunbc/host_authorized_keys_reconcile.dag"
+  },
+  "gunbc.host_build_cache_provision": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_build_cache_provision_design"
+   ],
+   "file": "dag/gunbc/host_build_cache_provision.dag"
+  },
+  "gunbc.host_converge_delta": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_converge_delta_witness"
+   ],
+   "file": "dag/gunbc/host_converge_delta.dag"
+  },
+  "gunbc.host_identity_assimilation": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/host_identity_assimilation.dag"
+  },
+  "gunbc.host_identity_converge": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/host_identity_converge.dag"
+  },
+  "gunbc.host_identity_knob": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_identity_adopt",
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/host_identity_knob.dag"
+  },
+  "gunbc.host_identity_observation": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_identity_adopt",
+    "test.claim.host_identity_observation_witness"
+   ],
+   "file": "dag/gunbc/host_identity_observation.dag"
+  },
+  "gunbc.host_network_diagnosis": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_network_diagnosis"
+   ],
+   "file": "dag/gunbc/host_network_diagnosis.dag"
+  },
+  "gunbc.host_runner_memory_cap_plan_emit": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.srv3_runner_memory_cap_plan_verify_witness"
+   ],
+   "file": "dag/gunbc/host_runner_memory_cap_plan_emit.dag"
+  },
+  "gunbc.host_toolchain_components": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_toolchain_components"
+   ],
+   "file": "dag/gunbc/host_toolchain_components.dag"
+  },
+  "gunbc.hostname_allocation": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.host_identity_observation_witness",
+    "test.claim.hostname_allocation_witness"
+   ],
+   "file": "dag/gunbc/hostname_allocation.dag"
+  },
+  "gunbc.install_media": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.resource_namespace_upsert"
+   ],
+   "file": "dag/gunbc/install_media.dag"
+  },
+  "gunbc.interpreter_kernel_model": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.interpreter_kernel_model_witness"
+   ],
+   "file": "dag/gunbc/interpreter_kernel_model.dag"
+  },
+  "gunbc.namespace_census_receipt": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/namespace_census_receipt.dag"
+  },
+  "gunbc.network_identity_subsumption": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_standup_assimilation_deduction",
+    "test.claim.srv3_network_identity_subsumption",
+    "test.claim.srv3_os_install_diagnostic"
+   ],
+   "file": "dag/gunbc/network_identity_subsumption.dag"
+  },
+  "gunbc.p1_retention_cohort_receipt": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/p1_retention_cohort_receipt.dag"
+  },
+  "gunbc.plans.affected_set_self_confirmation": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/plans/affected_set_self_confirmation.dag"
+  },
+  "gunbc.plans.branch_merge_admission_model": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.plans.merge_admission_gate_shape_proposal",
+    "gunbc.plans.wave2_prep_design"
+   ],
+   "file": "dag/gunbc/plans/branch_merge_admission_model.dag"
+  },
+  "gunbc.plans.fleet_subsumption_manual_gaps": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/plans/fleet_subsumption_manual_gaps.dag"
+  },
+  "gunbc.plans.host_convergence_circuit_residue": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/plans/host_convergence_circuit_residue.dag"
+  },
+  "gunbc.plans.merge_admission_gate_shape_proposal": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.plans.branch_merge_admission_model",
+    "gunbc.plans.wave2_prep_design"
+   ],
+   "file": "dag/gunbc/plans/merge_admission_gate_shape_proposal.dag"
+  },
+  "gunbc.plans.transport_argv_anemia_dissolution": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/plans/transport_argv_anemia_dissolution.dag"
+  },
+  "gunbc.plans.wave2_prep_design": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.plans.branch_merge_admission_model",
+    "gunbc.plans.merge_admission_gate_shape_proposal"
+   ],
+   "file": "dag/gunbc/plans/wave2_prep_design.dag"
+  },
+  "gunbc.process_algebra": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.code_change_workflow_witness_test"
+   ],
+   "file": "dag/gunbc/process_algebra.dag"
+  },
+  "gunbc.runner_slot_enforcement": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.fleet_show_effective_read_witness",
+    "test.claim.runner_slot_enforcement_grounding_witness"
+   ],
+   "file": "dag/gunbc/runner_slot_enforcement.dag"
+  },
+  "gunbc.scm.commit_closure_store": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/scm/commit_closure_store.dag"
+  },
+  "gunbc.seed_closed_vocabulary_wildcard_census": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/seed_closed_vocabulary_wildcard_census.dag"
+  },
+  "gunbc.site.interaction": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/site/interaction.dag"
+  },
+  "gunbc.spark.managed_access_apply": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/spark/managed_access_apply.dag"
+  },
+  "gunbc.srv3_os_install_diagnostic": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.host_standup_assimilation_deduction",
+    "test.claim.host_standup_assimilation_deduction",
+    "test.claim.srv3_os_install_diagnostic",
+    "test.claim.temporal_effect_spine"
+   ],
+   "file": "dag/gunbc/srv3_os_install_diagnostic.dag"
+  },
+  "gunbc.tailscale_acl_emit": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "gunbc.tailscale_acl_phase2_credential",
+    "test.claim.tailscale_acl_witness"
+   ],
+   "file": "dag/gunbc/tailscale_acl_emit.dag"
+  },
+  "gunbc.test_node_wall_clock_ratchet": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/test_node_wall_clock_ratchet.dag"
+  },
+  "gunbc.tools.card_intake": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.card_intake_risk_witness"
+   ],
+   "file": "dag/gunbc/tools/card_intake.dag"
+  },
+  "gunbc.tools.cron_tag": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.cron_tag_witness_test"
+   ],
+   "file": "dag/gunbc/tools/cron_tag.dag"
+  },
+  "gunbc.tools.ebay_listing": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.ebay_listing_witness"
+   ],
+   "file": "dag/gunbc/tools/ebay_listing.dag"
+  },
+  "gunbc.tools.review": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.tools.review_codex"
+   ],
+   "file": "dag/gunbc/tools/review.dag"
+  },
+  "gunbc.tools.review_codex": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "extdeps.container.docker_ce",
+    "extdeps.git",
+    "extdeps.git.object_store",
+    "extdeps.github.github"
+   ],
+   "file": "dag/gunbc/tools/review_codex.dag"
+  },
+  "gunbc.untyped_fold_init_accumulator": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "gunbc.empty_decl_file_checkpoint_bypass"
+   ],
+   "file": "dag/gunbc/untyped_fold_init_accumulator.dag"
+  },
+  "gunbc.v1_maintenance_standing": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/gunbc/v1_maintenance_standing.dag"
+  },
+  "gunbc.workflow.types": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "extdeps.github.issues",
+    "gunbc.bootstrap",
+    "v2.std.artifact",
+    "v2.std.projection"
+   ],
+   "file": "dag/gunbc/workflow/types.dag"
+  },
+  "std.behavioral": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/behavioral.dag"
+  },
+  "std.durable_compare_and_set": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.durable_compare_and_set"
+   ],
+   "file": "dag/std/durable_compare_and_set.dag"
+  },
+  "std.exec_format": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "extdeps.boot.emit",
+    "extdeps.boot.freestanding_payload",
+    "extdeps.boot.freestanding_witness",
+    "extdeps.formats.elf.primitives"
+   ],
+   "file": "dag/std/exec_format.dag"
+  },
+  "std.import": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/import.dag"
+  },
+  "std.methods": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/methods.dag"
+  },
+  "std.patterns": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "product.compute_board.verilog_projection",
+    "v2.compiler.self_host",
+    "v2.lens.coverage",
+    "v2.lens.mock_totality"
+   ],
+   "file": "dag/std/patterns.dag"
+  },
+  "std.rational": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/rational.dag"
+  },
+  "std.stack": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/stack.dag"
+  },
+  "std.syllogism": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.design_argument_witness"
+   ],
+   "file": "dag/std/syllogism.dag"
+  },
+  "std.verification": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/std/verification.dag"
+  },
+  "tools.auth_declared_but_unwired_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.claim.auth_declared_but_unwired_witness"
+   ],
+   "file": "dag/tools/auth_declared_but_unwired_witness_transport.dag"
+  },
+  "tools.bootstrap_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.claim.bootstrap"
+   ],
+   "file": "dag/tools/bootstrap_witness_transport.dag"
+  },
+  "tools.ci_heal_dispatch": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/tools/ci_heal_dispatch.dag"
+  },
+  "tools.dag_collect_fingerprint_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.dag_collect_fingerprint_witness_test"
+   ],
+   "file": "dag/tools/dag_collect_fingerprint_witness_transport.dag"
+  },
+  "tools.dag_compile_clean_seam": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.dag_compile_clean_seam_witness"
+   ],
+   "file": "dag/tools/dag_compile_clean_seam.dag"
+  },
+  "tools.dag_compile_clean_seam_transport": {
+   "bucket": "DEAD-CONSUMER-ONLY",
+   "callers": [
+    "tools.dag_compile_clean_seam"
+   ],
+   "file": "dag/tools/dag_compile_clean_seam_transport.dag"
+  },
+  "tools.dag_compile_clean_shard_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.dag_compile_clean_shard_a_witness"
+   ],
+   "file": "dag/tools/dag_compile_clean_shard_transport.dag"
+  },
+  "tools.effects_rest_transport_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.effects_rest_transport_parse_witness_test"
+   ],
+   "file": "dag/tools/effects_rest_transport_witness_transport.dag"
+  },
+  "tools.gunbc_ci": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/tools/gunbc_ci.dag"
+  },
+  "tools.infer_semantics_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.claim.infer_semantics_witness"
+   ],
+   "file": "dag/tools/infer_semantics_witness_transport.dag"
+  },
+  "tools.interp_recorded_fixture_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.interp_recorded_fixture_witness_test"
+   ],
+   "file": "dag/tools/interp_recorded_fixture_witness_transport.dag"
+  },
+  "tools.merge_admission_capture_transport": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/tools/merge_admission_capture_transport.dag"
+  },
+  "tools.merge_admission_current_context": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "dag/tools/merge_admission_current_context.dag"
+  },
+  "tools.parse_witness_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.parse_test"
+   ],
+   "file": "dag/tools/parse_witness_transport.dag"
+  },
+  "tools.v1_dag_parse_transport": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "test.claim.v1_dag_parse_witness"
+   ],
+   "file": "dag/tools/v1_dag_parse_transport.dag"
+  },
+  "v2.extdeps.bmc.lifecycle_fidelity": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.path_y_fidelity_successor"
+   ],
+   "file": "src/v2/extdeps/bmc/lifecycle_fidelity.dag"
+  },
+  "v2.extdeps.formats.json": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.json_number_integer_lexeme_anchor"
+   ],
+   "file": "src/v2/extdeps/formats/json.dag"
+  },
+  "v2.extdeps.github.expression_fidelity": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.path_y_fidelity_successor"
+   ],
+   "file": "src/v2/extdeps/github/expression_fidelity.dag"
+  },
+  "v2.extdeps.languages.ecmascript": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/extdeps/languages/ecmascript.dag"
+  },
+  "v2.extdeps.languages.machine_code": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.machine_code_model_core_anchor"
+   ],
+   "file": "src/v2/extdeps/languages/machine_code.dag"
+  },
+  "v2.extdeps.languages.ptx": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/extdeps/languages/ptx.dag"
+  },
+  "v2.extdeps.languages.swift": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.language_model_dissolution",
+    "v2.test.manual.swift_language_model_anchor",
+    "v2.test.parse.swift"
+   ],
+   "file": "src/v2/extdeps/languages/swift.dag"
+  },
+  "v2.extdeps.languages.wasm": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.wasm_language_model_anchor"
+   ],
+   "file": "src/v2/extdeps/languages/wasm.dag"
+  },
+  "v2.std.datetime": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/std/datetime.dag"
+  },
+  "v2.std.float": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "examples.cost_estimate",
+    "examples.interp_test",
+    "examples.weather",
+    "extdeps.docker.container_stats"
+   ],
+   "file": "src/v2/std/float.dag"
+  },
+  "v2.std.probe_selector": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/std/probe_selector.dag"
+  },
+  "v2.std.projection": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.lens.common.graph_invariant"
+   ],
+   "file": "src/v2/std/projection.dag"
+  },
+  "v2.test.algebra_laws.is_prefix_of_prefix_check": {
+   "bucket": "AMBIGUOUS-SHARED-ONLY",
+   "callers": [
+    "v2.lens.no_dual_representation_test.scan"
+   ],
+   "file": "src/v2/std/algebra_laws/is_prefix_of_prefix_check.dag"
+  },
+  "v2.test.nat_semiring.rung_0_to_2_three_targets": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.nat_semiring.rung_3_4"
+   ],
+   "file": "src/v2/std/nat_semiring/rung_0_to_2_three_targets.dag"
+  },
+  "v2.test.workflow.glob_discovery_law": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/glob_discovery_law.dag"
+  },
+  "v2.workflow.bmc_lifecycle_roundtrip": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.path_y_fidelity_successor"
+   ],
+   "file": "src/v2/workflow/bmc_lifecycle_roundtrip.dag"
+  },
+  "v2.workflow.class_b_import_closure_transport": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/class_b_import_closure_transport.dag"
+  },
+  "v2.workflow.compiler_closure_ingest_transport": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/compiler_closure_ingest_transport.dag"
+  },
+  "v2.workflow.gha_expression_fidelity": {
+   "bucket": "CONSUMED-DECISIVE",
+   "callers": [
+    "v2.test.manual.path_y_fidelity_successor"
+   ],
+   "file": "src/v2/workflow/gha_expression_fidelity.dag"
+  },
+  "v2.workflow.phase_profile_proof_plan": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/phase_profile_proof_plan.dag"
+  },
+  "v2.workflow.product_receipt_stage": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/product_receipt_stage.dag"
+  },
+  "v2.workflow.source_root_ingest_gate": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/source_root_ingest_gate.dag"
+  },
+  "v2.workflow.source_root_ingest_transport": {
+   "bucket": "STILL-UNCONSUMED",
+   "callers": [],
+   "file": "src/v2/workflow/source_root_ingest_transport.dag"
+  }
+ }
+}

@@ -1,0 +1,1341 @@
+{
+ "direct_rust_door_ingest_fixture": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag",
+  "lines": 6,
+  "spark": false,
+  "v1": false
+ },
+ "examples.gunbhub_serve_program": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag",
+  "lines": 60,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.bmc.mock_corpus": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.diagnostic.mock_corpus"
+  ],
+  "cited": false,
+  "file": "dag/extdeps/bmc/mock_corpus.dag",
+  "lines": 71,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.boot.emit": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.freestanding_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/boot/emit.dag",
+  "lines": 127,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.boot.framebuffer": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/boot/framebuffer.dag",
+  "lines": 15,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.boot.freestanding_payload": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.linux_x86_boot"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/boot/freestanding_payload.dag",
+  "lines": 19,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.boot.linux_x86_boot": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.freestanding_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/boot/linux_x86_boot.dag",
+  "lines": 37,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.cloud.gcp.sts": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "gunbc.auth.patterns"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/cloud/gcp/sts.dag",
+  "lines": 111,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.colo.types": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.colo.centersquare",
+   "extdeps.colo.colocation_america",
+   "extdeps.colo.coresite",
+   "extdeps.colo.dataverge"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/colo/types.dag",
+  "lines": 110,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.container.oci.image_config": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.container.oci.ctrl_session_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/container/oci/image_config.dag",
+  "lines": 100,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.container.oci.linux": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.container.oci.ctrl_session_witness",
+   "extdeps.container.oci.runtime_config"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/container/oci/linux.dag",
+  "lines": 156,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.container.oci.manifest": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.container.oci.ctrl_session_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/container/oci/manifest.dag",
+  "lines": 98,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.container.oci.runtime_config": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.container.oci.ctrl_session_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/container/oci/runtime_config.dag",
+  "lines": 97,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.ebay.ebay_contracts": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.ebay.ebay",
+   "extdeps.ebay.errors",
+   "extdeps.ebay.inventory"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/ebay/ebay_contracts.dag",
+  "lines": 34,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.ebay.mock_corpus": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/extdeps/ebay/mock_corpus.dag",
+  "lines": 79,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.formats.elf.encode": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.freestanding_witness",
+   "extdeps.formats.elf.hello_static_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/formats/elf/encode.dag",
+  "lines": 201,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.formats.elf.hello_static_witness": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.freestanding_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/formats/elf/hello_static_witness.dag",
+  "lines": 259,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.formats.elf.primitives": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.freestanding_witness",
+   "extdeps.formats.elf.encode",
+   "extdeps.formats.elf.hello_static_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/formats/elf/primitives.dag",
+  "lines": 61,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.formats.elf.segments": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.freestanding_witness",
+   "extdeps.formats.elf.encode",
+   "extdeps.formats.elf.hello_static_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/formats/elf/segments.dag",
+  "lines": 79,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.formats.elf.types": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.freestanding_witness",
+   "extdeps.formats.elf.encode",
+   "extdeps.formats.elf.hello_static_witness"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/formats/elf/types.dag",
+  "lines": 190,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.github.mergeable_state_contracts": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.github.mergeable_state"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/github/mergeable_state_contracts.dag",
+  "lines": 18,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.linux.mock_corpus": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.diagnostic.mock_corpus"
+  ],
+  "cited": false,
+  "file": "dag/extdeps/linux/mock_corpus.dag",
+  "lines": 15,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.posix.rusage": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.darwin.rusage",
+   "extdeps.linux.rusage"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/posix/rusage.dag",
+  "lines": 66,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.runtime.local": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "gunbc.auth.patterns"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/runtime/local.dag",
+  "lines": 22,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.tcgplayer.mock_corpus": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/extdeps/tcgplayer/mock_corpus.dag",
+  "lines": 63,
+  "spark": false,
+  "v1": false
+ },
+ "extdeps.tcgplayer.tcgplayer": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.tcgplayer.catalog",
+   "extdeps.tcgplayer.pricing",
+   "extdeps.tcgplayer.store"
+  ],
+  "cited": true,
+  "file": "dag/extdeps/tcgplayer/tcgplayer.dag",
+  "lines": 82,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.apply": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/apply.dag",
+  "lines": 118,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.assimilate.bmc_wif_canary_bootstrap": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/assimilate/bmc_wif_canary_bootstrap.dag",
+  "lines": 126,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.auth.credentials": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/auth/credentials.dag",
+  "lines": 89,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.auth.optional_impersonation": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/auth/optional_impersonation.dag",
+  "lines": 20,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.auth.patterns": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/auth/patterns.dag",
+  "lines": 113,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.char_at_scaling_probe_support": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/char_at_scaling_probe_support.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.ci_build_job_v1_compiler_unit_receipt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag",
+  "lines": 21,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.cursor_sdk_secure_api_key": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/cursor_sdk_secure_api_key.dag",
+  "lines": 73,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.devboot.vertical_receipt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/devboot/vertical_receipt.dag",
+  "lines": 68,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.floor_resolve_realization": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/floor_resolve_realization.dag",
+  "lines": 28,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.generic_binder_field_projection_deficit": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/generic_binder_field_projection_deficit.dag",
+  "lines": 109,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.githooks_pre_push_cli": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/githooks_pre_push_cli.dag",
+  "lines": 10,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.hand_lens_host_bridge_scaffold_index": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "gunbc.hand_lens_host_bridge_scaffold_watchdog"
+  ],
+  "cited": true,
+  "file": "dag/gunbc/hand_lens_host_bridge_scaffold_index.dag",
+  "lines": 23,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.language_subject_scope_scaffold": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/language_subject_scope_scaffold.dag",
+  "lines": 10,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.namespace_census_receipt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/namespace_census_receipt.dag",
+  "lines": 74,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.p1_retention_cohort_receipt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/p1_retention_cohort_receipt.dag",
+  "lines": 8,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.p3a1_self_fork_homonym_disposition": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/p3a1_self_fork_homonym_disposition.dag",
+  "lines": 10,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.parse_allowlist": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/parse_allowlist.dag",
+  "lines": 20,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.plans.affected_set_self_confirmation": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/plans/affected_set_self_confirmation.dag",
+  "lines": 29,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.plans.fleet_subsumption_manual_gaps": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/plans/fleet_subsumption_manual_gaps.dag",
+  "lines": 196,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.plans.host_convergence_circuit_residue": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/plans/host_convergence_circuit_residue.dag",
+  "lines": 75,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.plans.transport_argv_anemia_dissolution": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/plans/transport_argv_anemia_dissolution.dag",
+  "lines": 89,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.pr_digests": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "gunbc.code_change_workflow"
+  ],
+  "cited": false,
+  "file": "dag/gunbc/pr_digests.dag",
+  "lines": 72,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.provider_standing_live_probes": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/provider_standing_live_probes.dag",
+  "lines": 194,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.scm.commit_closure_store": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/scm/commit_closure_store.dag",
+  "lines": 203,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.seed_closed_vocabulary_wildcard_census": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/seed_closed_vocabulary_wildcard_census.dag",
+  "lines": 175,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.site.interaction": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/site/interaction.dag",
+  "lines": 14,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.site.register_principles": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/site/register_principles.dag",
+  "lines": 12,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.spark.managed_access_apply": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/spark/managed_access_apply.dag",
+  "lines": 464,
+  "spark": true,
+  "v1": false
+ },
+ "gunbc.srv4_seeded_install_media_artifact": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/srv4_seeded_install_media_artifact.dag",
+  "lines": 47,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.test_node_wall_clock_ratchet": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/test_node_wall_clock_ratchet.dag",
+  "lines": 99,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.tools.bmc_onboard_validate": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/tools/bmc_onboard_validate.dag",
+  "lines": 22,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.tools.grounding_confirm": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/tools/grounding_confirm.dag",
+  "lines": 115,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.tools.roadmap_spawn_request": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/tools/roadmap_spawn_request.dag",
+  "lines": 36,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.v1_maintenance_standing": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/v1_maintenance_standing.dag",
+  "lines": 83,
+  "spark": false,
+  "v1": false
+ },
+ "gunbc.witness_family_fanout": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/gunbc/witness_family_fanout.dag",
+  "lines": 65,
+  "spark": false,
+  "v1": false
+ },
+ "shared.dag_util": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "tools.build"
+  ],
+  "cited": false,
+  "file": "dag/shared/dag_util.dag",
+  "lines": 44,
+  "spark": false,
+  "v1": false
+ },
+ "std.behavioral": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/behavioral.dag",
+  "lines": 51,
+  "spark": false,
+  "v1": false
+ },
+ "std.binding": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/binding.dag",
+  "lines": 7,
+  "spark": false,
+  "v1": false
+ },
+ "std.containers": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/containers.dag",
+  "lines": 2,
+  "spark": false,
+  "v1": false
+ },
+ "std.exec_format": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "extdeps.boot.emit",
+   "extdeps.boot.freestanding_payload",
+   "extdeps.boot.freestanding_witness",
+   "extdeps.formats.elf.primitives"
+  ],
+  "cited": false,
+  "file": "dag/std/exec_format.dag",
+  "lines": 37,
+  "spark": false,
+  "v1": false
+ },
+ "std.import": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/import.dag",
+  "lines": 2,
+  "spark": false,
+  "v1": false
+ },
+ "std.list": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/list.dag",
+  "lines": 3,
+  "spark": false,
+  "v1": false
+ },
+ "std.methods": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/methods.dag",
+  "lines": 67,
+  "spark": false,
+  "v1": false
+ },
+ "std.rational": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/rational.dag",
+  "lines": 5,
+  "spark": false,
+  "v1": false
+ },
+ "std.stack": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/stack.dag",
+  "lines": 56,
+  "spark": false,
+  "v1": false
+ },
+ "std.verification": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/std/verification.dag",
+  "lines": 34,
+  "spark": false,
+  "v1": false
+ },
+ "tools.build": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/build.dag",
+  "lines": 34,
+  "spark": false,
+  "v1": false
+ },
+ "tools.ci_heal_dispatch": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/ci_heal_dispatch.dag",
+  "lines": 48,
+  "spark": false,
+  "v1": false
+ },
+ "tools.codegen": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/codegen.dag",
+  "lines": 5,
+  "spark": false,
+  "v1": false
+ },
+ "tools.dag_compile_clean_seam_transport": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "tools.dag_compile_clean_seam"
+  ],
+  "cited": false,
+  "file": "dag/tools/dag_compile_clean_seam_transport.dag",
+  "lines": 124,
+  "spark": false,
+  "v1": false
+ },
+ "tools.gunbc_ci": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/gunbc_ci.dag",
+  "lines": 25,
+  "spark": false,
+  "v1": false
+ },
+ "tools.merge_admission_capture_transport": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/merge_admission_capture_transport.dag",
+  "lines": 32,
+  "spark": false,
+  "v1": false
+ },
+ "tools.merge_admission_current_context": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/merge_admission_current_context.dag",
+  "lines": 134,
+  "spark": false,
+  "v1": false
+ },
+ "tools.readme": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/readme.dag",
+  "lines": 70,
+  "spark": false,
+  "v1": false
+ },
+ "tools.roadmap_dispatch": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "dag/tools/roadmap_dispatch.dag",
+  "lines": 17,
+  "spark": false,
+  "v1": false
+ },
+ "v2.bin.main": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/bin/main.dag",
+  "lines": 4,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formats.csv": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formats/csv.dag",
+  "lines": 136,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formats.json_schema": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "v2.extdeps.formats.openapi"
+  ],
+  "cited": false,
+  "file": "src/v2/extdeps/formats/json_schema.dag",
+  "lines": 103,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formats.openapi": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formats/openapi.dag",
+  "lines": 459,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formats.toml": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formats/toml.dag",
+  "lines": 132,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formats.yaml": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "v2.extdeps.formats.openapi"
+  ],
+  "cited": false,
+  "file": "src/v2/extdeps/formats/yaml.dag",
+  "lines": 85,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.black": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/black.dag",
+  "lines": 87,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.clang_format": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/clang_format.dag",
+  "lines": 893,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.gofmt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/gofmt.dag",
+  "lines": 14,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.google_java_format": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/google_java_format.dag",
+  "lines": 22,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.ktfmt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/ktfmt.dag",
+  "lines": 81,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.lean4_format": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/lean4_format.dag",
+  "lines": 189,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.prettier": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/prettier.dag",
+  "lines": 191,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.rustfmt": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/rustfmt.dag",
+  "lines": 286,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.formatters.swift_format": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/formatters/swift_format.dag",
+  "lines": 110,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.languages.ecmascript": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/languages/ecmascript.dag",
+  "lines": 1340,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.languages.ptx": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/languages/ptx.dag",
+  "lines": 223,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.typecheckers.mypy": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/typecheckers/mypy.dag",
+  "lines": 29,
+  "spark": false,
+  "v1": false
+ },
+ "v2.extdeps.typecheckers.pyright": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/typecheckers/pyright.dag",
+  "lines": 47,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.datetime": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "v2.extdeps.formats.toml"
+  ],
+  "cited": false,
+  "file": "src/v2/std/datetime.dag",
+  "lines": 658,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.generic_instantiation": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/generic_instantiation.dag",
+  "lines": 36,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.inhabitant_bridge": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/inhabitant_bridge.dag",
+  "lines": 4,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.probe_selector": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "v2.workflow.probe_selector_host_health"
+  ],
+  "cited": false,
+  "file": "src/v2/std/probe_selector.dag",
+  "lines": 674,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.rust_leaf_model_claim": {
+  "bucket": "DEAD-CONSUMER-ONLY",
+  "callers": [
+   "v2.test.language_model.rust"
+  ],
+  "cited": false,
+  "file": "src/v2/std/rust_leaf_model_claim.dag",
+  "lines": 61,
+  "spark": false,
+  "v1": false
+ },
+ "v2.std.type_expr_projection_row_schema": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/type_expr_projection_row_schema.dag",
+  "lines": 4,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.algebra_laws.zip_eq_list_equality": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/algebra_laws/zip_eq_list_equality.dag",
+  "lines": 93,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.go_r1": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/go_r1.dag",
+  "lines": 59,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.go_r2a": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/go_r2a.dag",
+  "lines": 59,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.go_r2b": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/go_r2b.dag",
+  "lines": 59,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.go_r3_external": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/go_r3_external.dag",
+  "lines": 59,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.python_cross_runtime_drift": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/python_cross_runtime_drift.dag",
+  "lines": 49,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.python_l2_cross_target_parity": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/python_l2_cross_target_parity.dag",
+  "lines": 81,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.python_r2a": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/python_r2a.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.python_r2b": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/python_r2b.dag",
+  "lines": 53,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.python_r3_external": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/python_r3_external.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.rust": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/rust.dag",
+  "lines": 256,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.rust_r2a": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/rust_r2a.dag",
+  "lines": 57,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.rust_r2b": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/rust_r2b.dag",
+  "lines": 75,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.rust_r3_external": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/rust_r3_external.dag",
+  "lines": 57,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.typescript_r2a": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/typescript_r2a.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.typescript_r2b": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/typescript_r2b.dag",
+  "lines": 54,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.language_model.typescript_r3_external": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/extdeps/language_model/typescript_r3_external.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.nat_semiring.rung_l1_go_compiler_slice": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/nat_semiring/rung_l1_go_compiler_slice.dag",
+  "lines": 58,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.nat_semiring.rung_l1_python_runtime": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/nat_semiring/rung_l1_python_runtime.dag",
+  "lines": 96,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.qualified_name.from_node": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/std/qualified_name/from_node.dag",
+  "lines": 222,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.workflow.glob_discovery_law": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/glob_discovery_law.dag",
+  "lines": 113,
+  "spark": false,
+  "v1": false
+ },
+ "v2.test.workflow.host_discovered_owned_data_manifest": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/host_discovered_owned_data_manifest.dag",
+  "lines": 19,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.ci_stage0_partition_compile_gate_emit": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag",
+  "lines": 103,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/ci_v1_compiler_test_targets_compile_gate_emit.dag",
+  "lines": 110,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.class_b_import_closure_transport": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/class_b_import_closure_transport.dag",
+  "lines": 118,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.compiler_closure_ingest_transport": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/compiler_closure_ingest_transport.dag",
+  "lines": 150,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.floor2_prepared_subject": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/floor2_prepared_subject.dag",
+  "lines": 182,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.phase_profile_proof_plan": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/phase_profile_proof_plan.dag",
+  "lines": 22,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.probe_selector_host_health": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/probe_selector_host_health.dag",
+  "lines": 43,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.product_receipt_stage": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/product_receipt_stage.dag",
+  "lines": 661,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.source_root_ingest_gate": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/source_root_ingest_gate.dag",
+  "lines": 18,
+  "spark": false,
+  "v1": false
+ },
+ "v2.workflow.source_root_ingest_transport": {
+  "bucket": "STILL-UNCONSUMED",
+  "callers": [],
+  "cited": false,
+  "file": "src/v2/workflow/source_root_ingest_transport.dag",
+  "lines": 90,
+  "spark": false,
+  "v1": false
+ }
+}
