@@ -18,6 +18,16 @@ data mkdir_binary_path: NonEmptyStr = "/usr/bin/mkdir"
 
 // -p is the idempotent form: an existing directory is not an error. That is what makes this an
 // ensure rather than a create, and it is the only reason a converge may run it repeatedly.
+fn mkdir_parents_args(path: String) -> List<String> {
+  ["-p", path]
+}
+
+// The full argv is DERIVED from the binary path and the argument tail rather than spelled beside
+// them, exactly as extdeps.tools.chmod derives its own: a caller whose transport shape splits
+// bin_path from args reaches the same authority as one that needs the whole vector, so -p has one
+// home whichever half a caller needs. gunbc.devboot is the split-shape caller -- its
+// WitnessBin.Run seam takes the two halves separately, and it spelled both by hand until this
+// door existed.
 fn mkdir_parents_argv(path: String) -> List<String> {
-  [mkdir_binary_path as String, "-p", path]
+  concat([mkdir_binary_path as String], mkdir_parents_args(path: path))
 }

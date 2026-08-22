@@ -7,10 +7,19 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
 import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
+import extdeps.cargo {
+  CargoEnvironmentVariable,
+  CargoHomeEnv,
+  CargoTargetDirEnv,
+  CargoBuildJobsEnv,
+  RustcWrapperEnv,
+  cargo_environment_assignment,
+}
+import extdeps.rustup { rustup_home_env_assignment }
 import gunbc.devboot.transport {
   devboot_witness_run,
   retained_devboot_rm_rf,
-  retained_devboot_mkdir,
+  devboot_ensure_directory,
   retained_devboot_git_read_tree,
   retained_devboot_git_checkout_index,
   retained_devboot_git_fetch,
@@ -119,12 +128,7 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
     bin_path: "rm",
     args: ["-rf", out_dir, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", out_dir],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: out_dir)
   let loaded = devboot_witness_run(
     site: retained_devboot_git_read_tree,
     workdir: repo_root,
@@ -359,12 +363,7 @@ fn client_repo_dir(work_root: String) -> String {
 }
 
 fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", client_repo_dir(work_root: work_root)],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: client_repo_dir(work_root: work_root))
   devboot_witness_run(
     site: retained_devboot_git_init,
     workdir: repo_root,
@@ -474,12 +473,7 @@ fn publish_request(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   let subject_path = join([staging, "/subject"], "")
   let program_path = join([staging, "/program"], "")
   match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
@@ -872,12 +866,7 @@ fn publish_produced_tree(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } => false
     GitOidPresent { oid: subject_oid } =>
@@ -1095,11 +1084,11 @@ fn devboot_serve_built(
     workdir: source_dir,
     bin_path: "env",
     args: [
-      concat("RUSTUP_HOME=", home.rustup_home),
-      concat("CARGO_HOME=", home.cargo_home),
-      concat("CARGO_TARGET_DIR=", target_dir),
-      concat("CARGO_BUILD_JOBS=", home.build_jobs),
-      "RUSTC_WRAPPER=",
+      rustup_home_env_assignment(value: home.rustup_home),
+      cargo_environment_assignment(variable: CargoHomeEnv, value: home.cargo_home),
+      cargo_environment_assignment(variable: CargoTargetDirEnv, value: target_dir),
+      cargo_environment_assignment(variable: CargoBuildJobsEnv, value: home.build_jobs),
+      cargo_environment_assignment(variable: RustcWrapperEnv, value: ""),
       home.cargo_bin,
       "build",
       "--release",

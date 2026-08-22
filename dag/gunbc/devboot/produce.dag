@@ -9,7 +9,7 @@ import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
 import gunbc.devboot.transport {
   devboot_witness_run,
-  retained_devboot_mkdir,
+  devboot_ensure_directory,
   retained_devboot_rm_file,
   retained_devboot_rm_rf,
   retained_devboot_git_read_tree,
@@ -82,7 +82,10 @@ import extdeps.git { git_ref_missing_exit_code }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
-import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
+import extdeps.cargo {
+  CargoTarget, Lib, Bin, CargoTest, Example, Bench,
+  CargoEnvironmentVariable, CargoTargetDirEnv, cargo_environment_assignment,
+}
 import gunbc.devboot.program { devboot_program_package }
 
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
@@ -123,10 +126,7 @@ fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String
 
 fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
   let index_path = devboot_snapshot_index_path(work_root: work_root)
-  let prepared = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root]
-  )
+  let prepared = devboot_ensure_directory(repo_root: repo_root, path: work_root)
   let cleared = devboot_witness_run(
     site: retained_devboot_rm_file,
     workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
@@ -190,10 +190,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
     site: retained_devboot_rm_rf,
     workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir]
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: source_dir)
   let loaded = devboot_witness_run(
     site: retained_devboot_git_read_tree,
     workdir: repo_root,
@@ -1068,7 +1065,7 @@ fn devboot_run_build_plan(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
     bin_path: "env",
-    args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
+    args: concat([cargo_environment_assignment(variable: CargoTargetDirEnv, value: target_dir), "cargo"], args),
   )
   if !built.success {
     ProduceRefused {

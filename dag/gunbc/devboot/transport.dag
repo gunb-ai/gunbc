@@ -3,6 +3,7 @@ module gunbc.devboot.transport
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.gunbc
+import extdeps.tools.mkdir { mkdir_binary_path, mkdir_parents_args }
 
 data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 
@@ -187,4 +188,34 @@ fn devboot_witness_run(
     stdout: out.stdout,
     stderr: out.stderr,
   }
+}
+
+// SIX CALL SITES SPELLED THIS THEMSELVES, AND THE SPELLING WAS A SECOND AUTHORITY. Each of
+// build.dag's four and produce.dag's two named the binary as bare "mkdir" and rebuilt ["-p", dir]
+// beside it, while extdeps.tools.mkdir already owned both halves -- the binary path, and -p as the
+// idempotent ensure form rather than a create. That is DESIGN section 3's fork: the same fact
+// written seven times, six of them without the citation that says why -p is there.
+//
+// The retained row does NOT dissolve with this. The site still reaches the host through a raw
+// WitnessBin.Run, so retained_devboot_mkdir stays exactly where it was and still points at
+// host_effect_apply; what ends is devboot's private spelling of the tool, not the untyped effect.
+// The honest rung is mitigatable (DESIGN section 4b): one construction site instead of six is
+// fewer places to diverge, not a wall -- a caller can still hand devboot_witness_run a bare
+// "mkdir", and nothing in the corpus refuses it. The next rung is the same host_effect_apply
+// migration the row already names.
+//
+// ADOPTING THE AUTHORITY ADOPTS ITS ABSOLUTE PATH, /usr/bin/mkdir, where these sites resolved
+// through PATH before. That is a real change and it is the intended one: devboot's own subject
+// probe runs `ldd --version`, so the service is already glibc-Linux-only by construction, and the
+// coreutils mkdir sits at /usr/bin there. A host where it does not is a fact about that host,
+// belonging in extdeps.tools.mkdir beside the path it contradicts -- exactly where
+// extdeps.tools.chmod records that chmod is at /bin rather than /usr/bin -- and not a reason for
+// devboot to keep a private spelling that papers over the disagreement.
+fn devboot_ensure_directory(repo_root: String, path: String) -> WitnessBinRunOutcome {
+  devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: mkdir_binary_path as String,
+    args: mkdir_parents_args(path: path),
+  )
 }
