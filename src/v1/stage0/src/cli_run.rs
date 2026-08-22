@@ -55,6 +55,7 @@ mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 pub(crate) mod shared_fill;
+pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -16453,6 +16454,83 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
         }
         (ClaimOutcome::HostEffectRefused { .. }, _) => ClaimDisposition::RouteGapBeforeVerdict,
+    }
+}
+
+/// THE WIRE VOCABULARY, and the second half of the comparator.
+///
+/// `v2.workflow.floor_terminal_ledger_wire` derives a disposition from the TAG below plus the
+/// expectation; `claim_disposition` above derives one from the `ClaimOutcome` directly. Two
+/// independent paths over the same row — `(outcome -> disposition)` here and
+/// `(outcome -> tag -> disposition)` there — so publishing both and requiring agreement checks
+/// exactly the mapping that can silently drift. A tag this seed spells wrongly, or a disposition
+/// label the module does not know, refuses the whole ledger naming the identity.
+///
+/// These strings are NOT free-form: each is a token the module declares and refuses if
+/// unrecognised. That is why they are `&'static str` rather than computed — there is nothing here
+/// to compute, only a vocabulary to name.
+pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "returned-true",
+        ClaimOutcome::Fail => "returned-false",
+        ClaimOutcome::NotBool { .. } => "returned-unreadable",
+        ClaimOutcome::RuntimeError { .. } => "runtime-errored",
+        ClaimOutcome::TimedOut { .. } => "budget-refused",
+        ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "route-gap",
+    }
+}
+
+/// The detail field, carrying what the arm actually knows and nothing invented.
+///
+/// A verdict-bearing arm has NO detail — the tag already says everything the wire preserves about
+/// it — and writing a placeholder there would be a value a reader could mistake for an
+/// observation. `TimedOut` contributes the clock that raised it, matching the module's
+/// `SafetyInterrupted.raised_by`; its millisecond pair is deliberately not carried, because the
+/// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
+pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
+    match outcome {
+        ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
+        ClaimOutcome::NotBool { got } => got.clone(),
+        ClaimOutcome::RuntimeError { message } => message.clone(),
+        ClaimOutcome::TimedOut { kind, .. } => match kind {
+            BudgetKind::Cpu => "cpu".to_string(),
+            BudgetKind::Wall => "wall".to_string(),
+        },
+        ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
+        ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
+    }
+}
+
+pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
+    match disposition {
+        ClaimDisposition::Passed => "passed",
+        ClaimDisposition::Failed => "failed",
+        ClaimDisposition::KnownRedHeld => "known-red-held",
+        ClaimDisposition::KnownRedNowPassing => "known-red-now-passing",
+        ClaimDisposition::BudgetRefusedBeforeVerdict => "budget-refused-before-verdict",
+        ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
+        ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
+        ClaimDisposition::RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict",
+        ClaimDisposition::ObservationUnreadableBeforeVerdict => {
+            "observation-unreadable-before-verdict"
+        }
+    }
+}
+
+pub fn seed_ledger_row(
+    row: &ClaimTerminalRow,
+) -> crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
+    crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
+        qualified: row.qualified.clone(),
+        expectation_wire: if row.expected_red {
+            "expect-red"
+        } else {
+            "expect-hold"
+        },
+        terminal_tag: claim_terminal_tag(&row.outcome),
+        terminal_detail: claim_terminal_detail(&row.outcome),
+        seed_disposition_wire: claim_disposition_wire(claim_disposition(row)),
     }
 }
 
@@ -42196,6 +42274,49 @@ pub fn run_required_floor(
         .iter()
         .filter(|row| claim_disposition(row) == ClaimDisposition::Passed)
         .count();
+    // PUBLISH THE EVIDENCE, OR REFUSE. Unconditional: there is no env var gating it and no arm
+    // that returns having written nothing. Evidence that is written only when convenient is the
+    // instrumentation-optional shape — a green run whose ledger is silently absent is the exact
+    // state this artifact exists to prevent — so a publication failure is a floor refusal, and a
+    // refusal by the grammar still leaves every row under the diagnosis name.
+    //
+    // THE BINDING CARRIES WHAT THE FLOOR ACTUALLY HOLDS AND NOTHING INVENTED: the prepared
+    // subject digest, and the commit — which is `GITHUB_SHA` on CI and the literal "local"
+    // otherwise. "local" is not a commit id and is not rendered as one; it is mapped to the
+    // module's declared unpublished token, so a local run's ledger is shaped as NOT
+    // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
+    // inside the module from the identities being published, so no value here can disagree with
+    // the population it names.
+    {
+        let snapshot_wire = if commit == "local" || commit.is_empty() {
+            "unpublished"
+        } else {
+            commit
+        };
+        let seed_rows: Vec<terminal_ledger_publish::SeedLedgerRow> =
+            terminal_rows.iter().map(seed_ledger_row).collect();
+        match terminal_ledger_publish::publish_terminal_ledger(
+            source_roots,
+            snapshot_wire,
+            &prepared.subject_digest,
+            terminal_ledger_publish::TERMINAL_LEDGER_PATH,
+            terminal_ledger_publish::TERMINAL_LEDGER_DIAGNOSIS_PATH,
+            &seed_rows,
+        )? {
+            terminal_ledger_publish::LedgerPublication::Published { path, bytes } => {
+                eprintln!("required-floor: terminal ledger published path={path} bytes={bytes}");
+            }
+            terminal_ledger_publish::LedgerPublication::RefusedWithDiagnosis {
+                reason,
+                offending,
+                path,
+            } => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerUnrenderable reason={reason}                      offending={offending} diagnosis={path} — the ledger's grammar refused to                      render this run's evidence. Every row the fold produced is preserved at the                      diagnosis path, in a format the ledger reader refuses, so it cannot be cited                      as a ledger."
+                ));
+            }
+        }
+    }
     if let Some(join) = roster_join_report {
         let join = crate::v1_compiler_expected_red_roster_join::finalize_not_observed(join);
         emit_expected_red_roster_join_summary(&join);

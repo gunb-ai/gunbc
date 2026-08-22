@@ -65,8 +65,7 @@ fn ident(f: String) -> WitnessIdentity {
 fn binding() -> LedgerBinding {
   LedgerBinding {
     repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
-    prepared_subject: structural_content_hash(digest: "0000000000000002"),
-    roster_identity: structural_content_hash(digest: "0000000000000003")
+    prepared_subject: structural_content_hash(digest: "0000000000000002")
   }
 }
 
@@ -267,7 +266,6 @@ fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
   match render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: map(rows, r => seed_row_of(row: r))
   ) {
     LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
@@ -296,7 +294,6 @@ test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
   match render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: [honest, lying]
   ) {
     LedgerRendered { text: _ } => false
@@ -319,7 +316,6 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
   match render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: [futuristic]
   ) {
     LedgerRendered { text: _ } => false
@@ -346,7 +342,6 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
   match render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: [honest, other, lying]
   ) {
     LedgerRendered { text: _ } => false
@@ -394,7 +389,6 @@ test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() ->
   match render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: [honest, forger]
   ) {
     LedgerRendered { text: _ } => false
@@ -416,7 +410,6 @@ test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> 
   let unpublished = match render_ledger_from_seed(
     repository_snapshot: "unpublished",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: rows
   ) {
     LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
@@ -425,7 +418,6 @@ test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> 
   let garbage = match render_ledger_from_seed(
     repository_snapshot: "not-a-commit",
     prepared_subject: "0000000000000002",
-    roster_identity: "0000000000000003",
     rows: rows
   ) {
     LedgerRendered { text: _ } => false
@@ -436,7 +428,6 @@ test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> 
     && ledger_is_candidate_bound(binding: binding())
     && !ledger_is_candidate_bound(binding: LedgerBinding {
          repository_snapshot: UnpublishedWorkingTree,
-         prepared_subject: structural_content_hash(digest: "0000000000000002"),
-         roster_identity: structural_content_hash(digest: "0000000000000003")
+         prepared_subject: structural_content_hash(digest: "0000000000000002")
        })
 }

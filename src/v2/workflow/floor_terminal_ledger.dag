@@ -144,10 +144,21 @@ type RepositorySnapshot
 // `repository_snapshot` could not have been an `Fnv1a64Structural` even if we had wanted it to
 // be: that carrier is `String where lower_hex_16`, so a 40-hex commit id REFUSES AT
 // CONSTRUCTION. The corpus settled this before the question was asked.
+// THE ROSTER IDENTITY IS NOT A FIELD, BECAUSE IT IS NOT A FACT A CALLER HOLDS.
+//
+// An earlier revision carried `roster_identity: Fnv1a64Structural` here, supplied by whoever
+// built the binding. That is a stored value which can DISAGREE with the population it names, and
+// a binding whose roster identity describes a different roster than the rows is worse than
+// carrying none: it is a false claim about which witnesses this evidence covers. It is also a
+// fact nothing in the floor computes -- inventing a parameter for a value that does not exist is
+// how hollow carriers start.
+//
+// So it is derived at render time from the identities actually being published, by the same fold
+// on both sides. A roster identity that disagrees with its rows has no constructor rather than
+// being caught by a check (§5).
 type LedgerBinding {
   repository_snapshot: RepositorySnapshot
   prepared_subject: Fnv1a64Structural
-  roster_identity: Fnv1a64Structural
 }
 
 fn ledger_is_candidate_bound(binding: LedgerBinding) -> Bool {

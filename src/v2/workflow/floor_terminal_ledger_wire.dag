@@ -265,12 +265,25 @@ fn ledger_rows_digest(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
   )
 }
 
-fn render_header(binding: LedgerBinding) -> String {
+fn typed_roster_identity(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(
+        value: concat("identity:", witness_identity_qualified_name(identity: row.identity))
+      )
+    )
+  )
+}
+
+fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String {
   ledger_wire_join(fields: [
     ledger_wire_format,
     render_repository_snapshot(snapshot: binding.repository_snapshot),
     binding.prepared_subject.digest,
-    binding.roster_identity.digest
+    typed_roster_identity(rows: rows).digest
   ])
 }
 
@@ -348,7 +361,7 @@ fn render_typed_diagnosis(
         render_partial_header(
           repository_snapshot: render_repository_snapshot(snapshot: binding.repository_snapshot),
           prepared_subject: binding.prepared_subject.digest,
-          roster_identity: binding.roster_identity.digest
+          roster_identity: typed_roster_identity(rows: rows).digest
         ),
         render_partial_refusal_line(reason: reason, offending: offending, row_count: rows.length())
       ],
@@ -408,7 +421,7 @@ fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> Ledger
         text: ledger_wire_join_lines(
           lines: list_append(
             left: list_append(
-              left: [render_header(binding: binding)],
+              left: [render_header(binding: binding, rows: rows)],
               right: map(rows, r => render_row(row: r))
             ),
             right: [render_footer(rows: rows)]
@@ -756,12 +769,29 @@ fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
   }
 }
 
+// THE ROSTER IDENTITY IS DERIVED HERE, NOT SUPPLIED, and that removes the last thing the seed
+// could have fabricated. It is a fold over the identities actually being published, so it cannot
+// disagree with the population it names -- a supplied roster identity could, and a binding whose
+// roster identity described a different roster than the rows is worse than no roster identity at
+// all. The seed has no such value to hand over anyway: nothing in `run_required_floor` computes
+// one, and inventing a parameter for a fact that does not exist is how hollow carriers start.
+fn seed_roster_identity(rows: List<SeedLedgerRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: concat("identity:", row.qualified))
+    )
+  )
+}
+
 fn render_ledger_from_seed(
   repository_snapshot: String,
   prepared_subject: String,
-  roster_identity: String,
   rows: List<SeedLedgerRow>,
 ) -> LedgerRender {
+  let roster_identity = seed_roster_identity(rows: rows).digest
   let snapshot_admission = admit_repository_snapshot_wire(wire: repository_snapshot)
   let admissions = map(rows, r => admit_seed_row(row: r))
   let admitted = flat_map(admissions, a => match a {
