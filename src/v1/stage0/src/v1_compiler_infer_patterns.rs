@@ -771,8 +771,7 @@ pub fn variant_pattern_coverage_key(name: String) -> String {
         if ((segs.clone().len() as i64) == 0) {
             name.clone()
         } else {
-            segs.clone()
-                .iter()
+            segs.iter()
                 .cloned()
                 .fold("".to_string(), |_: String, seg: String| seg.clone())
         }
@@ -833,7 +832,7 @@ pub fn check_match_exhaustiveness(
                 };
                 let has_catch_all = {
                     let mut __found = false;
-                    for arm in arms.clone().iter().cloned() {
+                    for arm in arms.iter().cloned() {
                         if match (*arm_pattern(arm.clone())).clone() {
                             MatchPattern::Wildcard => true,
                             MatchPattern::Bind { declaration: _, .. } => true,
@@ -849,7 +848,7 @@ pub fn check_match_exhaustiveness(
                     Rc::new(vec![])
                 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(
+                        let covered_set = arms.iter().cloned().fold(
                             v1_rt::rc_empty_map::<String, bool>(),
                             |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(
                                 arm.clone(),
@@ -895,7 +894,7 @@ pub fn check_match_exhaustiveness(
                             let mut __result = Vec::new();
                             for v in Rc::new({
                                 let mut __result = Vec::new();
-                                for v in variant_names.clone().iter().cloned() {
+                                for v in variant_names.iter().cloned() {
                                     if (emit_map_has(
                                         covered_set.clone(),
                                         variant_pattern_coverage_key(v.clone()),
