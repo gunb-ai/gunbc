@@ -1,7 +1,5 @@
 module extdeps.tools.gnu_coreutils
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
 import std.types { NonEmptyStr, String, List, FilePath }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -16,6 +14,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
+// `diff` ARGV IS DELIBERATELY ABSENT FROM THIS MODULE. A `diff_recursive_flags` row once
+// sat beside these and was deleted as a fork: the diff invocation is owned by
+// `extdeps.tools.diffutils`' `shell.Diff.Recursive` transport, which carries the flags
+// with the operands they apply to. Re-adding a flags literal here would re-fork it.
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
 data rm_force_recursive_flags: NonEmptyStr = "-rf"
@@ -23,8 +25,6 @@ data rm_force_recursive_flags: NonEmptyStr = "-rf"
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
 data min_coreutils_version: VersionConstraint = ">= 8.0"
-
-data gnu_coreutils_diff_flags_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gnu_coreutils.diff_recursive_flags — deleted fork of diff argv literals; sole authority is extdeps.tools.diffutils shell.Diff.Recursive transport (diff -r \\\{left\\} \\\{right\\}).")
 
 // THE COREUTILS ARGV BUILDERS. Each is one utility's one operation, cited to the manual anchored at
 // the top of this module, admitted by name on extdeps.exec.command argv_command. They exist because

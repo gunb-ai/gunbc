@@ -468,7 +468,6 @@ pub fn uri_query_param(path: String, key: String) -> String {
                 .collect::<Vec<_>>(),
         );
         pairs
-            .clone()
             .iter()
             .cloned()
             .fold("".to_string(), |acc: String, pair: String| {

@@ -12,27 +12,44 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Permanent regression control for the `transport file` emission refusal (DESIGN §4b(4): a climb
+// Permanent regression control for the `transport file` emission wall (DESIGN §4b(4): a climb
 // deletes the production machinery it obsoletes, but the discriminating RED and its positive
 // control STAY ENROLLED as the executing evidence that the higher rung is still real -- deleting
 // the evidence with the machinery would recreate specification-without-execution one rung up).
 //
-// What the deleted machinery did: three per-target renderers each fabricated a read of
-// `base_path + "/" + operation_name` for EVERY file operation, so a declared Write emitted a read
-// of a path the declaration never named, dropped its `content` argument, and returned a String
-// against a declared bool -- output that does not compile in Rust, Go or Python. The refusal that
-// replaced it is minted once, before target-specific rendering, in emit_artifact.
+// WHAT CHANGED, and why every row below flipped rather than being deleted. #8858 replaced three
+// fabricating per-target renderers with a TOTAL refusal, and this file's rows then read "every
+// file operation refuses". The next-rung trigger that PR declared has since fired -- the
+// self-host `03_ingest` closure imports extdeps.filesystem.filesystem_io, so a total wall emitted
+// no artifact at all for the module the self-host boards are taken on -- and the rust target now
+// carries a real realization handler. So the ROW SUBJECTS are the same and their expectations are
+// inverted: a fully-declared file operation must EMIT for rust, and the wall must still refuse,
+// per operation, exactly what the handler cannot express.
+//
+// The census compiles for the RUST target only (cli_run compile_dag_diagnostic_census), so every
+// count here is a rust-path count. Python and go remain refused by target and are NOT witnessed
+// by this file -- claiming their rung from these rows would be the §4b(1) inflation.
 //
 // The two shell/rest rows are NOT decoration. Without them this file cannot distinguish "the file
-// arm refuses" from "the transport dispatch is broken for everything", which is the failure mode
+// arm behaves" from "the transport dispatch is broken for everything", which is the failure mode
 // that would make a green suite defend a total outage.
-data transport_emission_not_modeled_witness_note: String = "Paired control for the file-transport emission refusal via compile_dag_diagnostic_census. A service whose operations declare `transport file` must refuse with exactly one counted TransportEmissionNotModeled per file operation; rest and shell operations must remain unaffected, both alone and when declared beside a file operation in the same module. The mixed row is the discriminator: it pins the refusal to the OPERATION rather than to the service or the module, so a wall that poisoned every sibling operation would go red here while the file-only row stayed green."
+data transport_emission_not_modeled_witness_note: String = "Paired control for the file-transport emission wall via compile_dag_diagnostic_census (rust target). A service whose operations declare `transport file` with a modeled verb, a renderable path and modeled output channels must now EMIT with zero TransportEmissionNotModeled rows; an operation declaring an unmodeled verb, an unmodeled output channel, or a payload verb with no `content` input must refuse with exactly one counted row. The mixed row is the discriminator: it pins both the emission and the refusal to the OPERATION rather than to the service or the module, so a wall that poisoned every sibling operation -- or a handler that emitted every sibling regardless of its declaration -- would go red here while the single-operation rows stayed green."
 
 data file_transport_source: String = "module tfx_file\nservice Fs \{\n  operation Write \{\n    input \{ path: String, content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Delete \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"delete\" \}\n  \}\n\}\n"
 
 data rest_and_shell_source: String = "module tfx_ok\nservice Sh \{\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n\}\n\nservice Net \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n\}\n"
 
 data mixed_transport_source: String = "module tfx_mixed\nservice Mixed \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
+
+// The three discriminating REDs, one per FileEmissionRefusal arm the rust handler can meet. Each
+// declares TWO file operations: one fully modeled and one carrying the single unmodeled fact, so
+// the expected count of 1 separates "this operation refused" from "declaring a file transport
+// anywhere in the module refuses", which a one-operation fixture cannot.
+data unmodeled_verb_source: String = "module tfx_verb\nservice Fv \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Chmod \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"chmod\" \}\n  \}\n\}\n"
+
+data unmodeled_output_key_source: String = "module tfx_key\nservice Fk \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Stat \{\n    input \{ path: String \}\n    output \{ modified: String from \"modified_time\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
+
+data payload_verb_without_content_source: String = "module tfx_payload\nservice Fp \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Seal \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"write_owner_only\" \}\n  \}\n\}\n"
 
 fn not_modeled_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -49,8 +66,12 @@ fn blocking_diagnostic_count(source: String) -> Int {
   }
 }
 
-test fn w_file_transport_operations_each_refuse_emission() -> Bool {
-  not_modeled_blocking_count(source: file_transport_source) == 3
+test fn w_fully_declared_file_transport_operations_emit() -> Bool {
+  not_modeled_blocking_count(source: file_transport_source) == 0
+}
+
+test fn w_fully_declared_file_transport_module_is_clean_of_all_blocking_diagnostics() -> Bool {
+  blocking_diagnostic_count(source: file_transport_source) == 0
 }
 
 test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool {
@@ -61,6 +82,18 @@ test fn w_rest_and_shell_transports_are_clean_of_all_blocking_diagnostics() -> B
   blocking_diagnostic_count(source: rest_and_shell_source) == 0
 }
 
-test fn w_only_the_file_operation_refuses_among_its_siblings() -> Bool {
-  not_modeled_blocking_count(source: mixed_transport_source) == 1
+test fn w_file_operation_emits_beside_its_rest_and_shell_siblings() -> Bool {
+  not_modeled_blocking_count(source: mixed_transport_source) == 0
+}
+
+test fn w_unmodeled_verb_refuses_only_its_own_operation() -> Bool {
+  not_modeled_blocking_count(source: unmodeled_verb_source) == 1
+}
+
+test fn w_unmodeled_output_channel_refuses_only_its_own_operation() -> Bool {
+  not_modeled_blocking_count(source: unmodeled_output_key_source) == 1
+}
+
+test fn w_payload_verb_without_content_input_refuses_only_its_own_operation() -> Bool {
+  not_modeled_blocking_count(source: payload_verb_without_content_source) == 1
 }

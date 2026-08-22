@@ -11,7 +11,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import gunbc.witness_floor_workflow { witness_floor_capability_closure_holds }
+import gunbc.witness_floor_workflow { cited_symbol_capability_closure_holds, witness_floor_capability_closure_holds }
 import gunbc.fleet_converge_workflow { fleet_converge_build_job_capability_closure_holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -156,4 +156,11 @@ test fn a_capability_outside_the_provided_list_still_refuses() -> Bool {
 // THE LIVE FLEET-CONVERGE JOB, the second real consumer.
 test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool {
   fleet_converge_build_job_capability_closure_holds()
+}
+
+// THE SECOND LIVE JOB. The cited-symbol census is a separate check-run, so it is a separate job,
+// so it carries its own toolchain->build ordering and its own way to be broken. Asserting the
+// floor job closes says nothing about it: the two jobs share no steps, only a shape.
+test fn the_live_cited_symbol_job_closes_its_capabilities() -> Bool {
+  cited_symbol_capability_closure_holds()
 }
