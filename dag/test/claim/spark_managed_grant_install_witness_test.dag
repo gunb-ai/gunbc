@@ -199,7 +199,7 @@ test fn an_unrun_cleanup_reports_itself_unattempted() -> Bool {
 // other's staged file between that file's validation and its installation.
 test fn the_two_grants_stage_to_distinct_paths() -> Bool {
   spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String
-    != spark_grant_staging_path(grant: EnableLingerForOwnAccount, principal: installer()) as String
+    != spark_grant_staging_path(grant: EnableLingerForOwnAccount { subject: "gunbc-automation" as NonEmptyStr }, principal: installer()) as String
 }
 
 test fn the_plan_wire_names_the_grant_and_its_steps() -> Bool {

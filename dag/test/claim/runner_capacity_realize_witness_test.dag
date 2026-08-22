@@ -26,38 +26,61 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn apply_seam_plans_two_additions_not_count_refusal() -> Bool {
+// THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
+// Slots 06 AND 07 on hosts whose committed width is 6 -- a seventh slot on a six-wide host, the
+// same 14GiB-era assertion that stood in runner_capacity_plan_witness_test and in the enumerator
+// itself. It stayed green because the admission ceiling was a hardcoded 7 that nobody moved when
+// the 16GiB ruling took the managed hosts to 6, so three independent places agreed with each other
+// and none of them agreed with the fleet.
+//
+// THE SEAM'S ACTUAL SUBJECT IS PRESERVED: a plan with real additions still reaches apply, and the
+// count is still a POSTCONDITION rather than a refusal. Only the width moved, to one the hosts can
+// actually carry. srv4 contributes the addition (slot 06, no fabric slot); srv3 contributes none
+// (slot 06 is its compute-fabric slot), so this also exercises the seam on a host pair that
+// DISAGREES rather than one where both sides happen to match.
+test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: 6,
+    srv4_width: 6,
     roster: organization_runner_roster_evidence(),
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
+      runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 1
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
     PlanRefused { reason: _ } => false
   }
 }
 
+// RETARGETED FROM srv3 TO srv4, AND THE REASON IS STRUCTURAL RATHER THAN COSMETIC. This exercised
+// the disk preflight, which runs only on a host that has ADD actions to apply. srv3 can no longer
+// have any: its GitHub population is 5, it is already at 5, and its sixth slot is the compute-fabric
+// slot withheld from this plan. So srv3 reaches HostApplySucceeded with zero adds and the preflight
+// it was written to exercise never executes. srv4 has no fabric slot, gains slot 06 at the committed
+// width, and is the host whose disk is gated at apply time in the first place.
+//
+// THE WIDTH IN THE ASSERTION MOVED FROM 7 TO 6 FOR THE SAME REASON EVERYTHING ELSE DID. The refusal
+// names the width it refused at; 7 is no longer a width any host is admitted to carry. The
+// "not width 5" clause is the original point of the row and is untouched: the refusal must name the
+// real requested width rather than silently reporting the retired srv4 five-slot disk row-pin.
 test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: 6,
+    srv4_width: 6,
     roster: organization_runner_roster_materialized_slots_online_evidence(),
   )
   match runner_capacity_apply_plan(plan: plan) {
     RunnerCapacityApplyCompleted { hosts: _ } =>
       match runner_capacity_host_apply_receipt(
         outcome: runner_capacity_apply_plan(plan: plan),
-        host: operator_host_srv3,
+        host: operator_host_srv4,
       ) {
         Present { value: r } =>
           match r.outcome {
             HostApplyRefused { reason: reason } =>
               string_contains(s: reason, pattern: "disk unobservable")
-                && string_contains(s: reason, pattern: "7")
-                && string_contains(s: reason, pattern: "srv3")
+                && string_contains(s: reason, pattern: "6")
+                && string_contains(s: reason, pattern: "srv4")
                 && (string_contains(s: reason, pattern: "width 5") == false)
             HostApplySucceeded { add_actions_executed: _ } => false
           }
@@ -67,11 +90,23 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   }
 }
 
+// WIDTH MOVED FROM 7 TO 6; THE REFUSAL MECHANISM HERE IS NOT THE WIDTH AND I CHECKED RATHER THAN
+// ASSUMING. Both hosts refuse because this roster carries connectivity repairs, so
+// host_plan_non_add_refusal fires on RunnerIncarnationReplace before any add logic runs -- measured,
+// not inferred: the receipt reads "RunnerIncarnationReplace outside runner-capacity apply" on both
+// srv3 and srv4. So both receipts are still present and both still refuse at the committed width,
+// and this row is unchanged in substance.
+//
+// AN EARLIER REVISION OF THIS COMMENT CLAIMED srv3 NOW SUCCEEDS WITH ZERO ADDS because its sixth
+// slot is the fabric slot. That is false and a probe caught it: the non-add refusal preempts the
+// add path entirely, so the fabric slot never enters this row's outcome. The claim is recorded as
+// wrong rather than quietly deleted, because it is the plausible story and the next reader will
+// reach for it too.
 test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
   let outcome = runner_capacity_apply_plan(
     plan: runner_capacity_plan(
-      srv3_width: 7,
-      srv4_width: 7,
+      srv3_width: 6,
+      srv4_width: 6,
       roster: organization_runner_roster_evidence(),
     ),
   )

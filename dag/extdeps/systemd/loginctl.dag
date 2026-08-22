@@ -1,0 +1,48 @@
+module extdeps.systemd.loginctl
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.systemd { systemd_binary_path }
+
+// loginctl is systemd's login-manager client, governed by the same upstream as systemctl but
+// documented as its own command with its own verb set, so it gets its own module rather than more
+// rows on systemctl's: they are independently documented surfaces of one project, and a verb added
+// to one is not a verb on the other.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/loginctl.html"
+  }
+}
+
+data loginctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data loginctl_binary_name: NonEmptyStr = "loginctl" as NonEmptyStr
+
+fn loginctl_binary_path() -> NonEmptyStr {
+  systemd_binary_path(name: loginctl_binary_name)
+}
+
+// enable-linger TAKES ITS SUBJECT, and the argument is not optional in any use this repository has.
+// Upstream defaults the subject to the calling user when it is omitted, which is exactly why the
+// omission is dangerous here rather than convenient: a sudoers grant written without the subject
+// authorizes `loginctl enable-linger` for the grantee to run as root, and root's own linger is not
+// what the grant was for. The parameter is required so that the subject cannot be dropped by
+// forgetting it.
+data loginctl_enable_linger_verb: NonEmptyStr = "enable-linger" as NonEmptyStr
+
+fn loginctl_enable_linger_argv(subject: NonEmptyStr) -> List<String> {
+  [loginctl_binary_name as String, loginctl_enable_linger_verb as String, subject as String]
+}
+
+// The same command rendered for a sudoers Cmnd_Spec: absolute path, same verb, same subject. It is
+// this function and loginctl_enable_linger_argv that must not be able to disagree, which is why
+// both fold the same three rows rather than each spelling the command.
+fn loginctl_enable_linger_command(subject: NonEmptyStr) -> NonEmptyStr {
+  join([
+    loginctl_binary_path() as String,
+    " ", loginctl_enable_linger_verb as String,
+    " ", subject as String,
+  ], "") as NonEmptyStr
+}

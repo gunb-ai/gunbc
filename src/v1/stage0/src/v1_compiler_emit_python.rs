@@ -81,12 +81,12 @@ pub use crate::v1_std_core::{
     expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
     field_init_node_value, foreach_body, foreach_collection, foreach_variable_at, if_condition,
     if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
-    let_binding_name_at, let_body, let_value, make_expr_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, param_node_name_at,
-    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, slice_base, slice_end, slice_start, transport_auth_header_name, transport_env,
-    transport_has_auth, transport_headers, with_required_cardinality,
+    index_expr, is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body,
+    let_value, make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, param_node_name_at, param_node_type_expr,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
+    slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
+    transport_headers, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
@@ -1157,7 +1157,6 @@ pub fn emit_py_transport_body(
         RenderTarget::Python,
         |n, t, d, si| emit_py_rest_call(n.clone(), t.clone(), si.clone()),
         |n, t, d, si| emit_py_shell_call(n.clone(), t.clone(), si.clone()),
-        |n, d| emit_py_file_call(n.clone()),
         |n, d| emit_py_local_call(n.clone()),
     )
 }
@@ -1393,31 +1392,6 @@ pub fn emit_py_shell_call(
                 ")\n".to_string(),
             ),
             "return result.stdout".to_string(),
-        )
-    }
-}
-
-pub fn emit_py_file_call(op_name: String) -> String {
-    {
-        let self_base_path = v1_rt::concat(
-            v1_rt::concat("{".to_string(), "self.base_path".to_string()),
-            "}".to_string(),
-        );
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("path = f\"".to_string(), self_base_path.clone()),
-                            "/".to_string(),
-                        ),
-                        emit_ident(op_name.clone(), RenderTarget::Python),
-                    ),
-                    "\"\n".to_string(),
-                ),
-                "with open(path) as f:\n".to_string(),
-            ),
-            "    return f.read()".to_string(),
         )
     }
 }

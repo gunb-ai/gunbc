@@ -170,7 +170,7 @@ fn spark_managed_grants_converged(outcome: SparkGrantOutcome) -> Bool {
 // whose second run differs from its first is not a reconcile.
 fn spark_managed_grant_dropin_name(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount => "gunbc-enable-linger" as NonEmptyStr
+    EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as NonEmptyStr
     RebootThisHost => "gunbc-reboot" as NonEmptyStr
   }
 }
