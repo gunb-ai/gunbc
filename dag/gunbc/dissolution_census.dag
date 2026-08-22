@@ -8,37 +8,48 @@ import std.roster_frontier {
   frontier_rows_well_formed,
 }
 import std.dissolution { DissolutionCondition, dissolution_is_bound }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.dissolution_observation {
+  DissolutionCensusVerdict,
+  DissolutionCensusAnswered,
+  DissolutionCensusRefused,
+  dissolution_census_pool_roots,
+  dissolution_census_facts,
+  dissolution_census_modules,
+  dissolution_census_verdict_for,
+}
 
-fn dissolution_census_report() -> FrontierExpiryReport {
-  fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+// THE CENSUS IS THE ROSTER-BEARING HALF. The mechanism — resolving a trigger ref against
+// the live declaration index and refusing what it cannot decide — lives in
+// gunbc.dissolution_observation, which imports no roster, so a consumer that wants the
+// mechanism does not acquire this module's ~20-module extdeps fan-in to get it.
+fn dissolution_census_verdict() -> DissolutionCensusVerdict {
+  dissolution_census_verdict_for(
+    rows: census_closure_frontier_rows(),
+    facts: dissolution_census_facts(),
+    modules: dissolution_census_modules(),
+  )
+}
+
+fn dissolution_census_refused_keys(verdict: DissolutionCensusVerdict) -> List<String> {
+  match verdict {
+    DissolutionCensusAnswered { report: _ } => []
+    DissolutionCensusRefused { undecided: u } =>
+      u |> map(r => declaration_ref_display_key(ref: r))
+  }
 }
 
 fn dissolution_census_report_against(present_decls: List<DeclarationRef>) -> FrontierExpiryReport {
   fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: present_decls)
 }
 
-fn dissolution_census_unbound_count() -> Int {
-  dissolution_census_report().unbound_count
-}
-
-fn dissolution_census_pending_count() -> Int {
-  dissolution_census_report().pending_count
-}
-
-fn dissolution_census_fired_still_present_count() -> Int {
-  dissolution_census_report().fired_still_present_count
-}
-
-fn dissolution_census_total() -> Int {
-  let r = dissolution_census_report()
-  r.unbound_count + r.pending_count + r.fired_still_present_count
-}
-
 fn dissolution_census_holds() -> Bool {
   frontier_rows_well_formed(rows: census_closure_frontier_rows())
-    && frontier_expiry_clean(report: dissolution_census_report())
+    && match dissolution_census_verdict() {
+      DissolutionCensusRefused { undecided: _ } => false
+      DissolutionCensusAnswered { report: r } => frontier_expiry_clean(report: r)
+    }
 }
 
 fn frontier_rows_bound_count(rows: List<FrontierRow>) -> Int {
