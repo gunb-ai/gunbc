@@ -462,23 +462,24 @@ DESIGN §3 frozen-X. Deleting these deletes what the re-add queue exists to re-a
 
 ## 7. What this change does NOT claim
 
-- **Not that 71 was the maximum safe cut.** It is the subset provable clean on every
-  decoded surface. The 36 `NAMED-IN-LIVE-DAG` rows are held on a *string mention*, which is
-  weak evidence in both directions: several will be prose in a receipt and are ordinary
-  residue, and at least one (`v2.workflow.product_receipt_stage`) is a live transport the
-  instrument structurally cannot see. Only a per-row read separates them, and this change
-  does not attempt it.
-- **Not that the residue is now 68.** Section 2 measures it at 231 population / 68 residue
-  *for the classes this lane touched*, and seven rows became newly eligible during the cut.
-  The list is a fixed point reached by iteration, not a set.
-- **Not that the census's other arm was served.** The directive has two: clean up what has
-  no consumer, *or get it actually consumed*. Every row here was dispositioned under the
-  first arm or held; **none was wired up**. The rows most likely to belong to the second arm
-  are the 21 `CITED-AUTHORITY` islands, where the citation may be the deliverable, and the
-  22 modules the census found *named* `v2.test.*` while declaring no test and sitting
-  outside every test path -- a name implying enrolment while discovery keys on file suffix.
-- **Not verified by typecheck alone.** The acceptance evidence is the required run on this
-  branch, below.
+- **Not that 56 is the maximum safe cut.** It is the subset provable clean on every decoded
+  surface, with its islands closed. The 35 rows held for a per-row read are held on a *string
+  mention*, which is weak evidence in both directions.
+- **Not that the residue is now 58.** Five modules moved DEAD-CONSUMER-ONLY to
+  STILL-UNCONSUMED as their island neighbours went. **The residue is a fixed point reached by
+  iteration, not a set reached in one pass**, and a follow-on pass is owed.
+- **Not that the AMBIGUOUS bucket is cleared.** 97 rows are unresolvable at identity grain.
+  13 of them got there from this lane's own correction, and reading that as "13 live modules
+  found" would be exactly wrong: they are *not proven consumed either*.
+- **Not that the extractor is now correct.** Four defects were found in it, three of them by
+  someone else hand-reading rows while every counter stayed consistent. The honest claim is
+  that it passes four discriminators it previously failed one of, not that a fifth defect
+  does not exist.
+- **Not that the directive's second arm was served.** Every row was deleted or held; **none
+  was wired up.** The candidates are the 21 `CITED-AUTHORITY` islands and the 22 modules the
+  census found named `v2.test.*` while declaring no test and sitting outside every test path
+  — a name asserting enrolment that floor discovery, which keys on the file suffix, never
+  grants.
 
 ## 8. Evidence
 
