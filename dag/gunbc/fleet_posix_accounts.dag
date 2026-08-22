@@ -859,7 +859,7 @@ fn reported_contradiction_is_open(c: ReportedAccountContradiction) -> Bool {
   c.modeled_uid != c.reported_uid || c.modeled_gid != c.reported_gid
 }
 
-data fleet_account_contradiction_dissolve_on: String = "dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner row through deploy_access_check_observed, at which point the observed values replace the authored ones and this contradiction row is deleted rather than kept beside them. Until then the model must not report the ghrunner account as grounded."
+data fleet_account_contradiction_dissolve_on: String = "dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner row through deploy_access_check_observed, at which point the observed values replace the authored ones and this contradiction row is deleted rather than kept beside them. Until then the model must not report the ghrunner account as grounded. FURTHER EVIDENCE 2026-08-22: `getent passwd ghrunner` returns nothing on srv5 and srv6 — the account is ABSENT there, not merely carrying different numbers, so the authored row is wrong on those hosts in a second and different way. This is recorded as EVIDENCE ONLY and deliberately does not correct the authored values: hand-editing observed numbers into the row would satisfy the letter of this condition while bypassing the ProcessReceipt grounding the condition exists to require, which is the failure mode the condition was written against. It also narrows what a corrected row must say — uid/gid alone cannot express an account that does not exist on a host, so grounding has to carry per-host presence rather than one fleet-wide pair."
 
 // The stale duplicate is a filesystem-grain second representation of one grant authority, and it
 // has a consequence beyond tidiness: srv1's effective privilege is the UNION of both files, so a
@@ -869,7 +869,18 @@ data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/g
 
 
 // ── The applied FleetAccountAutomation allocation ─────────────────────────────────────────
-// Label gunbc-fleet, the same on every host. Same-label is not a claim about independence: the
+// Label gunbc-fleet, THE SAME ON EVERY HOST THIS PRINCIPAL COVERS -- srv1 through srv4. That
+// scoping is not pedantry: the sentence used to read "the same on every host", and measured
+// 2026-08-22 the spark serving hosts srv5 and srv6 carry NO gunbc-fleet account at all. They run
+// `gunbc-automation`, a separately declared principal (operator declaration 2026-08-12 in
+// gunbc.spark.serving_desired: "executor-owned serving process under gunbc-automation"), whose
+// permitted operations are disjoint from this one's -- linger and reboot-this-host, against this
+// principal's deploy privileged helper.
+//
+// Leaving the unscoped sentence while the fleet contains a counterexample is the stale-citation
+// mechanism: a reader looking for the automation account on srv5 would search for gunbc-fleet,
+// find nothing, and conclude the host is unprovisioned rather than that they read a claim whose
+// scope had silently narrowed underneath it. Same-label is not a claim about independence: the
 // operator's ruling makes independence a property of the grant (principal x operation x resource x
 // context), so a matching or differing string changes no identity, no authorized resource, no
 // permitted operation, and no key or sudo policy. Occurrences stay distinct because occurrence
@@ -890,25 +901,32 @@ type FleetAutomationAllocationStanding
     }
   | AutomationAllocationPending { host: HostIdentity, cause: NonEmptyStr }
 
-fn fleet_automation_user_on(host: HostIdentity) -> PosixUser {
-  PosixUser {
-    name: "gunbc-fleet",
-    uid: 1001,
-    gid: 1001,
-    shell: LoginShellObserved { path: "/bin/bash" },
-  }
+// THIS FUNCTION TOOK A HOST AND DISCARDED IT, and that was a defect before srv5 and srv6 existed
+// rather than a consequence of them. A signature promising a host-varying answer over a body that
+// cannot give one is a false promise in the type: every caller reads `on(host:)` and believes the
+// answer was computed for that host, and no amount of testing on hosts that happen to agree can
+// expose it. The parameter is removed rather than made to branch, because the fact this returns is
+// genuinely uniform across the hosts it covers -- and a constant that says so honestly is better
+// than a function pretending to a variation it does not have. If a covered host ever differs, this
+// becomes a real per-host lookup and every call site is forced to be re-read, which is what the
+// old signature quietly prevented.
+data fleet_automation_user: PosixUser = PosixUser {
+  name: "gunbc-fleet",
+  uid: 1001,
+  gid: 1001,
+  shell: LoginShellObserved { path: "/bin/bash" },
 }
 
 fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {
   [
     AutomationAllocationApplied {
       host: "srv1",
-      user: fleet_automation_user_on(host: "srv1"),
+      user: fleet_automation_user,
       source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
     },
     AutomationAllocationApplied {
       host: "srv2",
-      user: fleet_automation_user_on(host: "srv2"),
+      user: fleet_automation_user,
       source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
     },
     AutomationAllocationPending { host: "srv3", cause: "host unreachable from the allocating session; key refused at its address" },
@@ -929,4 +947,4 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
 // host. The numbers are not identity, so nothing is broken; but a reader comparing uids to decide
 // which account a file belongs to would fuse them, and that is precisely why the ghrunner
 // contradiction must be resolved by observation rather than left standing.
-data automation_uid_coincidence_note: String = "gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims 1001, wrongly -- ghrunner is 999/987 on both hosts. Two rows reading the same number for different accounts is a reading hazard, not a collision: uid is host-local and is never fleet principal identity. It raises the priority of grounding the ghrunner row, because a reader who does treat a uid as identity would now fuse the automation account with the CI runner."
+data automation_uid_coincidence_note: String = "gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims 1001, wrongly -- ghrunner is 999/987 on both hosts. MEASURED 2026-08-22, a THIRD account reads 1001: gunbc-automation on srv5 and srv6 (1001:1001, /bin/bash), and ghrunner is ABSENT on those hosts entirely, so the ci-runner row is wrong there in a second way. Three accounts now read 1001 across four hosts. The hazard the earlier revision named got WORSE rather than different: uid is host-local and is never fleet principal identity, but a reader who treats a uid as identity now fuses three principals instead of two, and one of the three has disjoint sudo grants from the other two. It raises the priority of grounding the ghrunner row through deploy_access_check_observed rather than by hand-editing numbers, which would satisfy the letter of the contradiction row while bypassing the grounding it exists to require."

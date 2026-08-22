@@ -214,7 +214,9 @@ pub use crate::v1_std_core::{
     type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
     with_required_cardinality,
 };
-pub use crate::v1_std_core::{expr_is_any_literal, expr_literal_symbol_optional};
+pub use crate::v1_std_core::{
+    expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
+};
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncEnv,
     DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
@@ -2978,145 +2980,6 @@ pub fn type_name_transparently_aliases_to(
             }
             None => {
                 break false;
-            }
-        }
-    }
-}
-
-pub fn coproduct_variant_payload_admits_type_name(
-    decl: Rc<Node>,
-    actual_name: String,
-    type_env: Rc<TypeEnv>,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for variant in decl.children.clone().iter().cloned() {
-            if {
-                let mut __found = false;
-                for payload in variant.children.clone().iter().cloned() {
-                    if {
-                        let payload_type = match payload.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-                            _ => field_node_type_expr(payload.clone()),
-                        };
-                        let payload_name =
-                            authored_name_at(source_indices.clone(), payload_type.clone());
-                        let names_agree = (application_type_names_compatible(
-                            payload_name.clone(),
-                            actual_name.clone(),
-                            type_env.clone(),
-                            module_name.clone(),
-                            source_indices.clone(),
-                        ) || transparent_alias_identity_agrees(
-                            type_env.symbol_index.clone(),
-                            payload_name.clone(),
-                            actual_name.clone(),
-                        ));
-                        ((payload_name.clone() != "".to_string()) && names_agree.clone())
-                    } {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            } {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn coproduct_payload_where_parent_required(
-    formal: Rc<Node>,
-    actual: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let either_optional = ((formal.return_cardinality.clone() == Cardinality::CardOptional)
-            || (actual.return_cardinality.clone() == Cardinality::CardOptional));
-        if ((either_optional.clone() || type_node_is_callable(formal.clone()))
-            || type_node_is_callable(actual.clone()))
-        {
-            false
-        } else {
-            {
-                let formal_name = authored_name_at(source_indices.clone(), formal.clone());
-                let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-                let either_is_optional_carrier = ((qualified_last_segment(formal_name.clone())
-                    == "Optional".to_string())
-                    || (qualified_last_segment(actual_name.clone()) == "Optional".to_string()));
-                if (((formal_name.clone() == "".to_string())
-                    || (actual_name.clone() == "".to_string()))
-                    || either_is_optional_carrier.clone())
-                {
-                    false
-                } else {
-                    if application_type_names_compatible(
-                        formal_name.clone(),
-                        actual_name.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                        source_indices.clone(),
-                    ) {
-                        false
-                    } else {
-                        if transparent_alias_identity_agrees(
-                            scope.type_env.clone().symbol_index.clone(),
-                            formal_name.clone(),
-                            actual_name.clone(),
-                        ) {
-                            false
-                        } else {
-                            {
-                                let actual_rep = transparent_alias_representative(
-                                    scope.type_env.clone().symbol_index.clone(),
-                                    actual_name.clone(),
-                                );
-                                match lookup_type_by_name(
-                                    scope.type_env.clone(),
-                                    formal_name.clone(),
-                                ) {
-                                    Some(decl) => {
-                                        let decl_is_concrete_coproduct =
-                                            (((decl.connective.clone() == Connective::Disj)
-                                                && ((decl.params.clone().len() as i64) == 0))
-                                                && ((decl.children.clone().len() as i64) > 0));
-                                        let names_a_variant = (has_child_named(
-                                            decl.clone(),
-                                            qualified_last_segment(actual_name.clone()),
-                                            source_indices.clone(),
-                                        ) || has_child_named(
-                                            decl.clone(),
-                                            qualified_last_segment(actual_rep.clone()),
-                                            source_indices.clone(),
-                                        ));
-                                        if (decl_is_concrete_coproduct.clone() == false) {
-                                            false
-                                        } else {
-                                            if names_a_variant.clone() {
-                                                false
-                                            } else {
-                                                coproduct_variant_payload_admits_type_name(
-                                                    decl.clone(),
-                                                    actual_name.clone(),
-                                                    scope.type_env.clone(),
-                                                    scope.module_name.clone(),
-                                                    source_indices.clone(),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    None => false,
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -10126,37 +9989,7 @@ pub fn infer_record_lit_structural(
                                                 scope.module_name.clone(),
                                             )])
                                         } else {
-                                            if ((expected_node.return_cardinality.clone()
-                                                != Cardinality::CardOptional)
-                                                && coproduct_payload_where_parent_required(
-                                                    formal_peeled.clone(),
-                                                    actual_peeled.clone(),
-                                                    scope.clone(),
-                                                ))
-                                            {
-                                                Rc::new(vec![type_mismatch_error(
-                                                    node_type_shape(
-                                                        formal_peeled.clone(),
-                                                        scope
-                                                            .type_env
-                                                            .clone()
-                                                            .source_indices
-                                                            .clone(),
-                                                    ),
-                                                    node_type_shape(
-                                                        actual_peeled.clone(),
-                                                        scope
-                                                            .type_env
-                                                            .clone()
-                                                            .source_indices
-                                                            .clone(),
-                                                    ),
-                                                    ar_typed.span.clone(),
-                                                    scope.module_name.clone(),
-                                                )])
-                                            } else {
-                                                Rc::new(vec![])
-                                            }
+                                            Rc::new(vec![])
                                         }
                                     }
                                 }
@@ -17153,10 +16986,56 @@ pub fn transparent_alias_target_name(
     }
 }
 
+pub fn corpus_decl_module_paths(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item_counts: Rc<HashMap<String, i64>>,
+) -> Rc<HashMap<String, String>> {
+    module_nodes.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
+            let module_path = authored_name_at(source_indices.clone(), module_node.clone());
+            module_items(module_node.clone()).iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, String>>, item: Rc<Node>| {
+                    let self_name = authored_name_at(source_indices.clone(), item.clone());
+                    let unique = match v1_rt::map_get(&item_counts, self_name.clone()) {
+                        Some(1) => true,
+                        _ => false,
+                    };
+                    if (((self_name.clone() == "".to_string())
+                        || (module_path.clone() == "".to_string()))
+                        || !unique.clone())
+                    {
+                        inner.clone()
+                    } else {
+                        v1_rt::rc_map_insert(inner.clone(), self_name.clone(), module_path.clone())
+                    }
+                },
+            )
+        },
+    )
+}
+
+pub fn transparent_alias_qualified_name(
+    decl_modules: Rc<HashMap<String, String>>,
+    name: String,
+) -> String {
+    if ((module_path_segments(name.clone()).len() as i64) > 1) {
+        name.clone()
+    } else {
+        match v1_rt::map_get(&decl_modules, name.clone()) {
+            Some(m) => v1_rt::concat(v1_rt::concat(m.clone(), ".".to_string()), name.clone()),
+            None => name.clone(),
+        }
+    }
+}
+
 pub fn transparent_alias_direct_edges(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     item_counts: Rc<HashMap<String, i64>>,
+    decl_modules: Rc<HashMap<String, String>>,
 ) -> Rc<HashMap<String, String>> {
     module_nodes.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
@@ -17165,12 +17044,16 @@ pub fn transparent_alias_direct_edges(
             module_items(module_node.clone()).iter().cloned().fold(
                 edges,
                 |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
-                    let target_name =
+                    let raw_target =
                         transparent_alias_target_name(item.clone(), source_indices.clone());
-                    if (target_name.clone() == "".to_string()) {
+                    if (raw_target.clone() == "".to_string()) {
                         acc.clone()
                     } else {
                         {
+                            let target_name = transparent_alias_qualified_name(
+                                decl_modules.clone(),
+                                raw_target.clone(),
+                            );
                             let self_name = authored_name_at(source_indices.clone(), item.clone());
                             let qualified = v1_rt::rc_map_insert(
                                 acc.clone(),
@@ -17251,10 +17134,16 @@ pub fn transparent_alias_representatives(
     item_counts: Rc<HashMap<String, i64>>,
 ) -> Rc<HashMap<String, String>> {
     {
+        let decl_modules = corpus_decl_module_paths(
+            module_nodes.clone(),
+            source_indices.clone(),
+            item_counts.clone(),
+        );
         let edges = transparent_alias_direct_edges(
             module_nodes.clone(),
             source_indices.clone(),
             item_counts.clone(),
+            decl_modules.clone(),
         );
         Rc::new(v1_rt::sorted_map_keys(&edges))
             .iter()
@@ -17293,12 +17182,17 @@ pub fn transparent_alias_identity_agrees(
     {
         let left_rep = transparent_alias_representative(index.clone(), left.clone());
         let right_rep = transparent_alias_representative(index.clone(), right.clone());
-        let chased_an_alias_edge =
-            ((left_rep.clone() != left.clone()) || (right_rep.clone() != right.clone()));
+        let left_chased = (left_rep.clone() != left.clone());
+        let right_chased = (right_rep.clone() != right.clone());
+        let both_chased = (left_chased.clone() && right_chased.clone());
         ((((left.clone() != "".to_string()) && (right.clone() != "".to_string()))
-            && chased_an_alias_edge.clone())
-            && (qualified_last_segment(left_rep.clone())
-                == qualified_last_segment(right_rep.clone())))
+            && (left_chased.clone() || right_chased.clone()))
+            && if both_chased.clone() {
+                (left_rep.clone() == right_rep.clone())
+            } else {
+                (qualified_last_segment(left_rep.clone())
+                    == qualified_last_segment(right_rep.clone()))
+            })
     }
 }
 
