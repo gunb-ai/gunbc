@@ -30,17 +30,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ASSERTION WAS WRONG IN A WAY ITS GREEN CONCEALED. It required slots 06 AND 07 on hosts whose
 // committed width is 6, so it demanded a SEVENTH slot on a six-wide host -- an artifact of the
 // 14GiB era, when the managed hosts admitted 7. The 2026-08-17 16GiB ruling moved them to 6 and
-// this witness was never re-derived, so it kept ratifying the superseded width.
+// this witness was never re-derived, so CI was affirming a false statement about the fleet.
 //
-// WHAT IS ASSERTED NOW, AND THE TWO HOSTS DISAGREE ON PURPOSE. Both are six-wide, so neither can
-// reach a seventh slot however wide the request. srv4 has no fabric slot, so its GitHub population
-// is all 6 and one addition is planned: slot 06. srv3 carries the one compute-fabric slot, so its
-// GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth slot exists
-// in the model and is deliberately not a GitHub runner.
-test fn requested_seven_is_clamped_to_each_host_github_population() -> Bool {
+// SEVEN IS NOW REFUSED RATHER THAN QUIETLY UNFULFILLED. The admission ceiling derives from the
+// committed width instead of restating it as a literal 7, so a request no host has been admitted
+// to carry stops at the wall with a typed cause rather than being admitted and then producing
+// nothing. Both hosts plan zero actions and both carry a WidthRefused admission -- the difference
+// from the old behaviour is that the refusal is now VISIBLE in the plan.
+test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
+    roster: organization_runner_roster_evidence()
+  )
+  match plan {
+    PlanReady { hosts: _ } =>
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
+    PlanRefused { reason: _ } => false
+  }
+}
+
+// AT THE COMMITTED WIDTH THE TWO HOSTS DISAGREE, AND THAT IS THE PURPOSE MODEL SHOWING THROUGH.
+// Both are six wide and both requests are admitted. srv4 has no fabric slot, so its GitHub
+// population is all 6 and one addition is planned: slot 06. srv3 carries the one compute-fabric
+// slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
+// slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
+// different populations.
+test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
+  let plan = runner_capacity_plan(
+    srv3_width: 6,
+    srv4_width: 6,
     roster: organization_runner_roster_evidence()
   )
   match plan {

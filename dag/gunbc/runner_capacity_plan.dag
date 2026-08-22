@@ -178,11 +178,23 @@ fn addition_actions(
   )
 }
 
+// THE CEILING IS DERIVED FROM THE COMMITTED WIDTH, NOT SPELLED AGAIN HERE. This refused above a
+// hardcoded 7 for a hardcoded srv3/srv4 pair, which was the committed width restated -- a second
+// copy of a fact whose authority is gunbc.runner_slot_allocation, and it went stale for exactly
+// the reason the enumerator did: a duplicated fact does not move when its authority moves. The
+// 2026-08-17 16GiB ruling took the managed hosts to 6 and this wall kept admitting 7.
+//
+// TWO CONSEQUENCES, BOTH INTENDED. Requesting 7 is now refused rather than admitted-then-silently
+// unfulfilled: the wall doing its job, not a policy change, because no host has been admitted to
+// carry 7 since the 16GiB ruling. And srv1/srv2 gain a ceiling they never had -- the host pair was
+// hardcoded, so the legacy hosts could request any width at all and be admitted, which is the same
+// duplicated-fact defect showing its other face.
 fn admit_runner_capacity_width(host: HostIdentity, requested: Int) -> WidthAdmission {
+  let committed = gunbc_runner_slots_per_host(host: host)
   if requested <= 0 {
     WidthRefused { requested: requested, cause: "requested width must be positive" }
-  } else if requested > 7 && ((host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String)) {
-    WidthRefused { requested: requested, cause: "requested width exceeds modeled admission ceiling for managed hosts" }
+  } else if requested > committed {
+    WidthRefused { requested: requested, cause: "requested width exceeds the host committed width derived by gunbc.runner_slot_allocation from its memory and disk admission; the ceiling is that authority's fact and is not restated here" }
   } else {
     WidthAdmitted { width: requested }
   }
