@@ -113,6 +113,17 @@ the count differs by an order of magnitude between them. So every row names its 
   alone, **161 / 25** once the extension is applied.
 - **Rule 3 — whole-tree union** over the three roots. The upper bound.
 
+**A second rule-2 ambiguity, real in principle and measured at zero here.** Both this walk and the
+host scanner it mirrors accept a dotted chain whose prefix resolves in the module index — and
+`binder.field` is spelled exactly like `module.member`. (A sibling lane's instrument returned 1,350
+sites of which essentially all were field accesses; the true population was 8.) Measured on the live
+tree: every module path begins with one of 16 root segments, and the count of sites where a **local
+binder** shares one of those roots *and* the two-segment path it forms is a real module is **one** —
+`tools.readme`, inside `dag/tools/readme.dag`, a module naming itself. So the rule-2 counts are not
+inflated by field accesses today. Not structural: a future parameter named `config` or `std` beside a
+matching two-segment module re-opens it silently, which is why the number is carried rather than the
+reassurance.
+
 **Rule 2 is not as objective as the other two, and a reader will assume it is.** Its population is a
 function of which dotted references the *source* spells, so it inherits any mis-qualification
 upstream of it. Receipt, measured by another lane the same day: four dotted references in

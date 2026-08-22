@@ -476,6 +476,19 @@ fn partition_severance_point_count() -> Int {
 // rule 3 takes everything. So a rule-2 count measures the tree AND the correctness of its
 // qualifications, and the two are not separable from the number.
 
+// AND ONE AMBIGUITY IN RULE 2 THAT IS REAL IN PRINCIPLE AND MEASURED AT ZERO HERE, checked rather
+// than assumed after a sibling lane's instrument returned 1,350 sites of which essentially all were
+// ordinary FIELD ACCESSES whose leaf collided with a parameter name (the true population was 8).
+// The same confusion is available to this walk and to the host scanner it mirrors: both accept a
+// dotted chain whose prefix resolves in the module index, and `binder.field` is spelled exactly like
+// `module.member`. Measured on the live tree: every module path in the corpus begins with one of 16
+// root segments, and the number of sites where a LOCAL BINDER shares one of those roots AND the
+// two-segment path it forms is a real module is ONE -- `tools.readme`, inside dag/tools/readme.dag,
+// which is a module naming itself rather than a field access. So the rule-2 populations here are not
+// inflated by field accesses today. The guard is not structural: a future parameter named `config`
+// or `std` beside a matching two-segment module would re-open it silently, which is why the number
+// is carried rather than the reassurance.
+
 // RULE 3 -- WHOLE-TREE UNION over the three roots. This is the upper bound, and it is the ONLY
 // population measured here in which v1.std.core and v2.std.node are co-resident.
 type CollisionPopulation
