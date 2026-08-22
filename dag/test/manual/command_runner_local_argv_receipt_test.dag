@@ -159,7 +159,23 @@ test fn zero_exit_with_output_is_present() -> Bool {
 // enrolling it would add an inert witness, which is worse than none. The measurement above is
 // recorded here with its command and its output so the next author can reproduce it in one dispatch.
 //
-// RUNG, STATED HONESTLY: structurally impossible for the empty-argv class specifically -- the state
-// has no representation in the carrier. That is a claim about this ONE class, not about argv
-// construction generally: hand-spelled FLAGS remain writable inside a builder's own module, which is
-// the point of homing each builder beside its cited authority rather than the seal's guarantee.
+// RUNG, STATED AS FOUR FACTS RATHER THAN ONE CLAIM, because collapsing them is how a climb gets
+// reported as finished while its evidence has no route (operator ruling relayed 2026-08-22):
+//
+//   1. The empty argv has no representation in the carrier -- there is no zero-word ArgvCommand to
+//      construct, so the two refusal arms this file's deleted test exercised are unreachable.
+//   2. The refinement that fact rests on is EVIDENCED BY A RECORDED EXECUTION: the pair above, ""
+//      refused and "mkdir" accepted, same file, one literal changed.
+//   3. That pair is NOT required-floor enrolled, and cannot be today (see the paragraph above).
+//   4. The Rust emission path is UNMEASURED. Nothing here says what an emitted mirror's own
+//      constructor admits, which is the same gap DESIGN records for extdeps.uri UriValidatedScalar.
+//
+// So the honest reading is EVIDENCED BUT NOT FLOOR-ENROLLED on the source path, and unmeasured on
+// the emission path -- not a completed climb. Under the strict section 4b rule this repository
+// applies, a completed climb retains EXECUTING evidence, and this one has a receipt rather than an
+// enrolled control. The arms stay deleted because fact 1 holds regardless of enrolment; what the
+// enrolment gap withholds is the CLAIM, not the deletion.
+//
+// And this is a claim about this ONE class, not about argv construction generally: hand-spelled
+// FLAGS remain writable inside a builder's own module, which is the point of homing each builder
+// beside its cited authority rather than the seal's guarantee.
