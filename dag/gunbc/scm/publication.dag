@@ -30,6 +30,20 @@ module gunbc.scm.publication
 // destroying "why", and the operator reading a refused load needs both.
 
 import std.types { Bool }
+// DECLARED SEAM DEBT, NOT A SETTLED LAYERING. This module imports `ImageRefusal` and matches its
+// arms, and an adjudication on 2026-08-22 ruled that publication should consume
+// `RepositoryDecodeRefusal` and `RepositoryEnvelope` rather than reach into a representation's
+// internals. That ruling is right and this import is the thing it names.
+//
+// It is NOT repaired by deleting the descent. The three remedies are real and measured -- collapsing
+// them lets an older reader overwrite a newer writer's document -- so removing the descent would
+// trade a layering violation for a correctness one. The repair is to move the classification DOWN:
+// the reader-limitation / absent-object / malformed-bytes split is a property of the REFUSAL, so it
+// belongs beside the refusal, and publication maps a classification instead of pattern-matching a
+// wire vocabulary. That edit lands in the same module as the refusal, which is separately in flight.
+//
+// So the dependency is recorded here as debt with a named repair rather than left to look
+// deliberate, and the same ruling says publication is not blocked on the generalization behind it.
 import gunbc.scm.image { ImageRefusal }
 import gunbc.scm.repository_envelope { RepositoryDecodeRefusal }
 
