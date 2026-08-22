@@ -593,6 +593,23 @@ token hit -- `render_footer` in #8909, which declares its own and never depended
 `tools.readme`. Deleting it *removes* a two-declarer whole-pool ambiguity rather than creating a
 break.
 
+**One result from that intersection has the opposite sign from what a token hit normally means, and
+it is worth its own class.** `render_footer` read as a hazard -- a name declared by a module being
+deleted and used in an open PR -- and inverted on inspection: the consumer declares its own, and
+while `tools.readme` stands the name has TWO whole-pool declarers. It is AMBIGUOUS, and the
+deletion *removes* the ambiguity. **So a deletion can improve resolution safety, and the same
+intersection that finds breaks also finds these.** A reviewer who reads any token hit as danger will
+misclassify this direction.
+
+The reason it matters beyond one row is that it is the ambient-pool defect in miniature: a name
+resolving by whole-pool uniqueness is **one deletion away from binding differently**, so its
+meaning is a function of the corpus denominator rather than of anything written at either the
+declaration or the use. This deletion happens to move that name from two declarers to one.
+**Nothing structural guarantees the next one moves that way** -- the same mechanism that
+disambiguates here can, elsewhere, silently rebind a use from one surviving declarer to another.
+That class is not created by this change and is not closed by it; it is visible from here because
+an intersection over deletions is one of the few operations that looks directly at it.
+
 **So the obligation is unilateral, and that is the whole point of restating it.** A rule requiring
 publication is a rule requiring coordination, and coordination fails silently when a lane is busy,
 blocked or archived; a rule one party can execute alone has no such failure mode. **The deleter
