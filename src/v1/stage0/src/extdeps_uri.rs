@@ -20,8 +20,6 @@ pub use crate::std_unicode_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_node::NamedEdgeTargetLookup;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -916,7 +914,7 @@ pub fn uri_percent_encode_outcomes_first_refusal(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.clone().iter().cloned().fold(
-        Rc::new(NamedEdgeTargetLookup::Absent),
+        None,
         |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
          outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
@@ -927,7 +925,7 @@ pub fn uri_percent_encode_outcomes_first_refusal(
                 } => Some(cause.clone()),
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
                     wire: _, ..
-                } => Rc::new(NamedEdgeTargetLookup::Absent),
+                } => None,
             },
         },
     )

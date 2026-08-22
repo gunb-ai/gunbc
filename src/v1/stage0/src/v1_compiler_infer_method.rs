@@ -8,14 +8,13 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
-pub use crate::v1_std_core::{Cardinality, ErrorNode, ExprData, InferredNode};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -48,10 +47,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         span: crate::v1_std_core::no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
@@ -64,6 +60,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 

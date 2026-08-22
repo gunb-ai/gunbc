@@ -63,8 +63,6 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_node::NamedEdgeTargetLookup;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -627,7 +625,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
+            wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -828,7 +826,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
-            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
+            wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
@@ -1031,8 +1029,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
-            variant_pattern: Rc::new(NamedEdgeTargetLookup::Absent),
-            guard_prefix: Rc::new(NamedEdgeTargetLookup::Absent),
+            variant_pattern: None,
+            guard_prefix: None,
             empty_return_value: "struct{}{}, nil".to_string(),
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
@@ -1203,7 +1201,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
+            wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),

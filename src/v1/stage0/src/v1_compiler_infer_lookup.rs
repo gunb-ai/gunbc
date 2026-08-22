@@ -36,6 +36,7 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::FieldAccessStyle::*;
 use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::*;
@@ -46,12 +47,9 @@ pub use crate::v1_std_core::{
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    MethodSemantics, NewlineIndex,
+    Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MethodSemantics, NewlineIndex, Node,
 };
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -77,7 +75,7 @@ pub fn lookup_in_scope(
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&locals, name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -104,10 +102,8 @@ pub fn lookup_func_sig(
 pub fn func_sig_if_resolved(lookup: Rc<FuncSigLookup>) -> Option<Rc<ResolvedFuncSig>> {
     match (*lookup.clone()).clone() {
         FuncSigLookup::FuncSigResolved { sig: sig, .. } => Some(sig.clone()),
-        FuncSigLookup::FuncSigUnresolved => Rc::new(NamedEdgeTargetLookup::Absent),
-        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
-            Rc::new(NamedEdgeTargetLookup::Absent)
-        }
+        FuncSigLookup::FuncSigUnresolved => None,
+        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => None,
     }
 }
 
@@ -439,10 +435,10 @@ pub fn lookup_field_type_node(
             }
         } else {
             {
-                let has_structure = (n.connective.clone() != Rc::new(Connective::NoConnective));
+                let has_structure = (n.connective.clone() != Connective::NoConnective);
                 if has_structure.clone() {
                     {
-                        let is_product = (n.connective.clone() == Rc::new(Connective::Conj));
+                        let is_product = (n.connective.clone() == Connective::Conj);
                         if is_product.clone() {
                             match find_child_named(
                                 n.clone(),
@@ -558,7 +554,7 @@ pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
 pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
         let raw_name = authored_name_at(env.source_indices.clone(), receiver_type.clone());
-        if ((receiver_type.connective.clone() == Rc::new(Connective::Conj))
+        if ((receiver_type.connective.clone() == Connective::Conj)
             || crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
                 raw_name.clone(),
             ))
@@ -571,7 +567,7 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
                     env.source_indices.clone(),
                 );
                 let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
-                if ((resolved.connective.clone() == Rc::new(Connective::Conj))
+                if ((resolved.connective.clone() == Connective::Conj)
                     || ((resolved_name.clone() != raw_name.clone())
                         && crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
                             resolved_name.clone(),
@@ -601,7 +597,7 @@ pub fn resolve_scrutinee_type_node_seen(
             return n.clone();
         }
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-        if (((normed.connective.clone() == Rc::new(Connective::NoConnective))
+        if (((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) > 0))
             && (normed.inferred.clone() != None))
         {
@@ -615,7 +611,7 @@ pub fn resolve_scrutinee_type_node_seen(
                 _ => normed.clone(),
             }
         } else {
-            if ((normed.connective.clone() == Rc::new(Connective::NoConnective))
+            if ((normed.connective.clone() == Connective::NoConnective)
                 && ((normed.children.clone().len() as i64) == 0))
             {
                 {
@@ -632,8 +628,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                     if ((((authored_name(env.clone(), target.clone())
                                         == canonical.clone())
                                         && (target.inferred.clone() == None))
-                                        && (target.connective.clone()
-                                            == Rc::new(Connective::NoConnective)))
+                                        && (target.connective.clone() == Connective::NoConnective))
                                         && ((target.children.clone().len() as i64) == 0))
                                     {
                                         normed.clone()
@@ -672,7 +667,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                             == canonical.clone())
                                             && (resolved.inferred.clone() == None))
                                             && (resolved.connective.clone()
-                                                == Rc::new(Connective::NoConnective)))
+                                                == Connective::NoConnective))
                                             && ((resolved.children.clone().len() as i64) == 0))
                                         {
                                             normed.clone()
@@ -795,14 +790,12 @@ pub fn field_summary_for_type(
                 }
             } else {
                 {
-                    let no_structure =
-                        (resolved.connective.clone() == Rc::new(Connective::NoConnective));
+                    let no_structure = (resolved.connective.clone() == Connective::NoConnective);
                     if no_structure.clone() {
                         None
                     } else {
                         {
-                            let is_product =
-                                (resolved.connective.clone() == Rc::new(Connective::Conj));
+                            let is_product = (resolved.connective.clone() == Connective::Conj);
                             if is_product.clone() {
                                 v1_rt::map_get(
                                     &build_struct_field_summaries(
@@ -932,7 +925,7 @@ pub fn lookup_structural_method(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
     {
-        let is_product = (receiver_type.connective.clone() == Rc::new(Connective::Conj));
+        let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product.clone() {
             {
                 let direct = lookup_field_in_product(
@@ -952,7 +945,7 @@ pub fn lookup_structural_method(
                     receiver_type.clone(),
                     source_indices.clone(),
                 );
-                if ((enriched.ty.clone().connective.clone() == Rc::new(Connective::Conj))
+                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
                     && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {

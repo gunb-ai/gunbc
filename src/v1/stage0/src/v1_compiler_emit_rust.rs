@@ -125,6 +125,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::FieldAccessStyle::*;
 use crate::v1_std_core::FieldValueShape::*;
@@ -154,13 +155,10 @@ pub use crate::v1_std_core::{
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompilerDiagnostic, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    StringPart, TextFile, VarBindingKind,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, StringPart, TextFile, VarBindingKind,
 };
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, Edge, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -272,11 +270,7 @@ pub fn render_rust_type_without_applied_binding(
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
-        if (((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
             && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
                 source_indices.clone(),
@@ -1923,44 +1917,150 @@ pub fn render_rust_decl_type(
         match applied_overlay.clone() {
             Some(applied) => {
                 let outer_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
-                if (((((outer_name.clone() != "".to_string()) && (outer_name.clone() != "fn".to_string())) && !crate::std_types::is_container_type(outer_name.clone())) && (n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((n.children.clone().len() as i64) == 0)) {
+                if (((((outer_name.clone() != "".to_string())
+                    && (outer_name.clone() != "fn".to_string()))
+                    && !crate::std_types::is_container_type(outer_name.clone()))
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.children.clone().len() as i64) == 0))
+                {
                     match closed_alias_peel_verdict(env.clone(), n.clone()) {
-    ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => if rust_fn_sig_preserves_authored_alias_leaf(outer_name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone())) {
-                        render_rust_shared_type_with_optional(n.clone(), outer_name.clone(), outer_name.clone(), shared_types.clone())
-                    } else {
-                        render_rust_applied_type_shared(applied.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
-                    },
-    ClosedAliasPeelVerdict::ClosedAliasHasParams => render_rust_applied_type_shared(applied.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
-    ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => render_rust_applied_type_shared(applied.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone()),
-}
+                        ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
+                            if rust_fn_sig_preserves_authored_alias_leaf(
+                                outer_name.clone(),
+                                crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                            ) {
+                                render_rust_shared_type_with_optional(
+                                    n.clone(),
+                                    outer_name.clone(),
+                                    outer_name.clone(),
+                                    shared_types.clone(),
+                                )
+                            } else {
+                                render_rust_applied_type_shared(
+                                    applied.clone(),
+                                    generic_param_names.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    variant_to_enum.clone(),
+                                    env.clone(),
+                                )
+                            }
+                        }
+                        ClosedAliasPeelVerdict::ClosedAliasHasParams => {
+                            render_rust_applied_type_shared(
+                                applied.clone(),
+                                generic_param_names.clone(),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
+                            )
+                        }
+                        ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
+                            render_rust_applied_type_shared(
+                                applied.clone(),
+                                generic_param_names.clone(),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
+                            )
+                        }
+                    }
                 } else {
-                    render_rust_applied_type_shared(applied.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                    render_rust_applied_type_shared(
+                        applied.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                        env.clone(),
+                    )
                 }
             }
             None => {
                 let name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
-                if (((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) && { let mut __found = false; for g in generic_param_names.clone().iter().cloned() { if (g.clone() == name.clone()) { __found = true; break; } } __found }) {
+                if (((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0))
+                    && {
+                        let mut __found = false;
+                        for g in generic_param_names.clone().iter().cloned() {
+                            if (g.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    })
+                {
                     crate::v1_compiler_emit_core_support::to_pascal(name.clone())
                 } else {
-                    if ((((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) && (applied_prop.clone() == None)) && is_host_text_carrier_type(n.clone(), source_indices.clone())) {
-                        rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
+                    if ((((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) == 0))
+                        && (applied_prop.clone() == None))
+                        && is_host_text_carrier_type(n.clone(), source_indices.clone()))
+                    {
+                        rust_carrier_optional_wrap(
+                            n.clone(),
+                            render_rust_text_carrier(shared_types.clone()),
+                        )
                     } else {
-                        if ((((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) && (applied_prop.clone() == None)) && v1_rt::set_contains(&shared_types, name.clone())) {
+                        if ((((n.connective.clone() == Connective::NoConnective)
+                            && ((n.children.clone().len() as i64) == 0))
+                            && (applied_prop.clone() == None))
+                            && v1_rt::set_contains(&shared_types, name.clone()))
+                        {
                             {
-                                let rendered = rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
-render_rust_shared_type_with_optional(n.clone(), name.clone(), rendered.clone(), shared_types.clone())
-}
+                                let rendered = rust_render_type_leaf_name(
+                                    name.clone(),
+                                    variant_to_enum.clone(),
+                                );
+                                render_rust_shared_type_with_optional(
+                                    n.clone(),
+                                    name.clone(),
+                                    rendered.clone(),
+                                    shared_types.clone(),
+                                )
+                            }
                         } else {
-                            if ((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) > 0)) {
-                                match rust_render_checkpoint_scalar_bare(n.clone(), source_indices.clone(), shared_types.clone()) {
-    Some(scalar) => render_rust_shared_type_with_optional(n.clone(), rust_fn_sig_leaf_name(source_indices.clone(), n.clone()), scalar.clone(), shared_types.clone()),
-    None => if (!crate::std_types::is_container_type(name.clone()) && closed_alias_peels_zero_param(env.clone(), n.clone())) {
-                                    render_rust_shared_type_with_optional(n.clone(), name.clone(), name.clone(), shared_types.clone())
-                                } else {
-                                    {
-                                        let base = rust_applied_type_base(name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone()));
-let peel = is_parametric_opaque_type_by_name(env.clone(), name.clone());
-let arg_list = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push({
+                            if ((n.connective.clone() == Connective::NoConnective)
+                                && ((n.children.clone().len() as i64) > 0))
+                            {
+                                match rust_render_checkpoint_scalar_bare(
+                                    n.clone(),
+                                    source_indices.clone(),
+                                    shared_types.clone(),
+                                ) {
+                                    Some(scalar) => render_rust_shared_type_with_optional(
+                                        n.clone(),
+                                        rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+                                        scalar.clone(),
+                                        shared_types.clone(),
+                                    ),
+                                    None => {
+                                        if (!crate::std_types::is_container_type(name.clone())
+                                            && closed_alias_peels_zero_param(
+                                                env.clone(),
+                                                n.clone(),
+                                            ))
+                                        {
+                                            render_rust_shared_type_with_optional(
+                                                n.clone(),
+                                                name.clone(),
+                                                name.clone(),
+                                                shared_types.clone(),
+                                            )
+                                        } else {
+                                            {
+                                                let base = rust_applied_type_base(name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone()));
+                                                let peel = is_parametric_opaque_type_by_name(
+                                                    env.clone(),
+                                                    name.clone(),
+                                                );
+                                                let arg_list = Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for arg in n.children.clone().iter().cloned() {
+                                                        __result.push({
                                             let typed_arg = render_rust_decl_type_container_arg(arg.clone(), source_indices.clone(), env.clone());
 if peel.clone() {
                                                 render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
@@ -1974,11 +2074,19 @@ if peel.clone() {
 }
                                                 }
                                             }
-}); } __result });
-let applied_ty = if (name.clone() == crate::v1_std_core::tuple_type_name()) {
-                                            crate::v1_compiler_emit::render_tuple_parts(arg_list.clone(), RenderTarget::Rust)
-                                        } else {
-                                            if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
+});
+                                                    }
+                                                    __result
+                                                });
+                                                let applied_ty = if (name.clone()
+                                                    == crate::v1_std_core::tuple_type_name())
+                                                {
+                                                    crate::v1_compiler_emit::render_tuple_parts(
+                                                        arg_list.clone(),
+                                                        RenderTarget::Rust,
+                                                    )
+                                                } else {
+                                                    if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
                                                 match arg_list.clone().first().cloned() {
     Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
     Some(v) => crate::v1_compiler_emit::emit_map_type(k.clone(), v.clone(), RenderTarget::Rust),
@@ -1996,16 +2104,31 @@ let applied_ty = if (name.clone() == crate::v1_std_core::tuple_type_name()) {
                                                     v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string())
                                                 }
                                             }
-                                        };
-render_rust_shared_type_with_optional(n.clone(), name.clone(), applied_ty.clone(), shared_types.clone())
-}
-                                },
-}
+                                                };
+                                                render_rust_shared_type_with_optional(
+                                                    n.clone(),
+                                                    name.clone(),
+                                                    applied_ty.clone(),
+                                                    shared_types.clone(),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
-                                if type_node_has_unbound_type_variable(n.clone(), generic_param_names.clone(), source_indices.clone()) {
+                                if type_node_has_unbound_type_variable(
+                                    n.clone(),
+                                    generic_param_names.clone(),
+                                    source_indices.clone(),
+                                ) {
                                     "_".to_string()
                                 } else {
-                                    render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone())
+                                    render_rust_type_with_applied_binding(
+                                        n.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                        env.clone(),
+                                    )
                                 }
                             }
                         }
@@ -2087,26 +2210,58 @@ pub fn render_rust_fn_sig_type(
             );
         }
         let name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
-        if (((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && is_host_text_carrier_type(n.clone(), source_indices.clone()))
         {
             rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
         } else {
-            if (((((((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) && (name.clone() != "".to_string())) && (name.clone() != "String".to_string())) && !crate::std_types::is_container_type(name.clone())) && closed_alias_peels_zero_param(env.clone(), n.clone())) && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone()))) {
-                render_rust_shared_type_with_optional(n.clone(), name.clone(), name.clone(), shared_types.clone())
+            if (((((((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) == 0))
+                && (name.clone() != "".to_string()))
+                && (name.clone() != "String".to_string()))
+                && !crate::std_types::is_container_type(name.clone()))
+                && closed_alias_peels_zero_param(env.clone(), n.clone()))
+                && rust_fn_sig_preserves_authored_alias_leaf(
+                    name.clone(),
+                    crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                ))
+            {
+                render_rust_shared_type_with_optional(
+                    n.clone(),
+                    name.clone(),
+                    name.clone(),
+                    shared_types.clone(),
+                )
             } else {
-                if ((((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) > 0)) && !crate::std_types::is_container_type(name.clone())) && closed_alias_peels_zero_param(env.clone(), n.clone())) {
-                    render_rust_shared_type_with_optional(n.clone(), name.clone(), name.clone(), shared_types.clone())
+                if ((((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+                    && !crate::std_types::is_container_type(name.clone()))
+                    && closed_alias_peels_zero_param(env.clone(), n.clone()))
+                {
+                    render_rust_shared_type_with_optional(
+                        n.clone(),
+                        name.clone(),
+                        name.clone(),
+                        shared_types.clone(),
+                    )
                 } else {
                     if ((generic_param_names.clone().len() as i64) > 0) {
-                        render_rust_decl_type(n.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                        render_rust_decl_type(
+                            n.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            variant_to_enum.clone(),
+                            env.clone(),
+                        )
                     } else {
-                        render_rust_fn_sig_type_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone())
+                        render_rust_fn_sig_type_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        )
                     }
                 }
             }
@@ -2129,19 +2284,60 @@ pub fn render_rust_fn_sig_type_applied_binding(
             if ((applied.children.clone().len() as i64) > 0) {
                 {
                     let outer_name = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
-                    if (((((outer_name.clone() != "".to_string()) && (outer_name.clone() != "fn".to_string())) && !crate::std_types::is_container_type(outer_name.clone())) && (n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((n.children.clone().len() as i64) == 0)) {
-                match closed_alias_peel_verdict(env.clone(), n.clone()) {
-    ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => if rust_fn_sig_preserves_authored_alias_leaf(outer_name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone())) {
-                    render_rust_shared_type_with_optional(n.clone(), outer_name.clone(), outer_name.clone(), shared_types.clone())
-                } else {
-                    render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone())
-                },
-    ClosedAliasPeelVerdict::ClosedAliasHasParams => render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone()),
-    ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone()),
-}
-            } else {
-                render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone(), env.clone())
-            }
+                    if (((((outer_name.clone() != "".to_string())
+                        && (outer_name.clone() != "fn".to_string()))
+                        && !crate::std_types::is_container_type(outer_name.clone()))
+                        && (n.connective.clone() == Connective::NoConnective))
+                        && ((n.children.clone().len() as i64) == 0))
+                    {
+                        match closed_alias_peel_verdict(env.clone(), n.clone()) {
+                            ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
+                                if rust_fn_sig_preserves_authored_alias_leaf(
+                                    outer_name.clone(),
+                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                        n.clone(),
+                                    ),
+                                ) {
+                                    render_rust_shared_type_with_optional(
+                                        n.clone(),
+                                        outer_name.clone(),
+                                        outer_name.clone(),
+                                        shared_types.clone(),
+                                    )
+                                } else {
+                                    render_rust_type_with_applied_binding(
+                                        n.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                        env.clone(),
+                                    )
+                                }
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasHasParams => {
+                                render_rust_type_with_applied_binding(
+                                    n.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                )
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
+                                render_rust_type_with_applied_binding(
+                                    n.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                )
+                            }
+                        }
+                    } else {
+                        render_rust_type_with_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        )
+                    }
                 }
             } else {
                 render_rust_type_with_applied_binding(
@@ -2167,11 +2363,7 @@ pub fn rust_decl_type_container_arg_needs_resolved_overlay(
     env: Rc<TypeEnv>,
 ) -> bool {
     {
-        let authored_is_leaf = ((arg.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        let authored_is_leaf = ((arg.connective.clone() == Connective::NoConnective)
             && ((arg.children.clone().len() as i64) == 0));
         let closed_alias = if authored_is_leaf.clone() {
             match closed_alias_peel_verdict(env.clone(), arg.clone()) {
@@ -2302,11 +2494,7 @@ pub fn render_rust_alias_rhs_type(
             }
         }
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && {
                 let mut __found = false;
@@ -2321,96 +2509,291 @@ pub fn render_rust_alias_rhs_type(
         {
             crate::v1_compiler_emit_core_support::to_pascal(name.clone())
         } else {
-            if ((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) {
-                    match rust_seed_host_numeric_alias(name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone())) {
-    Some(host) => host.clone(),
-    None => match rust_opaque_kernel_alias_carrier(name.clone()) {
-    Some(carrier) => carrier.clone(),
-    None => {
-                        let zero_leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-let zero_local_mod = crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
-let zero_def_mod = alias_rhs_rust_qualify_module_filename(zero_leaf.clone(), module_name.clone(), imports.clone(), scope.clone(), registry.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
-let rendered = if ((zero_def_mod.clone() != zero_local_mod.clone()) && (zero_def_mod.clone() != "".to_string())) {
-                            v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), zero_def_mod.clone()), "::".to_string()), zero_leaf.clone())
-                        } else {
-                            rust_render_type_leaf_name(name.clone(), variant_to_enum.clone())
-                        };
-render_rust_shared_type_if_needed(name.clone(), rendered.clone(), shared_types.clone())
-},
-},
-}
-                } else {
-                    if ((n.connective.clone() == Rc::new(Connective::NoConnective)) && ((n.children.clone().len() as i64) > 0)) {
-                        {
-                            let leaf = qualified_last_segment(name.clone());
-let numeric_host_alias = match rust_scalar_checkpoint_reference_base(leaf.clone(), type_reference_decl_file(n.clone())) {
-    Some(scalar) => Some(scalar.clone()),
-    None => rust_seed_host_numeric_alias(leaf.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone())),
-};
-if (numeric_host_alias.clone() != None) {
-                                return match numeric_host_alias.clone() {
-    Some(host) => host.clone(),
-    None => "".to_string(),
-}
-                            }
-let local_mod = crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
-let def_mod = alias_rhs_rust_qualify_module_filename(leaf.clone(), module_name.clone(), imports.clone(), scope.clone(), registry.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
-let base = match rust_seed_host_container_base(leaf.clone()) {
-    Some(host) => host.clone(),
-    None => if (def_mod.clone() != local_mod.clone()) {
-                                v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), def_mod.clone()), "::".to_string()), leaf.clone())
+            if ((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) == 0))
+            {
+                match rust_seed_host_numeric_alias(
+                    name.clone(),
+                    crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                ) {
+                    Some(host) => host.clone(),
+                    None => match rust_opaque_kernel_alias_carrier(name.clone()) {
+                        Some(carrier) => carrier.clone(),
+                        None => {
+                            let zero_leaf =
+                                crate::v1_std_core::qualified_last_segment(name.clone());
+                            let zero_local_mod =
+                                crate::v1_compiler_emit_core_support::module_to_filename(
+                                    module_name.clone(),
+                                );
+                            let zero_def_mod = alias_rhs_rust_qualify_module_filename(
+                                zero_leaf.clone(),
+                                module_name.clone(),
+                                imports.clone(),
+                                scope.clone(),
+                                registry.clone(),
+                                export_sets.clone(),
+                                typed_modules.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            );
+                            let rendered = if ((zero_def_mod.clone() != zero_local_mod.clone())
+                                && (zero_def_mod.clone() != "".to_string()))
+                            {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("crate::".to_string(), zero_def_mod.clone()),
+                                        "::".to_string(),
+                                    ),
+                                    zero_leaf.clone(),
+                                )
                             } else {
-                                leaf.clone()
-                            },
-};
-match closed_alias_peel_verdict(scope.type_env.clone(), n.clone()) {
-    ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => if (v1_rt::set_contains(&shared_types, leaf.clone()) && !rust_type_is_rc_wrapped(base.clone())) {
-                                crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, base.clone())
-                            } else {
-                                base.clone()
-                            },
-    ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => match alias_decl_arity_verdict(leaf.clone(), def_mod.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), scope.type_env.clone()) {
-    AliasDeclArityVerdict::AliasDeclArityZeroParam => if (v1_rt::set_contains(&shared_types, leaf.clone()) && !rust_type_is_rc_wrapped(base.clone())) {
-                                crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, base.clone())
-                            } else {
-                                base.clone()
-                            },
-    AliasDeclArityVerdict::AliasDeclArityHasParams => {
-                                let peel = is_parametric_opaque_type_base(leaf.clone(), def_mod.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
-let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
-                                    render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone())
-                                } else {
-                                    render_rust_alias_rhs_type(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone())
-                                }); } __result }).join(&", ".to_string());
-let applied_ty = v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args.clone()), ">".to_string());
-if (v1_rt::set_contains(&shared_types, leaf.clone()) && !rust_type_is_rc_wrapped(applied_ty.clone())) {
-                                    crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                                } else {
-                                    applied_ty.clone()
-                                }
-},
-    AliasDeclArityVerdict::AliasDeclArityAbsent => alias_decl_arity_refusal_expr(leaf.clone()),
-},
-    ClosedAliasPeelVerdict::ClosedAliasHasParams => {
-                                let peel = is_parametric_opaque_type_base(leaf.clone(), def_mod.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
-let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
-                                    render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone())
-                                } else {
-                                    render_rust_alias_rhs_type(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone())
-                                }); } __result }).join(&", ".to_string());
-let applied_ty = v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args.clone()), ">".to_string());
-if (v1_rt::set_contains(&shared_types, leaf.clone()) && !rust_type_is_rc_wrapped(applied_ty.clone())) {
-                                    crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                                } else {
-                                    applied_ty.clone()
-                                }
-},
-}
-}
-                    } else {
-                        render_rust_type(n.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())
-                    }
+                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone())
+                            };
+                            render_rust_shared_type_if_needed(
+                                name.clone(),
+                                rendered.clone(),
+                                shared_types.clone(),
+                            )
+                        }
+                    },
                 }
+            } else {
+                if ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+                {
+                    {
+                        let leaf = qualified_last_segment(name.clone());
+                        let numeric_host_alias = match rust_scalar_checkpoint_reference_base(
+                            leaf.clone(),
+                            type_reference_decl_file(n.clone()),
+                        ) {
+                            Some(scalar) => Some(scalar.clone()),
+                            None => rust_seed_host_numeric_alias(
+                                leaf.clone(),
+                                crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                            ),
+                        };
+                        if (numeric_host_alias.clone() != None) {
+                            return match numeric_host_alias.clone() {
+                                Some(host) => host.clone(),
+                                None => "".to_string(),
+                            };
+                        }
+                        let local_mod = crate::v1_compiler_emit_core_support::module_to_filename(
+                            module_name.clone(),
+                        );
+                        let def_mod = alias_rhs_rust_qualify_module_filename(
+                            leaf.clone(),
+                            module_name.clone(),
+                            imports.clone(),
+                            scope.clone(),
+                            registry.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        );
+                        let base = match rust_seed_host_container_base(leaf.clone()) {
+                            Some(host) => host.clone(),
+                            None => {
+                                if (def_mod.clone() != local_mod.clone()) {
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("crate::".to_string(), def_mod.clone()),
+                                            "::".to_string(),
+                                        ),
+                                        leaf.clone(),
+                                    )
+                                } else {
+                                    leaf.clone()
+                                }
+                            }
+                        };
+                        match closed_alias_peel_verdict(scope.type_env.clone(), n.clone()) {
+                            ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
+                                if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    && !rust_type_is_rc_wrapped(base.clone()))
+                                {
+                                    crate::v1_compiler_languages::wrap_shared_type(
+                                        RenderTarget::Rust,
+                                        base.clone(),
+                                    )
+                                } else {
+                                    base.clone()
+                                }
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
+                                match alias_decl_arity_verdict(
+                                    leaf.clone(),
+                                    def_mod.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                    scope.type_env.clone(),
+                                ) {
+                                    AliasDeclArityVerdict::AliasDeclArityZeroParam => {
+                                        if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                            && !rust_type_is_rc_wrapped(base.clone()))
+                                        {
+                                            crate::v1_compiler_languages::wrap_shared_type(
+                                                RenderTarget::Rust,
+                                                base.clone(),
+                                            )
+                                        } else {
+                                            base.clone()
+                                        }
+                                    }
+                                    AliasDeclArityVerdict::AliasDeclArityHasParams => {
+                                        let peel = is_parametric_opaque_type_base(
+                                            leaf.clone(),
+                                            def_mod.clone(),
+                                            typed_modules.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        );
+                                        let args = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for arg in n.children.clone().iter().cloned() {
+                                                __result.push(if peel.clone() {
+                                                    render_rust_phantom_opaque_applied_type_arg(
+                                                        arg.clone(),
+                                                        generic_param_names.clone(),
+                                                        shared_types.clone(),
+                                                        source_indices.clone(),
+                                                        scope.clone(),
+                                                        imports.clone(),
+                                                        registry.clone(),
+                                                        module_name.clone(),
+                                                        export_sets.clone(),
+                                                        typed_modules.clone(),
+                                                        module_index.clone(),
+                                                        variant_to_enum.clone(),
+                                                    )
+                                                } else {
+                                                    render_rust_alias_rhs_type(
+                                                        alias_rhs_container_arg(
+                                                            arg.clone(),
+                                                            source_indices.clone(),
+                                                        ),
+                                                        generic_param_names.clone(),
+                                                        shared_types.clone(),
+                                                        source_indices.clone(),
+                                                        scope.clone(),
+                                                        imports.clone(),
+                                                        registry.clone(),
+                                                        module_name.clone(),
+                                                        export_sets.clone(),
+                                                        typed_modules.clone(),
+                                                        module_index.clone(),
+                                                        variant_to_enum.clone(),
+                                                    )
+                                                });
+                                            }
+                                            __result
+                                        })
+                                        .join(&", ".to_string());
+                                        let applied_ty = v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(base.clone(), "<".to_string()),
+                                                args.clone(),
+                                            ),
+                                            ">".to_string(),
+                                        );
+                                        if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                            && !rust_type_is_rc_wrapped(applied_ty.clone()))
+                                        {
+                                            crate::v1_compiler_languages::wrap_shared_type(
+                                                RenderTarget::Rust,
+                                                applied_ty.clone(),
+                                            )
+                                        } else {
+                                            applied_ty.clone()
+                                        }
+                                    }
+                                    AliasDeclArityVerdict::AliasDeclArityAbsent => {
+                                        alias_decl_arity_refusal_expr(leaf.clone())
+                                    }
+                                }
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasHasParams => {
+                                let peel = is_parametric_opaque_type_base(
+                                    leaf.clone(),
+                                    def_mod.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                );
+                                let args = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for arg in n.children.clone().iter().cloned() {
+                                        __result.push(if peel.clone() {
+                                            render_rust_phantom_opaque_applied_type_arg(
+                                                arg.clone(),
+                                                generic_param_names.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                                scope.clone(),
+                                                imports.clone(),
+                                                registry.clone(),
+                                                module_name.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                                variant_to_enum.clone(),
+                                            )
+                                        } else {
+                                            render_rust_alias_rhs_type(
+                                                alias_rhs_container_arg(
+                                                    arg.clone(),
+                                                    source_indices.clone(),
+                                                ),
+                                                generic_param_names.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                                scope.clone(),
+                                                imports.clone(),
+                                                registry.clone(),
+                                                module_name.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                                variant_to_enum.clone(),
+                                            )
+                                        });
+                                    }
+                                    __result
+                                })
+                                .join(&", ".to_string());
+                                let applied_ty = v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(base.clone(), "<".to_string()),
+                                        args.clone(),
+                                    ),
+                                    ">".to_string(),
+                                );
+                                if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    && !rust_type_is_rc_wrapped(applied_ty.clone()))
+                                {
+                                    crate::v1_compiler_languages::wrap_shared_type(
+                                        RenderTarget::Rust,
+                                        applied_ty.clone(),
+                                    )
+                                } else {
+                                    applied_ty.clone()
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    render_rust_type(
+                        n.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                    )
+                }
+            }
         }
     })
 }
@@ -2421,10 +2804,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         span: crate::v1_std_core::no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
@@ -2437,6 +2817,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -2906,10 +3287,18 @@ pub fn rust_nominal_ord_type_ref_eligible(
     {
         let type_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), elem_node.clone());
-        (((((elem_node.children.clone().len() as i64) == 0) && ((elem_node.params.clone().len() as i64) == 0)) && (elem_node.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(emit_info.clone(), type_name.clone()) {
-    Some(decl) => rust_nominal_ord_type_decl_ord_eligible(decl.clone(), source_indices.clone()),
-    None => false,
-})
+        (((((elem_node.children.clone().len() as i64) == 0)
+            && ((elem_node.params.clone().len() as i64) == 0))
+            && (elem_node.connective.clone() == Connective::NoConnective))
+            && match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
+                emit_info.clone(),
+                type_name.clone(),
+            ) {
+                Some(decl) => {
+                    rust_nominal_ord_type_decl_ord_eligible(decl.clone(), source_indices.clone())
+                }
+                None => false,
+            })
     }
 }
 
@@ -4478,7 +4867,10 @@ pub fn has_complex_variants(item: Rc<Node>) -> bool {
         {
             let mut __found = false;
             for c in item.children.clone().iter().cloned() {
-                if (c.connective.clone() != panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) { __found = true; break; }
+                if (c.connective.clone() != Connective::NoConnective) {
+                    __found = true;
+                    break;
+                }
             }
             __found
         }
@@ -4657,7 +5049,7 @@ pub fn build_ownership_results(modules: Vec<Rc<TypedModule>>) -> Rc<OwnershipBui
                 Rc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
+                        if (item.body.clone() != None) {
                             __result.push(item);
                         }
                     }
@@ -4685,7 +5077,7 @@ pub fn build_ownership_results(modules: Vec<Rc<TypedModule>>) -> Rc<OwnershipBui
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in m.items.clone().iter().cloned() {
-                                if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
+                                if (item.body.clone() != None) {
                                     __result.push(item);
                                 }
                             }
@@ -7951,7 +8343,7 @@ pub fn find_variant_parent_in_module(
         source_indices.clone(),
         module_index.clone(),
     ) {
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
         Some(tm) => Rc::new({
             let mut __result = Vec::new();
             for item in Rc::new({
@@ -8246,7 +8638,7 @@ pub fn reexport_source_module_name_with_visited(
             }
             __found
         } {
-            break Rc::new(NamedEdgeTargetLookup::Absent);
+            break None;
         } else {
             match typed_module_by_name(
                 import_module.clone(),
@@ -8255,7 +8647,7 @@ pub fn reexport_source_module_name_with_visited(
                 module_index.clone(),
             ) {
                 None => {
-                    break Rc::new(NamedEdgeTargetLookup::Absent);
+                    break None;
                 }
                 Some(tm) => {
                     if type_name_is_export_source_in_module(
@@ -8297,7 +8689,7 @@ import_module = __tco_0;
 visited = __tco_1;
 continue;
 } },
-    None => { break Rc::new(NamedEdgeTargetLookup::Absent); },
+    None => { break None; },
 } },
 }
                             }
@@ -8727,7 +9119,7 @@ pub fn explicit_import_source_module_for_name(
         source_indices.clone(),
         module_index.clone(),
     ) {
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
         Some(tm) => match Rc::new({
             let mut __result = Vec::new();
             for imp in Rc::new({
@@ -8821,7 +9213,7 @@ pub fn explicit_import_source_module_for_name(
             .cloned()
             {
                 Some(src) => Some(src.clone()),
-                None => Rc::new(NamedEdgeTargetLookup::Absent),
+                None => None,
             },
         },
     }
@@ -8847,7 +9239,7 @@ pub fn reexport_variant_parent_in_import_module(
             module_index.clone(),
         ) {
             None => {
-                break Rc::new(NamedEdgeTargetLookup::Absent);
+                break None;
             }
             Some(src_mod) => {
                 match find_variant_parent_in_module(
@@ -9378,11 +9770,7 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if ((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
         {
             {
@@ -9431,25 +9819,54 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                 })
             }
         } else {
-            if ((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0)) {
-                if ((n.inferred.clone() != None) && is_type_variable(n.inferred.clone().clone().unwrap())) {
+            if ((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) == 0))
+            {
+                if ((n.inferred.clone() != None)
+                    && is_type_variable(n.inferred.clone().clone().unwrap()))
+                {
                     true
                 } else {
                     {
-                        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-if ((name.clone() == "".to_string()) || is_kernel_type(name.clone())) {
+                        let name =
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                        if ((name.clone() == "".to_string()) || is_kernel_type(name.clone())) {
                             true
                         } else {
-                            if is_phantom_unit_variant_type_arg(scope.type_env.clone(), name.clone()) {
+                            if is_phantom_unit_variant_type_arg(
+                                scope.type_env.clone(),
+                                name.clone(),
+                            ) {
                                 true
                             } else {
                                 {
-                                    let def_mod = alias_rhs_base_module_filename(name.clone(), module_name.clone(), imports.clone(), source_indices.clone(), scope.clone(), registry.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone());
-rhs_base_has_rust_type_authority_in_module(name.clone(), def_mod.clone(), module_name.clone(), imports.clone(), scope.clone(), registry.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone())
-}
+                                    let def_mod = alias_rhs_base_module_filename(
+                                        name.clone(),
+                                        module_name.clone(),
+                                        imports.clone(),
+                                        source_indices.clone(),
+                                        scope.clone(),
+                                        registry.clone(),
+                                        export_sets.clone(),
+                                        typed_modules.clone(),
+                                        module_index.clone(),
+                                    );
+                                    rhs_base_has_rust_type_authority_in_module(
+                                        name.clone(),
+                                        def_mod.clone(),
+                                        module_name.clone(),
+                                        imports.clone(),
+                                        scope.clone(),
+                                        registry.clone(),
+                                        typed_modules.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    )
+                                }
                             }
                         }
-}
+                    }
                 }
             } else {
                 true
@@ -12833,15 +13250,37 @@ pub fn render_rust_type_with_applied_binding(
                             source_indices.clone(),
                             applied.clone(),
                         );
-                        if (((outer_name.clone() != "".to_string()) && (n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((n.children.clone().len() as i64) == 0)) {
-                    if (outer_name.clone() != applied_name.clone()) {
-                        render_rust_shared_type_with_optional(n.clone(), outer_name.clone(), outer_name.clone(), shared_types.clone())
-                    } else {
-                        render_rust_applied_type_shared(applied.clone(), Rc::new(vec![]), shared_types.clone(), source_indices.clone(), v1_rt::rc_empty_map::<String, String>(), env.clone())
-                    }
-                } else {
-                    render_rust_applied_type_shared(applied.clone(), Rc::new(vec![]), shared_types.clone(), source_indices.clone(), v1_rt::rc_empty_map::<String, String>(), env.clone())
-                }
+                        if (((outer_name.clone() != "".to_string())
+                            && (n.connective.clone() == Connective::NoConnective))
+                            && ((n.children.clone().len() as i64) == 0))
+                        {
+                            if (outer_name.clone() != applied_name.clone()) {
+                                render_rust_shared_type_with_optional(
+                                    n.clone(),
+                                    outer_name.clone(),
+                                    outer_name.clone(),
+                                    shared_types.clone(),
+                                )
+                            } else {
+                                render_rust_applied_type_shared(
+                                    applied.clone(),
+                                    Rc::new(vec![]),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    v1_rt::rc_empty_map::<String, String>(),
+                                    env.clone(),
+                                )
+                            }
+                        } else {
+                            render_rust_applied_type_shared(
+                                applied.clone(),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, String>(),
+                                env.clone(),
+                            )
+                        }
                     }
                 } else {
                     render_rust_type(
@@ -12916,10 +13355,22 @@ pub fn render_rust_field_type_with_applied_binding(
                         env.clone(),
                     )
                 } else {
-                    if ((authored_type.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((authored_type.children.clone().len() as i64) > 0)) {
-                        render_rust_type(authored_type.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())
+                    if ((authored_type.connective.clone() == Connective::NoConnective)
+                        && ((authored_type.children.clone().len() as i64) > 0))
+                    {
+                        render_rust_type(
+                            authored_type.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                        )
                     } else {
-                        render_rust_type_with_applied_binding(resolved_type(field.clone()), shared_types.clone(), source_indices.clone(), env.clone())
+                        render_rust_type_with_applied_binding(
+                            resolved_type(field.clone()),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        )
                     }
                 }
             }
@@ -13947,11 +14398,7 @@ pub fn render_variant_payload_type(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> String {
-    if ((n.connective.clone()
-        == panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone())
+    if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
     {
         {
@@ -14916,7 +15363,7 @@ pub fn return_type_is_unit(n: Rc<Node>, source_indices: HashMap<String, Rc<Newli
 
 pub fn rust_declared_return_is_callable(emit_info: Rc<EmitGraphInfo>) -> bool {
     match emit_info.fn_return_type.clone() {
-        Some(ret) => (ret.connective.clone() == Rc::new(Connective::Arrow)),
+        Some(ret) => (ret.connective.clone() == Connective::Arrow),
         None => false,
     }
 }
@@ -15984,11 +16431,7 @@ pub fn needs_reference_node(
     n: Rc<Node>,
     source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> bool {
-    if ((n.connective.clone()
-        != panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone())
+    if ((n.connective.clone() != Connective::NoConnective)
         || ((n.children.clone().len() as i64) > 0))
     {
         true
@@ -17767,11 +18210,7 @@ pub fn explicit_record_struct_name(
                 return result;
             }
         }
-        let has_structure = (inferred_node.connective.clone()
-            != panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone());
+        let has_structure = (inferred_node.connective.clone() != Connective::NoConnective);
         let n = if ((inferred_node.type_annotation.clone() != None) && has_structure.clone()) {
             match inferred_node.children.clone().first().cloned() {
                 Some(base) => base.clone(),
@@ -18656,7 +19095,7 @@ pub fn type_needs_rc_seen(
                         } else {
                             v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                         };
-                        let has_structure = (normed.connective.clone() != panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone());
+                        let has_structure = (normed.connective.clone() != Connective::NoConnective);
                         if (!has_structure.clone() && ((normed.children.clone().len() as i64) == 0))
                         {
                             break false;
@@ -19253,7 +19692,7 @@ pub fn emit_rust_expr_record_lit(
                         crate::v1_std_core::authored_name_at(si.clone(), expanded_rt.clone()),
                     ));
             let peeled_type_name = if ((((parent_enum.clone() == None)
-                && (expanded_rt.connective.clone() == Rc::new(Connective::Conj)))
+                && (expanded_rt.connective.clone() == Connective::Conj))
                 && (expanded_rt.ident_span.clone() != None))
                 && !concrete_peel_would_erase_optional_ctor.clone())
             {
@@ -24765,7 +25204,7 @@ pub fn rust_record_field_needs_fn_rc(
                 candidate.clone(),
                 field_name.clone(),
             ) {
-                Some(field_type) => (field_type.connective.clone() == Rc::new(Connective::Arrow)),
+                Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
                 None => false,
             } {
                 __found = true;
@@ -25646,7 +26085,7 @@ pub fn emit_typed_record_lit(
                         )
                         .resolved
                         .clone();
-                        if (resolved_struct.connective.clone() == Rc::new(Connective::Conj)) {
+                        if (resolved_struct.connective.clone() == Connective::Conj) {
                             {
                                 let resolved_field_names = Rc::new({
                                     let mut __result = Vec::new();
@@ -26098,7 +26537,7 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         ) {
                                             Some(struct_decl) => {
                                                 let is_struct = (struct_decl.connective.clone()
-                                                    == Rc::new(Connective::Conj));
+                                                    == Connective::Conj);
                                                 let pnames = Rc::new({
                                                     let mut __result = Vec::new();
                                                     for p in
@@ -28383,7 +28822,7 @@ pub fn emit_dry_run_branch_from_props(
     Some(mp) => match (*crate::v1_compiler_emit::emit_data_value_json(crate::v1_std_core::field_init_node_value(mp.clone()), source_indices.clone())).clone() {
     EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\");".to_string()),
     EmitterOutcome::Emitted { json: mock_json, .. } => {
-                    let is_multi_field_conj = ((inferred.connective.clone() == Rc::new(Connective::Conj)) && ((inferred.children.clone().len() as i64) > 1));
+                    let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
 if is_multi_field_conj.clone() {
                         {
                             let children = inferred.children.clone();
@@ -29136,7 +29575,7 @@ pub fn has_from_key_fields(
 ) -> bool {
     {
         let rt = resolved_type(op_node.clone());
-        let is_conj = (rt.connective.clone() == Rc::new(Connective::Conj));
+        let is_conj = (rt.connective.clone() == Connective::Conj);
         let from_key_count = (Rc::new({
             let mut __result = Vec::new();
             for ch in rt.children.clone().iter().cloned() {
@@ -30835,7 +31274,10 @@ pub fn rust_nominal_identity_data_expr(
     {
         let type_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), type_node.clone());
-        let is_identity_type = (((rust_nominal_identity_carrier_type_eligible(type_name.clone()) && (type_node.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((type_node.children.clone().len() as i64) == 0)) && ((type_node.params.clone().len() as i64) == 0));
+        let is_identity_type = (((rust_nominal_identity_carrier_type_eligible(type_name.clone())
+            && (type_node.connective.clone() == Connective::NoConnective))
+            && ((type_node.children.clone().len() as i64) == 0))
+            && ((type_node.params.clone().len() as i64) == 0));
         if is_identity_type.clone() {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprVar {
@@ -31014,7 +31456,7 @@ pub fn emit_data_def_body(
                                 struct_decl.children.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             );
-                            if ((struct_decl.connective.clone() == Rc::new(Connective::Conj))
+                            if ((struct_decl.connective.clone() == Connective::Conj)
                                 && ((unused.clone().len() as i64) > 0))
                             {
                                 "                _phantom: std::marker::PhantomData,\n".to_string()
@@ -32485,11 +32927,7 @@ pub fn emit_cli_param_type_node(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        let has_structure = (n.connective.clone()
-            != panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone());
+        let has_structure = (n.connective.clone() != Connective::NoConnective);
         if is_optional.clone() {
             v1_rt::concat(
                 v1_rt::concat(

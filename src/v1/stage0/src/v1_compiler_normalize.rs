@@ -6,16 +6,16 @@ pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ContainerSpellingVerdict::*;
 use crate::v1_std_core::ExprData::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, make_error_node, module_items,
 };
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, ContainerSpellingVerdict, ErrorNode, ExprData, NewlineIndex,
+    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, NewlineIndex,
+    Node,
 };
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -53,7 +53,7 @@ pub fn check_bare_containers(
                 } => {
                     if (((((n.children.clone().len() as i64) == 0)
                         && ((n.params.clone().len() as i64) == 0))
-                        && (n.connective.clone() == Rc::new(Connective::NoConnective)))
+                        && (n.connective.clone() == Connective::NoConnective))
                         && !has_structure.clone())
                     {
                         Rc::new(vec![make_error_node(

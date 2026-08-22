@@ -8,14 +8,13 @@ pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 pub use crate::v1_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
 };
-pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Cardinality, Connective, ExprData, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -356,7 +355,7 @@ pub fn check_service_field_access_node(
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    if ((base_type.connective.clone() == Rc::new(Connective::NoConnective))
+    if ((base_type.connective.clone() == Connective::NoConnective)
         && ((base_type.children.clone().len() as i64) == 0))
     {
         {
@@ -383,7 +382,7 @@ pub fn check_service_method_call_node(
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
-    if ((receiver_type.connective.clone() == Rc::new(Connective::NoConnective))
+    if ((receiver_type.connective.clone() == Connective::NoConnective)
         && ((receiver_type.children.clone().len() as i64) == 0))
     {
         match v1_rt::map_get(
@@ -421,7 +420,7 @@ pub fn check_service_method_call_node(
                                                 span: f.span.clone(),
                                                 ident_span: f.ident_span.clone(),
                                                 children: Rc::new(vec![]),
-                                                connective: Rc::new(Connective::NoConnective),
+                                                connective: Connective::NoConnective,
                                                 params: Rc::new(vec![]),
                                                 inferred: Some(Rc::new(InferredNode::Resolved {
                                                     node: param_node_type_expr(f.clone()),
@@ -436,11 +435,12 @@ pub fn check_service_method_call_node(
                                                 has_non_tail_self_call: false,
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
+                                                ident: None,
                                             }));
                                         }
                                         __result
                                     }),
-                                    connective: Rc::new(Connective::Conj),
+                                    connective: Connective::Conj,
                                     params: Rc::new(vec![]),
                                     inferred: None,
                                     return_cardinality: Cardinality::Required,
@@ -453,6 +453,7 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
                                 },
                                 op_params: op.params.clone(),
                             }))

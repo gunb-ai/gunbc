@@ -122,6 +122,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::ExprErrorKind::*;
 use crate::v1_std_core::FieldAccessStyle::*;
@@ -157,13 +158,11 @@ pub use crate::v1_std_core::{
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompilerDiagnostic, DeclRefCoords, DeclaredFuncSig, ErrorNode,
-    ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, UnaryOpKind, VarBindingKind,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncSig,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, UnaryOpKind,
+    VarBindingKind,
 };
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, Edge, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -547,7 +546,7 @@ pub fn collect_item_inductive_fields(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        match (*item.connective.clone()).clone() {
+        match item.connective.clone() {
             Connective::Disj => item.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
                 |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
@@ -608,10 +607,7 @@ pub fn nominal_ref_node(
         span: span.clone(),
         ident_span: ident_span.clone(),
         children: Rc::new(vec![]),
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: nominal_leaf_type(name.clone()),
@@ -626,6 +622,7 @@ pub fn nominal_ref_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -729,7 +726,7 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
             binding.resolved.clone(),
         ) {
             Some(parent) => {
-                let is_coproduct = (parent.connective.clone() == Rc::new(Connective::Disj));
+                let is_coproduct = (parent.connective.clone() == Connective::Disj);
                 if is_coproduct.clone() {
                     if crate::v1_std_core::has_child_named(
                         parent.clone(),
@@ -815,7 +812,7 @@ pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node
             name.clone(),
         ) {
             Some(resolved) => {
-                if ((resolved.connective.clone() == Rc::new(Connective::Disj))
+                if ((resolved.connective.clone() == Connective::Disj)
                     && crate::v1_std_core::has_child_named(
                         resolved.clone(),
                         crate::v1_std_core::qualified_last_segment(name.clone()),
@@ -836,8 +833,7 @@ pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node
                 binding.resolved.clone(),
             ) {
                 Some(owner) => {
-                    let owner_is_coproduct =
-                        (owner.connective.clone() == Rc::new(Connective::Disj));
+                    let owner_is_coproduct = (owner.connective.clone() == Connective::Disj);
                     if owner_is_coproduct.clone() {
                         if crate::v1_std_core::has_child_named(
                             owner.clone(),
@@ -1055,7 +1051,7 @@ pub fn constructor_reference_admission_early_refusal(
                 span.clone(),
                 scope.clone(),
             )),
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
         }
     }
 }
@@ -1158,11 +1154,7 @@ pub fn conformance_ground_kernel_scalar(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let plain_shape = ((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        let plain_shape = ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0));
         let required = (n.return_cardinality.clone() == Cardinality::Required);
         let kernel_named = crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
@@ -1178,11 +1170,7 @@ pub fn conformance_ground_element_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let shaped_container = (((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        let shaped_container = (((n.connective.clone() == Connective::NoConnective)
             && crate::v1_compiler_infer_types::node_is_element_collection(
                 n.clone(),
                 source_indices.clone(),
@@ -1285,7 +1273,7 @@ pub fn rejects_string_for_optional_coproduct_field(
         };
         let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
             == Cardinality::CardOptional)
-            && (expected_resolved.connective.clone() == Rc::new(Connective::Disj)));
+            && (expected_resolved.connective.clone() == Connective::Disj));
         let got_is_string = ((crate::v1_compiler_infer_types::node_type_shape(
             got.clone(),
             source_indices.clone(),
@@ -1333,7 +1321,7 @@ pub fn field_type_admits_bare_none(ft: Rc<Node>, scope: Rc<InferScope>) -> bool 
             required.clone(),
             scope.type_env.clone(),
         );
-        let declares_none_variant = ((expanded.connective.clone() == Rc::new(Connective::Disj))
+        let declares_none_variant = ((expanded.connective.clone() == Connective::Disj)
             && crate::v1_std_core::has_child_named(
                 expanded.clone(),
                 "None".to_string(),
@@ -1402,7 +1390,7 @@ pub fn field_type_is_optional_coproduct(ft: Rc<Node>, env: Rc<TypeEnv>) -> bool 
             None => crate::v1_std_core::with_required_cardinality(ft.clone()),
         };
         ((ft.return_cardinality.clone() == Cardinality::CardOptional)
-            && (inner.connective.clone() == Rc::new(Connective::Disj)))
+            && (inner.connective.clone() == Connective::Disj))
     }
 }
 
@@ -1455,7 +1443,7 @@ pub fn record_lit_expanded_from_expected(
                     scope.type_env.clone().source_indices.clone(),
                     exp.clone(),
                 ) == tn.clone())
-                    && (exp.connective.clone() == Rc::new(Connective::Conj)))
+                    && (exp.connective.clone() == Connective::Conj))
                     && ((exp.children.clone().len() as i64) > 0))
                 {
                     Some(exp.clone())
@@ -1528,7 +1516,7 @@ pub fn record_lit_expected_coproduct(
             };
             match nominal.clone() {
                 Some(n) => {
-                    if (n.connective.clone() == Rc::new(Connective::Disj)) {
+                    if (n.connective.clone() == Connective::Disj) {
                         Some(n.clone())
                     } else {
                         None
@@ -1594,7 +1582,7 @@ pub fn record_lit_fields_from_expected(
 ) -> Option<Rc<Vec<Rc<Node>>>> {
     match record_lit_expanded_from_expected(type_name.clone(), expected.clone(), scope.clone()) {
         Some(expanded) => {
-            if ((expanded.connective.clone() == Rc::new(Connective::Conj))
+            if ((expanded.connective.clone() == Connective::Conj)
                 && ((expanded.children.clone().len() as i64) > 0))
             {
                 Some(expanded.children.clone())
@@ -1669,6 +1657,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     has_non_tail_self_call: sf.has_non_tail_self_call.clone(),
     match_pattern: sf.match_pattern.clone(),
     expr_data: sf.expr_data.clone(),
+    ident: None,
 }));
                                             }
                                             __result
@@ -1808,11 +1797,7 @@ pub fn brand_grounds_transparently_to(
 ) -> bool {
     match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), name.clone()) {
         Some(resolved) => {
-            ((((resolved.connective.clone()
-                == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-                .clone())
+            ((((resolved.connective.clone() == Connective::NoConnective)
                 && ((resolved.children.clone().len() as i64) == 0))
                 && (resolved.inferred.clone() != None))
                 && match resolved.inferred.clone().as_deref().cloned() {
@@ -1848,8 +1833,8 @@ pub fn nominal_call_arg_brand_mismatch(
             crate::v1_std_core::authored_name_at(source_indices.clone(), formal.clone());
         let actual_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone());
-        ((((((((((formal.connective.clone() != Rc::new(Connective::Arrow))
-            && (actual.connective.clone() != Rc::new(Connective::Arrow)))
+        ((((((((((formal.connective.clone() != Connective::Arrow)
+            && (actual.connective.clone() != Connective::Arrow))
             && (formal_name.clone() != "".to_string()))
             && (actual_name.clone() != "".to_string()))
             && (crate::v1_std_core::qualified_last_segment(formal_name.clone())
@@ -1883,7 +1868,7 @@ pub fn nominal_call_arg_brand_mismatch(
 }
 
 pub fn is_where_refinement_type(ty: Rc<Node>) -> bool {
-    (((ty.connective.clone() == Rc::new(Connective::Conj)) && (ty.type_annotation.clone() != None))
+    (((ty.connective.clone() == Connective::Conj) && (ty.type_annotation.clone() != None))
         && ((ty.children.clone().len() as i64) == 1))
 }
 
@@ -1915,7 +1900,7 @@ pub fn where_refinement_chain(ty: Rc<Node>, type_env: Rc<TypeEnv>) -> Rc<Vec<Rc<
 pub fn type_expr_where_refinement_predicates(ty: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     if is_where_refinement_type(ty.clone()) {
         match ty.type_annotation.clone() {
-            Some(annot) => match (*annot.connective.clone()).clone() {
+            Some(annot) => match annot.connective.clone() {
                 Connective::Conj => annot.children.clone(),
                 _ => Rc::new(vec![annot.clone()]),
             },
@@ -2713,8 +2698,8 @@ pub fn kernel_value_declared_type_mismatch(
     type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (((formal.connective.clone() == Rc::new(Connective::Arrow))
-        || (actual.connective.clone() == Rc::new(Connective::Arrow)))
+    if (((formal.connective.clone() == Connective::Arrow)
+        || (actual.connective.clone() == Connective::Arrow))
         || ((actual.children.clone().len() as i64) > 0))
     {
         false
@@ -2757,24 +2742,22 @@ pub fn kernel_value_declared_type_mismatch(
                                     formal_name.clone(),
                                 ) {
                                     Some(decl) => {
-                                        let decl_is_refinement_over_actual = (((decl
-                                            .connective
-                                            .clone()
-                                            == Rc::new(Connective::Conj))
-                                            && ((decl.children.clone().len() as i64) == 1))
-                                            && ((decl.type_annotation.clone() != None)
-                                                || match decl.children.clone().first().cloned() {
-                                                    Some(refinement_child) => {
-                                                        (crate::v1_std_core::authored_name_at(
-                                                            source_indices.clone(),
-                                                            refinement_child.clone(),
-                                                        ) == actual_name.clone())
-                                                    }
-                                                    None => false,
-                                                }));
-                                        ((((decl.connective.clone() == Rc::new(Connective::Conj))
-                                            || (decl.connective.clone()
-                                                == Rc::new(Connective::Disj)))
+                                        let decl_is_refinement_over_actual =
+                                            (((decl.connective.clone() == Connective::Conj)
+                                                && ((decl.children.clone().len() as i64) == 1))
+                                                && ((decl.type_annotation.clone() != None)
+                                                    || match decl.children.clone().first().cloned()
+                                                    {
+                                                        Some(refinement_child) => {
+                                                            (crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                refinement_child.clone(),
+                                                            ) == actual_name.clone())
+                                                        }
+                                                        None => false,
+                                                    }));
+                                        ((((decl.connective.clone() == Connective::Conj)
+                                            || (decl.connective.clone() == Connective::Disj))
                                             && ((decl.children.clone().len() as i64) > 0))
                                             && (decl_is_refinement_over_actual.clone() == false))
                                     }
@@ -3067,7 +3050,7 @@ pub fn structured_application_site_type_mismatch_with_peeled(
     None => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), formal_name.clone()),
 };
 match formal_decl.clone() {
-    Some(decl) => match (*decl.connective.clone()).clone() {
+    Some(decl) => match decl.connective.clone() {
     Connective::Disj => if crate::v1_std_core::has_child_named(decl.clone(), lit_name.clone(), source_indices.clone()) {
                                                         false
                                                     } else {
@@ -3087,7 +3070,7 @@ match formal_decl.clone() {
 },
     None => if crate::std_types::is_kernel_type(formal_name.clone()) {
                                                         match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
-    Some(lit_decl) => ((lit_decl.connective.clone() == Rc::new(Connective::Conj)) || (lit_decl.connective.clone() == Rc::new(Connective::Disj))),
+    Some(lit_decl) => ((lit_decl.connective.clone() == Connective::Conj) || (lit_decl.connective.clone() == Connective::Disj)),
     None => match variant_owner_node(scope.clone(), lit_name.clone()) {
     Some(_) => true,
     None => false,
@@ -4929,7 +4912,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
@@ -4942,6 +4925,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -5039,7 +5023,7 @@ pub fn annotate_pattern_parent_enums(
                             } else {
                                 {
                                     let is_coproduct = (resolved_scrut_node.connective.clone()
-                                        == Rc::new(Connective::Disj));
+                                        == Connective::Disj);
                                     if is_coproduct.clone() {
                                         Some(scrutinee_name.clone())
                                     } else {
@@ -5645,7 +5629,7 @@ let fold_callable = Rc::new(Node {
     span: crate::v1_std_core::no_span(),
     ident_span: None,
     children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
+    connective: Connective::NoConnective,
     params: fold_params.clone(),
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -5658,6 +5642,7 @@ let fold_callable = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: None,
 });
 let lam_value = crate::v1_std_core::arg_value(a.clone());
 let prov_map = match (*elem_provenance.clone()).clone() {
@@ -5789,11 +5774,7 @@ pub fn infer_arg_with_element_type(
 
 pub fn binding_is_namespace_root_nominal(binding: Rc<TypeBinding>) -> bool {
     (((binding.resolved.clone().name.clone() == binding.name.clone())
-        && (binding.resolved.clone().connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone()))
+        && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
         && ((binding.resolved.clone().children.clone().len() as i64) == 0))
 }
 
@@ -6659,6 +6640,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
     match_pattern: receiver.match_pattern.clone(),
     expr_data: receiver.expr_data.clone(),
+    ident: None,
 })
                             } else {
                                 receiver.clone()
@@ -8604,11 +8586,7 @@ pub fn is_deferred_field_access_base(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     if ((n.inferred.clone() != None) && is_type_variable(n.inferred.clone().clone().unwrap())) {
         true
     } else {
-        if (((n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && (n.inferred.clone() == None))
         {
@@ -8630,30 +8608,46 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     if is_deferred_field_access_base(n.clone(), env.clone()) {
         false
     } else {
-        if ((n.connective.clone() == Rc::new(Connective::Conj))
-            || (n.connective.clone() == Rc::new(Connective::Disj)))
+        if ((n.connective.clone() == Connective::Conj)
+            || (n.connective.clone() == Connective::Disj))
         {
             false
         } else {
-            if (((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) > 0)) && (n.inferred.clone() == None)) {
+            if (((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) > 0))
+                && (n.inferred.clone() == None))
+            {
                 crate::v1_compiler_infer_resolve::is_user_generic_use_site(n.clone(), env.clone())
             } else {
                 match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-    Some(binding) => if ((binding.connective.clone() == Rc::new(Connective::Conj)) || (binding.connective.clone() == Rc::new(Connective::Disj))) {
-                    ((n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((n.children.clone().len() as i64) == 0))
-                } else {
-                    if (((binding.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((binding.children.clone().len() as i64) == 0)) && (binding.inferred.clone() != None)) {
-                        true
-                    } else {
-                        if ((binding.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((binding.children.clone().len() as i64) > 0)) {
-                            (crate::v1_compiler_infer_resolve::is_user_generic_use_site(binding.clone(), env.clone()) || (binding.inferred.clone() != None))
+                    Some(binding) => {
+                        if ((binding.connective.clone() == Connective::Conj)
+                            || (binding.connective.clone() == Connective::Disj))
+                        {
+                            ((n.connective.clone() == Connective::NoConnective)
+                                && ((n.children.clone().len() as i64) == 0))
                         } else {
-                            false
+                            if (((binding.connective.clone() == Connective::NoConnective)
+                                && ((binding.children.clone().len() as i64) == 0))
+                                && (binding.inferred.clone() != None))
+                            {
+                                true
+                            } else {
+                                if ((binding.connective.clone() == Connective::NoConnective)
+                                    && ((binding.children.clone().len() as i64) > 0))
+                                {
+                                    (crate::v1_compiler_infer_resolve::is_user_generic_use_site(
+                                        binding.clone(),
+                                        env.clone(),
+                                    ) || (binding.inferred.clone() != None))
+                                } else {
+                                    false
+                                }
+                            }
                         }
                     }
-                },
-    None => false,
-}
+                    None => false,
+                }
             }
         }
     }
@@ -8689,42 +8683,50 @@ pub fn peel_alias_once_for_field_access(
             module_name.clone(),
         );
         let resolved_once = once.resolved.clone();
-        if ((resolved_once.connective.clone() == Rc::new(Connective::Conj))
-            || (resolved_once.connective.clone() == Rc::new(Connective::Disj)))
+        if ((resolved_once.connective.clone() == Connective::Conj)
+            || (resolved_once.connective.clone() == Connective::Disj))
         {
             once
         } else {
-            if (((resolved_once.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((resolved_once.children.clone().len() as i64) > 0)) && (resolved_once.inferred.clone() == None)) {
-                    if (resolved_once.clone() == n.clone()) {
-                        once
-                    } else {
-                        {
-                            let rest = peel_alias_once_for_field_access(resolved_once.clone(), env.clone(), module_name.clone());
-Rc::new(NodeResolveResult {
-    resolved: rest.resolved.clone(),
-    diagnostics: v1_rt::concat(once.diagnostics.clone(), rest.diagnostics.clone()),
-})
-}
-                    }
-                } else {
+            if (((resolved_once.connective.clone() == Connective::NoConnective)
+                && ((resolved_once.children.clone().len() as i64) > 0))
+                && (resolved_once.inferred.clone() == None))
+            {
+                if (resolved_once.clone() == n.clone()) {
                     once
+                } else {
+                    {
+                        let rest = peel_alias_once_for_field_access(
+                            resolved_once.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                        );
+                        Rc::new(NodeResolveResult {
+                            resolved: rest.resolved.clone(),
+                            diagnostics: v1_rt::concat(
+                                once.diagnostics.clone(),
+                                rest.diagnostics.clone(),
+                            ),
+                        })
+                    }
                 }
+            } else {
+                once
+            }
         }
     })
 }
 
 pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
-    match (*normed.connective.clone()).clone() {
+    match normed.connective.clone() {
         Connective::Conj => normed,
         Connective::Disj => normed,
         _ => match normed.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                match (*target.connective.clone()).clone() {
-                    Connective::Conj => target.clone(),
-                    Connective::Disj => target.clone(),
-                    _ => normed,
-                }
-            }
+            Some(InferredNode::Resolved { node: target, .. }) => match target.connective.clone() {
+                Connective::Conj => target.clone(),
+                Connective::Disj => target.clone(),
+                _ => normed,
+            },
             _ => normed,
         },
     }
@@ -8737,11 +8739,7 @@ pub fn record_field_type_is_unresolved_param(
 ) -> bool {
     match crate::v1_compiler_infer_lookup::product_field_result_type(field.clone()) {
         Some(ft) => {
-            if ((ft.connective.clone()
-                == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-                .clone())
+            if ((ft.connective.clone() == Connective::NoConnective)
                 && ((ft.children.clone().len() as i64) == 0))
             {
                 match ft.inferred.clone() {
@@ -8876,7 +8874,9 @@ pub fn alias_chain_target_after_args(
                     target.clone(),
                     type_args.clone(),
                 );
-                let is_parameterized_alias = (((decl.inferred.clone() != None) && ((decl.children.clone().len() as i64) == 0)) && (decl.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()));
+                let is_parameterized_alias = (((decl.inferred.clone() != None)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.connective.clone() == Connective::NoConnective));
                 if is_parameterized_alias.clone() {
                     match decl.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved {
@@ -8897,13 +8897,7 @@ pub fn alias_chain_target_after_args(
 }
 
 pub fn alias_chain_carrier(n: Rc<Node>) -> Rc<Node> {
-    if ((n.connective.clone()
-        == panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone())
-        && (n.name.clone() != "".to_string()))
-    {
+    if ((n.connective.clone() == Connective::NoConnective) && (n.name.clone() != "".to_string())) {
         n
     } else {
         structural_from_expanded_type(n)
@@ -8940,8 +8934,8 @@ pub fn expand_alias_chain_for_field_access(
                 peeled.clone(),
             ),
         );
-        let is_record = ((structural.connective.clone() == Rc::new(Connective::Conj))
-            || (structural.connective.clone() == Rc::new(Connective::Disj)));
+        let is_record = ((structural.connective.clone() == Connective::Conj)
+            || (structural.connective.clone() == Connective::Disj));
         if is_record.clone() {
             {
                 let resolved_record =
@@ -9129,14 +9123,17 @@ pub fn record_lit_alias_struct_expansion(
         type_name.clone(),
     ) {
         Some(decl) => {
-            let to_expand = if (((decl.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()) && ((decl.children.clone().len() as i64) == 0)) && (decl.inferred.clone() != None)) {
-            match decl.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
-    _ => decl.clone(),
-}
-        } else {
-            decl.clone()
-        };
+            let to_expand = if (((decl.connective.clone() == Connective::NoConnective)
+                && ((decl.children.clone().len() as i64) == 0))
+                && (decl.inferred.clone() != None))
+            {
+                match decl.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+                    _ => decl.clone(),
+                }
+            } else {
+                decl.clone()
+            };
             Some(expand_type_for_field_access(
                 to_expand.clone(),
                 scope.type_env.clone(),
@@ -9159,7 +9156,7 @@ pub fn record_lit_construction_field_names(
         ) {
             Some(decl) => {
                 if ((((decl.params.clone().len() as i64) == 0)
-                    && (decl.connective.clone() == Rc::new(Connective::Conj)))
+                    && (decl.connective.clone() == Connective::Conj))
                     && ((decl.children.clone().len() as i64) > 0))
                 {
                     Some(Rc::new({
@@ -9197,7 +9194,7 @@ pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<In
                             )
                             .resolved
                             .clone();
-                            let fields = if (ea.connective.clone() == Rc::new(Connective::Conj)) {
+                            let fields = if (ea.connective.clone() == Connective::Conj) {
                                 ea.children.clone()
                             } else {
                                 arm.children.clone()
@@ -9471,7 +9468,7 @@ pub fn infer_record_lit_structural(
                             None => match alias_struct_expansion.clone() {
                                 Some(expansion) => {
                                     if ((expansion.resolved.clone().connective.clone()
-                                        == Rc::new(Connective::Conj))
+                                        == Connective::Conj)
                                         && ((expansion.resolved.clone().children.clone().len()
                                             as i64)
                                             > 0))
@@ -9545,7 +9542,7 @@ pub fn infer_record_lit_structural(
                             tn_str.clone(),
                         ) {
                             Some(decl) => {
-                                if (((decl.connective.clone() == Rc::new(Connective::Conj))
+                                if (((decl.connective.clone() == Connective::Conj)
                                     && ((decl.params.clone().len() as i64) == 0))
                                     && ((decl.children.clone().len() as i64) > 0))
                                 {
@@ -9753,24 +9750,28 @@ Rc::new(FieldInferResult {
                     let mut __result = Vec::new();
                     for fir in fi_infer_results.clone().iter().cloned() {
                         __result.push(Rc::new(Node {
-    name: crate::v1_std_core::field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_indices.clone()),
-    span: fir.typed_field.clone().span.clone(),
-    ident_span: fir.typed_field.clone().ident_span.clone(),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: fir.infer_result.clone().typed.clone().inferred.clone(),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-}));
+                            name: crate::v1_std_core::field_init_node_name_at(
+                                fir.typed_field.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            span: fir.typed_field.clone().span.clone(),
+                            ident_span: fir.typed_field.clone().ident_span.clone(),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: Rc::new(vec![]),
+                            inferred: fir.infer_result.clone().typed.clone().inferred.clone(),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        }));
                     }
                     __result
                 });
@@ -9779,7 +9780,7 @@ Rc::new(FieldInferResult {
                     span: crate::v1_std_core::no_span(),
                     ident_span: None,
                     children: child_nodes.clone(),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -9792,6 +9793,7 @@ Rc::new(FieldInferResult {
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 let typed_field_nodes = typed_fields.clone();
                 let texpr = crate::v1_std_core::make_expr_node(
@@ -9849,7 +9851,7 @@ Rc::new(FieldInferResult {
                                 Some(_) => {
                                     record_lit_expected_coproduct(expected.clone(), scope.clone())
                                 }
-                                None => Rc::new(NamedEdgeTargetLookup::Absent),
+                                None => None,
                             },
                         }
                     }
@@ -12031,6 +12033,7 @@ crate::v1_std_core::make_arg_node(crate::v1_std_core::arg_name_at(child.clone(),
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
                     }),
+                    ident: None,
                 })
             }
             ExprData::ExprMatch => {
@@ -12333,6 +12336,7 @@ crate::v1_std_core::make_arm_node(crate::v1_std_core::arm_pattern(arm_node.clone
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    ident: None,
                 })
             }
             ExprData::ExprLet => {
@@ -12446,6 +12450,7 @@ crate::v1_std_core::make_arm_node(crate::v1_std_core::arm_pattern(arm_node.clone
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    ident: None,
                 })
             }
             ExprData::ExprBlock => {
@@ -12533,6 +12538,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    ident: None,
                 })
             }
             ExprData::ExprMethodCall {
@@ -12794,6 +12800,7 @@ Rc::new(BlockAnnotateAcc {
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
                             expr_data: body.expr_data.clone(),
+                            ident: None,
                         })
                     }
                 } else {
@@ -12864,6 +12871,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     expr_data: body.expr_data.clone(),
+                    ident: None,
                 })
             }
             _ => crate::v1_std_core::map_children(body.clone(), |child| {
@@ -14035,7 +14043,7 @@ pub fn compute_variant_provenance(
         let rt_def =
             crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), rt_name.clone());
         match rt_def.clone() {
-            Some(def_node) => match (*def_node.connective.clone()).clone() {
+            Some(def_node) => match def_node.connective.clone() {
                 Connective::Disj => {
                     let param_names = Rc::new({
                         let mut __result = Vec::new();
@@ -14792,6 +14800,7 @@ pub fn infer_property_values(
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
                             expr_data: p.expr_data.clone(),
+                            ident: None,
                         }),
                         val_result.diagnostics.clone(),
                     )
@@ -14854,6 +14863,7 @@ pub fn infer_auth_source_properties(
                                     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                                     match_pattern: p.match_pattern.clone(),
                                     expr_data: p.expr_data.clone(),
+                                    ident: None,
                                 }),
                                 val_result.diagnostics.clone(),
                             )
@@ -14914,6 +14924,7 @@ pub fn infer_transport_node(
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
                     expr_data: t.expr_data.clone(),
+                    ident: None,
                 })),
                 diagnostics: prop_result.diagnostics.clone(),
             })
@@ -14936,11 +14947,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         let props_result = infer_auth_source_properties(item.properties.clone(), scope.clone());
         let typed_properties = props_result.props.clone();
         let props_diags = props_result.diagnostics.clone();
-        if ((item.connective.clone()
-            != panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
         {
             Rc::new(TypedItemResult {
@@ -14970,6 +14977,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 },
                 diagnostics: v1_rt::concat(transport_diags.clone(), props_diags.clone()),
             })
@@ -15065,27 +15073,46 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         body_typed.clone()
                     };
                     Rc::new(TypedItemResult {
-    item: Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(infer_item(c.clone(), scope.clone()).item.clone()); } __result }),
-    params: item.params.clone(),
-    inferred: inferred_ret.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: item.uses.clone(),
-    body: Some(annotated_body.clone()),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    transport: typed_transport.clone(),
-    properties: typed_properties.clone(),
-    type_annotation: typed_anno.clone(),
-    is_self_recursive: is_recursive.clone(),
-    has_non_tail_self_call: crate::v1_std_core::expr_has_non_tail_self_call(body_typed.clone(), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), item.clone()), true, scope.type_env.clone().source_indices.clone()),
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    diagnostics: v1_rt::concat(v1_rt::concat(transport_diags.clone(), props_diags.clone()), v1_rt::concat(body_diags.clone(), return_conformance_diags.clone())),
-})
+                        item: Node {
+                            name: item.name.clone(),
+                            span: item.span.clone(),
+                            ident_span: item.ident_span.clone(),
+                            children: Rc::new({
+                                let mut __result = Vec::new();
+                                for c in item.children.clone().iter().cloned() {
+                                    __result
+                                        .push(infer_item(c.clone(), scope.clone()).item.clone());
+                                }
+                                __result
+                            }),
+                            params: item.params.clone(),
+                            inferred: inferred_ret.clone(),
+                            return_cardinality: item.return_cardinality.clone(),
+                            uses: item.uses.clone(),
+                            body: Some(annotated_body.clone()),
+                            connective: Connective::NoConnective,
+                            transport: typed_transport.clone(),
+                            properties: typed_properties.clone(),
+                            type_annotation: typed_anno.clone(),
+                            is_self_recursive: is_recursive.clone(),
+                            has_non_tail_self_call: crate::v1_std_core::expr_has_non_tail_self_call(
+                                body_typed.clone(),
+                                crate::v1_std_core::authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    item.clone(),
+                                ),
+                                true,
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        },
+                        diagnostics: v1_rt::concat(
+                            v1_rt::concat(transport_diags.clone(), props_diags.clone()),
+                            v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
+                        ),
+                    })
                 }
             } else {
                 if (((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0))
@@ -15133,27 +15160,31 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                         );
                         Rc::new(TypedItemResult {
-    item: Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    params: Rc::new(vec![]),
-    inferred: item.inferred.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: Some(body_typed.clone()),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    transport: typed_transport.clone(),
-    properties: typed_properties.clone(),
-    type_annotation: typed_anno.clone(),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    diagnostics: v1_rt::concat(v1_rt::concat(transport_diags.clone(), props_diags.clone()), body_diags.clone()),
-})
+                            item: Node {
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                params: Rc::new(vec![]),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: Rc::new(vec![]),
+                                body: Some(body_typed.clone()),
+                                connective: Connective::NoConnective,
+                                transport: typed_transport.clone(),
+                                properties: typed_properties.clone(),
+                                type_annotation: typed_anno.clone(),
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            },
+                            diagnostics: v1_rt::concat(
+                                v1_rt::concat(transport_diags.clone(), props_diags.clone()),
+                                body_diags.clone(),
+                            ),
+                        })
                     }
                 } else {
                     if ((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0)) {
@@ -15192,59 +15223,75 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 val_typed.inferred.clone()
                             };
                             Rc::new(TypedItemResult {
-    item: Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    params: Rc::new(vec![]),
-    inferred: inferred_ret.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: Some(val_typed.clone()),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    transport: typed_transport.clone(),
-    properties: typed_properties.clone(),
-    type_annotation: typed_anno.clone(),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    diagnostics: v1_rt::concat(v1_rt::concat(transport_diags.clone(), props_diags.clone()), val_diags.clone()),
-})
+                                item: Node {
+                                    name: item.name.clone(),
+                                    span: item.span.clone(),
+                                    ident_span: item.ident_span.clone(),
+                                    children: Rc::new(vec![]),
+                                    params: Rc::new(vec![]),
+                                    inferred: inferred_ret.clone(),
+                                    return_cardinality: item.return_cardinality.clone(),
+                                    uses: Rc::new(vec![]),
+                                    body: Some(val_typed.clone()),
+                                    connective: Connective::NoConnective,
+                                    transport: typed_transport.clone(),
+                                    properties: typed_properties.clone(),
+                                    type_annotation: typed_anno.clone(),
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                },
+                                diagnostics: v1_rt::concat(
+                                    v1_rt::concat(transport_diags.clone(), props_diags.clone()),
+                                    val_diags.clone(),
+                                ),
+                            })
                         }
                     } else {
                         if (((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
                         {
                             Rc::new(TypedItemResult {
-    item: Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(infer_item(c.clone(), scope.clone()).item.clone()); } __result }),
-    params: item.params.clone(),
-    inferred: if (item.inferred.clone() != None) {
-                                    item.inferred.clone()
-                                } else {
-                                    Some(Rc::new(InferredNode::Resolved {
-    node: crate::v1_std_core::unit_type(),
-}))
+                                item: Node {
+                                    name: item.name.clone(),
+                                    span: item.span.clone(),
+                                    ident_span: item.ident_span.clone(),
+                                    children: Rc::new({
+                                        let mut __result = Vec::new();
+                                        for c in item.children.clone().iter().cloned() {
+                                            __result.push(
+                                                infer_item(c.clone(), scope.clone()).item.clone(),
+                                            );
+                                        }
+                                        __result
+                                    }),
+                                    params: item.params.clone(),
+                                    inferred: if (item.inferred.clone() != None) {
+                                        item.inferred.clone()
+                                    } else {
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: crate::v1_std_core::unit_type(),
+                                        }))
+                                    },
+                                    return_cardinality: item.return_cardinality.clone(),
+                                    uses: item.uses.clone(),
+                                    body: None,
+                                    connective: Connective::NoConnective,
+                                    transport: typed_transport.clone(),
+                                    properties: typed_properties.clone(),
+                                    type_annotation: typed_anno.clone(),
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
                                 },
-    return_cardinality: item.return_cardinality.clone(),
-    uses: item.uses.clone(),
-    body: None,
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    transport: typed_transport.clone(),
-    properties: typed_properties.clone(),
-    type_annotation: typed_anno.clone(),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    diagnostics: v1_rt::concat(transport_diags.clone(), props_diags.clone()),
-})
+                                diagnostics: v1_rt::concat(
+                                    transport_diags.clone(),
+                                    props_diags.clone(),
+                                ),
+                            })
                         } else {
                             Rc::new(TypedItemResult {
                                 item: Node {
@@ -15279,6 +15326,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
                                 },
                                 diagnostics: v1_rt::concat(
                                     transport_diags.clone(),
@@ -15403,7 +15451,11 @@ pub fn param_is_generic_decl(
             Some(inf) => is_type_variable(inf.clone()),
             None => false,
         };
-        (((((pt.children.clone().len() as i64) == 0) && (pt.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && (pname.clone() != "".to_string())) && ((pname.clone() == tname.clone()) || (type_expr_is_var.clone() && (pname.clone() == pt.name.clone()))))
+        (((((pt.children.clone().len() as i64) == 0)
+            && (pt.connective.clone() == Connective::NoConnective))
+            && (pname.clone() != "".to_string()))
+            && ((pname.clone() == tname.clone())
+                || (type_expr_is_var.clone() && (pname.clone() == pt.name.clone()))))
     }
 }
 
@@ -15416,7 +15468,8 @@ pub fn unify_generics(
 ) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
-        let f_bare = (((formal.children.clone().len() as i64) == 0) && (formal.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()));
+        let f_bare = (((formal.children.clone().len() as i64) == 0)
+            && (formal.connective.clone() == Connective::NoConnective));
         if ((f_bare.clone()
             || match formal.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
@@ -15672,7 +15725,9 @@ pub fn substitute_generics_apply(
             }
             _ => {
                 let nm = type_node_label(n.clone(), source_indices.clone());
-                let is_bare = ((((n.children.clone().len() as i64) == 0) && (n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((n.params.clone().len() as i64) == 0));
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
                 if is_bare.clone() {
                     match v1_rt::map_get(&subst, nm.clone()) {
                         Some(c) => c.clone(),
@@ -15743,6 +15798,7 @@ pub fn substitute_generics_apply(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
+                                ident: None,
                             })
                         }
                     }
@@ -15773,10 +15829,7 @@ pub fn deps_excluding_leaf_self(
             source_indices.clone(),
         );
         let is_bare_self = ((((b.resolved.clone().connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+            == Connective::NoConnective)
             && ((b.resolved.clone().children.clone().len() as i64) == 0))
             && ((deps0.clone().len() as i64) == 1))
             && {
@@ -15904,7 +15957,7 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
             v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
                 let is_coproduct =
-                    (binding.resolved.clone().connective.clone() == Rc::new(Connective::Disj));
+                    (binding.resolved.clone().connective.clone() == Connective::Disj);
                 if is_coproduct.clone() {
                     binding
                         .resolved
@@ -16140,7 +16193,7 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
         ItemKind::TypeItem => Some(ExportKind::ExportType),
         ItemKind::DataItem => Some(ExportKind::ExportData),
         ItemKind::ServiceItem => Some(ExportKind::ExportService),
-        ItemKind::OtherItem => Rc::new(NamedEdgeTargetLookup::Absent),
+        ItemKind::OtherItem => None,
     }
 }
 
@@ -16183,7 +16236,7 @@ pub fn export_entry_from_item(
     {
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         match export_kind_of_item_kind(crate::v1_compiler_infer_items::item_kind(item.clone())) {
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
             Some(kind) => match kind.clone() {
                 ExportKind::ExportFn => Some(Rc::new(ExportEntry {
                     name: name.clone(),
@@ -16219,7 +16272,7 @@ pub fn export_entry_from_item(
                             ),
                         ),
                     })),
-                    None => Rc::new(NamedEdgeTargetLookup::Absent),
+                    None => None,
                 },
             },
         }
@@ -16282,7 +16335,7 @@ pub fn local_binding_for_item(
         None
     } else {
         {
-            let has_structure = (item.connective.clone() != panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone());
+            let has_structure = (item.connective.clone() != Connective::NoConnective);
             if has_structure.clone() {
                 {
                     let type_node = Rc::new(Node {
@@ -16303,6 +16356,7 @@ pub fn local_binding_for_item(
                         has_non_tail_self_call: false,
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
                     });
                     Some(Rc::new(TypeBinding {
                         name: crate::v1_std_core::authored_name_at(
@@ -16317,24 +16371,25 @@ pub fn local_binding_for_item(
                 if ((item.body.clone() != None) && (item.transport.clone() == None)) {
                     {
                         let fn_node = Rc::new(Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: item.params.clone(),
-    inferred: item.inferred.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: item.properties.clone(),
-    type_annotation: item.type_annotation.clone(),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                            name: item.name.clone(),
+                            span: item.span.clone(),
+                            ident_span: item.ident_span.clone(),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: item.params.clone(),
+                            inferred: item.inferred.clone(),
+                            return_cardinality: item.return_cardinality.clone(),
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: item.properties.clone(),
+                            type_annotation: item.type_annotation.clone(),
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        });
                         Some(Rc::new(TypeBinding {
                             name: crate::v1_std_core::authored_name_at(
                                 source_indices.clone(),
@@ -16351,24 +16406,25 @@ pub fn local_binding_for_item(
                     {
                         {
                             let alias_node = Rc::new(Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: item.inferred.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            });
                             Some(Rc::new(TypeBinding {
                                 name: crate::v1_std_core::authored_name_at(
                                     source_indices.clone(),
@@ -16401,36 +16457,54 @@ pub fn local_binding_for_item(
                                 }))
                             }
                         } else {
-                            if (((((item.params.clone().len() as i64) > 0) && (item.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && (item.body.clone() == None)) && (item.transport.clone() == None)) {
+                            if (((((item.params.clone().len() as i64) > 0)
+                                && (item.connective.clone() == Connective::NoConnective))
+                                && (item.body.clone() == None))
+                                && (item.transport.clone() == None))
+                            {
                                 {
                                     let bare_node = Rc::new(Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: item.params.clone(),
-    inferred: item.inferred.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
-Some(Rc::new(TypeBinding {
-    name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-    resolved: bare_node.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-}))
-}
+                                        name: item.name.clone(),
+                                        span: item.span.clone(),
+                                        ident_span: item.ident_span.clone(),
+                                        children: Rc::new(vec![]),
+                                        connective: Connective::NoConnective,
+                                        params: item.params.clone(),
+                                        inferred: item.inferred.clone(),
+                                        return_cardinality: item.return_cardinality.clone(),
+                                        uses: Rc::new(vec![]),
+                                        body: None,
+                                        transport: None,
+                                        properties: Rc::new(vec![]),
+                                        type_annotation: None,
+                                        is_self_recursive: false,
+                                        has_non_tail_self_call: false,
+                                        match_pattern: None,
+                                        expr_data: Rc::new(ExprData::NoExprData),
+                                        ident: None,
+                                    });
+                                    Some(Rc::new(TypeBinding {
+                                        name: crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ),
+                                        resolved: bare_node.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }))
+                                }
                             } else {
-                                if ((((((item.properties.clone().len() as i64) > 0) && (item.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && (item.transport.clone() == None)) && (item.inferred.clone() == None)) && ((item.params.clone().len() as i64) == 0)) {
-                                    Some(nominal_type_binding(crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())))
+                                if ((((((item.properties.clone().len() as i64) > 0)
+                                    && (item.connective.clone() == Connective::NoConnective))
+                                    && (item.transport.clone() == None))
+                                    && (item.inferred.clone() == None))
+                                    && ((item.params.clone().len() as i64) == 0))
+                                {
+                                    Some(nominal_type_binding(
+                                        crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ),
+                                    ))
                                 } else {
                                     None
                                 }
@@ -16508,8 +16582,7 @@ pub fn disj_variant_name_counts(
 ) -> Rc<HashMap<String, i64>> {
     items.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
-        |counts: Rc<HashMap<String, i64>>, item: Rc<Node>| match (*item.connective.clone()).clone()
-        {
+        |counts: Rc<HashMap<String, i64>>, item: Rc<Node>| match item.connective.clone() {
             Connective::Disj => item.children.clone().iter().cloned().fold(
                 counts.clone(),
                 |c: Rc<HashMap<String, i64>>, child: Rc<Node>| {
@@ -16555,9 +16628,7 @@ pub fn corpus_disj_variant_name_counts_nodes(
                 .cloned()
                 .fold(
                     counts,
-                    |c: Rc<HashMap<String, i64>>, item: Rc<Node>| match (*item.connective.clone())
-                        .clone()
-                    {
+                    |c: Rc<HashMap<String, i64>>, item: Rc<Node>| match item.connective.clone() {
                         Connective::Disj => item.children.clone().iter().cloned().fold(
                             c.clone(),
                             |c2: Rc<HashMap<String, i64>>, child: Rc<Node>| {
@@ -16624,7 +16695,7 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-        items.clone().iter().cloned().fold(index.clone(), |acc: Rc<SymbolIndex>, item: Rc<Node>| match (*item.connective.clone()).clone() {
+        items.clone().iter().cloned().fold(index.clone(), |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
     Connective::Disj => {
             let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
 item.children.clone().iter().cloned().fold(acc.clone(), |a2: Rc<SymbolIndex>, child: Rc<Node>| {
@@ -16746,11 +16817,7 @@ pub fn census_binding_is_borrowable_fn_sig(
 ) -> bool {
     {
         let node = binding.resolved.clone();
-        ((((((node.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        ((((((node.connective.clone() == Connective::NoConnective)
             && ((node.children.clone().len() as i64) == 0))
             && (node.body.clone() == None))
             && (node.transport.clone() == None))
@@ -16857,7 +16924,9 @@ pub fn stamp_field_type_from_decl_params(
         field_type.clone()
     } else {
         {
-            let is_bare = ((((field_type.children.clone().len() as i64) == 0) && (field_type.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((field_type.params.clone().len() as i64) == 0));
+            let is_bare = ((((field_type.children.clone().len() as i64) == 0)
+                && (field_type.connective.clone() == Connective::NoConnective))
+                && ((field_type.params.clone().len() as i64) == 0));
             if is_bare.clone() {
                 {
                     let nm = type_node_label(field_type.clone(), source_indices.clone());
@@ -16898,7 +16967,9 @@ pub fn stamp_type_param_occurrences(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_bare = ((((n.children.clone().len() as i64) == 0) && (n.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((n.params.clone().len() as i64) == 0));
+        let is_bare = ((((n.children.clone().len() as i64) == 0)
+            && (n.connective.clone() == Connective::NoConnective))
+            && ((n.params.clone().len() as i64) == 0));
         if is_bare.clone() {
             if (n.inferred.clone() == None) {
                 {
@@ -17062,12 +17133,7 @@ pub fn census_upgrade_binding(
             }
         }
     } else {
-        if (binding.resolved.clone().connective.clone()
-            != panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
-        {
+        if (binding.resolved.clone().connective.clone() != Connective::NoConnective) {
             census_upgrade_type_decl_binding(
                 binding.clone(),
                 module_path.clone(),
@@ -17096,11 +17162,7 @@ pub fn census_upgrade_type_expr(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if ((raw.connective.clone()
-            != panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
+        if ((raw.connective.clone() != Connective::NoConnective)
             && ((raw.children.clone().len() as i64) > 0))
         {
             {
@@ -17409,8 +17471,7 @@ pub fn build_symbol_index_qualified_fill(
                 let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
                 items.clone().iter().cloned().fold(
                     with_items.clone(),
-                    |acc: Rc<SymbolIndex>, item: Rc<Node>| match (*item.connective.clone()).clone()
-                    {
+                    |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
                         Connective::Disj => item.children.clone().iter().cloned().fold(
                             acc.clone(),
                             |a2: Rc<SymbolIndex>, child: Rc<Node>| {
@@ -17537,29 +17598,44 @@ pub fn build_type_env(
             },
         );
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set())).iter().cloned().fold(v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v1_rt::rc_map_insert(acc, crate::v1_std_core::intern(intern_table.clone(), name.clone()).id.clone(), Rc::new(TypeBinding {
-    name: name.clone(),
-    resolved: Node {
-    name: name.clone(),
-    span: kernel_span(name.clone()),
-    ident_span: Some(kernel_span(name.clone())),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})));
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::v1_std_core::intern(intern_table.clone(), name.clone())
+                            .id
+                            .clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: Node {
+                                name: name.clone(),
+                                span: kernel_span(name.clone()),
+                                ident_span: Some(kernel_span(name.clone())),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: None,
+                                return_cardinality: Cardinality::Required,
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            },
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    )
+                },
+            );
         let unit_span = kernel_span("Unit".to_string());
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings_base.clone(),
@@ -17573,7 +17649,7 @@ pub fn build_type_env(
                     span: unit_span.clone(),
                     ident_span: Some(unit_span.clone()),
                     children: Rc::new(vec![]),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -17586,6 +17662,7 @@ pub fn build_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 },
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
@@ -17595,10 +17672,7 @@ pub fn build_type_env(
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
                 id: "present_value".to_string(),
@@ -17613,16 +17687,14 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let present_variant = Rc::new(Node {
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
             ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field.clone()]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -17635,16 +17707,14 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let absent_variant = Rc::new(Node {
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
             ident_span: Some(kernel_span("Absent".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -17657,13 +17727,14 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_optional = Rc::new(Node {
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Rc::new(Connective::Disj),
+            connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -17676,6 +17747,7 @@ pub fn build_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
@@ -18117,38 +18189,50 @@ pub fn build_type_env_unresolved(
             },
         );
         let zero_span = crate::v1_std_core::no_span();
-        let kernel_bindings = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set())).iter().cloned().fold(v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v1_rt::rc_map_insert(acc, crate::v1_std_core::intern(intern_table.clone(), name.clone()).id.clone(), Rc::new(TypeBinding {
-    name: name.clone(),
-    resolved: Node {
-    name: name.clone(),
-    span: kernel_span(name.clone()),
-    ident_span: Some(kernel_span(name.clone())),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})));
+        let kernel_bindings = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::v1_std_core::intern(intern_table.clone(), name.clone())
+                            .id
+                            .clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: Node {
+                                name: name.clone(),
+                                span: kernel_span(name.clone()),
+                                ident_span: Some(kernel_span(name.clone())),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: None,
+                                return_cardinality: Cardinality::Required,
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            },
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    )
+                },
+            );
         let present_value_field = Rc::new(Node {
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
                 id: "present_value".to_string(),
@@ -18163,16 +18247,14 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let present_variant = Rc::new(Node {
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
             ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field.clone()]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -18185,16 +18267,14 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let absent_variant = Rc::new(Node {
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
             ident_span: Some(kernel_span("Absent".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -18207,13 +18287,14 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_optional = Rc::new(Node {
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Rc::new(Connective::Disj),
+            connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -18226,6 +18307,7 @@ pub fn build_type_env_unresolved(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
@@ -18258,88 +18340,159 @@ pub fn build_type_env_unresolved(
             crate::v1_std_core::authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new(vec![]);
         let scope_parents = v1_rt::concat(import_parents.clone(), Rc::new(vec![kernel.clone()]));
-        let local_bindings = crate::v1_std_core::module_items(module.module.clone()).iter().cloned().fold(v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| if is_namespace_alias_item(item.clone(), source_indices.clone()) {
-            acc.clone()
-        } else {
-            {
-                let item_ident = crate::v1_std_core::intern(intern_table.clone(), crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())).id.clone();
-let has_structure = (item.connective.clone() != panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone());
-if has_structure.clone() {
-                    {
-                        let type_node = Rc::new(Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: item.children.clone(),
-    connective: item.connective.clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
-v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
-    name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-    resolved: type_node.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-}))
-}
-                } else {
-                    if (((item.inferred.clone() != None) && ((item.params.clone().len() as i64) == 0)) && (item.body.clone() == None)) {
-                        {
-                            let alias_node = Rc::new(Node {
-    name: item.name.clone(),
-    span: item.span.clone(),
-    ident_span: item.ident_span.clone(),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: item.inferred.clone(),
-    return_cardinality: item.return_cardinality.clone(),
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
-v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
-    name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-    resolved: alias_node.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-}))
-}
+        let local_bindings = crate::v1_std_core::module_items(module.module.clone())
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
+                    if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                        acc.clone()
                     } else {
-                        if ((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) {
-                            {
-                                let ref_node = nominal_ref_node(crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()), item.span.clone(), item.ident_span.clone());
-v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
-    name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-    resolved: ref_node.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-}))
-}
-                        } else {
-                            if ((((((item.properties.clone().len() as i64) > 0) && (item.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && (item.transport.clone() == None)) && (item.inferred.clone() == None)) && ((item.params.clone().len() as i64) == 0)) {
-                                v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), nominal_type_binding(crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())))
+                        {
+                            let item_ident = crate::v1_std_core::intern(
+                                intern_table.clone(),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ),
+                            )
+                            .id
+                            .clone();
+                            let has_structure =
+                                (item.connective.clone() != Connective::NoConnective);
+                            if has_structure.clone() {
+                                {
+                                    let type_node = Rc::new(Node {
+                                        name: item.name.clone(),
+                                        span: item.span.clone(),
+                                        ident_span: item.ident_span.clone(),
+                                        children: item.children.clone(),
+                                        connective: item.connective.clone(),
+                                        params: Rc::new(vec![]),
+                                        inferred: None,
+                                        return_cardinality: item.return_cardinality.clone(),
+                                        uses: Rc::new(vec![]),
+                                        body: None,
+                                        transport: None,
+                                        properties: Rc::new(vec![]),
+                                        type_annotation: None,
+                                        is_self_recursive: false,
+                                        has_non_tail_self_call: false,
+                                        match_pattern: None,
+                                        expr_data: Rc::new(ExprData::NoExprData),
+                                        ident: None,
+                                    });
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        item_ident.clone(),
+                                        Rc::new(TypeBinding {
+                                            name: crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            resolved: type_node.clone(),
+                                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                        }),
+                                    )
+                                }
                             } else {
-                                acc.clone()
+                                if (((item.inferred.clone() != None)
+                                    && ((item.params.clone().len() as i64) == 0))
+                                    && (item.body.clone() == None))
+                                {
+                                    {
+                                        let alias_node = Rc::new(Node {
+                                            name: item.name.clone(),
+                                            span: item.span.clone(),
+                                            ident_span: item.ident_span.clone(),
+                                            children: Rc::new(vec![]),
+                                            connective: Connective::NoConnective,
+                                            params: Rc::new(vec![]),
+                                            inferred: item.inferred.clone(),
+                                            return_cardinality: item.return_cardinality.clone(),
+                                            uses: Rc::new(vec![]),
+                                            body: None,
+                                            transport: None,
+                                            properties: Rc::new(vec![]),
+                                            type_annotation: None,
+                                            is_self_recursive: false,
+                                            has_non_tail_self_call: false,
+                                            match_pattern: None,
+                                            expr_data: Rc::new(ExprData::NoExprData),
+                                            ident: None,
+                                        });
+                                        v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            item_ident.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: crate::v1_std_core::authored_name_at(
+                                                    source_indices.clone(),
+                                                    item.clone(),
+                                                ),
+                                                resolved: alias_node.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                            }),
+                                        )
+                                    }
+                                } else {
+                                    if ((item.transport.clone() == None)
+                                        && ((item.children.clone().len() as i64) > 0))
+                                    {
+                                        {
+                                            let ref_node = nominal_ref_node(
+                                                crate::v1_std_core::authored_name_at(
+                                                    source_indices.clone(),
+                                                    item.clone(),
+                                                ),
+                                                item.span.clone(),
+                                                item.ident_span.clone(),
+                                            );
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                item_ident.clone(),
+                                                Rc::new(TypeBinding {
+                                                    name: crate::v1_std_core::authored_name_at(
+                                                        source_indices.clone(),
+                                                        item.clone(),
+                                                    ),
+                                                    resolved: ref_node.clone(),
+                                                    provenance: Rc::new(
+                                                        SubValueRelation::SubValueUnknown,
+                                                    ),
+                                                }),
+                                            )
+                                        }
+                                    } else {
+                                        if ((((((item.properties.clone().len() as i64) > 0)
+                                            && (item.connective.clone()
+                                                == Connective::NoConnective))
+                                            && (item.transport.clone() == None))
+                                            && (item.inferred.clone() == None))
+                                            && ((item.params.clone().len() as i64) == 0))
+                                        {
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                item_ident.clone(),
+                                                nominal_type_binding(
+                                                    crate::v1_std_core::authored_name_at(
+                                                        source_indices.clone(),
+                                                        item.clone(),
+                                                    ),
+                                                ),
+                                            )
+                                        } else {
+                                            acc.clone()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-}
-        });
+                },
+            );
         let kernel_cache = type_env_cache_from_bindings(
             kernel_bindings.clone(),
             source_indices.clone(),
@@ -18837,7 +18990,7 @@ pub fn build_local_variants(
         .iter()
         .cloned()
         .fold(init.clone(), |acc: Rc<VariantFoldState>, item: Rc<Node>| {
-            let item_is_coproduct = (item.connective.clone() == Rc::new(Connective::Disj));
+            let item_is_coproduct = (item.connective.clone() == Connective::Disj);
             if item_is_coproduct.clone() {
                 bind_coproduct_item_arms(
                     acc.clone(),
@@ -18894,7 +19047,7 @@ pub fn build_global_bare_variant_locals(
         {
             Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
                 let owner = binding.resolved.clone();
-                if ((owner.connective.clone() == Rc::new(Connective::Disj))
+                if ((owner.connective.clone() == Connective::Disj)
                     && crate::v1_std_core::has_child_named(
                         owner.clone(),
                         name.clone(),
@@ -18970,7 +19123,7 @@ pub fn collect_own_variant_export_surface(
     items.clone().iter().cloned().fold(
         empty_variant_export_surface(),
         |acc: Rc<VariantExportSurface>, item: Rc<Node>| {
-            let item_is_coproduct = (item.connective.clone() == Rc::new(Connective::Disj));
+            let item_is_coproduct = (item.connective.clone() == Connective::Disj);
             if item_is_coproduct.clone() {
                 add_coproduct_to_variant_surface(acc.clone(), item.clone(), source_indices.clone())
             } else {
@@ -19458,6 +19611,7 @@ pub fn typecheck_module(
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
                             expr_data: item.expr_data.clone(),
+                            ident: None,
                         })
                     } else {
                         item.clone()
@@ -20543,29 +20697,44 @@ pub fn compiler_kernel_type_env(
     intern_table: Rc<InternTable>,
 ) -> Rc<TypeEnv> {
     {
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set())).iter().cloned().fold(v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v1_rt::rc_map_insert(acc, crate::v1_std_core::intern(intern_table.clone(), name.clone()).id.clone(), Rc::new(TypeBinding {
-    name: name.clone(),
-    resolved: Node {
-    name: name.clone(),
-    span: kernel_span(name.clone()),
-    ident_span: Some(kernel_span(name.clone())),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-},
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})));
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&crate::std_types::kernel_type_set()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::v1_std_core::intern(intern_table.clone(), name.clone())
+                            .id
+                            .clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: Node {
+                                name: name.clone(),
+                                span: kernel_span(name.clone()),
+                                ident_span: Some(kernel_span(name.clone())),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: None,
+                                return_cardinality: Cardinality::Required,
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            },
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    )
+                },
+            );
         let unit_span = kernel_span("Unit".to_string());
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings_base.clone(),
@@ -20579,7 +20748,7 @@ pub fn compiler_kernel_type_env(
                     span: unit_span.clone(),
                     ident_span: Some(unit_span.clone()),
                     children: Rc::new(vec![]),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -20592,6 +20761,7 @@ pub fn compiler_kernel_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 },
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
@@ -20601,10 +20771,7 @@ pub fn compiler_kernel_type_env(
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
                 id: "present_value".to_string(),
@@ -20619,16 +20786,14 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let present_variant = Rc::new(Node {
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
             ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field.clone()]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -20641,16 +20806,14 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let absent_variant = Rc::new(Node {
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
             ident_span: Some(kernel_span("Absent".to_string())),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -20663,13 +20826,14 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_optional = Rc::new(Node {
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Rc::new(Connective::Disj),
+            connective: Connective::Disj,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -20682,6 +20846,7 @@ pub fn compiler_kernel_type_env(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),

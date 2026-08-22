@@ -9,12 +9,13 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_error_node;
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::MatchPattern::*;
-pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, ExprData, InferredNode, MatchPattern};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -129,8 +130,8 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     }
 }
 
-pub fn connective_name(value: Rc<Connective>) -> String {
-    match (*value.clone()).clone() {
+pub fn connective_name(value: Connective) -> String {
+    match value.clone() {
         Connective::Conj => "Conj".to_string(),
         Connective::Disj => "Disj".to_string(),
         Connective::NoConnective => "NoConnective".to_string(),
@@ -163,8 +164,8 @@ pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
     )
 }
 
-pub fn child_subtree_hash(connective: Rc<Connective>, digests: Rc<Vec<String>>) -> String {
-    match (*connective.clone()).clone() {
+pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> String {
+    match connective.clone() {
         Connective::Conj => dag_node_bag_hash(digests.clone()),
         Connective::Disj => dag_node_bag_hash(digests.clone()),
         Connective::Arrow => dag_node_seq_hash(digests.clone()),

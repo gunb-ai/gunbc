@@ -17,10 +17,8 @@ use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::ExprData::*;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex,
+    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Edge, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -264,7 +262,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
 }
 
 pub fn none_resolved_sig() -> Option<Rc<ResolvedFuncSig>> {
-    Rc::new(NamedEdgeTargetLookup::Absent)
+    None
 }
 
 pub fn collect_func_call_edges(

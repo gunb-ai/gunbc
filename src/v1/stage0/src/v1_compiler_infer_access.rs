@@ -15,8 +15,7 @@ pub use crate::v1_std_core::{
     authored_name_at, diagnostic_to_message, int_type, make_error_node, string_type, unit_type,
     with_optional_cardinality,
 };
-pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex};
-pub use crate::v2_std_node::Node;
+pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

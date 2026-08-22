@@ -16,6 +16,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
@@ -23,11 +24,9 @@ pub use crate::v1_std_core::{
     kernel_span, module_path_segments, param_node_name_at, param_node_type_expr,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, ExprData, InferredNode, InternTable, NewlineIndex,
+    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
+    Node,
 };
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -780,9 +779,9 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
     match intern_find(env.intern_table.clone(), name.clone()) {
         Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
         },
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -804,7 +803,7 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
             Some(binding) => Some(binding.clone()),
             None => match intern_find(env.intern_table.clone(), name.clone()) {
                 Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
-                None => Rc::new(NamedEdgeTargetLookup::Absent),
+                None => None,
             },
         },
     }
@@ -838,7 +837,7 @@ pub fn lookup_qualified_module_projection(
     name: String,
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::contains(name.clone(), ".".to_string()) {
-        false => Rc::new(NamedEdgeTargetLookup::Absent),
+        false => None,
         true => match crate::v1_compiler_infer_env::symbol_index_lookup(
             env.symbol_index.clone(),
             name.clone(),
@@ -848,7 +847,7 @@ pub fn lookup_qualified_module_projection(
                 resolved: resolved.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             })),
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
         },
     }
 }
@@ -959,7 +958,7 @@ pub fn global_bare_nearest_ancestor_candidate(
             },
         );
         match scan.tie.clone() {
-            true => Rc::new(NamedEdgeTargetLookup::Absent),
+            true => None,
             false => scan.best.clone(),
         }
     }
@@ -971,7 +970,7 @@ pub fn global_bare_nearest_ancestor(
 ) -> Option<Rc<TypeBinding>> {
     match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
         Some(cand) => Some(cand.binding.clone()),
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -1035,12 +1034,8 @@ pub fn global_bare_unique_chain_candidate(
             })
             .first()
             .cloned(),
-            ModulePathBindingProjection::ModulePathBindingMiss => {
-                Rc::new(NamedEdgeTargetLookup::Absent)
-            }
-            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
-                Rc::new(NamedEdgeTargetLookup::Absent)
-            }
+            ModulePathBindingProjection::ModulePathBindingMiss => None,
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => None,
         }
     }
 }
@@ -1141,7 +1136,7 @@ pub fn global_bare_owner_module(
             ..
         }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
             true => Some(mp.clone()),
-            false => Rc::new(NamedEdgeTargetLookup::Absent),
+            false => None,
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -1152,11 +1147,11 @@ pub fn global_bare_owner_module(
                 env.source_indices.clone(),
             ) {
                 true => Some(cand.module_path.clone()),
-                false => Rc::new(NamedEdgeTargetLookup::Absent),
+                false => None,
             },
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
         },
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -1179,7 +1174,7 @@ pub fn borrowed_generic_param_names(
             let pname = param_node_name_at(p.clone(), source_indices.clone());
             let tname = authored_name_at(source_indices.clone(), pt.clone());
             if (((((pt.children.clone().len() as i64) == 0)
-                && (pt.connective.clone() == Rc::new(Connective::NoConnective)))
+                && (pt.connective.clone() == Connective::NoConnective))
                 && (pname.clone() != "".to_string()))
                 && ((pname.clone() == tname.clone()) || (pname.clone() == pt.name.clone())))
             {
@@ -1236,7 +1231,7 @@ pub fn qualify_borrowed_type_names(
     excluded: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let qualified_children = if (n.connective.clone() == Rc::new(Connective::NoConnective)) {
+        let qualified_children = if (n.connective.clone() == Connective::NoConnective) {
             Rc::new({
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
@@ -1268,7 +1263,7 @@ pub fn qualify_borrowed_type_names(
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
         };
-        let rewrite = ((((((n.connective.clone() == Rc::new(Connective::NoConnective))
+        let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
             && !v1_rt::contains(name.clone(), ".".to_string()))
             && !is_kernel_type(name.clone()))
@@ -1305,6 +1300,7 @@ pub fn qualify_borrowed_type_names(
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
                             expr_data: n.expr_data.clone(),
+                            ident: None,
                         })
                     }
                 }
@@ -1456,7 +1452,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
             if v1_rt::name_resolution_policy_is_namespace_only() {
                 match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
                     Some(cand) => Some(cand.binding.clone()),
-                    None => Rc::new(NamedEdgeTargetLookup::Absent),
+                    None => None,
                 }
             } else {
                 {
@@ -1473,7 +1469,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
                 }
             }
         }
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -1542,7 +1538,7 @@ pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     match lookup_binding(env.clone(), ident.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -1561,7 +1557,7 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
                 None => Some(binding.resolved.clone()),
             },
         },
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -1627,17 +1623,17 @@ pub fn variant_arm_type_projection(
     owner: Rc<Node>,
     name: String,
 ) -> Option<Rc<Node>> {
-    match (*owner.connective.clone()).clone() {
+    match owner.connective.clone() {
         Connective::Disj => {
             match find_child_named(owner.clone(), name.clone(), env.source_indices.clone()) {
                 Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
                     true => Some(arm.clone()),
-                    false => Rc::new(NamedEdgeTargetLookup::Absent),
+                    false => None,
                 },
-                None => Rc::new(NamedEdgeTargetLookup::Absent),
+                None => None,
             }
         }
-        _ => Rc::new(NamedEdgeTargetLookup::Absent),
+        _ => None,
     }
 }
 
@@ -1650,7 +1646,7 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
         Some(id) => match lookup_type(env.clone(), id.clone()) {
             Some(resolved) => {
                 let name = authored_name(env.clone(), node.clone());
-                match ((resolved.connective.clone() == Rc::new(Connective::Disj))
+                match ((resolved.connective.clone() == Connective::Disj)
                     && (authored_name_at(env.source_indices.clone(), resolved.clone())
                         != name.clone()))
                 {
@@ -1665,7 +1661,7 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
                     false => Some(resolved.clone()),
                 }
             }
-            None => Rc::new(NamedEdgeTargetLookup::Absent),
+            None => None,
         },
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
@@ -1935,7 +1931,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
                     ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
                     children: Rc::new(vec![]),
-                    connective: Rc::new(Connective::NoConnective),
+                    connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: Some(Rc::new(InferredNode::TypeVariable {
                         id: tp_name.clone(),
@@ -1950,6 +1946,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 },
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             });

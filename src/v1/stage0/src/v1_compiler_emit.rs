@@ -65,6 +65,7 @@ pub use crate::v1_compiler_languages::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::FieldAccessStyle::*;
 use crate::v1_std_core::InferredNode::*;
@@ -88,11 +89,9 @@ pub use crate::v1_std_core::{
     slice_start, transport_has_auth, tuple_type_name, unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, StringPart, UnaryOpKind,
+    Cardinality, Connective, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
 };
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -751,8 +750,8 @@ pub fn has_nested_records_node(
     mut source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> bool {
     loop {
-        let is_product = (n.connective.clone() == Rc::new(Connective::Conj));
-        let is_coproduct = (n.connective.clone() == Rc::new(Connective::Disj));
+        let is_product = (n.connective.clone() == Connective::Conj);
+        let is_coproduct = (n.connective.clone() == Connective::Disj);
         if is_product.clone() {
             break true;
         } else {
@@ -1541,7 +1540,7 @@ pub fn render_node_type(
                 return err_str;
             }
         }
-        let is_arrow = (n.connective.clone() == Rc::new(Connective::Arrow));
+        let is_arrow = (n.connective.clone() == Connective::Arrow);
         if is_arrow.clone() {
             {
                 let repr = crate::v1_compiler_coercion::target_callable(target.clone());
@@ -1623,8 +1622,8 @@ pub fn render_node_type(
                 return opt_str;
             }
         }
-        let is_conj = (n.connective.clone() == Rc::new(Connective::Conj));
-        let is_disj = (n.connective.clone() == Rc::new(Connective::Disj));
+        let is_conj = (n.connective.clone() == Connective::Conj);
+        let is_disj = (n.connective.clone() == Connective::Disj);
         let shared = v1_rt::set_contains(&shared_types, tn.clone());
         if is_disj.clone() {
             {
@@ -1668,7 +1667,7 @@ pub fn render_node_type(
                         return refined_str;
                     }
                 }
-                let is_pair = (((n.connective.clone() == Rc::new(Connective::Conj))
+                let is_pair = (((n.connective.clone() == Connective::Conj)
                     && (n.ident_span.clone() == None))
                     && ((n.children.clone().len() as i64) == 2));
                 if is_pair.clone() {

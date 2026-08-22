@@ -6321,7 +6321,7 @@ fn return_type_is_unit(n: v1.std.core.Node, source_indices: std.types.Map<String
 // currently works.
 fn rust_declared_return_is_callable(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> Bool {
   match emit_info.fn_return_type {
-    Present { value: ret } => ret.connective == v2.std.node.Arrow
+    Present { value: ret } => ret.connective == v1.std.core.Arrow
     Absent => false
   }
 }
@@ -6942,7 +6942,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: std.
           let bind_name = pattern_string_binding_name(path: field_path)
           concat("ref ", bind_name)
         } else {
-            let is_shorthand = match fb_pat { v2.std.node.Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
+            let is_shorthand = match fb_pat { v1.std.core.Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { v1.compiler.emit.emit_ident(name: fb_name, target: v1.compiler.artifact.Rust) }
             else {
               let field_path = if fb_name == "0" {
@@ -7193,7 +7193,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", v1.compiler.emit.emit_ident(name: fb_name, target: v1.compiler.artifact.Rust))
           } else {
-            let is_shorthand = match fb_pat { v2.std.node.Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
+            let is_shorthand = match fb_pat { v1.std.core.Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { v1.compiler.emit.emit_ident(name: fb_name, target: v1.compiler.artifact.Rust) }
             else {
               let field_path = if fb_name == "0" {
@@ -9589,7 +9589,7 @@ fn rust_struct_field_type_node(scope: v1.compiler.infer.InferScope, struct_name:
 fn rust_record_field_needs_fn_rc(scope: v1.compiler.infer.InferScope, struct_name: String, field_name: String) -> Bool {
   rust_struct_field_lookup_candidates(struct_name: struct_name, scope: scope) |> any(candidate =>
     match rust_struct_field_type_node(scope: scope, struct_name: candidate, field_name: field_name) {
-      Present { value: field_type } => field_type.connective == v2.std.node.Arrow
+      Present { value: field_type } => field_type.connective == v1.std.core.Arrow
       Absent => false
     }
   )

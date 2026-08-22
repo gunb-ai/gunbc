@@ -10,11 +10,10 @@ pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{authored_name_at, make_field_node, no_span, node_name_span};
-pub use crate::v1_std_core::{Cardinality, InferredNode, NewlineIndex};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Cardinality, Connective, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -109,10 +108,10 @@ pub fn inferred_to_outputs(
             InferredNode::CompilerError { .. } => Rc::new(vec![]),
             InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
-                let has_structure = (rt.connective.clone() != Rc::new(Connective::NoConnective));
+                let has_structure = (rt.connective.clone() != Connective::NoConnective);
                 if has_structure.clone() {
                     {
-                        let is_product = (rt.connective.clone() == Rc::new(Connective::Conj));
+                        let is_product = (rt.connective.clone() == Connective::Conj);
                         if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
                                 Rc::new({
@@ -160,7 +159,7 @@ pub fn inferred_to_outputs(
                         }
                     }
                 } else {
-                    if ((rt.connective.clone() == Rc::new(Connective::Conj))
+                    if ((rt.connective.clone() == Connective::Conj)
                         && ((rt.children.clone().len() as i64) == 0))
                     {
                         Rc::new(vec![])
@@ -183,7 +182,7 @@ pub fn inferred_to_outputs(
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind = if ((item.connective.clone() != Rc::new(Connective::NoConnective))
+        let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
         {
             ItemKind::TypeItem

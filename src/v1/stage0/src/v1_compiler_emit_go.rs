@@ -33,14 +33,13 @@ use crate::v1_compiler_languages::VisibilitySpec::*;
 pub use crate::v1_compiler_runtime_go::go_runtime_source;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Connective::*;
 pub use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, module_imports,
     param_node_name_at, param_node_type_expr, resource_use_name_at, resource_use_resource,
     transport_auth_header_name, transport_env, transport_has_auth, transport_headers,
 };
-pub use crate::v1_std_core::{NewlineIndex, TextFile};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Connective, NewlineIndex, Node, TextFile};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -701,7 +700,7 @@ pub fn emit_go_typed_item(
 pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
-        let is_product = (item.connective.clone() == Rc::new(Connective::Conj));
+        let is_product = (item.connective.clone() == Connective::Conj);
         if is_product.clone() {
             emit_go_struct_from_children(item_text.clone(), item.children.clone(), env.clone())
         } else {

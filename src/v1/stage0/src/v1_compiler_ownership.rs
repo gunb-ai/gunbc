@@ -16,8 +16,7 @@ pub use crate::v1_std_core::{
     if_condition, if_else_branch, if_then_branch, lambda_body, lambda_param_names_at, let_body,
     let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
 };
-pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex, VarBindingKind};
-pub use crate::v2_std_node::{Edge, Node};
+pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex, Node, VarBindingKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

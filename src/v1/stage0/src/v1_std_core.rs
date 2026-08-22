@@ -44,8 +44,6 @@ pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_node::NamedEdgeTargetLookup;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -589,9 +587,7 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
-        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => {
-            Rc::new(NamedEdgeTargetLookup::Absent)
-        }
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
     }
 }
 
@@ -842,7 +838,7 @@ pub struct Node {
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
     pub children: Rc<Vec<Rc<Node>>>,
-    pub connective: Rc<Connective>,
+    pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<InferredNode>>,
     pub return_cardinality: Cardinality,
@@ -887,7 +883,7 @@ pub fn make_expr_node(
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
@@ -900,6 +896,7 @@ pub fn make_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
+        ident: None,
     })
 }
 
@@ -916,7 +913,7 @@ pub fn make_named_expr_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: children.clone(),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
@@ -929,6 +926,7 @@ pub fn make_named_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
+        ident: None,
     })
 }
 
@@ -953,7 +951,7 @@ pub fn make_expr_error_node(
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::CompilerError {
             message: message.clone(),
@@ -972,6 +970,7 @@ pub fn make_expr_error_node(
             kind: kind.clone(),
             message: message.clone(),
         }),
+        ident: None,
     })
 }
 
@@ -991,7 +990,7 @@ pub fn make_arg_node(
             span: span.clone(),
             ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
             children: Rc::new(vec![value.clone()]),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1004,6 +1003,7 @@ pub fn make_arg_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -1024,7 +1024,7 @@ pub fn make_arm_node(
             span: span.clone(),
             ident_span: None,
             children: children.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1037,6 +1037,7 @@ pub fn make_arm_node(
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -1052,7 +1053,7 @@ pub fn make_resource_use_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: Rc::new(vec![resource.clone()]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1065,6 +1066,7 @@ pub fn make_resource_use_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -1097,7 +1099,7 @@ pub fn make_field_init_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: Rc::new(vec![value.clone()]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1110,6 +1112,7 @@ pub fn make_field_init_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -1124,7 +1127,7 @@ pub fn make_field_binding_node(
         span: span.clone(),
         ident_span: default_ident_span(field_name.clone(), name_span.clone()),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1137,6 +1140,7 @@ pub fn make_field_binding_node(
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -1160,7 +1164,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1177,6 +1181,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
                 value: text.clone(),
             }),
         }),
+        ident: None,
     })
 }
 
@@ -1186,7 +1191,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![expr.clone()]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1199,6 +1204,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -1219,7 +1225,7 @@ pub fn make_param_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1232,6 +1238,7 @@ pub fn make_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -1254,7 +1261,7 @@ pub fn make_resolved_param_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: type_expr.clone(),
@@ -1269,6 +1276,7 @@ pub fn make_resolved_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -1403,7 +1411,7 @@ pub fn make_field_node(
                     span: no_span(),
                     ident_span: default_ident_span(fk.clone(), no_span()),
                     children: Rc::new(vec![]),
-                    connective: Rc::new(Connective::NoConnective),
+                    connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -1416,6 +1424,7 @@ pub fn make_field_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 }),
                 no_span(),
                 no_span(),
@@ -1427,7 +1436,7 @@ pub fn make_field_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: cardinality.clone(),
@@ -1440,6 +1449,7 @@ pub fn make_field_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -1503,7 +1513,7 @@ pub fn make_variant_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: fields.clone(),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1516,6 +1526,7 @@ pub fn make_variant_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -1914,7 +1925,7 @@ pub fn fn_admit_callers(
             field_init_node_value(p.clone()).children.clone(),
             source_indices.clone(),
         )),
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -2328,7 +2339,7 @@ pub fn make_transport_node(
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -2341,6 +2352,7 @@ pub fn make_transport_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -2450,7 +2462,7 @@ pub fn shell_transport_node(
             span: span.clone(),
             ident_span: None,
             children: Rc::new(vec![]),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -2463,6 +2475,7 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let zero_span = no_span();
         let stdin_props = match stdin.clone() {
@@ -2480,7 +2493,7 @@ pub fn shell_transport_node(
             span: span.clone(),
             ident_span: None,
             children: argv.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -2493,6 +2506,7 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -2872,7 +2886,7 @@ pub fn transport_tls_posture(
         source_indices.clone(),
     ) {
         Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),
-        None => Rc::new(NamedEdgeTargetLookup::Absent),
+        None => None,
     }
 }
 
@@ -3404,7 +3418,7 @@ pub fn module_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
         children: items.clone(),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: imports.clone(),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3417,6 +3431,7 @@ pub fn module_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -3434,7 +3449,7 @@ pub fn import_node(
                 span: span.clone(),
                 ident_span: None,
                 children: Rc::new(vec![]),
-                connective: Rc::new(Connective::NoConnective),
+                connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
@@ -3447,6 +3462,7 @@ pub fn import_node(
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
             }))
         } else {
             None
@@ -3456,7 +3472,7 @@ pub fn import_node(
             span: span.clone(),
             ident_span: Some(name_span.clone()),
             children: specific_names.clone(),
-            connective: Rc::new(Connective::NoConnective),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -3469,6 +3485,7 @@ pub fn import_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -3504,7 +3521,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3517,6 +3534,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -3539,7 +3557,7 @@ pub fn unit_type() -> Rc<Node> {
         span: kernel_span("Unit".to_string()),
         ident_span: Some(kernel_span("Unit".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::Conj),
+        connective: Connective::Conj,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3552,6 +3570,7 @@ pub fn unit_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3566,7 +3585,7 @@ pub fn bool_type() -> Rc<Node> {
         span: kernel_span("Bool".to_string()),
         ident_span: Some(kernel_span("Bool".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3579,6 +3598,7 @@ pub fn bool_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3593,7 +3613,7 @@ pub fn string_type() -> Rc<Node> {
         span: kernel_span("String".to_string()),
         ident_span: Some(kernel_span("String".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3606,6 +3626,7 @@ pub fn string_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3620,7 +3641,7 @@ pub fn hash_type() -> Rc<Node> {
         span: kernel_span("Hash".to_string()),
         ident_span: Some(kernel_span("Hash".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3633,6 +3654,7 @@ pub fn hash_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3647,7 +3669,7 @@ pub fn int_type() -> Rc<Node> {
         span: kernel_span("Int".to_string()),
         ident_span: Some(kernel_span("Int".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3660,6 +3682,7 @@ pub fn int_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3674,7 +3697,7 @@ pub fn float_type() -> Rc<Node> {
         span: kernel_span("Float".to_string()),
         ident_span: Some(kernel_span("Float".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3687,6 +3710,7 @@ pub fn float_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3701,7 +3725,7 @@ pub fn none_type() -> Rc<Node> {
         span: kernel_span("None".to_string()),
         ident_span: Some(kernel_span("None".to_string())),
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3714,6 +3738,7 @@ pub fn none_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
             };
         }
@@ -3737,7 +3762,7 @@ pub fn error_type() -> Rc<Node> {
         span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Rc::new(Connective::NoConnective),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::CompilerError {
         message: "unresolved type".to_string(),
@@ -3756,6 +3781,7 @@ pub fn error_type() -> Rc<Node> {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
     }),
+        ident: None,
     })
             };
         }

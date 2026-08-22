@@ -14,6 +14,7 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::FieldAccessStyle::*;
 use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::*;
@@ -21,10 +22,9 @@ pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
 };
 pub use crate::v1_std_core::{
-    Cardinality, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, NewlineIndex,
+    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
+    NewlineIndex, Node,
 };
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -305,11 +305,7 @@ pub fn emit_graph_records_type_decl(
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
         None => {
-            ((((item.connective.clone()
-                == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-                .clone())
+            ((((item.connective.clone() == Connective::NoConnective)
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
                 && (item.transport.clone() == None))
@@ -456,7 +452,7 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
 }
 
 pub fn is_tuple_type(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == Rc::new(Connective::Conj)) && (n.ident_span.clone() == None))
+    (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None))
         && ((n.children.clone().len() as i64) == 2))
 }
 
@@ -723,12 +719,8 @@ pub fn build_type_summary(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeSummary>> {
     {
-        if (((item.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone())
-            || (item.connective.clone() == Rc::new(Connective::Arrow)))
+        if (((item.connective.clone() == Connective::NoConnective)
+            || (item.connective.clone() == Connective::Arrow))
             || (item.transport.clone() != None))
         {
             return None;
@@ -743,13 +735,13 @@ pub fn build_type_summary(
             }
             __result
         });
-        let is_product = (item.connective.clone() == Rc::new(Connective::Conj));
+        let is_product = (item.connective.clone() == Connective::Conj);
         let has_fn = {
             let mut __found = false;
             for child in item.children.clone().iter().cloned() {
                 if match child.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                        (rt.connective.clone() == Rc::new(Connective::Arrow))
+                        (rt.connective.clone() == Connective::Arrow)
                     }
                     _ => false,
                 } {
@@ -860,7 +852,7 @@ pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
                 for child in v.children.clone().iter().cloned() {
                     if match child.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            (rt.connective.clone() == Rc::new(Connective::Arrow))
+                            (rt.connective.clone() == Connective::Arrow)
                         }
                         _ => false,
                     } {
@@ -1020,7 +1012,7 @@ pub fn add_emit_item_summary(
                                                             ..
                                                         }) => {
                                                             (rt.connective.clone()
-                                                                == Rc::new(Connective::Arrow))
+                                                                == Connective::Arrow)
                                                         }
                                                         _ => false,
                                                     } {

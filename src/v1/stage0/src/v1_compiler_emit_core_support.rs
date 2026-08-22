@@ -13,10 +13,9 @@ pub use crate::v1_compiler_languages::{language_spec_for_target, test_convention
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Connective::*;
 pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
-pub use crate::v1_std_core::{ErrorNode, NewlineIndex};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -699,13 +698,11 @@ pub fn is_service_item(item: Rc<Node>) -> bool {
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
-    ((item.connective.clone() != Rc::new(Connective::NoConnective))
-        && (item.transport.clone() == None))
+    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
 
 pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
-    (((((item.connective.clone() == Rc::new(Connective::NoConnective))
-        && (item.body.clone() == None))
+    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
         && ((item.params.clone().len() as i64) == 0))
         && (item.transport.clone() == None))
         && ((item.children.clone().len() as i64) == 0))

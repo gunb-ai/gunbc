@@ -40,15 +40,13 @@ pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ContainerSpellingVerdict::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
     param_node_type_expr, qualified_last_segment,
 };
-pub use crate::v1_std_core::{ContainerSpellingVerdict, NewlineIndex};
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
+pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -171,11 +169,7 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
         == "Symbol".to_string())
         && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
-        && (n.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone()))
+        && (n.connective.clone() == Connective::NoConnective))
 }
 
 pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
@@ -559,7 +553,7 @@ pub fn v1_freemonoid_row_route(
         RustCapability::RustDeserialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
-        _ => Rc::new(NamedEdgeTargetLookup::Absent),
+        _ => None,
     }
 }
 
@@ -2390,7 +2384,10 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
         for vp in value_params.clone().iter().cloned() {
             if {
                 let te = crate::v1_std_core::param_node_type_expr(vp.clone());
-                (((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone()) == param_name.clone()) && (te.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((te.children.clone().len() as i64) == 0))
+                (((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
+                    == param_name.clone())
+                    && (te.connective.clone() == Connective::NoConnective))
+                    && ((te.children.clone().len() as i64) == 0))
             } {
                 __found = true;
                 break;
@@ -2962,10 +2959,24 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 ) -> bool {
     {
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
-        if (((name.clone() == param_name.clone()) && (type_expr.connective.clone() == panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone())) && ((type_expr.children.clone().len() as i64) == 0)) {
+        if (((name.clone() == param_name.clone())
+            && (type_expr.connective.clone() == Connective::NoConnective))
+            && ((type_expr.children.clone().len() as i64) == 0))
+        {
             true
         } else {
-            if (crate::std_types::is_container_type(name.clone()) && { let mut __found = false; for c in type_expr.children.clone().iter().cloned() { if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone()) == param_name.clone()) { __found = true; break; } } __found }) {
+            if (crate::std_types::is_container_type(name.clone()) && {
+                let mut __found = false;
+                for c in type_expr.children.clone().iter().cloned() {
+                    if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
+                        == param_name.clone())
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
                 true
             } else {
                 false
@@ -3018,11 +3029,7 @@ pub fn v1_type_expr_is_bare_param(
 ) -> bool {
     (((crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
         == param_name.clone())
-        && (type_expr.connective.clone()
-            == panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone()))
+        && (type_expr.connective.clone() == Connective::NoConnective))
         && ((type_expr.children.clone().len() as i64) == 0))
 }
 

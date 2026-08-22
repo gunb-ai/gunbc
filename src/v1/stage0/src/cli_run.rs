@@ -3770,17 +3770,21 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
 }
 
 pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    // src/v2 is here because dag/ modules legitimately reference v2 ones -- with
-    // imports gone, a bare-name closure follows those references and reaches
-    // modules this root is the only one that can supply. Omitting it does not
-    // narrow the closure, it makes the same closure unresolvable: a v2 reference
-    // in a dag/ file reported `undefined variable 'v2'` under regen while the
-    // floor, whose roots are dag and src/v2, resolved the identical line.
-    vec![
-        workspace.join("src/v1"),
-        workspace.join("dag"),
-        workspace.join("src/v2"),
-    ]
+    // src/v2 is NOT a root and never will be: stage0 IS the v1 seed, and a seed that reached
+    // into src/v2 would depend on the successor it bootstraps toward
+    // (std.trait_derive_shape states this as a standing invariant -- a module reachable by
+    // import from src/v1 cannot reference v2 anything).
+    //
+    // This list briefly carried src/v2 on the namespace-cut branch, because deleting imports
+    // left four references in v1.compiler.emit_rust spelled `v2.std.node.Arrow` / `.Bind` where
+    // main spells them bare, and regen then reported `undefined variable 'v2'`. Adding the root
+    // resolved the reference and violated the invariant: it made v1.std.core and v2.std.node
+    // co-resident, and the emitter's bare-keyed registry -- last-write-wins -- began answering
+    // v2 for Connective, Node and Cardinality in every v1 module, for 10,821 build errors.
+    // The four references were the defect; the root was the workaround. Do not re-add it to
+    // make a closure resolve -- an unresolvable v2 reference under regen means a v1 source is
+    // reaching across the boundary, and the reference is what has to move.
+    vec![workspace.join("src/v1"), workspace.join("dag")]
 }
 
 /// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`

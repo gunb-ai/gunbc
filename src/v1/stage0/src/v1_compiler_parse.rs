@@ -32,6 +32,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::ExprErrorKind::*;
 use crate::v1_std_core::InferredNode::*;
@@ -58,11 +59,10 @@ pub use crate::v1_std_core::{
     variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    InternTable, MatchPattern, NewlineIndex, Node, OperationModifier, StringPart, Token,
+    TokenShape, UnaryOpKind,
 };
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -2135,10 +2135,7 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
             Some(span.clone())
         },
         children: Rc::new(vec![]),
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -2151,6 +2148,7 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -2160,10 +2158,7 @@ pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node>
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -2180,6 +2175,7 @@ pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node>
                 value: value.clone(),
             }),
         }),
+        ident: None,
     })
 }
 
@@ -2217,7 +2213,7 @@ pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
 }
 
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Rc::new(Connective::Conj)) && ((n.children.clone().len() as i64) > 0))
+    ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) > 0))
 }
 
 pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
@@ -3007,10 +3003,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             span: start_span.clone(),
             ident_span: Some(mod_name_span.clone()),
             children: items.clone(),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: imports.clone(),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -3023,6 +3016,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let mod_ = parsed_node_with_ident(base_mod.clone(), mod_ir.id.clone());
         Rc::new(ModuleResult {
@@ -3309,7 +3303,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: None,
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
+    connective: Connective::NoConnective,
     transport: None,
     properties: Rc::new(vec![]),
     type_annotation: None,
@@ -3317,6 +3311,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: None,
 },
     tokens: tokens.clone(),
     ctx: ctx.clone(),
@@ -3491,10 +3486,7 @@ pub fn parse_item_by_form(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -3502,6 +3494,7 @@ pub fn parse_item_by_form(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -3611,10 +3604,7 @@ pub fn field_to_child_node(
             span: field.span.clone(),
             ident_span: field.ident_span.clone(),
             children: Rc::new(vec![]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret_type.clone(),
@@ -3629,6 +3619,7 @@ pub fn field_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -3652,9 +3643,9 @@ pub fn variant_to_child_node(
             ident_span: variant.ident_span.clone(),
             children: children.clone(),
             connective: if ((fields.clone().len() as i64) > 0) {
-                Rc::new(Connective::Conj)
+                Connective::Conj
             } else {
-                panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone()
+                Connective::NoConnective
             },
             params: Rc::new(vec![]),
             inferred: None,
@@ -3668,6 +3659,7 @@ pub fn variant_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -3690,7 +3682,7 @@ pub fn outputs_to_inferred(
                     }
                     __result
                 }),
-                connective: Rc::new(Connective::Conj),
+                connective: Connective::Conj,
                 params: Rc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
@@ -3703,6 +3695,7 @@ pub fn outputs_to_inferred(
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
             },
         }))
     } else {
@@ -3753,10 +3746,7 @@ pub fn make_operation_node(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: transport.clone(),
             properties: all_props.clone(),
             type_annotation: None,
@@ -3764,6 +3754,7 @@ pub fn make_operation_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         })
     }
 }
@@ -3798,10 +3789,7 @@ pub fn make_capability_node(
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
-        connective: panic!(
-            "qualified value reference missing exact registry row — refuse authored qualifier"
-        )
-        .clone(),
+        connective: Connective::NoConnective,
         transport: None,
         properties: Rc::new(vec![]),
         type_annotation: None,
@@ -3809,6 +3797,7 @@ pub fn make_capability_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
     })
 }
 
@@ -3825,10 +3814,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -3836,6 +3822,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -3871,10 +3858,7 @@ pub fn parse_type_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -3882,6 +3866,7 @@ pub fn parse_type_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -3908,24 +3893,25 @@ pub fn parse_type_after_kw(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 let named_dummy = Rc::new(Node {
-    name: name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![]),
-    params: type_params.clone(),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                    name: name.clone(),
+                    span: start_span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![]),
+                    params: type_params.clone(),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    connective: Connective::NoConnective,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                });
                 if has_err(r.err.clone()) {
                     return Rc::new(ItemResult {
                         item: named_dummy.clone(),
@@ -3974,7 +3960,7 @@ pub fn parse_type_after_kw(
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
                     children: type_children.clone(),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -3987,6 +3973,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -4010,26 +3997,27 @@ pub fn parse_type_after_kw(
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
                         let item = Rc::new(Node {
-    name: name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: type_params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: leaf_type_node(name.clone(), name_span.clone()),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                            name: name.clone(),
+                            span: start_span.clone(),
+                            ident_span: Some(name_span.clone()),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: type_params.clone(),
+                            inferred: Some(Rc::new(InferredNode::Resolved {
+                                node: leaf_type_node(name.clone(), name_span.clone()),
+                            })),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        });
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: __eu.clone(),
@@ -4062,10 +4050,7 @@ pub fn parse_type_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -4073,6 +4058,7 @@ pub fn parse_type_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let raw_tokens = skip_newlines(prefix.tokens.clone());
         let is_sole_constructor = tok_is_ident_text(
@@ -4131,7 +4117,7 @@ pub fn parse_type_body_from_prefix(
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
                     children: type_children.clone(),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -4144,6 +4130,7 @@ pub fn parse_type_body_from_prefix(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -4167,26 +4154,27 @@ pub fn parse_type_body_from_prefix(
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
                         let item = Rc::new(Node {
-    name: name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: type_params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: leaf_type_node(name.clone(), name_span.clone()),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                            name: name.clone(),
+                            span: start_span.clone(),
+                            ident_span: Some(name_span.clone()),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: type_params.clone(),
+                            inferred: Some(Rc::new(InferredNode::Resolved {
+                                node: leaf_type_node(name.clone(), name_span.clone()),
+                            })),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        });
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: __eu.clone(),
@@ -4219,10 +4207,7 @@ pub fn parse_type_body_after_eq(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -4230,6 +4215,7 @@ pub fn parse_type_body_after_eq(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __lead, .. } => {
@@ -4285,7 +4271,7 @@ pub fn parse_type_body_after_eq(
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
                     children: type_children.clone(),
-                    connective: Rc::new(Connective::Disj),
+                    connective: Connective::Disj,
                     params: type_params.clone(),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -4298,6 +4284,7 @@ pub fn parse_type_body_after_eq(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -4370,7 +4357,7 @@ pub fn parse_type_body_after_eq(
                                     span: start_span.clone(),
                                     ident_span: Some(name_span.clone()),
                                     children: type_children.clone(),
-                                    connective: Rc::new(Connective::Disj),
+                                    connective: Connective::Disj,
                                     params: type_params.clone(),
                                     inferred: None,
                                     return_cardinality: Cardinality::Required,
@@ -4383,6 +4370,7 @@ pub fn parse_type_body_after_eq(
                                     has_non_tail_self_call: false,
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
                                 });
                                 Rc::new(ItemResult {
                                     item: item.clone(),
@@ -4422,26 +4410,27 @@ pub fn parse_type_body_after_eq(
                                     });
                                 }
                                 let item = Rc::new(Node {
-    name: name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: type_params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: wr.type_expr.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                                    name: name.clone(),
+                                    span: start_span.clone(),
+                                    ident_span: Some(name_span.clone()),
+                                    children: Rc::new(vec![]),
+                                    connective: Connective::NoConnective,
+                                    params: type_params.clone(),
+                                    inferred: Some(Rc::new(InferredNode::Resolved {
+                                        node: wr.type_expr.clone(),
+                                    })),
+                                    return_cardinality: Cardinality::Required,
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                });
                                 Rc::new(ItemResult {
                                     item: item.clone(),
                                     tokens: skip_newlines(wr.tokens.clone()),
@@ -4477,26 +4466,27 @@ pub fn parse_type_body_after_eq(
                             });
                         }
                         let item = Rc::new(Node {
-    name: name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: type_params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: wr.type_expr.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                            name: name.clone(),
+                            span: start_span.clone(),
+                            ident_span: Some(name_span.clone()),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: type_params.clone(),
+                            inferred: Some(Rc::new(InferredNode::Resolved {
+                                node: wr.type_expr.clone(),
+                            })),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        });
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: skip_newlines(wr.tokens.clone()),
@@ -4533,7 +4523,7 @@ pub fn try_where_clause(
                     span: start_span.clone(),
                     ident_span: None,
                     children: r.predicates.clone(),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -4546,13 +4536,14 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 let refined = Rc::new(Node {
                     name: "".to_string(),
                     span: start_span.clone(),
                     ident_span: None,
                     children: Rc::new(vec![base_te.clone()]),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -4565,6 +4556,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 Rc::new(TypeResult {
                     type_expr: refined.clone(),
@@ -5374,7 +5366,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                         }
                         __result
                     }),
-                    connective: Rc::new(Connective::Conj),
+                    connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -5387,6 +5379,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
                 });
                 Rc::new(TypeResult {
                     type_expr: te.clone(),
@@ -5512,7 +5505,7 @@ pub fn parse_callable_type_expr(
             span: start_span.clone(),
             ident_span: Some(start_span.clone()),
             children: Rc::new(vec![]),
-            connective: Rc::new(Connective::Arrow),
+            connective: Connective::Arrow,
             params: params_result.params.clone(),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret.type_expr.clone(),
@@ -5527,6 +5520,7 @@ pub fn parse_callable_type_expr(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         maybe_optional(
             ret.tokens.clone(),
@@ -5628,24 +5622,25 @@ pub fn finish_type_expr_from_name(
                     });
                 }
                 let te = Rc::new(Node {
-    name: type_name.clone(),
-    span: start_span.clone(),
-    ident_span: Some(start_span.clone()),
-    children: type_args.args.clone(),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+                    name: type_name.clone(),
+                    span: start_span.clone(),
+                    ident_span: Some(start_span.clone()),
+                    children: type_args.args.clone(),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                });
                 maybe_optional(
                     r3.tokens.clone(),
                     type_args.ctx.clone(),
@@ -5810,6 +5805,7 @@ pub fn maybe_optional(
                 has_non_tail_self_call: te.has_non_tail_self_call.clone(),
                 match_pattern: te.match_pattern.clone(),
                 expr_data: te.expr_data.clone(),
+                ident: None,
             });
             Rc::new(TypeResult {
                 type_expr: ote.clone(),
@@ -6062,10 +6058,7 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6073,6 +6066,7 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -6108,10 +6102,7 @@ pub fn parse_fn_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6119,6 +6110,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -6142,10 +6134,7 @@ pub fn parse_fn_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6153,6 +6142,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -6198,10 +6188,7 @@ pub fn parse_fn_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(body.clone()),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6209,6 +6196,7 @@ pub fn parse_fn_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -6303,10 +6291,7 @@ pub fn parse_fn_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6314,6 +6299,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let tokens = skip_newlines(prefix.tokens.clone());
         let admit_r = parse_optional_admit_callers(tokens.clone(), ctx.clone());
@@ -6378,10 +6364,7 @@ pub fn parse_fn_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(body.clone()),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: admit_props.clone(),
             type_annotation: None,
@@ -6389,6 +6372,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -6412,10 +6396,7 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6423,6 +6404,7 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
         let r = if (kw.clone() == "func".to_string()) {
@@ -6507,10 +6489,7 @@ pub fn parse_block_item_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6518,6 +6497,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -6541,10 +6521,7 @@ pub fn parse_block_item_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6552,6 +6529,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -6618,10 +6596,7 @@ pub fn parse_block_item_after_kw(
             return_cardinality: Cardinality::Required,
             uses: uses.clone(),
             body: Some(body.clone()),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6629,6 +6604,7 @@ pub fn parse_block_item_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -6660,10 +6636,7 @@ pub fn parse_block_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6671,6 +6644,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
@@ -6692,10 +6666,7 @@ pub fn parse_block_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: uses.clone(),
             body: Some(body.clone()),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6703,6 +6674,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -6728,10 +6700,7 @@ pub fn parse_no_body_from_prefix(
             return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -6739,6 +6708,7 @@ pub fn parse_no_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -6897,6 +6867,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
+                    ident: None,
                 });
                 let ru = crate::v1_std_core::make_resource_use_node(
                     name.clone(),
@@ -7057,10 +7028,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -7068,6 +7036,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -7103,10 +7072,7 @@ pub fn parse_service_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -7114,6 +7080,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r_ns = expect_name(tokens.clone());
         if has_err(r_ns.err.clone()) {
@@ -7142,10 +7109,7 @@ pub fn parse_service_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -7153,6 +7117,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
@@ -7219,10 +7184,7 @@ pub fn parse_service_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: Some(r.transport.clone()),
             properties: v1_rt::concat(Rc::new(vec![ns_prop.clone()]), svc_props.clone()),
             type_annotation: None,
@@ -7230,6 +7192,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -9108,10 +9071,8 @@ pub fn node_to_name_str(
                 } else {
                     if (effective_n.ident_span.clone() == None) {
                         {
-                            let is_conj =
-                                (effective_n.connective.clone() == Rc::new(Connective::Conj));
-                            let is_disj =
-                                (effective_n.connective.clone() == Rc::new(Connective::Disj));
+                            let is_conj = (effective_n.connective.clone() == Connective::Conj);
+                            let is_disj = (effective_n.connective.clone() == Connective::Disj);
                             if is_conj.clone() {
                                 v1_rt::concat(opt_prefix.clone(), "Record".to_string())
                             } else {
@@ -9703,10 +9664,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -9714,6 +9672,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -9749,10 +9708,7 @@ pub fn parse_resource_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -9760,6 +9716,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -9782,10 +9739,7 @@ pub fn parse_resource_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -9793,6 +9747,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
@@ -9839,10 +9794,7 @@ pub fn parse_resource_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: r.properties.clone(),
             type_annotation: None,
@@ -9850,6 +9802,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -10418,10 +10371,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -10429,6 +10379,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(
             tokens.clone(),
@@ -10464,10 +10415,7 @@ pub fn parse_alias_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -10475,6 +10423,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -10497,10 +10446,7 @@ pub fn parse_alias_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -10508,6 +10454,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r.err.clone()) {
@@ -10553,10 +10500,7 @@ pub fn parse_alias_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![target_prop.clone()]),
             type_annotation: None,
@@ -10564,6 +10508,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -10590,10 +10535,7 @@ pub fn parse_data_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -10601,6 +10543,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -10623,10 +10566,7 @@ pub fn parse_data_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
@@ -10634,6 +10574,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r.err.clone()) {
@@ -10682,10 +10623,7 @@ pub fn parse_data_after_kw(
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(r.expr.clone()),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             transport: None,
             properties: Rc::new(vec![]),
             type_annotation: Some(te.clone()),
@@ -10693,6 +10631,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -11147,6 +11086,7 @@ pub fn parse_constrained_assignment(
             has_non_tail_self_call: node.has_non_tail_self_call.clone(),
             match_pattern: node.match_pattern.clone(),
             expr_data: node.expr_data.clone(),
+            ident: None,
         });
         Rc::new(ExprResult {
             expr: node.clone(),
@@ -11227,10 +11167,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             span: span.clone(),
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![r3.expr.clone()]),
-            connective: panic!(
-                "qualified value reference missing exact registry row — refuse authored qualifier"
-            )
-            .clone(),
+            connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: ret.inferred.clone(),
             return_cardinality: Cardinality::Required,
@@ -11243,6 +11180,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::ExprLet),
+            ident: None,
         });
         Rc::new(ExprResult {
             expr: node.clone(),
@@ -11318,6 +11256,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     has_non_tail_self_call: node.has_non_tail_self_call.clone(),
                     match_pattern: node.match_pattern.clone(),
                     expr_data: node.expr_data.clone(),
+                    ident: None,
                 });
                 Rc::new(ExprResult {
                     expr: node.clone(),
@@ -14076,24 +14015,25 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     return r3;
                 }
                 let node = Rc::new(Node {
-    name: name.clone(),
-    span: span.clone(),
-    ident_span: Some(name_span.clone()),
-    children: Rc::new(vec![r3.expr.clone()]),
-    connective: panic!("qualified value reference missing exact registry row — refuse authored qualifier").clone(),
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: Some(tr.type_expr.clone()),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::ExprLet),
-});
+                    name: name.clone(),
+                    span: span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![r3.expr.clone()]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: Some(tr.type_expr.clone()),
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                });
                 Rc::new(ExprResult {
                     expr: node.clone(),
                     tokens: r3.tokens.clone(),

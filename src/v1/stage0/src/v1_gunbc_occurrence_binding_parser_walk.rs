@@ -19,8 +19,6 @@ pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
-pub use crate::v2_std_node::NamedEdgeTargetLookup;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -227,7 +225,7 @@ pub fn index_entry_for_occurrence(
                     == occurrence.value.clone())
                 {
                     true => Some(entry.clone()),
-                    false => Rc::new(NamedEdgeTargetLookup::Absent),
+                    false => None,
                 },
             },
         )
@@ -250,7 +248,7 @@ pub fn occurrence_id_for_authored_name(
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().authored_name.clone() == name.clone()) {
                     true => Some(entry.projection.clone().occurrence.clone()),
-                    false => Rc::new(NamedEdgeTargetLookup::Absent),
+                    false => None,
                 },
             },
         ) {

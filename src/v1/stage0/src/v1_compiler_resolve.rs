@@ -7,11 +7,9 @@ pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::Connective::*;
 pub use crate::v1_std_core::{authored_name_at, make_error_node, module_items};
-pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, NewlineIndex};
-use crate::v2_std_node::Connective::*;
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
+pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -253,7 +251,7 @@ pub fn get_variant_names(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
-        let is_coproduct = (item.connective.clone() == Rc::new(Connective::Disj));
+        let is_coproduct = (item.connective.clone() == Connective::Disj);
         if is_coproduct.clone() {
             Rc::new({
                 let mut __result = Vec::new();
@@ -353,7 +351,7 @@ pub fn topological_sort(
                 });
                 __sorted
             }),
-            cycle_error: Rc::new(NamedEdgeTargetLookup::Absent),
+            cycle_error: None,
         })
     }
 }

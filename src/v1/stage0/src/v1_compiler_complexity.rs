@@ -64,9 +64,7 @@ pub use crate::v1_std_core::{
     match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at, param_node_type_expr,
     return_value,
 };
-pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex};
-use crate::v2_std_node::NamedEdgeTargetLookup::*;
-pub use crate::v2_std_node::{Edge, NamedEdgeTargetLookup, Node};
+pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -316,9 +314,9 @@ pub fn method_callback_element_position(
         Some(MethodSemantics::AlgebraMethodSemantics {
             algebra_template: at,
             ..
-        }) => match (*at.clone()).clone() {
+        }) => match at.clone() {
             Some(template) => panic!("error type cascade"),
-            NamedEdgeTargetLookup::Absent => None,
+            None => None,
         },
         _ => None,
     }

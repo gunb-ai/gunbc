@@ -12,12 +12,11 @@ pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::import_is_all;
+use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::MatchPattern::*;
-pub use crate::v1_std_core::{ErrorNode, ExprData, InferredNode, MatchPattern};
-use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -33,7 +32,7 @@ pub fn is_import_slot_node(n: Rc<Node>) -> bool {
 pub fn is_module_shell_node(n: Rc<Node>) -> bool {
     (((((((n.inferred.clone() == None)
         && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (n.connective.clone() == Rc::new(Connective::NoConnective)))
+        && (n.connective.clone() == Connective::NoConnective))
         && (n.body.clone() == None))
         && (n.transport.clone() == None))
         && ((n.uses.clone().len() as i64) == 0))
