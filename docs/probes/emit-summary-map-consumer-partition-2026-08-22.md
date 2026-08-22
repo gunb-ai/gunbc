@@ -95,47 +95,70 @@ An identity-keyed summary map changes nothing at that hop until the table is key
 `emit_container` shape: keying on identity is not merely absent there, it is impossible without
 changing the signature.
 
-## The collision population, at two grains
+## The collision population, and why the grain is the pool rule
 
-The refusal a re-key would arm fires when two declarations **in one emitted closure** share a
-spelling. Both grains are carried, and kept apart: a per-closure map cannot be refuted by a
-corpus-wide count.
+The refusal a re-key would arm fires when two declarations share a spelling **in one folded
+population**. That population is not one thing — the v1 emitter builds it three different ways, and
+the count differs by an order of magnitude between them. So every row names its pool rule.
 
-**Corpus-wide upper bound**, 2026-08-22, over every module-scope `type NAME` declaration under
-`dag/` and `src/`: **9474 declarations, 97 distinct names declared in two or more distinct files**
-(116 before same-file duplicates are removed). It bounds the refusal from above and is not the
-refusal population.
+- **Rule 1 — import-only union of a root.** Every `.dag` under `src/v1` seeded at once, imports
+  followed through a module index over `src/v1` and `dag`: `v1_compiler.cli_run`
+  `regen_input_sources`, the population the seed emits itself from. Exact here: no import in that
+  population names a module outside the index, so nothing is silently dropped.
+- **Rule 2 — single entry, imports plus a reference extension.**
+  `load_sources_for_entry_with_index` resolves the import closure and then calls
+  `extend_with_reference_closure`, which scans each source for **dotted module paths outside strings
+  and annotations** and pulls in each named module's own import closure. An import-edge-only walk
+  understates this: `src/v2/compiler/00_compile.dag` is 152 modules / 23 collisions by imports
+  alone, **161 / 25** once the extension is applied.
+- **Rule 3 — whole-tree union** over the three roots. The upper bound.
 
-**Closure grain**, taken by seeding the closure exactly as production discovery does — for the
-stage0 row, every `.dag` under `src/v1` plus the import closure through the module index over
-`src/v1` and `dag` (`v1_compiler.cli_run` `regen_input_sources`); for the entry rows, one entry plus
-its import closure:
-
-| closure | modules | type decls | colliding names |
+| pool | modules | type decls | colliding names |
 |---|---:|---:|---:|
-| stage0 regen (the seed emitting itself) | 128 | 974 | **1** |
-| `src/v2/compiler/00_compile.dag` | 152 | 1135 | **23** |
-| `src/v2/workflow/required_floor.dag` | 44 | 406 | **20** |
-| `dag/gunbc/design_document.dag` | 127 | 481 | 3 |
+| rule 1 — stage0 regen (the seed emitting itself) | 128 | 974 | **1** |
+| rule 2 — `src/v2/compiler/00_compile.dag` | 161 | 1182 | **25** |
+| rule 2 — `src/v2/workflow/required_floor.dag` | 45 | 430 | **20** |
+| rule 2 — `dag/gunbc/design_document.dag` | 127 | 481 | 3 |
+| rule 3 — whole tree (`dag`, `src/v1`, `src/v2`) | — | 9480 | 116 |
 
-**Instrument control.** The compiler's own resolver reports `resolved 6 sources` for this carrier's
-own entry; the walk independently counts 6 modules for it. So the walk is not measuring a different
-graph from the one the compiler builds.
+The whole-tree row: 9480 declarations, 9352 distinct names, **116 declared more than once**, and
+both grains agree — every repeated name is also declared by more than one module. (An earlier
+revision of this file reported 97 over `dag` and `src` at file grain; that figure is superseded
+rather than kept beside this one.)
 
-**The one collision in the seed's own emit closure is live and non-benign.** `Cardinality` is
-declared `Required | Optional` in `std.constructors` and `Required | CardOptional` in
-`v1.std.core` — two different unit-only enums under one key. The map's `variant_name_set` for
-`Cardinality` is whichever module the fold reached last, and `is_known_variant`,
-`derive_variant_to_enum` and `variant_belongs_to_enum` all answer from that one.
+**Instrument control.** The compiler's own resolver reports `resolved 6 sources` for this probe's
+carrier entry; the walk independently counts 6 modules for it under both rule 1 and rule 2.
 
-**The twenty-plus in every v2 closure are the dual tree, not accidents.** `Int` (`std.integer` vs
-`v2.std.integer`), `Nat` (`std.nat` vs `v2.std.nat`), `List` (`std.types` vs `v2.std.collection`),
-`Bool`, `Unit`, `TerminationProof`, `RankingDimension`, `Compose`, plus the ten machine-width
-integer rows. DESIGN §3 already names this pair as the specimen where a bare-name rule realizes the
-wrong declaration. **They are refused as a body or not at all**, which is what makes the refusal
-downstream of the two-tree migration rather than a repair anyone can land ahead of it — and is
-exactly why the sweep precedes the refusal: landing it first would red the compiler's own closure
-against a population nobody had counted.
+**The one collision in the seed's own emit population is live and non-benign.** `Cardinality` is
+`Required | Optional` in `std.constructors` and `Required | CardOptional` in `v1.std.core` — two
+different unit-only enums under one key. The map's `variant_name_set` for `Cardinality` is whichever
+module the fold reached last, and `is_known_variant`, `derive_variant_to_enum` and
+`variant_belongs_to_enum` all answer from that one.
+
+**The twenty-plus in every v2 pool are the dual tree, not accidents.** `Int`, `Nat`, `List`, `Bool`,
+`Unit`, `TerminationProof`, `RankingDimension`, `Compose`, the ten machine-width integer rows, and
+(only via the reference extension) `NonNegativeInt` and `PositiveInt`. DESIGN §3 already names this
+pair as the specimen where a bare-name rule realizes the wrong declaration. They are refused as a
+body or not at all, which puts the refusal downstream of the two-tree migration.
+
+### The `Connective` specimen: half verified, half not reproducible
+
+`Connective` **is** declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
+(`src/v2/std/node.dag`). Wherever both are folded, bare keying puts them in one entry, and
+`derive_variant_to_enum`'s ambiguity wall cannot fire, because the collision it exists to detect was
+destroyed by the index one layer above it. The generalisation belongs beside `is_known_variant`'s
+row: **a fail-closed guard downstream of a lossy index is not fail-closed** — it is structurally
+unable to observe its own trigger and reads as coverage on the ledger, which is worse than an absent
+guard, because an absent guard ranks for building.
+
+What is **not** reproduced from here is the population. The two modules are co-resident in **no**
+pool measured above: not rule 1 (`v2.std.node` is outside the `src/v1`+`dag` index entirely, and no
+import names it), and not rule 2 for `src/v1/04_infer.dag` even with all three roots indexed and the
+reference extension applied — that pool is 42 modules with **zero** colliding names. Only rule 3
+holds both. The emitted `pub use crate::v2_std_node::{Connective, Edge, NamedEdgeTargetLookup,
+Node};` line reported for that module is also absent from `main` and from the pushed
+`session/crisp-crab-430` branch at the cited path. The mechanism is real; the invocation whose pool
+contains both declarations has not been located, and until it is, the specimen cannot be counted.
 
 ## What this means for the repair, stated as a size rather than a plan
 

@@ -18,9 +18,9 @@ import gunbc.emit_summary_map_consumer_partition {
   partition_terminal_use_count,
   partition_holds_node_but_rekeys,
   partition_repaired_by_rekey_alone,
-  corpus_wide_collision_upper_bound,
-  largest_measured_closure_collision_count,
-  measured_closure_row_count
+  whole_tree_collision_upper_bound,
+  largest_measured_pool_collision_count,
+  measured_pool_row_count
 }
 
 // WHAT THIS WITNESS IS NOT. It does not measure the emitter and cannot: the roster it guards is a
@@ -91,17 +91,17 @@ fn derived_counts_lie_within_the_roster() -> Bool {
     && partition_member_count() > 0
 }
 
-// A CLOSURE IS A SUBSET OF THE CORPUS, so no closure-grain collision count may exceed the
+// A POOL IS A SUBSET OF THE TREE, so no closure-grain collision count may exceed the
 // corpus-wide bound. The two figures came from different walks over different populations, so this
 // ties them rather than restating one. RED case: file a closure row whose collision count exceeds
 // the corpus bound, which is what a mis-scoped closure walk would produce.
-fn no_closure_collides_more_than_the_corpus_bound() -> Bool {
-  largest_measured_closure_collision_count() <= corpus_wide_collision_upper_bound()
+fn no_pool_collides_more_than_the_whole_tree_bound() -> Bool {
+  largest_measured_pool_collision_count() <= whole_tree_collision_upper_bound()
 }
 
 // THE CORPUS BOUND IS NOT CARRIED ALONE. A collision population reporting only the upper bound is
 // the shape the sequencing rule forbids -- it cannot size a refusal. RED case: delete the closure
 // rows and keep the corpus row.
-fn the_collision_population_is_measured_at_closure_grain() -> Bool {
-  measured_closure_row_count() > 0
+fn the_collision_population_is_measured_at_pool_grain() -> Bool {
+  measured_pool_row_count() > 0
 }

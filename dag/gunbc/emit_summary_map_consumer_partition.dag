@@ -409,105 +409,134 @@ fn partition_severance_point_count() -> Int {
   emit_summary_map_severance_points |> count
 }
 
-// THE COLLISION POPULATION, MEASURED AT TWO GRAINS AND KEPT DISTINCT.
+// THE COLLISION POPULATION, AND THE GRAIN IS THE POOL RULE RATHER THAN "THE CLOSURE".
 //
-// The refusal a re-key would arm fires when two declarations in ONE EMITTED CLOSURE share a
-// spelling. The corpus-wide figure is an UPPER BOUND and is not that population -- no closure
-// contains every file -- and it is not a lower bound either, since it counts `type` declarations
-// only and says nothing about the composite variant keys. The two grains are carried as separate
-// variants rather than one number precisely because a per-closure map cannot be refuted by a
-// corpus-wide count, and a reader without that sentence in front of them will read them as the
-// same fact.
+// The refusal a re-key would arm fires when two declarations SHARE A SPELLING IN ONE FOLDED
+// POPULATION. That population is not one thing: the v1 emitter builds it three different ways, and
+// the collision count differs by an order of magnitude between them. A row therefore names the
+// pool rule it was measured under, because "the closure" is ambiguous between all three.
+//
+// RULE 1 -- IMPORT-ONLY UNION OF A ROOT (the seed emitting itself): every .dag under src/v1 seeded
+// at once, imports followed through a module index over src/v1 and dag. This is
+// `v1_compiler.cli_run` `regen_input_sources` and it is exact -- no import in that population names
+// a module outside the index, so nothing is silently dropped.
+//
+// RULE 2 -- SINGLE ENTRY, IMPORTS PLUS A REFERENCE EXTENSION: `load_sources_for_entry_with_index`
+// resolves the import closure and then calls `extend_with_reference_closure`, which scans each
+// source for DOTTED module paths outside strings and annotations and pulls in each named module's
+// own import closure. An import-edge-only walk understates this population, measured: 152 modules
+// and 23 colliding names for src/v2/compiler/00_compile.dag by imports alone, 161 and 25 once the
+// reference extension is applied.
+//
+// RULE 3 -- WHOLE-TREE UNION over the three roots. This is the upper bound, and it is the ONLY
+// population measured here in which v1.std.core and v2.std.node are co-resident.
 type CollisionPopulation
-  = CorpusWideUpperBound { distinct_colliding_names: Int, total_type_declarations: Int, measurement: String, why_not_the_refusal_population: String }
-  | ClosureMeasured { closure_entry: String, modules_in_closure: Int, type_declarations: Int, distinct_colliding_names: Int, specimens: String }
+  = WholeTreeUpperBound { distinct_colliding_names: Int, total_type_declarations: Int, measurement: String, why_not_the_refusal_population: String }
+  | PoolMeasured { pool_rule: String, pool_subject: String, modules_in_pool: Int, type_declarations: Int, distinct_colliding_names: Int, specimens: String }
 
-// THE INSTRUMENT AND ITS CONTROL. The closure rows below were taken by seeding the closure exactly
-// as the production discovery does -- for the stage0 row, every .dag under src/v1 plus the import
-// closure through the module index over src/v1 and dag, which is `v1_compiler.cli_run`
-// `regen_input_sources`; for the entry rows, one entry plus its import closure. CONTROL: the
-// compiler's own resolver reports `resolved 6 sources` for this carrier's own entry, and the
-// instrument independently counts 6 modules for it, so the walk is not measuring a different graph
-// from the one the compiler builds.
+// INSTRUMENT CONTROL: the compiler's own resolver reports `resolved 6 sources` for this carrier's
+// own entry, and the walk independently counts 6 modules for it under both rule 1 and rule 2, so
+// it is not measuring a different graph from the one the compiler builds.
 data emit_summary_map_collision_population: List<CollisionPopulation> = [
-  CorpusWideUpperBound {
-    distinct_colliding_names: 97,
-    total_type_declarations: 9474,
-    measurement: "every module-scope `type NAME` declaration under dag/ and src/ on 2026-08-22, grouped by name, counting names declared in two or more DISTINCT files (116 before same-file duplicates are removed)",
-    why_not_the_refusal_population: "the map is built per emitted closure, not per corpus, so this bounds the refusal from above and can neither confirm nor refute any closure row below",
+  WholeTreeUpperBound {
+    distinct_colliding_names: 116,
+    total_type_declarations: 9480,
+    measurement: "every module-scope `type NAME` under dag/, src/v1/ and src/v2/ on 2026-08-22: 9480 declarations, 9352 distinct names, 116 declared more than once -- and the two grains agree, since every repeated name is also declared by more than one MODULE",
+    why_not_the_refusal_population: "no emitted population is the whole tree, so this bounds every row below from above and can neither confirm nor refute one; a per-pool count is the only thing a refusal can be sized against",
   },
-  ClosureMeasured {
-    closure_entry: "the stage0 regen closure -- every .dag under src/v1 plus its import closure, the population build_emit_graph_info folds when the seed emits itself",
-    modules_in_closure: 128,
+  PoolMeasured {
+    pool_rule: "rule 1 -- import-only union of every .dag under src/v1, indexed over src/v1 and dag (regen_input_sources)",
+    pool_subject: "the stage0 regen population, what build_emit_graph_info folds when the seed emits itself",
+    modules_in_pool: 128,
     type_declarations: 974,
     distinct_colliding_names: 1,
-    specimens: "Cardinality, declared as Required | Optional in std.constructors and as Required | CardOptional in v1.std.core -- two DIFFERENT unit-only enums under one key, so the map's variant_name_set for Cardinality is whichever module the fold reached last, and is_known_variant, derive_variant_to_enum and variant_belongs_to_enum all answer from that one",
+    specimens: "Cardinality, declared Required | Optional in std.constructors and Required | CardOptional in v1.std.core -- two DIFFERENT unit-only enums under one key, so the map's variant_name_set for Cardinality is whichever module the fold reached last, and is_known_variant, derive_variant_to_enum and variant_belongs_to_enum all answer from that one",
   },
-  ClosureMeasured {
-    closure_entry: "src/v2/compiler/00_compile.dag",
-    modules_in_closure: 152,
-    type_declarations: 1135,
-    distinct_colliding_names: 23,
-    specimens: "the dual-tree homonyms DESIGN section 3 already names -- Int (std.integer vs v2.std.integer), Nat (std.nat vs v2.std.nat), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std vs v2.std.cardinality), Compose (std.machine_constraints vs v2.std.integer), plus the ten machine-width integer rows",
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "src/v2/compiler/00_compile.dag",
+    modules_in_pool: 161,
+    type_declarations: 1182,
+    distinct_colliding_names: 25,
+    specimens: "the dual-tree homonyms DESIGN section 3 already names -- Int (std.integer vs v2.std.integer), Nat (std.nat vs v2.std.nat), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std versus v2.std.cardinality), Compose, the ten machine-width integer rows, plus NonNegativeInt and PositiveInt which only the reference extension pulls in",
   },
-  ClosureMeasured {
-    closure_entry: "src/v2/workflow/required_floor.dag",
-    modules_in_closure: 44,
-    type_declarations: 406,
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "src/v2/workflow/required_floor.dag",
+    modules_in_pool: 45,
+    type_declarations: 430,
     distinct_colliding_names: 20,
     specimens: "the same dual-tree family, minus Unit, TerminationProof and RankingDimension",
   },
-  ClosureMeasured {
-    closure_entry: "dag/gunbc/design_document.dag",
-    modules_in_closure: 127,
+  PoolMeasured {
+    pool_rule: "rule 2 -- single entry, imports plus the reference extension",
+    pool_subject: "dag/gunbc/design_document.dag",
+    modules_in_pool: 127,
     type_declarations: 481,
     distinct_colliding_names: 3,
     specimens: "Bool, List and String -- the dag/std versus src/v2/std pairs only",
   },
 ]
 
-// WHAT THE CLOSURE ROWS SETTLE, AND IT IS THE SEQUENCING QUESTION RATHER THAN THE DESIGN ONE.
-// A refusal on collision would refuse ONE name in the seed's own emit closure and TWENTY-PLUS in
-// every v2 closure that spans both std trees. Those twenty are not accidents to be repaired one by
-// one: they are the two-tree migration, so the refusal is downstream of it, and landing the refusal
-// first would red the compiler's own closure on a population nobody had counted. That is the whole
-// reason the sweep precedes the refusal.
-// The single seed-closure collision (Cardinality) is the one a refusal could be sized against
-// today; the twenty-plus v2-closure collisions are the dag/std versus src/v2/std dual tree and are
-// refused as a body or not at all. Nothing here proposes either.
+// WHAT THE POOL ROWS SETTLE, AND IT IS THE SEQUENCING QUESTION RATHER THAN THE DESIGN ONE.
+// A refusal on collision would refuse ONE name in the seed's own emit population and TWENTY-PLUS in
+// every v2 entry pool that spans both std trees. Those twenty are not accidents to be repaired one
+// at a time: they ARE the two-tree migration, so the refusal is downstream of it, and landing the
+// refusal first would red the compiler's own pool against a population nobody had counted.
 
-// THE TIE BETWEEN THE TWO GRAINS, derived rather than asserted: a closure is a subset of the
-// corpus, so no closure row may report more colliding names than the corpus-wide bound. The two
+// THE Connective SPECIMEN, CARRIED AS AN OPEN QUESTION RATHER THAN AS A ROW, because half of it is
+// verified and half of it is not reproducible from here.
+//
+// VERIFIED: Connective is declared twice -- v1.std.core (src/v1/00_core.dag) and v2.std.node
+// (src/v2/std/node.dag). Under bare keying those two summaries occupy one entry wherever both are
+// folded, and derive_variant_to_enum's ambiguity wall then cannot fire, because the collision it
+// exists to detect was destroyed by the index one layer above it. The sentence that generalises,
+// and it belongs beside is_known_variant's row: A FAIL-CLOSED GUARD DOWNSTREAM OF A LOSSY INDEX IS
+// NOT FAIL-CLOSED -- it is structurally unable to observe its own trigger, and it reads as coverage
+// on the ledger, which is worse than an absent guard because an absent guard ranks for building.
+//
+// NOT REPRODUCED: the two modules are co-resident in NO pool measured here. Not rule 1 (v2.std.node
+// is outside the src/v1-plus-dag index entirely and no import names it), and not rule 2 for
+// src/v1/04_infer.dag even with all three roots indexed and the reference extension applied -- that
+// pool is 42 modules with ZERO colliding names. Only rule 3, the whole-tree union, holds both. The
+// emitted use-line reported for that module is also absent from main and from the pushed
+// session/crisp-crab-430 branch at the cited path. So the mechanism is real and the population it
+// needs has not been located: what is missing is the exact invocation whose pool contains both
+// declarations. Filed here as the open half rather than folded into a row, because a specimen whose
+// pool cannot be named cannot be counted.
+
+// THE TIE BETWEEN THE GRAINS, derived rather than asserted: every pool is a subset of the tree, so
+// no pool row may report more colliding names than the whole-tree bound. The two
 // numbers were taken by different walks over different populations, so this is a real consistency
 // check between them and not a restatement.
 fn collision_row_colliding_names(r: CollisionPopulation) -> Int {
   match r {
-    CorpusWideUpperBound { distinct_colliding_names: n, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => n
-    ClosureMeasured { closure_entry: _, modules_in_closure: _, type_declarations: _, distinct_colliding_names: n, specimens: _ } => n
+    WholeTreeUpperBound { distinct_colliding_names: n, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => n
+    PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: n, specimens: _ } => n
   }
 }
 
-fn collision_row_is_closure_measured(r: CollisionPopulation) -> Bool {
+fn collision_row_is_pool_measured(r: CollisionPopulation) -> Bool {
   match r {
-    ClosureMeasured { closure_entry: _, modules_in_closure: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
+    PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
     _ => false
   }
 }
 
-fn corpus_wide_collision_upper_bound() -> Int {
+fn whole_tree_collision_upper_bound() -> Int {
   emit_summary_map_collision_population
-    |> filter(r => !collision_row_is_closure_measured(r: r))
+    |> filter(r => !collision_row_is_pool_measured(r: r))
     |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
 }
 
-fn largest_measured_closure_collision_count() -> Int {
+fn largest_measured_pool_collision_count() -> Int {
   emit_summary_map_collision_population
-    |> filter(r => collision_row_is_closure_measured(r: r))
+    |> filter(r => collision_row_is_pool_measured(r: r))
     |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
 }
 
-fn measured_closure_row_count() -> Int {
-  emit_summary_map_collision_population |> filter(r => collision_row_is_closure_measured(r: r)) |> count
+fn measured_pool_row_count() -> Int {
+  emit_summary_map_collision_population |> filter(r => collision_row_is_pool_measured(r: r)) |> count
 }
 
 // BASIS AND BLIND SPOT. The selector is mechanical, so it can be re-run: every expression in the v1
