@@ -9,7 +9,7 @@ src/v2_lens_complexity_accumulator_copy_analyze.rs	309	14	Rc<LetBinding>	LetBind
 src/v2_lens_complexity_accumulator_copy_analyze.rs	485	80	Vector<PortReading>	Vector<Rc<PortReading>>	generic_arg+container	R1	rc_wrap_at_type_argument_depth			mismatched types
 src/v2_lens_complexity_accumulator_copy_analyze.rs	479	72	Rc<Vector<Rc<PortReading>>>	Rc<Vector<PortReading>>	generic_arg+container	R1	rc_wrap_at_type_argument_depth			mismatched types
 src/v2_lens_complexity_accumulator_copy_analyze.rs	696	15	Rc<Vector<Finding>>	Rc<Vector<Rc<Finding>>>	generic_arg+container	R1	rc_wrap_at_type_argument_depth			mismatched types
-src/v2_lens_complexity_lowering.rs	48	13	Vector<()>	Vector<Rc<ComplexityLowering>>	generic_arg+container	R1	rc_wrap_at_type_argument_depth			mismatched types
+src/v2_lens_complexity_lowering.rs	48	13	Vector<()>	Vector<Rc<ComplexityLowering>>	generic_arg+container	C	carrier_collapses_to_unit			mismatched types
 src/v2_lens_complexity_lowering.rs	60	104	Rc<ComplexityLowering>	()	rc_depth+nominal	C	carrier_collapses_to_unit	src/v2_lens_complexity_lowering.rs:55:8	function defined here	mismatched types
 src/v2_lens_complexity_lowering.rs	68	107	Rc<ComplexityLowering>	()	rc_depth+nominal	C	carrier_collapses_to_unit	src/v2_lens_complexity_lowering.rs:55:8	function defined here	mismatched types
 src/v2_lens_coverage.rs	52	21	Coverage<Rc<CoverageDefectAcceptanceKey>>	CoverageDefectAcceptanceKey	nominal	D	alias_arity_generic_argument_count	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
@@ -45,18 +45,18 @@ src/std_measure.rs	488	18	Rc<i64>	i64	rc_depth	R1	rc_wrap_only			mismatched type
 src/v2_std_staging.rs	31	53	B	&B	generic_arg+borrowed	A-clone	generic_param_clone_bound_absent			mismatched types
 src/v2_std_staging.rs	31	53	_	&_	generic_arg+borrowed	A-clone	generic_param_clone_bound_absent			mismatched types
 src/v2_std_text.rs	65	59	i64	Box<i64>	nominal	BOX-WRAP	box_wrap_only			mismatched types
-src/std_realization_schedule.rs	64	11	Rc<Measure<(), S, Rc<i64>>>	Rc<Measure<(), _, i64>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
-src/std_realization_schedule.rs	64	11	Rc<Measure<_, S, Rc<i64>>>	Rc<Measure<_, _, i64>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
+src/std_realization_schedule.rs	64	11	Rc<Measure<(), S, Rc<i64>>>	Rc<Measure<(), _, i64>>	generic_arg	D	alias_arity_generic_argument_count			mismatched types
+src/std_realization_schedule.rs	64	11	Rc<Measure<_, S, Rc<i64>>>	Rc<Measure<_, _, i64>>	generic_arg	D	alias_arity_generic_argument_count			mismatched types
 src/std_realization_schedule.rs	74	11	Rc<Measure<(), S, Rc<i64>>>	Rc<Measure<(), S, i64>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
 src/std_realization_schedule.rs	74	11	Rc<Measure<_, _, Rc<i64>>>	Rc<Measure<_, _, i64>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
-src/std_realization_schedule.rs	83	19	Rc<Measure<_, _, i64>>	Rc<Measure<(), S, Rc<i64>>>	generic_arg	R1	rc_wrap_at_type_argument_depth	src/std_measure.rs:214:8	function defined here	mismatched types
+src/std_realization_schedule.rs	83	19	Rc<Measure<_, _, i64>>	Rc<Measure<(), S, Rc<i64>>>	generic_arg	D	alias_arity_generic_argument_count	src/std_measure.rs:214:8	function defined here	mismatched types
 src/std_state_durability.rs	152	65	StateDurabilityBoundary	Vector<Rc<StateDurabilityBoundary>>	nominal+container	ELEM-COLL	element_vs_its_own_collection			mismatched types
 src/std_state_durability.rs	163	70	Rc<StateDurabilityBoundary>	Rc<Vector<Rc<StateDurabilityBoundary>>>	nominal+container	ELEM-COLL	element_vs_its_own_collection	src/v1_rt.rs:379:8	function defined here	mismatched types
 src/std_state_durability.rs	291	152	StateDefinitionCallerAssertion	Vector<Rc<StateDefinitionCallerAssertion>>	nominal+container	ELEM-COLL	element_vs_its_own_collection			mismatched types
 src/std_state_durability.rs	636	59	StateDurabilityBoundary	Vector<Rc<StateDurabilityBoundary>>	nominal+container	ELEM-COLL	element_vs_its_own_collection			mismatched types
 src/std_state_durability.rs	878	59	Rc<StateDurabilityEvidence<Target, ReadbackSubject>>	Rc<Vector<Rc<StateDurabilityEvidence<Target, ReadbackSubject>>>>	nominal+container	RESIDUE	unclassified_pair: Rc<StateDurabilityEvidence<Target, ReadbackSubject>> | Rc<Vector<Rc<StateDurabilityEvidence<Target, ReadbackSubject>>>>	src/v1_rt.rs:379:8	function defined here	mismatched types
 src/v2_std_collection.rs	93	13	HashMap<K, V>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
-src/v2_std_fold_assembly.rs	258	38	Rc<Outcome<Rc<Vector<Rc<Vector<Rc<Node>>>>>>>	Rc<Outcome<Rc<Vector<Rc<Node>>>>>	generic_arg	R1	rc_wrap_at_type_argument_depth			`match` arms have incompatible types
+src/v2_std_fold_assembly.rs	258	38	Rc<Outcome<Rc<Vector<Rc<Vector<Rc<Node>>>>>>>	Rc<Outcome<Rc<Vector<Rc<Node>>>>>	generic_arg	ELEM-COLL	element_vs_its_own_collection			`match` arms have incompatible types
 src/std_cache_interface.rs	638	12	Option<String>	None	nominal+optionality	R2	optional_surface_fork			mismatched types
 src/std_cache_interface.rs	652	22	Rc<Measure<(), (), i64>>	Rc<Measure<(), (), Rc<i64>>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
 src/std_cache_interface.rs	652	22	Rc<Measure<_, _, i64>>	Rc<Measure<_, _, Rc<i64>>>	generic_arg	R1	rc_wrap_at_type_argument_depth			mismatched types
@@ -76,8 +76,8 @@ src/v2_std_node_query.rs	150	104	_	&_	generic_arg+borrowed	A-clone	generic_param
 src/v2_std_provenance.rs	79	27	Option<Rc<OriginEvent>>	Rc<OriginEvent>	rc_depth+nominal+optionality	R2	optional_surface_fork	src/v2_std_witness.rs:26:8	function defined here	mismatched types
 src/v2_std_provenance.rs	79	27	Option<Rc<_>>	Rc<_>	rc_depth+nominal+optionality	R2	optional_surface_fork	src/v2_std_witness.rs:26:8	function defined here	mismatched types
 src/v2_lens_determinism.rs	135	42	Rc<Determinism>	Rc<Edge>	nominal	RESIDUE	unclassified_pair: Rc<Determinism> | Rc<Edge>	src/v2_lens_determinism.rs:128:8	function defined here	arguments to this function are incorrect
-src/v2_lens_determinism.rs	161	64	Witness<Rc<DeterminismFact>>	Witness<DeterminismFact>	generic_arg	W	witness_type_argument	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
-src/v2_std_cardinality.rs	581	42	Rc<Witness<Rc<TerminationProof>>>	Rc<Edge>	nominal	W	witness_type_argument	src/v2_std_cardinality.rs:566:8	function defined here	arguments to this function are incorrect
+src/v2_lens_determinism.rs	161	64	Witness<Rc<DeterminismFact>>	Witness<DeterminismFact>	generic_arg	R1	rc_wrap_at_type_argument_depth	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
+src/v2_std_cardinality.rs	581	42	Rc<Witness<Rc<TerminationProof>>>	Rc<Edge>	nominal	RESIDUE	unclassified_pair: Rc<Witness<Rc<TerminationProof>>> | Rc<Edge>	src/v2_std_cardinality.rs:566:8	function defined here	arguments to this function are incorrect
 src/v2_std_compilers_lexing.rs	235	13	Vector<Rc<Token>>	Rc<Vector<Rc<Token>>>	rc_depth+container	R1	rc_wrap_only	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_std_integer.rs	1359	26	Rc<Nat>	{integer}	rc_depth+nominal	B3	modeled_numeric_vs_native			mismatched types
 src/v2_std_integer.rs	1362	30	Rc<Nat>	{integer}	rc_depth+nominal	B3	modeled_numeric_vs_native			mismatched types
@@ -99,7 +99,7 @@ src/v2_compiler_target_carriers.rs	105	64	Option<Rc<_>>	Rc<_>	rc_depth+nominal+o
 src/v2_std_grammar.rs	1285	29	Rc<DeriveGrammarRelationTokensProgress>	DeriveGrammarRelationTokensProgress	rc_depth	R1	rc_wrap_only			mismatched types
 src/v2_std_grammar.rs	1363	29	Rc<DeriveGrammarRelationTokensProgress>	DeriveGrammarRelationTokensProgress	rc_depth	R1	rc_wrap_only			mismatched types
 src/v2_std_grammar.rs	1365	12	()	Rc<Vector<Rc<Edge>>>	rc_depth+nominal+container	C	carrier_collapses_to_unit			mismatched types
-src/v2_std_grammar.rs	1364	21	Witness<Rc<Vector<Rc<Edge>>>>	Witness<()>	generic_arg	W	witness_type_argument	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
+src/v2_std_grammar.rs	1364	21	Witness<Rc<Vector<Rc<Edge>>>>	Witness<()>	generic_arg	C	carrier_collapses_to_unit	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_extdeps_languages_llvm_ir.rs	1099	13	HashMap<String, Rc<Node>>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_extdeps_languages_llvm_ir.rs	1123	13	HashMap<String, Rc<Node>>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_std_language_model.rs	44	13	OrdSet<String>	Rc<PointwisePower<_>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
@@ -119,11 +119,11 @@ src/v2_compiler_parse.rs	1095	53	OrdSet<String>	Rc<PointwisePower<_>>	rc_depth+n
 src/v2_extdeps_runtimes_v2_evaluator.rs	160	13	HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_extdeps_runtimes_v2_evaluator.rs	332	5	Rc<Edge>	Edge	rc_depth	R1	rc_wrap_only			mismatched types
 src/v2_lens_machine_shape.rs	190	5	Rc<MachineShapeWalkResult>	MachineShapeWalkResult	rc_depth	R1	rc_wrap_only			mismatched types
-src/v2_compiler_body_lowering_fold.rs	3176	13	Rc<Outcome<Option<Rc<Node>>>>	Rc<Outcome<Rc<Node>>>	generic_arg	R1	rc_wrap_at_type_argument_depth			`match` arms have incompatible types
-src/v2_compiler_body_lowering_fold.rs	3176	13	Rc<Outcome<Option<Rc<_>>>>	Rc<Outcome<Rc<_>>>	generic_arg	R1	rc_wrap_at_type_argument_depth			`match` arms have incompatible types
+src/v2_compiler_body_lowering_fold.rs	3176	13	Rc<Outcome<Option<Rc<Node>>>>	Rc<Outcome<Rc<Node>>>	generic_arg+optionality	R2	optional_surface_fork			`match` arms have incompatible types
+src/v2_compiler_body_lowering_fold.rs	3176	13	Rc<Outcome<Option<Rc<_>>>>	Rc<Outcome<Rc<_>>>	generic_arg+optionality	R2	optional_surface_fork			`match` arms have incompatible types
 src/v2_compiler_resolve.rs	145	13	OrdSet<String>	Rc<PointwisePower<_>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_compiler_infer.rs	164	20	HashMap<Rc<Node>, Rc<InferredFacts>>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
-src/v2_compiler_infer.rs	378	63	Witness<Rc<TerminationProof>>	Witness<TerminationProof>	generic_arg	W	witness_type_argument	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
+src/v2_compiler_infer.rs	378	63	Witness<Rc<TerminationProof>>	Witness<TerminationProof>	generic_arg	R1	rc_wrap_at_type_argument_depth	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_compiler_infer.rs	513	20	HashMap<Rc<Node>, Rc<InferredFacts>>	Rc<PartialFunction<_, _>>	rc_depth+nominal+container	T3	collection_carrier_fork	/rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src/rc.rs:419:11	associated function defined here	mismatched types
 src/v2_compiler_infer.rs	522	27	Option<Rc<InferredFacts>>	Rc<InferredFacts>	rc_depth+nominal+optionality	R2	optional_surface_fork	src/v2_std_witness.rs:26:8	function defined here	mismatched types
 src/v2_compiler_infer.rs	522	27	Option<Rc<_>>	Rc<_>	rc_depth+nominal+optionality	R2	optional_surface_fork	src/v2_std_witness.rs:26:8	function defined here	mismatched types

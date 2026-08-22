@@ -131,8 +131,102 @@ def delta_vector(e, f):
     elif eb != fb: v.append("generic_arg")
     if head(eb) in COLLECTIONS or head(fb) in COLLECTIONS: v.append("container")
     if e.startswith("&") or f.startswith("&"): v.append("borrowed")
-    if head(eb) == "Option" or head(fb) == "Option" or f == "None": v.append("optionality")
+    # ANY-DEPTH, not head-only: an Option nested inside Outcome<_> never set this flag, which is
+    # how three non-wrap sites reached the old R1 arm looking like bare wrap deltas.
+    if "Option<" in e or "Option<" in f or f == "None" or e == "None": v.append("optionality")
     return "+".join(v) if v else "none"
+
+
+# ---- keying, declared rather than emergent ---------------------------------
+# THE ARMS USE THREE KEYING SCHEMES AND THE PRECEDENCE BETWEEN THEM IS DECLARED HERE.
+#   delta-keyed   : fires on the SHAPE OF THE DIFFERENCE  (R1, A-clone, BOX-WRAP, ELEM-COLL, D)
+#   carrier-keyed : fires on the head type's identity     (B3, B2, T2, T3, DIAG, W, C, R2)
+#   message-keyed : fires on rustc's own text             (ARG-ORDER)
+# A site can satisfy a delta-keyed and a carrier-keyed definition at once -- Witness<Rc<X>> vs
+# Witness<X> is both a Witness fork and a pure Rc wrap -- so SOME precedence always decides it.
+# Before this block that precedence was source order: every carrier arm sat above every delta
+# arm, so the carrier silently won, and the partition still summed to the site total. A sum is
+# exactly the check that cannot see a keying inconsistency (found by smart-ram-730 and
+# royal-dove-436 running the rule in the direction neither the author nor the first reporter ran:
+# which NON-R1 rows PASS the R1 test).
+#
+# THE RULING: an EXACT delta test outranks a carrier test. If erasing every Rc from both sides
+# makes them equal, the two sides AGREE about the carrier and disagree only about wrapping, so
+# the faulty decision is the wrap decision -- naming the carrier there would name a fact both
+# sides already share. Carrier arms therefore keep only sites where the carrier itself differs.
+# The one exact delta test that can collide with a carrier arm is R1's, so R1 is hoisted above
+# the carrier arms; the other delta-keyed arms are not exact in this sense and keep their place.
+def rc_erased(t):
+    """Erase every Rc<...> wrapper, at any depth. Balanced-bracket, not a regex: a regex on
+    [^<>]* leaves Rc<Refined<Artifact>> untouched and would report a real R1 site as unequal."""
+    out, i = [], 0
+    while i < len(t):
+        if t.startswith("Rc<", i):
+            d, k = 0, i + 2
+            while k < len(t):
+                if t[k] == "<":
+                    d += 1
+                elif t[k] == ">":
+                    d -= 1
+                    if d == 0:
+                        break
+                k += 1
+            out.append(rc_erased(t[i + 3:k]))
+            i = k + 1
+        else:
+            out.append(t[i])
+            i += 1
+    return "".join(out)
+
+assert rc_erased("Rc<Refined<Artifact>>") == "Refined<Artifact>"
+assert rc_erased("Rc<Vector<Rc<Token>>>") == "Vector<Token>"
+assert rc_erased("Measure<(), S, Rc<i64>>") == "Measure<(), S, i64>"
+assert rc_erased("String") == "String"
+
+
+def split_args(t):
+    """Top-level generic argument list of `Head<a, b, c>`, or None."""
+    i = t.find("<")
+    if i < 0 or not t.endswith(">"):
+        return None
+    inner, args, d, cur = t[i + 1:-1], [], 0, []
+    for ch in inner:
+        if ch == "<":
+            d += 1
+        elif ch == ">":
+            d -= 1
+        if ch == "," and d == 0:
+            args.append("".join(cur).strip()); cur = []
+        else:
+            cur.append(ch)
+    args.append("".join(cur).strip())
+    return args
+
+def difference_context(e, f, path=None):
+    """The constructor path descended THROUGH to reach the difference, e.g.
+    `Witness<Rc<Node>>` vs `Witness<Rc<RuntimeValueAcceptanceWitness>>` gives ['Witness']."""
+    path = [] if path is None else path
+    ea, fa = split_args(e), split_args(f)
+    if ea is None or fa is None or head(e) != head(f) or len(ea) != len(fa):
+        return path
+    diffs = [i for i in range(len(ea)) if ea[i] != fa[i]]
+    if len(diffs) != 1:
+        return path
+    return difference_context(ea[diffs[0]], fa[diffs[0]], path + [head(e)])
+
+def innermost_difference(e, f):
+    """Descend while the two sides agree, and return the first position at which they differ.
+    A CARRIER arm must be keyed on the carrier AT THE DIFFERENCE, not at the head: the head of
+    `Outcome<Option<Node>>` vs `Outcome<Node>` is `Outcome` on both sides and says nothing about
+    the disagreement, which is an Option presence one level down. Head-only carrier tests are
+    why three such sites fell past every carrier arm into a same-head catch-all."""
+    ea, fa = split_args(e), split_args(f)
+    if ea is None or fa is None or head(e) != head(f) or len(ea) != len(fa):
+        return e, f
+    diffs = [i for i in range(len(ea)) if ea[i] != fa[i]]
+    if len(diffs) != 1:
+        return e, f
+    return innermost_difference(ea[diffs[0]], fa[diffs[0]])
 
 # ---- discriminators (prior 15-root vocabulary) ------------------------------
 def classify(s):
@@ -145,6 +239,15 @@ def classify(s):
     he, hf = head(eb), head(fb)
     if s["reorder"]:
         return "ARG-ORDER", "call_argument_order_diverges_from_declaration"
+    # R1, hoisted above every carrier arm by the ruling above: the ONLY difference is Rc wrapping.
+    if e != f and rc_erased(e) == rc_erased(f):
+        return "R1", ("rc_wrap_only" if en != fn else "rc_wrap_at_type_argument_depth")
+    # Carrier arms below key on the carrier AT THE DIFFERENCE. The outer pair is still what the
+    # site reports; only the discriminator descends.
+    de, df = innermost_difference(e, f)
+    if (de, df) != (e, f):
+        eb, en = strip_rc(de); fb, fn = strip_rc(df)
+        he, hf = head(eb), head(fb)
     # A-clone: generic parameter cloned through a reference
     if s["kind_e"] == "type parameter" or (eb.isidentifier() and f == "&" + e):
         if f.startswith("&") and f.lstrip("&") == e:
@@ -165,9 +268,6 @@ def classify(s):
     # DIAG diagnostic carrier fork
     if {he, hf} & {"Diagnostic", "NonEmptyDiagnostics", "Diagnostics"} and he != hf:
         return "DIAG", "diagnostic_carrier_fork"
-    # W Witness type argument
-    if he == "Witness" or hf == "Witness":
-        return "W", "witness_type_argument"
     # C carrier collapses to unit
     if eb == "()" or fb == "()" or s["kind_f"] == "unit type" or s["kind_e"] == "unit type":
         return "C", "carrier_collapses_to_unit"
@@ -190,6 +290,13 @@ def classify(s):
         return "ELEM-COLL", "element_vs_its_own_collection"
     if hf in COLLECTIONS and he not in COLLECTIONS and elem_of(fb, he):
         return "ELEM-COLL", "element_vs_its_own_collection"
+    # W is CONTEXT-keyed, not carrier-keyed: the prior vocabulary's row is "Witness<_> type
+    # argument", i.e. the two sides agree that the value is a Witness and disagree about what it
+    # witnesses. It sits below the carrier arms by the declared precedence -- a difference that
+    # is itself a carrier fork (a unit collapse, a text carrier) is named by the fork, not by the
+    # constructor it happens to sit inside.
+    if "Witness" in difference_context(e, f):
+        return "W", "witness_type_argument"
     # D alias arity / generic argument count: one side IS the other's generic argument,
     # or the two differ only by an elided argument list
     if he != hf and (re.search(r"[<,]\s*(?:Rc<)?%s[>,]" % re.escape(hf), eb)
@@ -200,11 +307,12 @@ def classify(s):
     # R5 duplicate type authority (same leaf spelling under two paths / near-identical nominals)
     if he != hf and (he in hf or hf in he):
         return "R5", "duplicate_type_authority"
-    # R1 bare<->Rc wrap decision
-    if he == hf and en != fn:
-        return "R1", "rc_wrap_only"
-    if he == hf and eb != fb and ("Rc<" in eb or "Rc<" in fb):
-        return "R1", "rc_wrap_at_type_argument_depth"
+    # The old R1 tail arms are GONE, not moved. `("Rc<" in eb or "Rc<" in fb)` admitted a site
+    # whenever the substring occurred anywhere on either side, which is not evidence that the
+    # DELTA is an Rc wrap: it swept in Outcome<Option<Node>> vs Outcome<Node> (an Option
+    # presence), Vector<()> vs Vector<ComplexityLowering> (a unit collapse) and
+    # Measure<(),S,i64> vs Measure<(),_,i64> (a type-parameter binding). The exact test above
+    # replaces it; anything reaching here differs by more than wrapping.
     if he == hf and eb != fb:
         return "D", "alias_arity_generic_argument_count"
     return "RESIDUE", "unclassified_pair: %s | %s" % (e, f)
