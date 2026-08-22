@@ -414,3 +414,46 @@ two renderings at one emitted column is *not established* and this lane does not
 population is zero on current main, the signature having been repaired (not relocated) between
 `2a2bd0ad` and `90986d19` by an unattributed change in a six-PR window. Recorded so the next reader
 inherits a closed question rather than a plausible story.
+
+---
+
+# The census module does not land, and why
+
+An earlier revision of this branch committed `src/v1/tests/claim/carrier_realization_census.dag`,
+its emitted stage0 mirror, a `pub mod` line in `src/v1/stage0/src/lib.rs`, and two driver shell
+scripts. **All of it is removed.** The branch is documentation only.
+
+**What forced the question.** CI refused at the regen phase, not the floor:
+
+```
+regen FAIL refusal: emitted surface has no committed mirror —
+["dry_run.rs", "extdeps_filesystem_filesystem_io.rs", "extdeps_process_gnu_bash_exit.rs",
+ "extdeps_process_posix_exit.rs", "std_process.rs"]
+```
+
+The census imported `extdeps.filesystem.filesystem_io` and `std.process`, which pulled **five
+host-effect modules into the v1 seed closure**. That is the seed growth this lane was capped on, and
+I had recorded the committed module as "pure analysis only — no Filesystem, no ProcessExit, no
+entries". That record was **false against the tree**: the imports and their two consumers were
+committed. The refusal is correct and it is the mechanism working — the gate names the exact mirrors
+and refuses to let an unauthored surface in.
+
+**Why removal rather than trimming.** Cutting the host-effect half left a module with **zero
+consumers**: no `.dag` imports it, nothing reads the emitted mirror, and the only reference was the
+`pub mod` line added to make it compile. Its three `_paths` data rows each had exactly one reference
+— their own declaration. That is §6's *new artifact with no final consumer*, and the admission that
+allowed it was granted while the census was the instrument for an open question. **That question is
+now closed**: the mechanism is refuted above, and the population is zero on current main. An
+instrument for a settled question, with no consumer, is residue — so it does not land, and trimming
+it into the seed would have been the worse outcome of the two.
+
+The two driver scripts went with it: both invoked `--entry
+src/v1/tests/claim/carrier_realization_census.dag`, and `census_run.sh` named a function
+(`census_write_smoke_receipt`) that no longer existed in the module it drove. Hand-authored
+out-of-band actuation, dead on both counts.
+
+**What is deliberately kept.** The emitted specimen under
+`filesystem_effect_emission_specimen_2026-08-22/` stays. It is *evidence* for the Filesystem
+emission defect — invalid Rust from valid source, with no refusal — captured before the module was
+stripped precisely because regen will not reproduce it. Its README states that `.emitted` is a
+recorded artifact and not a build input.
