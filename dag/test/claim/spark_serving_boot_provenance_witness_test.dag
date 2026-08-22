@@ -211,13 +211,25 @@ test fn both_probes_are_portable_unprivileged_reads() -> Bool {
 
 // The wire distinguishes the two live cases in words, because "the unit is up" reads the same in
 // both and the difference is the entire finding.
+// THIS TEST USED TO ASSERT THE PROSE, and the prose was the part that had to change. It pinned
+// "came up WITH this boot" and "did NOT come up with this boot" -- the second of which was removed
+// deliberately, because UnitStartedAfterBoot does not mean durability FAILED, only that the unit was
+// not part of the manager startup transaction. A witness holding the explanatory half of a wire line
+// hostage makes correcting a wrong sentence look like a regression.
+//
+// It now joins on the WIRE TAG, which is the machine-consumed fact and the thing that must stay
+// stable: a consumer parses boot-provenance=<tag>, never the sentence after the dashes. The final
+// clause is what makes it discriminating rather than two independent containments -- the after-boot
+// wire must NOT also carry the at-boot tag, so collapsing both arms to one tag reds this.
 test fn the_wire_separates_came_up_with_this_boot_from_started_later() -> Bool {
-  string_contains(
-    spark_serving_boot_provenance_wire(p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
-    "came up WITH this boot",
+  let at_boot = spark_serving_boot_provenance_wire(
+    p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
   )
-    && string_contains(
-         spark_serving_boot_provenance_wire(p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
-         "did NOT come up with this boot",
-       )
+  let after_boot = spark_serving_boot_provenance_wire(
+    p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
+  )
+  string_contains(at_boot, "boot-provenance=started-by-manager-at-boot")
+    && string_contains(after_boot, "boot-provenance=started-after-boot")
+    && at_boot != after_boot
+    && !string_contains(after_boot, "boot-provenance=started-by-manager-at-boot")
 }
