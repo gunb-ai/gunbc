@@ -271,6 +271,24 @@ data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondi
 // "authorization produced nothing" -- a transport or writer failure -- from "authorization said
 // do nothing". If a no-op could render empty, those two states would collide at the only place
 // that can still tell them apart, and a dropped authorization would read as a converged fleet.
+// THE REFUSAL AN OPERATOR ACTUALLY READS, FACTORED OUT SO A WITNESS CAN CONSUME IT. This text
+// was twice stronger than the mechanism -- first claiming the run recorded "which code
+// adjudicated" the advance, then "which source this run was running from", both of which invite
+// the reader to infer the PROVENANCE OF THE EXECUTING BINARY. The mechanism establishes only that
+// the admission checkout's HEAD was read after the action was derived and before it was
+// materialized. Each narrowing was correct and each was caught by review rather than by execution,
+// because a reason string built inline at its throw site has no consumer: the typed decision stays
+// right while the sentence beside it drifts, exactly the class #8787 landed for. Extracting it
+// makes the wording a SUBJECT a claim can fail on -- see the two rows in the witness file, whose
+// discriminating control is restoring either older phrasing.
+fn fleet_desired_unobservable_judge_source_refusal_reason() -> String {
+  join([
+    "fleet_desired_admission: the action was authorized, but the admission checkout's source ",
+    "revision could not be observed after adjudication, so the receipt cannot record ",
+    "judge-source-observed -- refusing to materialize an unattributable action",
+  ], "")
+}
+
 fn fleet_desired_authorized_action_script(
   action: FleetDesiredAuthorizedAction,
   judge_source_observed: GitObjectId,
@@ -370,14 +388,7 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
             AdmissionActionAuthorized { action: action } =>
               match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
                 Absent =>
-                  exit_failure(
-                    reason: join([
-                      "fleet_desired_admission: the action was authorized, but the admission checkout's ",
-                      "source revision could not be observed, so the receipt cannot record which source ",
-                      "this run was running from -- refusing to actuate rather than publish an ",
-                      "unattributable action",
-                    ], ""),
-                  )
+                  exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
                 Present { value: judge_source_observed } => {
                   let wrote = Filesystem.Write(
                     path: fleet_desired_admission_authorized_action_path,
