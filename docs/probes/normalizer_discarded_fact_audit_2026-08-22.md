@@ -152,10 +152,28 @@ other.
 
 ---
 
-## CORRECTION 2026-08-22 — Verdict 1 (ENUMERATION CLOSED) is WITHDRAWN
+## CORRECTION 2026-08-22 — Verdict 1 is RESCOPED (not withdrawn)
 
-Verdict 1 is false. It is replaced by ENUMERATION SCOPE-LIMITED, and the
-scope is stated below rather than left implied.
+Verdict 1 was published as ENUMERATION CLOSED. That word is false. But the
+first revision of this correction withdrew the verdict outright, and that was
+an over-correction in the opposite direction: it deleted an executed result
+because the sentence carrying it was too wide.
+
+**The distinction that fixes it: completeness of the SEARCH WITHIN a found set
+is not completeness of the FINDING of that set.** Two different claims were
+unified by one word.
+
+- **STANDS — a bounded, executed null over the 26 found names.** No method
+  position, no `let`/`data` binding, and no higher-order use hides an operation
+  among them: 0 method positions, 0 let/data, and all 56 bare mentions
+  classified (21 imports, 29 data-note prose, 2 module decls, 4 `//` comments).
+  That was measured, it discriminates, and nothing below touches it.
+- **FALSE — that the 26 names were all the names.** The name-finding itself was
+  never checked for completeness, and it was not complete.
+
+Verdict 1 is therefore restated as: **SEARCH CLOSED OVER A COMPILER-SCOPED
+FOUND SET; FOUND SET NOT CLOSED.** The scope is stated below rather than left
+implied, which is the whole of what the original verdict omitted.
 
 **What was wrong.** The enumeration ran over a compiler-centric file scope
 and the verdict was published corpus-wide. Re-deriving the same rule against
@@ -213,5 +231,22 @@ to main and need no re-derivation.
 subject, the verdict did not, and "CLOSED" is precisely the word that carries
 a scope claim it never earned. A completeness verdict must state the
 population it closed over in the same sentence that closes it.
+
+The reusable form, because this class has a specific shape rather than being
+general carelessness: **any search-based completeness claim has two independent
+completeness questions, and only one of them is usually measured.** Did the
+search exhaust the found set, and did the finding exhaust the population. The
+first is the one an executed probe naturally answers; the second is the one
+the word "closed" is heard as answering. When only the first is measured, the
+verdict is not wrong — it is a true statement about a set whose boundary was
+never established, and it should be written with that boundary in its own
+sentence.
+
+**Also recorded: the convenient explanation was refuted rather than used.** The
+audit tree was 171 commits stale, which is a true fact, an available cause, and
+the wrong one. Had it been accepted, the repair would have been a rebase and
+re-run, which corrects 1 of 6 and reproduces the same scope gap on the next
+pass. The check that separated them — were the missed operations present at the
+audit's own head — cost one command and inverted the remedy.
 
 — smart-ram-730
