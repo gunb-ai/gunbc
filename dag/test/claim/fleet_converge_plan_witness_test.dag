@@ -448,3 +448,16 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     Absent => false
   }
 }
+
+// The stale diagnostic names the observed generation as ONE word. Split across two echo
+// arguments it renders `observed= 4`, which reads as an empty observation followed by a
+// number — precisely the confusion this PR removes from the guard itself (review 54519).
+test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool {
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  !string_contains(s: inner, pattern: "observed= ")
+    && string_contains(s: inner, pattern: "observed=")
+}

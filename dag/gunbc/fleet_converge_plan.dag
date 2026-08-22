@@ -28,6 +28,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir_to_file,
   bash_build_word_cmdsubst,
   bash_build_word_lit,
+  bash_build_word_concat_from_nodes,
   bash_build_word_var,
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
@@ -897,8 +898,10 @@ fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_gen
         bash_build_word_lit(text: "echo"),
         bash_build_word_lit(text: "LeaseGenerationStale"),
         bash_build_word_lit(text: concat("planned=", to_string(planned_generation))),
-        bash_build_word_lit(text: "observed="),
-        bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "observed="),
+          bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+        ]),
       ]),
       bash_build_exit(code: "1"),
     ],
