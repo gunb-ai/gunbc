@@ -838,6 +838,11 @@ fn lease_failure_report(
   }
 }
 
+// THE LEASE IS TAKEN BY CREATION AND THAT IS THE WHOLE MECHANISM. `update-ref <ref> <new>`
+// with an EMPTY old value is git's own "this ref must not already exist", so exactly one
+// concurrent producer wins and every other one refuses. Naming the transition
+// git.Plumbing.CreateRefIfAbsent rather than passing an empty string is what makes that
+// precondition readable at the call site instead of being an argument nobody can explain.
 fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
@@ -847,11 +852,6 @@ fn devboot_produce_build(store_root: String, repo_root: String, work_root: Strin
     path: claim_path as FilePath,
   )
   let claim_oid = trim(s: claim.oid)
-  // THE LEASE IS TAKEN BY CREATION AND THAT IS THE WHOLE MECHANISM. `update-ref <ref> <new>`
-  // with an EMPTY old value is git's own "this ref must not already exist", so exactly one
-  // concurrent producer wins and every other one refuses. Naming it CreateRefIfAbsent rather
-  // than passing an empty string is what makes that precondition readable at the call site
-  // instead of being an argument nobody can explain.
   let taken = git.Plumbing.CreateRefIfAbsent(
     address: devboot_store_address(store_root: store_root),
     ref_name: lease_ref_of(token: token),
@@ -1407,16 +1407,16 @@ fn lease_recovery_from_outcome(
   }
 }
 
+// THE BREAK IS EXACT AND THAT IS WHY IT IS SAFE. Deleting the lease unconditionally would
+// strip a lease a LIVE producer had just taken; naming the holder as the expected old value
+// means the delete refuses unless the ref still holds exactly the claim this caller observed
+// as stranded.
 fn devboot_break_stranded_lease(
   store_root: String,
   repo_root: String,
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  // THE BREAK IS EXACT AND THAT IS WHY IT IS SAFE. Deleting the lease unconditionally would
-  // strip a lease a LIVE producer had just taken; naming the holder as the expected old value
-  // means the delete refuses unless the ref still holds exactly the claim this caller observed
-  // as stranded.
   let broken = git.Plumbing.DeleteRefIfExpected(
     address: devboot_store_address(store_root: store_root),
     ref_name: lease_ref_of(token: token),
