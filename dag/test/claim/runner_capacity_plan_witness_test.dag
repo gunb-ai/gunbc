@@ -23,6 +23,23 @@ import gunbc.runner_capacity_plan {
 import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
   RosterReadUnavailable,
+  RosterObserved,
+  OrganizationRunnerRosterEvidence,
+}
+import std.types { String, NonEmptyStr, Int, List }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
+import gunbc.runner_capacity_plan {
+  plan_runner_capacity_host,
+  HostCapacityPlanOutcome,
+  HostCapacityPlanReady,
+  HostCapacityPlanRefused,
+  observed_github_slot_identities,
+  ObservedGitHubSlotPopulation,
+  GitHubSlotPopulationObserved,
+  GitHubSlotPopulationUnreadable,
+  GitHubSlotPopulationForeignRegistration,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -248,4 +265,103 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
     && width_refuses(value: "-3")
     && width_refuses(value: "")
     && width_refuses(value: "six")
+}
+
+// THESE FOUR WITNESSES EXIST BECAUSE THE REFUSAL ABOVE COULD NOT FIRE, AND THE REASON IT COULD NOT
+// FIRE WAS NOT STALENESS. observed_slot_identities measured LOCAL SYSTEMD INCARNATIONS and handed
+// them to validate_observed_github_slot_members, which decides a question about GITHUB REGISTRATIONS.
+// Two different populations wearing one name, and neither the type nor the check could tell them
+// apart because both are lists of slot identities.
+//
+// THE NUMBERS BELOW ARE ABOUT A FIXTURE AND NOT ABOUT THE FLEET, AND AN EARLIER REVISION OF THIS
+// BLOCK SAID OTHERWISE. Measured by execution against what the production path currently supplies:
+// srv1 synthesized 5 / decoded 5, srv2 5 / 3, srv3 5 / 4, srv4 5 / 4, twenty against sixteen. What
+// it supplies is organization_runner_roster_evidence, a declared Scaffold returning the pinned
+// 2026-08-06 incident corpus, so this decodes a sixteen-day-old constant. The earlier revision also
+// called the incident note's fifteen-offline-of-sixteen line an INDEPENDENT corroboration; it is the
+// prose describing the same fixture, so the two agreements are one source agreeing with itself.
+// That makes this a consistency check on the decoder, which is worth having, and it is not evidence
+// about today's fleet -- nothing on the production path has read GitHub since the pin.
+//
+// WHAT IS TRUE AGAINST ANY ROSTER, AND IS THE HALF THAT MATTERS: the category error is a fact about
+// the wiring rather than the data, and the direction of the error is fixed -- addition_actions
+// derives additions from observed_width, so OVER-counting the observed population plans FEWER
+// additions than convergence needs. A host short of registrations reads as converged with nothing
+// to plan, whatever roster it is handed.
+fn one_registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name as NonEmptyStr,
+    status: GitHubRunnerOnline,
+    busy: false,
+    ephemeral: true,
+    version: "2.334.0" as NonEmptyStr,
+    os: "Linux" as NonEmptyStr,
+    labels: [],
+  }
+}
+
+fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "witness-fixture" as NonEmptyStr,
+    registrations: fold(
+      names,
+      init: [],
+      f: (acc, n) => concat(acc, [one_registration(name: n, id: 1)])
+    ),
+  }
+}
+
+fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRosterEvidence) -> Bool {
+  match plan_runner_capacity_host(host: host, requested_width: width, roster: roster) {
+    HostCapacityPlanRefused { reason: _ } => true
+    HostCapacityPlanReady { plan: _ } => false
+  }
+}
+
+// THE DISCRIMINATING PAIR IS THE WITNESS, NOT THE REFUSAL. A lone refusing row cannot distinguish
+// "the fabric slot was detected" from "this planner refuses every roster I hand it", which is
+// exactly how the previous version stayed green while its subject was unreachable. The two rosters
+// differ in ONE element, srv3-06, and they must disagree.
+test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv3-06"]),
+  )
+}
+
+test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
+}
+
+// A NAME THE FLEET CANNOT ACCOUNT FOR REFUSES RATHER THAN BEING SKIPPED. Skipping it and folding on
+// is the empty-observation narrow one layer inside the fix: a dropped member is an under-count, and
+// an under-count reads as a host with slots missing, so the planner would propose adding a slot
+// GitHub already holds.
+test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv9-01"]),
+  )
+}
+
+// THE OBSERVATION IS THE ROSTER'S, NOT THIS HOST'S DENSE PREFIX. Handed a roster made entirely of
+// another host's registrations, srv3 must observe ZERO. The synthesized form could not express this
+// at all -- it never read the roster, so it answered materialized_width_for_host regardless of what
+// GitHub held, and would have said five.
+test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
+  match observed_github_slot_identities(
+    host: operator_host_srv3,
+    roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-03"]),
+  ) {
+    GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
+    GitHubSlotPopulationUnreadable { reason: _ } => false
+    GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
+  }
 }

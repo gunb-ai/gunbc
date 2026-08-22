@@ -20,7 +20,8 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, committed_slot_identities }
+import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
@@ -44,11 +45,77 @@ type FleetAchievedRunnerWidths
     }
   | AchievedWidthsUnobserved { reason: String }
 
+type RegistrationSlotDecoding
+  = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
+  | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+
+// THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
+// naming authority read in the opposite direction from the first, and the two could disagree without
+// anything detecting it. The committed population is finite and already enumerable, so decoding is a
+// total decision over it: which committed identity's own name equals this registration's name. That is
+// the forward naming authority read backward (DESIGN section 4, one grammar in both directions) rather
+// than an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
+// the answer RegistrationNamesNoCommittedSlot, which is a fact about the fleet rather than about text.
+//
+// DECLARED FORK, FOUND WHILE WRITING THIS AND NOT FIXED HERE: three functions independently build a
+// runner instance name -- runner_lifecycle runner_slot_instance_name, runner_host_deploy
+// runner_instance_name, and runner_incarnation's inline join over slot_suffix. This decoder grounds on
+// the first, so it agrees with it by construction and agrees with the other two only by coincidence.
+// This is a PRECONDITION for the real roster producer rather than a separate tidy-up. While the roster
+// is the pinned 2026-08-06 fixture the fork is harmless, because that fixture's names were authored to
+// match; the day a live producer lands, a registration created by a different builder decodes as naming
+// no committed slot, which under-counts, which is precisely the narrow this decoder exists to close --
+// one layer inside the fix. So the fork must be consolidated before or with that producer, not after.
+fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+  fold(
+    fleet_hosts(),
+    init: [],
+    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+  )
+}
+
+fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+  match fold(
+    fleet_committed_slot_identities(),
+    init: none,
+    f: (acc, id) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if runner_slot_instance_name(slot: id) == (reg.name as String) {
+            Present { value: id }
+          } else {
+            none
+          }
+      }
+  ) {
+    Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
+    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+  }
+}
+
 type RunnerSlotConnectivityVerdict
   = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
   | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
   | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
   | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+  | SlotConnectivityUnexpectedRegistration {
+      registration_id: Nat
+      registration_name: NonEmptyStr
+      decoded: RegistrationSlotDecoding
+    }
+
+// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT OF IT.
+// The other four arms each carry a RunnerSlotIdentity taken from a LOCAL incarnation, because they are
+// produced by mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
+// provisioned locally has no incarnation to be mapped from, so it was not mis-reported by those four --
+// it was unsayable, and no check could close it because there was nothing for a check to read.
+// Giving this arm a slot field would have rebuilt that same blindness inside the fix: it would have
+// forced an unexpected registration to be described in terms of a local slot that by construction does
+// not exist. It carries `decoded` instead, so a consumer can tell the two cases apart -- a registration
+// whose name resolves to a COMMITTED slot identity is the disjointness violation this model exists for
+// (an actions-runner sitting on a fabric-purpose slot), while one that resolves to nothing is a
+// foreign runner in the org. Those are different facts and a single Bool would have merged them.
 
 type FleetRunnerCapacityWidthSnapshot {
   desired_width: Int
