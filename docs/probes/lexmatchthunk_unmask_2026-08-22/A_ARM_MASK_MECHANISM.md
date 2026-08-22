@@ -65,6 +65,17 @@ regenerated into the seed mirror, the compiler was rebuilt from it, and **it fix
 so at least one further seam sits underneath. It was reverted rather than carried: an inference
 change that buys nothing is not a smaller version of a repair, it is a change with no consumer.
 
+**How strong that negative result is, stated exactly (2026-08-22).** The install *was* verified at
+the file level — `git diff --stat` on the mirror showed 228 insertions / 170 deletions, and cargo
+recompiled `v1-compiler` from it — so this is **not** the silently-failed-restore class, where the
+patched file never changed at all. What was **not** done is a symbol-level check that the rebuilt
+binary carries the change. So the honest strength is *mirror confirmed changed and crate confirmed
+rebuilt, binary not symbol-verified*. It is also no longer cheaply re-checkable: re-installing that
+candidate mirror on current main fails to compile (3 errors, `E0063` — the seed's `Node` has moved
+since `967b5bc1b92`), so re-verification means regenerating the candidate at its own ref. The
+conclusion is left standing at that strength rather than upgraded by assertion, and the repair lane
+should treat "at least one further seam" as *measured but not binary-verified*.
+
 ## A fail-open found beside it, worth its own lane
 
 A generic record literal's fields are **not checked against the instantiation at all**:
@@ -73,6 +84,10 @@ A generic record literal's fields are **not checked against the instantiation at
 fn generic_bad() -> Algebra<Thunk> { Algebra { unit: "x", unary: fn(a) { a } } }
 ```
 → `compiled: 6 files emitted, 0 diagnostics`
+
+**Still true on current main**, re-run 2026-08-22 at `abf7194e2b` with a compiler built from that
+tree: same fixture, same `0 diagnostics`. So it is not an artifact of the `967b5bc1b92` snapshot,
+and the repair lane holding it is holding a live defect rather than a historical one.
 
 `unit: R` with `R = Thunk` silently accepts a `String`. Two facts belong in the row rather than in
 whoever reads it:
