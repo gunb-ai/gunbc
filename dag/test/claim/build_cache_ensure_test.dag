@@ -121,6 +121,35 @@ test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> 
   build_cache_ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
 }
 
+data converged_means_serving_doc: String = "THE DISCRIMINATING PAIR FOR THE CONTRACT DECISION. witness_an_already_managed_endpoint_is_converged_and_emits_nothing above and witness_our_unit_holding_a_dead_socket_is_not_converged below differ in exactly ONE input -- the path state under an identical ServerManagedUnitOwned placement -- and must land on opposite arms. That is the whole content of the decision: ownership answers WHO holds the endpoint, the path answers WHETHER IT IS SERVED, and a converged verdict needs both. Under the placement-first short-circuit that preceded this, the second witness went green on the CONVERGED arm, which is a host with a wedged server and an unreachable cache reported as needing nothing done. The specimen is not hypothetical: gunbc.build_cache_endpoint_observe socket_owner_path_state produces exactly this state -- a socket held open by a live fd-holder with no listen entry at the path -- and test.claim.build_cache_endpoint_observe held_without_listening_fixture_note recorded that its own fixture had to name a FOREIGN owner to reach the path-conflict arm at all, because the ownership of our own unit swallowed it.\n\nThe pair is stated as three assertions rather than one because an arm that refused while still emitting a unit, or that named no unit in its reason, would satisfy a bare not-converged check while being useless to the operator who has to act on it."
+
+test fn witness_our_unit_holding_a_dead_socket_is_not_converged() -> Bool {
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as NonEmptyStr },
+    path: EndpointPathConflict {
+      detail: "the socket at the endpoint path is held open by a live process but has no listen entry" as NonEmptyStr,
+    },
+  )
+  (build_cache_ensure_is_converged(admission: a) == false)
+    && (ensure_yields_unit(admission: a) == false)
+    && string_contains(
+      s: gunbc.build_cache_ensure.ensure_admission_refusal_reason(admission: a),
+      pattern: "gunbc-build-cache-ci.service",
+    )
+}
+
+data unreadable_path_under_our_own_placement_doc: String = "The second half of the same wall, and the one that fails toward the wrong answer if it is left out. A path that could not be READ is not a path that is being served; answering converged from ownership alone here would report a host converged on evidence never obtained, which is the fabricated plausible output DESIGN section 5 forbids rather than merely a weaker check. Its sibling above differs in one field: a path state that WAS read and says not-listening."
+
+test fn witness_an_unreadable_path_under_our_own_unit_is_not_converged() -> Bool {
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as NonEmptyStr },
+    path: EndpointPathObservationUnavailable {
+      reason: EndpointPathUnreadable { detail: "stat on the endpoint path was denied" as NonEmptyStr },
+    },
+  )
+  (build_cache_ensure_is_converged(admission: a) == false) && (ensure_yields_unit(admission: a) == false)
+}
+
 test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
   let a = ensure_for(
     placement: ServerManagedUnitOwned { unit: "ctrl-sccache.service" as NonEmptyStr },
