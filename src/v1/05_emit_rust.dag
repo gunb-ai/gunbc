@@ -3247,8 +3247,30 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
     let type_surface_names = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info)))
     let field_surface_names = collect_items_field_import_surface_names(items: items, emit_info: emit_info, source_indices: source_indices)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+    let declared_field_type_names = items |> flat_map(item =>
+      let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
+      if nm == "" { [] } else {
+        concat(
+          match map_get(emit_info.type_summaries, nm) {
+            Present { value: sm } => map_values(sm.field_type_map) |> filter(ft => ft != "")
+            Absent => []
+          },
+          if v1.compiler.infer_types.is_coproduct_type(n: item) {
+            item.children |> flat_map(variant =>
+              let vn = v1.std.core.authored_name_at(source_indices: source_indices, node: variant)
+              if vn == "" { [] } else {
+                match map_get(emit_info.type_summaries, v1.compiler.infer_emit_info.variant_summary_key(enum_name: nm, variant_name: vn)) {
+                  Present { value: vs } => map_values(vs.field_type_map) |> filter(ft => ft != "")
+                  Absent => []
+                }
+              }
+            )
+          } else { [] }
+        )
+      }
+    )
     let emitter_attested_anon_heads = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
-    let candidates = v1.compiler.emit_core_support.unique_strings(items: concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs))
+    let candidates = v1.compiler.emit_core_support.unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), declared_field_type_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name))
