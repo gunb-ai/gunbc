@@ -232,6 +232,28 @@ guard-removal arm cannot see them either. If hidden source debt exists at the ar
 that is where it is, and reaching it needs a third instrument that judges an anonymous record
 literal against its formal. No lane currently owns that.
 
+## Conclusion — a refuted hypothesis, and what its refutation buys
+
+This lane was staffed on a specific hypothesis: that a material share of the rustc board on
+emitted v2 Rust is **source conformance debt** the `.dag` layer should have refused, and that
+some of the board therefore belongs to a different repair at a different layer. **Two
+independent measurements killed it.** That is a result, not an absence of one, and it pays
+for two questions that were open this morning:
+
+1. **The lanes grinding emitted Rust are working the correct layer.** No part of the board
+   reclassifies out from under them. A reclassification would have moved work; its absence
+   confirms the current allocation instead of leaving it assumed.
+2. **The exemption is hiding exactly the representation-gap class it was introduced for, and
+   nothing else.** Its stated justification was never measured against the live corpus. It is
+   now: 115 and 111 candidates, 100% transparent aliases, zero residue. There is no hidden
+   population of real defects behind the guard on these closures — which also means the
+   argument-type wall, once the alias relation is grounded, can be restored without a
+   source-repair campaign in front of it.
+
+Both of those were live open questions. Neither is now, and neither could have been settled
+by the guard-removal arm alone, because that instrument cannot tell a false positive from a
+defect.
+
 ## Artifacts
 
 - `would_diagnose_ingest03.tsv` — all 115 candidate relations (03_ingest arm), full row shape.

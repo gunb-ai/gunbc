@@ -2325,6 +2325,59 @@ enforces end to end.
    on either would refute it.
 
 
+22. **An anonymous record literal at an actual position is judged by NOTHING at the direct-call
+   seam** (opened 2026-08-22, session `proud-ant-819`, measured on gunbc#8864).
+
+   INVALID STATE. A record literal written directly as an argument may disagree with its
+   formal's declared type, in any way, and no diagnostic is produced. `direct_call_arg_mismatch_diags`
+   returns the empty list for an `ExprRecordLit` actual before the compatibility predicate is
+   ever reached, so the argument's TYPE is never a checked fact at this seam for that
+   expression form.
+
+   HARM. The mismatch survives to emission and becomes a rustc error in the emitted target, or
+   — where the target's own realization happens to accept it — is not caught at all. It is the
+   ordinary argument-conformance floor (DESIGN §4b, "applications bind in exact bijection,
+   values inhabit declared types"), unenforced for one writable expression form.
+
+   DISTINGUISHING FACTS, and the reason this is filed HERE rather than against the exemption.
+   The skip is in what PRODUCTION judges, not in what `module_skips_direct_call_arg_check`
+   hides: it fires for exempt and non-exempt callers alike. Measured on two entries at ref
+   `90986d1946`, it covers **521 relations (2.7% of exempt relations) on the 03_ingest closure
+   and 520 on 00_compile**, plus 7 non-exempt relations in each — a population of comparable
+   size to the 115 candidates the exemption itself hides, every one of which turned out to be a
+   false positive.
+
+   WHY NO EXISTING INSTRUMENT SEES IT, which is what makes it a standing gap rather than a
+   backlog item. The shadow census
+   (`docs/probes/shadow_direct_call_arg_conformance_2026-08-22.md`) preserves the skip as
+   `RepresentationRelationUnadjudicated` rather than inventing a judgement, so it counts the
+   population but cannot judge it. A guard-removal arm cannot see it either, because the skip
+   is UPSTREAM of the guard being removed. **Both available instruments are blind to the same
+   rows, in the same place, for different reasons** — so the population's frequency is
+   observable and its defect rate is not.
+
+   RUNG FOUND AT. *Below the ladder* on the source→`.dag`-acceptance path for this expression
+   form: the wrong state is not mitigated, refused, or counted — it is silent. The neighbouring
+   forms (a named value, a call result, a literal) reach the predicate normally, so this is a
+   per-AST-form hole in an otherwise-real check, structurally the same shape as the
+   coproduct-variant hole in §11.1a rather than a missing check.
+
+   CEILING. *Structurally guaranteed* — decidable, and the authority already exists: the
+   formal's declared type is in hand at the seam and the literal's field set is known, so
+   inhabitance is the same judgement `direct_call_arg_type_mismatch` already performs for every
+   other actual. No grounding is missing; this is a *wall now* in §5's vocabulary, not a wall
+   after grounding.
+
+   NEXT-RUNG TRIGGER. Route the `ExprRecordLit` actual to the same predicate as every other
+   actual, or — if the skip encodes a real representation gap rather than an oversight — replace
+   the silent empty-list return with a typed, located, COUNTED diagnostic naming that gap, so the
+   deficit's frequency stops being zero by construction. Either move retires this row; the
+   present state, an untyped silent skip, retires nothing.
+
+   NOT CLAIMED. Whether any of the 1,041 measured relations is actually a defect is UNKNOWN and
+   deliberately not guessed: no instrument in the repository can currently answer it. The row
+   records a population and a blindness, not a defect count.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
