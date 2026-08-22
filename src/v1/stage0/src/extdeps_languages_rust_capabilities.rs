@@ -40,6 +40,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
@@ -61,6 +62,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustRem,
                     RustCapability::RustNeg,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelBool,
@@ -76,6 +78,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelUnit,
@@ -91,6 +94,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
@@ -106,6 +110,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier,
@@ -120,6 +125,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct,
@@ -132,12 +138,15 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemUnknown,
                 capabilities: Rc::new(vec![]),
+                _phantom: std::marker::PhantomData,
             }),
         ]),
+        _phantom: std::marker::PhantomData,
     })
 }
 

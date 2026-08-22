@@ -194,6 +194,7 @@ pub fn occurrence_containment_to_binding_path(
     Rc::new(ContainmentPath {
         ancestors: path.ancestors.clone(),
         terminal: path.terminal.clone(),
+        _phantom: std::marker::PhantomData,
     })
 }
 
@@ -202,6 +203,7 @@ pub fn binding_occurrence_from_reference(
 ) -> Rc<BindingOccurrence<OccurrenceId>> {
     Rc::new(BindingOccurrence {
         containment: occurrence_containment_to_binding_path(reference.containment.clone()),
+        _phantom: std::marker::PhantomData,
     })
 }
 
@@ -210,6 +212,7 @@ pub fn binding_candidate_from_declaration(
 ) -> Rc<BindingCandidate<OccurrenceId>> {
     Rc::new(BindingCandidate {
         containment: occurrence_containment_to_binding_path(declaration.containment.clone()),
+        _phantom: std::marker::PhantomData,
     })
 }
 
