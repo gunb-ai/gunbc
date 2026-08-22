@@ -36,9 +36,15 @@ is one case of it, not its extension.
 | 3 `self_span` | 57,356 | 94.6% | 20 |
 | 4 `self_no_span` | **0** | 0% | 0 |
 
-The zeros are exact, not sampled: the instrument flushes on every first occurrence of a
-(site, cell, answer) key, so a single call in cell 2 or 4 would appear. Per-cell totals are
-exact to the last 500-call flush.
+The zeros are exact for this product, not sampled: the instrument flushes on every first
+occurrence of a (site, cell, answer) key, so a single call in cell 2 or 4 during this run
+would appear. Per-cell totals are exact to the last 500-call flush.
+
+**The grain of the zero claim.** Cells 2 and 4 are uninhabited *in one complete measured
+self-emit*. That is not a structural claim that they cannot be produced. Making it structural
+needs either a constructor proof that the empty value cannot be minted, or the same
+measurement over every other admitted producer. Either way the four consumers written for
+that state are dead on this product.
 
 Full per-site rows: `type_reference_decl_file_four_cell_census_2026-08-22.tsv`
 (`cell TAB count TAB caller-site TAB answer-file`).
@@ -106,26 +112,82 @@ this subject: `render_variant_payload_type`, `render_rust_fn_sig_type_applied_bi
 them. Reported so that "every emission-boundary call" is not read as "every call site
 observed".
 
-## What this does NOT establish
+## The invariant these numbers violate
 
-No emitted-output defect is demonstrated here. The census measures which question each call
-answered; it does not exhibit a program that emits the wrong Rust because of it. The 244
-std-numeric cell-3 calls are correct answers reached by the wrong route, and the mirror
-population is a hypothesis this instrument cannot confirm — confirming it needs a reference
-to a roster type authored outside the roster module, traced to emitted bytes.
+*(Added after adjudication, 2026-08-22. The first revision of this probe said only "no
+emitted-output defect is claimed". That restraint was right about emitted bytes and wrong
+about what the numbers already establish, so the stronger reading is stated here and the
+narrower one kept below it.)*
+
+**Invariant.** Moving a reference between use sites must not change its type realization
+while its resolved declaration identity is unchanged.
+
+The 244 std-numeric cell-3 calls violate it, on main, today. They realize natively *only*
+because the reference is authored inside `dag/std/nat.dag` or `dag/std/integer.dag`. Move the
+same reference to another module and its realization changes while the declaration it
+references does not. Realization here depends on **where the reference is written**, not on
+**what declaration it resolves to** — which is the fact the roster is written to key on. This
+is present behavior at 94.6% reach, not a latent risk.
+
+So cell 3 is worse than "two questions through one return type". It collapses two *semantic
+states* that require different decisions — *this node IS the declaration* versus *this node is
+a reference whose declaration identity was not recovered* — into one value, "the file
+containing the node", which is then compared against rosters of declaring modules. **No
+consumer receiving only that value can be correct for both states.**
+
+That is an instance of a general form, and this census is the specimen of it that carries an
+executed reach number: *if a producer projection P maps two semantic states to one value while
+the correct decision differs between them, no downstream guard receiving only P's output can
+be correct for both.* Two other lanes hit the same class this cycle — a bare-name-keyed emit
+summary map collapsing two declarations that share a name, so the ambiguity guard never sees
+the homonym; and a dropped use-line candidate collapsing into silence.
+
+## What this still does NOT establish
+
+No emitted-output defect is exhibited: the census measures which question each call answered,
+and does not trace a program to wrong emitted Rust. The 244 are correct answers reached by the
+wrong route. The mirror population — a roster type referenced from outside the roster module,
+therefore rendering structurally — is a prediction of the invariant above that this instrument
+does not itself confirm; confirming it needs such a reference traced to emitted bytes. The
+acceptance pairs below are exactly that confirmation, and the first of them fails today.
 
 ## Next rung
 
 The class is *mitigatable*: the invalid conflation is fully writable and nothing detects it.
-The construction move that would make it unwritable is to stop projecting four provenances
-onto one `String` — a coproduct returned by `type_reference_decl_file`
-(`ResolvedDeclaration { file } | ResolvedWithoutIdentity | ReferenceOwnModule { file } |
-Unidentified`), so a consumer that means "the declaring module" cannot silently accept the
-referencing module, and the two `""` cells stop sharing a spelling. That is a change to the
-frozen v1 seed and a full regen cycle; it is named here as the trigger rather than taken,
-because this work item asked for the classification and the purpose test for touching the
-seed (`v1_seed_standing`) should be answered on the merits of that change, not smuggled in
-behind a measurement.
+The adjudicated repair is not a patch to the `String` but a replacement carrier, naming the
+four states with the vocabulary the corpus already uses for declarations and references:
+
+```
+TypeReferenceDeclarationStanding
+  = ResolvedReference          { declaration_file }
+  | DeclarationSelf            { declaration_file }
+  | ReferenceIdentityUnavailable { use_file, cause }
+  | SourceLocationUnavailable  { cause }
+```
+
+Five load-bearing properties, each a thing to check rather than a thing to write:
+`ResolvedReference` never falls back to `use_file`; `DeclarationSelf` is constructed only for
+an actual declaration node; unresolved identity stays a refusal-capable state; absence is
+never represented by the empty string; and every consumer states which variants it can
+legitimately accept. `decl_file_realizes_natively`, `decl_file_declares_structurally`,
+`lookup_checkpoint` and `type_realization_decision` then consume the typed standing rather
+than a plausible filename.
+
+**Two discriminating acceptance pairs**, which are what make the repair falsifiable rather
+than merely better-typed:
+
+1. The **same declaration reached through two use sites** — one authored inside its declaring
+   module, one authored elsewhere. Both must carry the same resolved declaration identity and
+   produce the same realization. This is the executable form of the invariant above, and it
+   **fails today**.
+2. An **actual declaration node versus an unresolved reference in the same file**. They
+   currently collapse to the same answer; the carrier must separate them.
+
+This is a change to the frozen v1 seed plus a full regen cycle, so it goes to
+`v1_seed_standing`'s purpose test **as its own repair**, on its own merits: it sits directly
+on the v2 self-host path and already produces location-dependent realization. It is named here
+and not taken, because this census is the *grounds* for that repair and must not be its
+*vehicle*.
 
 ## Reproducing
 
