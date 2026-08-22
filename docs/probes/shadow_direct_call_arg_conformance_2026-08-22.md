@@ -5,6 +5,76 @@
 debt*: calls the `.dag` layer should have refused and did not, so the defect became Rust
 that a downstream worker is now repairing.
 
+## The adjudicated disposition — LOCKED (deep-ant-102, 2026-08-22)
+
+**Interpretation locked, measurement dated.** The locked wording, to be used as written rather
+than paraphrased:
+
+> Zero source-conformance defects over the 97.3% of exempt direct-call relations THE PRODUCTION
+> JUDGMENT ADJUDICATES, on the two named entry closures at the named ref. Every relation
+> production would diagnose is transparent-alias-equivalent. The remaining 2.7% consists entirely
+> of actual-position anonymous record literals that production itself declines to adjudicate, and
+> this receipt makes no correctness claim over that population.
+
+**What earned the lock rather than a hold** is a property of the residue, not of the zero: the
+2.7% is **homogeneous and its membership arm was EXERCISED**, so it is a *characterized
+non-observation* rather than whatever was left after subtraction. Discriminator 4 — a
+representation-gap specimen surviving as `RepresentationRelationUnadjudicated` instead of being
+counted as a defect — is what establishes that.
+
+### Two grains, and they never substitute for each other
+
+| grain | value | what it answers |
+|---|---|---|
+| RELATION | 115 on `03_ingest`, 111 on `00_compile`, both fully alias-equivalent | the observations |
+| OPERATIONAL | **78 distinct live call sites** | the blast radius of deleting the exemption unchanged |
+
+The two closures **overlap and must never be summed**. An earlier relay of this result said
+"roughly 115 false reds"; that wording is **retired** — it silently converted a relation count
+into a site count, which is how two true numbers become one false claim. A policy decision takes
+the 78; a description of what the judgment would emit takes the 115/111.
+
+### `RepresentationRelationUnadjudicated` is UNDECIDED, not INCAPABLE
+
+Stated because a reader who takes "unadjudicated" to mean "cannot be a defect" has read a word
+rather than a fact. The category records that **production's own comparison declines this relation
+shape** (an anonymous record literal at an actual position) — it does **not** carry a proof that
+such a relation could never become a diagnostic under a checker that did adjudicate it. Nothing in
+the instrument establishes structural incapability, and this receipt does not claim it. That is
+precisely why the 2.7% is excluded from the zero rather than folded into it.
+
+### Freshness — three separate facts, part of the row rather than a footnote
+
+Because the shadow ships as an instrument file plus a seed-wiring patch rather than entering
+production — the correct anti-fork call — this receipt is:
+
+| property | status |
+|---|---|
+| measurement reproducibility | **yes** — producer, ref and control are all recorded below |
+| continuous enforcement | **no** — nothing runs this on any commit |
+| automatic freshness | **no** — it goes SILENTLY stale the moment the corpus moves |
+
+The next corpus change does not falsify this receipt; it means the receipt is **no longer evidence
+about the new tree**. Re-run it before citing it against any ref other than the one named below.
+
+### On the historical "104 TypeMismatch false positives"
+
+May be cited as **qualitative corroboration** that this result lands in the same representation-gap
+family at the same approximate scale. It may **NOT** be differenced against 111, 115 or 78, and it
+cannot form a trend, because it records no subject, producer or root set.
+
+### The removal order this receipt implies, stated as its terminal
+
+Make compatibility transparent-alias-aware → run it in observation mode over `v2.*` → prove
+alias-equivalent calls admit → prove a planted genuine mismatch refuses → disposition the
+unadjudicated population → **then** remove the module-wide exemption. Keeping the exemption is
+**today's answer and not the terminal one**: it remains a coarse module-level switch that will
+also silence the next genuine mismatch, so "keep it" is a dated policy, not a resolution.
+
+*(Lane note, 2026-08-22: the first step above was attempted at the RESOLVE seam by this session
+and refused by CI over the corpus — see guarantee-recovery row 27. It is being taken at the
+COMPARISON seam by gunbc#8873, measured to clear this lane's reproduction 5 diagnostics → 1.)*
+
 ## The mechanism, scoped narrowly
 
 `v1.compiler.infer` gates ONE judgment on the caller's module name:
@@ -274,6 +344,13 @@ for two questions that were open this morning:
 Both of those were live open questions. Neither is now, and neither could have been settled
 by the guard-removal arm alone, because that instrument cannot tell a false positive from a
 defect.
+
+**Read the zero against the locked wording at the top of this document, not on its own.** It is
+zero over the 97.3% *the production judgment adjudicates* — not over the population. The excluded
+2.7% is characterized, not unknown, and it is `RepresentationRelationUnadjudicated` in the sense
+of UNDECIDED rather than INCAPABLE. And the receipt is reproducible but not continuous and not
+automatically fresh: it is evidence about one named ref and stops being evidence the moment the
+corpus moves.
 
 ## Artifacts
 
