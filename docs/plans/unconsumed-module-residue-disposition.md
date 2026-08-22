@@ -456,8 +456,25 @@ The specimen is this branch, and it is usable *precisely because it contains no 
 The 16 are the `fold_lowering` / `body_lowering.statement_let_bind` family, every one
 reporting `non-exhaustive pattern match on: OccurrenceId { value: 79 }`. All 16 identities are
 absent — passing — on a tree that differs from their red base *only* by deleted modules. No
-test file was deleted, no lowering code was touched, and **`planned` is identical at 10425**,
-which rules out roster change and leaves corpus size as the isolated variable.
+test file was deleted and no lowering code was touched, and both runs reported the same
+discovery figures (`offered=11798 routed=10425`).
+
+**The strength of that last control is lower than an earlier revision of this section claimed,
+and the correction belongs here rather than in a footnote.** It read *"`planned` is identical
+at 10425, which rules out roster change"*. Identical counts do not rule it out — they are
+consistent with an unchanged roster and do not establish one. The reason this is not a
+theoretical caveat: on the very next run, `offered` moved **11798 → 11812** and `routed`
+**10425 → 10439** across two commits that changed **only a markdown file and a single
+`inert_row` data row**, with declines unchanged. Fourteen witnesses entered *discovery* with
+no corpus change at all, and the cause is **not yet attributed**. So the discovered roster is
+not a pure function of the committed tree, and a matching count is weaker evidence than it
+looks.
+
+The comparison still stands as a controlled one — the base and post-deletion runs agree on
+every reported discovery figure, and the tree difference between them is exactly the 56
+deletions — but it is corroboration, not proof, and the isolated-variable claim is downgraded
+accordingly. This is the same failure this document records elsewhere, committed in its own
+write-up: **a count treated as a check.**
 
 **The consequence for method:** a bisect, or any before/after comparison, run across trees of
 different module counts measures allocation luck rather than the defect. A green obtained that
