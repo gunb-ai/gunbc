@@ -52,6 +52,23 @@ type FabricControlPlanePlacement
 // whole difference is whether anyone is scheduled to make it true.
 data fabric_control_plane_placement: FabricControlPlanePlacement = ControlPlaneUnplaced
 
+// AND THE FIRST VERSION OF THIS MODULE SHIPPED A Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
+// control_plane_claim_is_unmeasured returned true for one arm and false for the others, had zero
+// call sites anywhere in the tree, and existed three lines below a comment explaining why no such
+// projection should exist. The point of having no projection is that the coproduct must be matched;
+// shipping an unconsumed Bool view of it reopens exactly the spelling the paragraph forbids, and
+// leaves a reader unsure which of the two the module actually means. Deleted (review 54686).
+// THERE IS NO claim -> ByteSize PROJECTION, AND ITS ABSENCE IS THE DESIGN. An earlier revision of
+// this module had one, with an annotation saying the unmeasured arm was deliberately absent from it
+// -- and a body mapping that arm to zero. The prose and the code disagreed inside one declaration,
+// and the code was doing the thing the prose forbade: charging nothing for a resident whose size
+// nobody knows. A total function from this coproduct to ByteSize CANNOT exist honestly, because one
+// arm has no bytes to return and every value it could return is a lie about a different arm.
+//
+// So the consumer matches the claim itself and refuses on the unmeasured arm. That is construction
+// rather than validation: with no projection to call, "charge the control plane" has no spelling
+// that skips the refusal, instead of having one that a reviewer must notice.
+//
 fn host_fabric_control_plane_claim(host: HostIdentity) -> HostFabricControlPlaneClaim {
   match fabric_control_plane_placement {
     ControlPlaneUnplaced => ControlPlaneNotPlaced
@@ -67,21 +84,3 @@ fn host_fabric_control_plane_claim(host: HostIdentity) -> HostFabricControlPlane
       }
   }
 }
-
-// THERE IS NO claim -> ByteSize PROJECTION, AND ITS ABSENCE IS THE DESIGN. An earlier revision of
-// this module had one, with an annotation saying the unmeasured arm was deliberately absent from it
-// -- and a body mapping that arm to zero. The prose and the code disagreed inside one declaration,
-// and the code was doing the thing the prose forbade: charging nothing for a resident whose size
-// nobody knows. A total function from this coproduct to ByteSize CANNOT exist honestly, because one
-// arm has no bytes to return and every value it could return is a lie about a different arm.
-//
-// So the consumer matches the claim itself and refuses on the unmeasured arm. That is construction
-// rather than validation: with no projection to call, "charge the control plane" has no spelling
-// that skips the refusal, instead of having one that a reviewer must notice.
-//
-// AND THE FIRST VERSION OF THIS MODULE SHIPPED A Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
-// control_plane_claim_is_unmeasured returned true for one arm and false for the others, had zero
-// call sites anywhere in the tree, and existed three lines below a comment explaining why no such
-// projection should exist. The point of having no projection is that the coproduct must be matched;
-// shipping an unconsumed Bool view of it reopens exactly the spelling the paragraph forbids, and
-// leaves a reader unsure which of the two the module actually means. Deleted (review 54686).

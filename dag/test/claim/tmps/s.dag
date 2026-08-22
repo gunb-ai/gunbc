@@ -1,0 +1,22 @@
+module test.claim.tmps.s
+
+import std.types { Int, Bool, String }
+import gunbc.runner_slot_allocation { committed_slot_identities, gunbc_runner_slots_per_host }
+import gunbc.runner_capacity_plan { admit_runner_capacity_width, WidthAdmitted, WidthRefused, parse_positive_width, desired_github_identities }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+
+fn six_parses() -> Bool {
+  match parse_positive_width(value: "6") { Present { value: n } => n == 6  Absent => false }
+}
+fn ninetynine_parses() -> Bool {
+  match parse_positive_width(value: "99") { Present { value: n } => n == 99  Absent => false }
+}
+fn slots_srv3() -> Int { gunbc_runner_slots_per_host(host: operator_host_srv3) }
+fn committed_len_srv3() -> Int { length(committed_slot_identities(host: operator_host_srv3)) }
+fn desired_len_at_requested_99() -> Int { length(desired_github_identities(host: operator_host_srv3, requested_width: 99)) }
+fn width_99_refused() -> Bool {
+  match admit_runner_capacity_width(host: operator_host_srv3, requested: 99) {
+    WidthRefused { requested: _, cause: _ } => true
+    WidthAdmitted { width: _ } => false
+  }
+}
