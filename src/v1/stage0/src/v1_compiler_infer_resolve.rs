@@ -198,7 +198,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
-pub fn is_transparent_primitive_alias_rhs(
+pub fn is_transparent_alias_rhs(
     structural: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -216,7 +216,7 @@ pub fn preserve_nominal_brand_on_resolve(
     if ((((brand_name.clone() != "".to_string())
         && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
         && !is_declared_container_alias_spelling(brand_name.clone()))
-        && (!is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone())
+        && (!is_transparent_alias_rhs(structural.clone(), source_indices.clone())
             || is_kernel_type(qualified_last_segment(brand_name.clone()))))
     {
         with_authored_identity(identity.clone(), structural.clone())
@@ -270,10 +270,8 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
                     && !is_declared_container_alias_spelling(brand.clone()))
-                    && (!is_transparent_primitive_alias_rhs(
-                        structural.clone(),
-                        source_indices.clone(),
-                    ) || is_kernel_type(qualified_last_segment(brand.clone()))))
+                    && (!is_transparent_alias_rhs(structural.clone(), source_indices.clone())
+                        || is_kernel_type(qualified_last_segment(brand.clone()))))
                 {
                     with_authored_identity(n.clone(), structural.clone())
                 } else {
