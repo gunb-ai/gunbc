@@ -2923,7 +2923,35 @@ fn collect_value_ref_names(n: v1.std.core.Node, source_indices: std.types.Map<St
   concat(self_name, concat(list_fields, opt_fields))
 }
 
+// A type declaration's FIELD types are a use-line surface, and they were the one
+// surface collect_item_type_surface_names never read: it reads type_annotation,
+// params and inferred, and a record field is none of the three. Under authored
+// imports the gap was invisible, because emit_imports already carried the name
+// from the import list; with namespace-only resolution the field type is the
+// only occurrence in the module, so the emitter rendered the bare leaf with no
+// use-line behind it (E0425). Struct-vs-coproduct is decided by the SAME two
+// authorities the emitter already uses to choose emit_struct_from_children
+// against emit_enum_from_children, rather than by a second structural guess:
+// a field node and a variant node are the same Node shape, so a local
+// discriminator here would be a nickname for a decision already made.
+fn collect_type_decl_field_surface_names(item: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+  if !v1.compiler.emit_core_support.is_type_def_item(item: item) {
+    []
+  } else if v1.compiler.infer_types.is_coproduct_type(n: item) {
+    item.children |> flat_map(variant =>
+      v1.std.core.variant_node_fields(n: variant) |> flat_map(f =>
+        v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: v1.std.core.field_node_type_expr(n: f), source_indices: source_indices)
+      )
+    )
+  } else {
+    item.children |> flat_map(f =>
+      v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: v1.std.core.field_node_type_expr(n: f), source_indices: source_indices)
+    )
+  }
+}
+
 fn collect_item_type_surface_names(item: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+  let from_fields = collect_type_decl_field_surface_names(item: item, source_indices: source_indices)
   let from_ann = match item.type_annotation {
     Present { value: t } => v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: t, source_indices: source_indices)
     Absent => []
@@ -2935,7 +2963,7 @@ fn collect_item_type_surface_names(item: v1.std.core.Node, source_indices: std.t
     Present { value: v1.std.core.Resolved { node: rt } } => v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
     _ => []
   }
-  concat(from_ann, concat(from_params, from_inferred))
+  concat(from_fields, concat(from_ann, concat(from_params, from_inferred)))
 }
 
 fn emit_scrutinee_type_name(scrutinee: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {

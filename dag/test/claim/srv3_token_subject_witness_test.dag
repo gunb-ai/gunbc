@@ -1,18 +1,7 @@
 module test.claim.srv3_token_subject_witness
 
-import std.types { String, List }
-import std.logic { Bool }
-import gunbc.host_effect_realize {
-  Srv3TokenSubject,
-  Srv3EffectiveUserId,
-  Srv3EffectiveGroupId,
-  Srv3PathOwnerUser,
-  Srv3PathOwnerGroup,
-  srv3_token_argv,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WHAT THIS WITNESS CAN AND CANNOT ESTABLISH, stated before the assertions so the rung is not read
 // off the file name. It proves the SERIALIZATION: that each modeled subject derives the argv its
@@ -33,14 +22,14 @@ fn expected_gid_argv() -> List<String> {
 }
 
 test fn effective_owner_subjects_derive_the_cited_id_argv() -> Bool {
-  srv3_token_argv(subject: Srv3EffectiveUserId) == expected_uid_argv()
-    && srv3_token_argv(subject: Srv3EffectiveGroupId) == expected_gid_argv()
+  gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3EffectiveUserId) == expected_uid_argv()
+    && gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3EffectiveGroupId) == expected_gid_argv()
 }
 
 test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
-  srv3_token_argv(subject: Srv3PathOwnerUser { path: "/opt/gunbc/bin" })
+  gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerUser { path: "/opt/gunbc/bin" })
       == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"]
-    && srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/opt/gunbc/bin" })
+    && gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerGroup { path: "/opt/gunbc/bin" })
       == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"]
 }
 
@@ -49,14 +38,14 @@ test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
 // serialized as %g would report the wrong half of the owner and every downstream comparison would
 // still typecheck. These two assertions go red under that swap; the equality tests above would not.
 test fn owner_halves_do_not_derive_the_same_command() -> Bool {
-  srv3_token_argv(subject: Srv3EffectiveUserId) != srv3_token_argv(subject: Srv3EffectiveGroupId)
-    && srv3_token_argv(subject: Srv3PathOwnerUser { path: "/p" })
-      != srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/p" })
+  gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3EffectiveUserId) != gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3EffectiveGroupId)
+    && gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerUser { path: "/p" })
+      != gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerGroup { path: "/p" })
 }
 
 // The path is carried through rather than fixed: a subject naming one path must not serialize a
 // command about another.
 test fn the_path_subject_carries_its_own_path() -> Bool {
-  srv3_token_argv(subject: Srv3PathOwnerUser { path: "/a" })
-    != srv3_token_argv(subject: Srv3PathOwnerUser { path: "/b" })
+  gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerUser { path: "/a" })
+    != gunbc.host_effect_realize.srv3_token_argv(subject: gunbc.host_effect_realize.Srv3PathOwnerUser { path: "/b" })
 }
