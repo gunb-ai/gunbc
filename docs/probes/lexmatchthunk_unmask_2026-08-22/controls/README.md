@@ -8,7 +8,19 @@ non-generic thunk**; they differ only in whether the *algebra carrying the lambd
 gunbc compile --source-root <dir> --entry <dir>/t/arms.dag --output-dir /tmp/out --target rust
 ```
 
-Result on a pristine `967b5bc1b92` binary — **one file, one run, one hard diagnostic**:
+## Preflight — compiler identity beside source identity
+
+Recorded because a local diagnostic read against a stale binary is indistinguishable from a real
+result, and this lane already spent a rebuild proving that the reverted candidate changed nothing:
+
+| axis | value |
+|---|---|
+| source subject | `967b5bc1b92ee66250e06a7870c132b48a16b80a`, worktree clean (`git status --short` empty) |
+| compiler | `target/release/gunbc` **deleted and rebuilt** from that tree (`cargo build --release -p v1-compiler --bin gunbc`, 2m13s) — not the session image's baked `/usr/local/bin/gunbc`, which predates this CLI |
+| postdates-stale check | the baked binary rejects `--entry` outright; the rebuilt one accepts it, so the two cannot be confused |
+| healthy-pool positive control | **arm A**, which compiles clean in the same run — a refusal in both arms would mean the harness, not the variable |
+
+Result on that binary — **one file, one run, one hard diagnostic**:
 
 | arm | algebra | thunk | result |
 |---|---|---|---|
