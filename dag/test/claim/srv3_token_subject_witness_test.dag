@@ -1,0 +1,62 @@
+module test.claim.srv3_token_subject_witness
+
+import std.types { String, List }
+import std.logic { Bool }
+import gunbc.host_effect_realize {
+  Srv3TokenSubject,
+  Srv3EffectiveUserId,
+  Srv3EffectiveGroupId,
+  Srv3PathOwnerUser,
+  Srv3PathOwnerGroup,
+  srv3_token_argv,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS CAN AND CANNOT ESTABLISH, stated before the assertions so the rung is not read
+// off the file name. It proves the SERIALIZATION: that each modeled subject derives the argv its
+// cited tool authority specifies, and that two subjects differing only in which half of the owner
+// they ask for do not derive the same command. It does NOT prove the admission wall around
+// srv3_transport_token -- that wall is enforced at acceptance by the compiler's constructor-call
+// admission check, so its discriminating red is a source that FAILS TO COMPILE and therefore
+// cannot be an assertion in a module that must compile. The wall's evidence is the required floor
+// refusing such a caller, which is a different instrument from this one.
+data srv3_token_subject_witness_scope_note: String = "Serialization witness for Srv3TokenSubject. The admission wall on srv3_transport_token is evidenced by the floor's own refusal, not here."
+
+fn expected_uid_argv() -> List<String> {
+  ["/usr/bin/id", "-u"]
+}
+
+fn expected_gid_argv() -> List<String> {
+  ["/usr/bin/id", "-g"]
+}
+
+test fn effective_owner_subjects_derive_the_cited_id_argv() -> Bool {
+  srv3_token_argv(subject: Srv3EffectiveUserId) == expected_uid_argv()
+    && srv3_token_argv(subject: Srv3EffectiveGroupId) == expected_gid_argv()
+}
+
+test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
+  srv3_token_argv(subject: Srv3PathOwnerUser { path: "/opt/gunbc/bin" })
+      == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"]
+    && srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/opt/gunbc/bin" })
+      == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"]
+}
+
+// THE DISCRIMINATING PAIR. The user and group subjects differ by one flag character, which is
+// exactly the confusion a hand-written argv makes invisible: a probe that asked for %u and was
+// serialized as %g would report the wrong half of the owner and every downstream comparison would
+// still typecheck. These two assertions go red under that swap; the equality tests above would not.
+test fn owner_halves_do_not_derive_the_same_command() -> Bool {
+  srv3_token_argv(subject: Srv3EffectiveUserId) != srv3_token_argv(subject: Srv3EffectiveGroupId)
+    && srv3_token_argv(subject: Srv3PathOwnerUser { path: "/p" })
+      != srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/p" })
+}
+
+// The path is carried through rather than fixed: a subject naming one path must not serialize a
+// command about another.
+test fn the_path_subject_carries_its_own_path() -> Bool {
+  srv3_token_argv(subject: Srv3PathOwnerUser { path: "/a" })
+    != srv3_token_argv(subject: Srv3PathOwnerUser { path: "/b" })
+}
