@@ -28,7 +28,7 @@ the headline table rather than a footnote because the headline number is the one
 acts on. 206 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
 undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
 and what the re-score deliberately does *not* claim. **The actionable residue list is 117,
-not 206** — see §4h, and note that 117 is what a deletion lane consumes, while 206 is the
+not 206** — see §4h, and note that 112 is what a deletion lane consumes, while 206 is the
 unresolved population.
 
 Every number in this document carries its unit, and two units are deliberately never
@@ -243,8 +243,8 @@ symbol declared by several does not, and is never counted as consumption here.
 | --- | --- | --- |
 | **CONSUMED-DECISIVE** | **92** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
 | DEAD-CONSUMER-ONLY | 34 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue. **Deletes as a group or not at all**, see below |
-| AMBIGUOUS-SHARED-ONLY | 88 | named bare only via symbols several modules declare; no attribution possible |
-| STILL-UNCONSUMED | 83 | no bare reference on any surface |
+| AMBIGUOUS-SHARED-ONLY | 93 | named bare only via symbols several modules declare; no attribution possible |
+| STILL-UNCONSUMED | 78 | no bare reference on any surface |
 | MISSING-FILE | 1 | appendix row whose path no longer exists |
 
 Verified by hand-reading the reference site, not by trusting the count:
@@ -282,7 +282,7 @@ now*, by live witnesses — `tools.infer_semantics_witness_transport` is called 
 before them, the anchor was real and the conclusion was still wrong, because the instrument
 had not read the surface that settles it.
 
-**The ambiguity is a finding, not only instrument noise.** 88 modules are unresolvable
+**The ambiguity is a finding, not only instrument noise.** 93 modules are unresolvable
 because their symbols are not uniquely owned, and the distribution is not uniform:
 `extdeps_external_authority_anchor` is declared by **102 modules** (it is the boilerplate
 citation anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under
@@ -291,7 +291,7 @@ measures this class and reports it every run** — the floor prints
 `[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040 worst_scope=125`,
 so 72% of scopes carry at least one ambiguous bare name. That line is the corroborating
 instrument for this bucket, and it is independent of this census. What the ambiguity means
-for *this* document is narrow and worth stating plainly: those 88 rows are **unresolved,
+for *this* document is narrow and worth stating plainly: those 93 rows are **unresolved,
 not consumed** — they stay in the population, and no deletion should read their ambiguity
 as either evidence.
 
@@ -310,8 +310,8 @@ have a live caller.**
    being consumed. **Found by an independent instrument — the required floor, refusing a
    deletion with `unresolved type MergeReadinessVerdict` and `8x undefined variable Ready`
    — not by reasoning about the census.** Re-scoring with variants moves this document's
-   population: CONSUMED-DECISIVE 91 → **92**, STILL-UNCONSUMED 96 → **83**, and the §4h
-   residue list 131 → **117**.
+   population: CONSUMED-DECISIVE 91 → **92**, STILL-UNCONSUMED 96 → **78**, and the §4h
+   residue list 131 → **112**.
 
    *Three further defects were found inside the fix itself, all by hand-verifying rows
    before publishing the number, and each one produced a **false** consumption claim:*
@@ -595,22 +595,22 @@ census.
   establishes — and it is the reason the claim survived unchallenged: nothing could refuse
   it. The class is in §2's common cause, one sighting of three.
 
-**h. The list the cleanup directive actually points at is 117, not 298 — and two rows in
-it are not what their names say.** Combining the re-score's buckets: **83 STILL-UNCONSUMED
+**h. The list the cleanup directive actually points at is 112, not 298 — and two rows in
+it are not what their names say.** Combining the re-score's buckets: **78 STILL-UNCONSUMED
 (no bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside*
-the population — §4a's island shape, which deletes as a group or not at all) = 117 modules
+the population — §4a's island shape, which deletes as a group or not at all) = 112 modules
 that are residue on all three decoded surfaces.** That is the defensible starting point for
-the operator's *"clean up anything without consumers"* arm. The other 181 are not: 92 have
-live callers, and 88 are unresolvable at identity grain and need a per-row read before
-anything touches them. **The list was 131 before defect 7** — and the 14 that left it did
-*not* all become consumed: 2 did, and the rest moved to AMBIGUOUS, which means they are no
+the operator's *"clean up anything without consumers"* arm. The other 186 are not: 92 have
+live callers, and 93 are unresolvable at identity grain and need a per-row read before
+anything touches them. **The list was 131 before defect 7, and 117 before (f2) below** — and of the 19 that
+left it, only 2 became consumed; the rest moved to AMBIGUOUS, which means they are no
 longer provably unconsumed rather than proven consumed. That distinction is the whole
 reason the ambiguous bucket exists.
 
 Two observations from reading that population, neither of which the disposition classes
 capture:
 
-- **`v2.test.*` is a name, not an enrolment, and 23 of the 117 are the gap.** Floor
+- **`v2.test.*` is a name, not an enrolment, and 22 of the 112 are the gap.** Floor
   discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
   discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
   `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
