@@ -815,13 +815,61 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
   }
 }
 
+// OPTIONALITY LIVES IN TWO REPRESENTATIONS, AND THIS IS THE ONE PLACE THAT ANSWERS FOR BOTH.
+// `T?` carries optionality on the node itself (return_cardinality == CardOptional, minted by
+// 00_core with_optional_cardinality). `Optional<T>` (v2.std.optional) carries it as a declared
+// coproduct with the type argument as its single child. They are ONE concept -- a value that may
+// be absent -- wearing two carriers, which is the DESIGN 3 nickname living inside the compiler.
+//
+// The consequence, measured rather than argued: node_type_compatible tested only the cardinality
+// carrier, so a `String?` actual at an `Optional<String>` formal fell through to the
+// `left_opt || right_opt => false` arm and was REFUSED. Corpus-wide that class is 11 sites, all
+// of them correct code -- dag/extdeps/github/actions.dag declares Step's fields as `String?`
+// (the cited GitHub Actions authority) while the consumer in
+// src/v2/extdeps/github/gha_fold_pilot_emit.dag declares `Optional<String>`.
+//
+// It was already named as a live class in FOUR places before this repair -- declared_type_conformance_note
+// class (1), conformance_unjudged_live_hole_note ("24 Node(Optional) vs Primitive(Node)"),
+// unresolved_method_frontier's optional-receiver row, and a third ad-hoc copy of this very test
+// in 04_infer optional_cast_not_eliminated_diags (`|| source_name == "Optional"`). Each of those
+// named "reconciling the two optionality representations" as its dissolution trigger. This is
+// that reconciliation, held ONCE so a consumer asks rather than re-derives.
+//
+// SCOPE, DECLARED RATHER THAN IMPLIED. node_type_equals still tests the cardinality carrier
+// alone. Equality drives inference decisions where compatibility only judges conformance, so
+// widening it is a larger blast radius than this change measures; the two forms being EQUAL is
+// the stronger claim and it is not made here. Trigger for closing that gap: a corpus measurement
+// of node_type_equals under the same reconciliation, the way this one was measured.
+fn node_is_nominal_optional(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "Optional"
+    && (n.children |> count) == 1
+}
+
+fn node_is_optional_either_form(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.return_cardinality == CardOptional || node_is_nominal_optional(n: n, source_indices: source_indices)
+}
+
+// The value inside the optional, whichever carrier held it. A node carrying BOTH (a
+// cardinality-marked nominal Optional) unwraps the cardinality first, which is the order that
+// makes `Optional<T>?` and `T?` agree rather than the order that makes them differ.
+fn optional_inner_type_either_form(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if n.return_cardinality == CardOptional {
+    with_required_cardinality(n: n)
+  } else {
+    match n.children |> first {
+      Present { value: ch } => child_type_node(ch: ch)
+      Absent => n
+    }
+  }
+}
+
 fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
-  let left_opt = left.return_cardinality == CardOptional
-  let right_opt = right.return_cardinality == CardOptional
+  let left_opt = node_is_optional_either_form(n: left, source_indices: source_indices)
+  let right_opt = node_is_optional_either_form(n: right, source_indices: source_indices)
   let right_is_unit = is_unit_like(n: right)
   let left_is_unit = is_unit_like(n: left)
   if left_err || right_err { true }
@@ -870,8 +918,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       }
     }
     else if left_opt && right_opt {
-      let left_inner = with_required_cardinality(n: left)
-      let right_inner = with_required_cardinality(n: right)
+      let left_inner = optional_inner_type_either_form(n: left, source_indices: source_indices)
+      let right_inner = optional_inner_type_either_form(n: right, source_indices: source_indices)
       let left_inner_is_unit = is_unit_like(n: left_inner)
       let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }

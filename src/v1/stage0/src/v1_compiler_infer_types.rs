@@ -2115,6 +2115,38 @@ pub fn node_type_shape(
     })
 }
 
+pub fn node_is_nominal_optional(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()))
+        == "Optional".to_string())
+        && ((n.children.clone().len() as i64) == 1))
+}
+
+pub fn node_is_optional_either_form(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.return_cardinality.clone() == Cardinality::CardOptional)
+        || node_is_nominal_optional(n.clone(), source_indices.clone()))
+}
+
+pub fn optional_inner_type_either_form(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let _ = source_indices;
+    if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+        with_required_cardinality(n.clone())
+    } else {
+        match n.children.clone().first().cloned() {
+            Some(ch) => child_type_node(ch.clone()),
+            None => n.clone(),
+        }
+    }
+}
+
 pub fn node_type_compatible(
     mut left: Rc<Node>,
     mut right: Rc<Node>,
@@ -2141,8 +2173,8 @@ pub fn node_type_compatible(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_opt = node_is_optional_either_form(left.clone(), source_indices.clone());
+        let right_opt = node_is_optional_either_form(right.clone(), source_indices.clone());
         let right_is_unit = is_unit_like(right.clone());
         let left_is_unit = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
@@ -2254,8 +2286,14 @@ pub fn node_type_compatible(
                                 }
                             } else {
                                 if (left_opt.clone() && right_opt.clone()) {
-                                    let left_inner = with_required_cardinality(left.clone());
-                                    let right_inner = with_required_cardinality(right.clone());
+                                    let left_inner = optional_inner_type_either_form(
+                                        left.clone(),
+                                        source_indices.clone(),
+                                    );
+                                    let right_inner = optional_inner_type_either_form(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    );
                                     let left_inner_is_unit = is_unit_like(left_inner.clone());
                                     let right_inner_is_unit = is_unit_like(right_inner.clone());
                                     if (left_inner_is_unit.clone() || right_inner_is_unit.clone()) {

@@ -142,10 +142,10 @@ pub use crate::v1_compiler_infer_types::{
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
     is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
     method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
+    node_is_keyed_collection, node_is_optional_either_form, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -4884,9 +4884,8 @@ pub fn optional_cast_diags(
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
             let source_name = authored_name_at(source_indices.clone(), src_node.clone());
-            let source_is_optional = ((src_node.return_cardinality.clone()
-                == Cardinality::CardOptional)
-                || (source_name.clone() == "Optional".to_string()));
+            let source_is_optional =
+                node_is_optional_either_form(src_node.clone(), source_indices.clone());
             let target_is_optional =
                 (target_type.return_cardinality.clone() == Cardinality::CardOptional);
             if (source_is_optional.clone() && !target_is_optional.clone()) {

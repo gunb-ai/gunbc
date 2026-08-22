@@ -102,6 +102,7 @@ data bare_none_field_admission_class: GuaranteeClassId = "bare-none-field-admiss
 data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
 data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
 data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
+data optionality_two_representations_class: GuaranteeClassId = "optionality-two-representations" as GuaranteeClassId
 data sole_constructor_cross_module_class: GuaranteeClassId = "sole-constructor-cross-module" as GuaranteeClassId
 data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
 
@@ -111,6 +112,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     call_label_surplus_class,
     declared_conformance_ground_class,
     method_established_surface_class,
+    optionality_two_representations_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
   ]
@@ -125,6 +127,16 @@ data call_deficit_red_probe: GuaranteeProbeId = "call-label-surplus-deficit-red"
 data call_shape_green_probe: GuaranteeProbeId = "call-label-surplus-green-control" as GuaranteeProbeId
 data call_duplicate_red_probe: GuaranteeProbeId = "call-label-surplus-duplicate-red" as GuaranteeProbeId
 data call_duplicate_green_probe: GuaranteeProbeId = "call-label-surplus-duplicate-green-control" as GuaranteeProbeId
+
+// OPTIONALITY'S TWO REPRESENTATIONS. `T?` and `Optional<T>` are one concept in two carriers;
+// node_type_compatible tested only the cardinality carrier, so a correct `String?` actual at an
+// `Optional<String>` formal was REFUSED. These three rows are why the reconciliation cannot be
+// widened into "any optional matches any optional": the RED is a genuine inner-type mismatch
+// carried in the two DIFFERENT forms, so a relation that stopped comparing inner types once both
+// sides looked optional would turn it green while both green controls stayed green.
+data optionality_cross_form_green_probe: GuaranteeProbeId = "optionality-two-representations-cross-form-green" as GuaranteeProbeId
+data optionality_cross_form_inner_mismatch_red_probe: GuaranteeProbeId = "optionality-two-representations-cross-form-inner-mismatch-red" as GuaranteeProbeId
+data optionality_same_form_green_probe: GuaranteeProbeId = "optionality-two-representations-same-form-green" as GuaranteeProbeId
 
 data method_missing_red_probe: GuaranteeProbeId = "method-established-surface-missing-red" as GuaranteeProbeId
 data method_green_probe: GuaranteeProbeId = "method-established-surface-green-control" as GuaranteeProbeId
@@ -423,6 +435,24 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: optionality_cross_form_green_probe,
+      class: optionality_two_representations_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: optionality_cross_form_inner_mismatch_red_probe,
+      class: optionality_two_representations_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: optionality_same_form_green_probe,
+      class: optionality_two_representations_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: sole_ctor_admitted_caller_green_probe,

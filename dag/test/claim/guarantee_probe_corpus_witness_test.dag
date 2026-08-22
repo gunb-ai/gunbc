@@ -28,6 +28,9 @@ import gunbc.guarantee_probe_corpus {
   method_green_probe,
   conformance_scalar_red_probe,
   conformance_green_probe,
+  optionality_cross_form_green_probe,
+  optionality_cross_form_inner_mismatch_red_probe,
+  optionality_same_form_green_probe,
   sole_constructor_cross_module_class,
   sole_ctor_forged_red_probe,
   sole_ctor_green_probe,
@@ -168,6 +171,24 @@ data method_green_source: String = "module probe_method_green\nfn p(xs: List<Int
 data conformance_scalar_red_source: String = "module probe_conformance_red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n"
 
 data conformance_green_source: String = "module probe_conformance_green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n"
+
+// OPTIONALITY'S TWO REPRESENTATIONS. `T?` carries optionality on the node (return_cardinality);
+// `Optional<T>` carries it as a declared coproduct. The three sources differ on exactly two axes:
+// which CARRIER each side uses, and whether the INNER types agree.
+//
+//   cross-form green ......... String? actual at an Optional<String> formal (and the reverse).
+//                              Correct code. Refused before the reconciliation.
+//   cross-form inner-mismatch  Int? actual at an Optional<String> formal. THE DISCRIMINATING RED:
+//                              a reconciliation that stopped comparing inner types once both sides
+//                              looked optional would turn this green and keep both greens green.
+//   same-form green .......... String? at String?, Optional<String> at Optional<String>. Holds the
+//                              unchanged behaviour so the repair cannot be a blanket admission.
+data optionality_cross_form_green_source: String = "module probe_optionality_cross_form_green\ntype Optional<T> = Absent | Present { value: T }\nfn takes_nominal(v: Optional<String>) -> Int { 0 }\nfn takes_card(v: String?) -> Int { 0 }\nfn card_into_nominal(x: String?) -> Int { takes_nominal(v: x) }\nfn nominal_into_card(x: Optional<String>) -> Int { takes_card(v: x) }\n"
+
+data optionality_cross_form_inner_mismatch_source: String = "module probe_optionality_cross_form_red\ntype Optional<T> = Absent | Present { value: T }\nfn takes_nominal(v: Optional<String>) -> Int { 0 }\nfn f(x: Int?) -> Int { takes_nominal(v: x) }\n"
+
+data optionality_same_form_green_source: String = "module probe_optionality_same_form_green\ntype Optional<T> = Absent | Present { value: T }\nfn takes_nominal(v: Optional<String>) -> Int { 0 }\nfn takes_card(v: String?) -> Int { 0 }\nfn nominal_into_nominal(x: Optional<String>) -> Int { takes_nominal(v: x) }\nfn card_into_card(x: String?) -> Int { takes_card(v: x) }\n"
+
 
 data sole_ctor_forged_source: String = "module probe_uri_sole_ctor_forged\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n}\nfn bypass() -> String {\n  match uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar { admitted_cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n"
 
@@ -400,6 +421,44 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: conformance_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
+    Absent => false
+  }
+}
+
+// Correct code that was REFUSED before the two optionality carriers were reconciled. Both
+// directions, because the relation is symmetric and a one-direction fix would look identical here
+// on a one-direction test.
+test fn optionality_cross_form_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: optionality_cross_form_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: optionality_cross_form_green_source), row: row)
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED. `Int?` into an `Optional<String>` formal: both sides ARE optional, in
+// the two different carriers, and the inner types disagree. A reconciliation widened until it
+// admitted any optional against any optional would turn this green and would still satisfy both
+// green controls, so this row is the only one in the trio that can tell a correct repair from an
+// over-wide one.
+test fn optionality_cross_form_inner_mismatch_refuses_blocking_type_mismatch() -> Bool {
+  let census = census_of(source: optionality_cross_form_inner_mismatch_source)
+  match active_probe_row(probe: optionality_cross_form_inner_mismatch_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// The unchanged behaviour, held so the repair cannot be a blanket admission of anything optional.
+test fn optionality_same_form_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: optionality_same_form_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: optionality_same_form_green_source), row: row)
     Absent => false
   }
 }
@@ -813,6 +872,9 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     bare_none_collection_red_probe as String,
     bare_none_green_probe as String,
     bare_none_scalar_red_probe as String,
+    optionality_cross_form_green_probe as String,
+    optionality_cross_form_inner_mismatch_red_probe as String,
+    optionality_same_form_green_probe as String,
     sole_ctor_admitted_caller_green_probe as String,
     sole_ctor_cast_red_probe as String,
     sole_ctor_unadmitted_caller_red_probe as String,

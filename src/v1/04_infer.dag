@@ -77,6 +77,7 @@ import v1.compiler.infer_types {
   callable_inferred,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  node_is_optional_either_form,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   node_type_deps,
   method_receiver_element_node,
@@ -2994,7 +2995,12 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional || source_name == "Optional"
+      // Was `src_node.return_cardinality == CardOptional || source_name == "Optional"` -- a third
+      // hand-rolled copy of "is this optional in either of its two representations". It asks the
+      // single authority now (DESIGN 3: one fact, one place), which also fixes what the local copy
+      // got wrong: it matched the bare spelling "Optional", so a qualified
+      // `v2.std.optional.Optional` was not recognised at all.
+      let source_is_optional = node_is_optional_either_form(n: src_node, source_indices: source_indices)
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(
