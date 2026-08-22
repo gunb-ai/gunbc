@@ -661,3 +661,28 @@ The idempotence row does **not** contradict DESIGN's record that rustfmt is not 
 non-idempotence is a property of particular inputs, and this measures only this emitted population.
 It licenses a **symmetric single pass over two fresh emits**; it does **not** license comparing
 against a stored-normalized artifact, which is the recorded failure and which was not tested.
+
+## Scope bound — the collision mechanism explains a MINORITY of R1
+
+Recorded here so the closed chain above is not read as covering the cluster it was found in.
+`deep-ant-102` joined R1's sites against the 116-name collision census and reported **2 of 39** sites
+on a colliding name (`Nat`), with the top carriers `Measure` 11, `Vector` 7, `LetBinding` 4,
+`Outcome` 3.
+
+**The direction is right; the number is a keying artifact.** That join keys on the **outer type
+spelling**, not on the carrier at the **diverging position**. The tell is in its own carrier list:
+`i64` appears as a carrier with 2 sites, and `i64` is not a declaration — it is what `Nat` *emits*
+when the native alias fires. Those two are `std_checked_arithmetic.rs:305` and `std_measure.rs:488`,
+both confirmed `Nat` by declaration read above. Four of the `Measure` rows are likewise `Nat` at the
+delta (`Measure<Time, S, Nat>` / the `Nanosecond` time measure) — the divergence sits *inside* the
+type argument.
+
+So by per-site read the collision mechanism reaches **at least 8 of 39**, not 2. Eight is a **floor
+established by reading**, not a total: the other 7 `Measure` rows and all of `Vector` 7 are unread.
+
+**What holds either way:** 8 is not 39. `Measure` and `Vector` together remain the largest part of
+the cluster and the collision mechanism does not reach most of it. **No identity repair — composite
+key, `decl_file` on `TypeSummary`, or identity carried into `shared_types` — should be scoped as an
+R1 repair.** The honest statement is: *the collision mechanism explains a minority of R1, floor 8,
+upper bound unmeasured*, pending a re-key of the join on the diverging position rather than the outer
+type name.
