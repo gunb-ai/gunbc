@@ -1,5 +1,6 @@
 module gunbc.typed_remote_file_write
 
+import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
@@ -91,7 +92,7 @@ fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
 }
 
 fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
-  ["chmod", remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
+  [chmod_path_resolved_program as String, remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
 }
 
 fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {

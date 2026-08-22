@@ -14,7 +14,7 @@ import extdeps.posix.identity {
 }
 import extdeps.tools.chown { chown_argv, chown_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
-import extdeps.tools.chmod { chmod_add_executable_argv }
+import extdeps.tools.chmod { chmod_add_executable_argv, chmod_binary_path, chmod_path_resolved_program }
 import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.host_effect_realize {
   Srv3EffectiveOwner,
@@ -130,6 +130,19 @@ test fn elevating_an_empty_command_is_the_flag_alone() -> Bool {
 test fn chmod_argv_adds_the_execute_bit_rather_than_replacing_the_mode() -> Bool {
   chmod_add_executable_argv(path: "/opt/gunbc/bin/websocat") ==
     ["/bin/chmod", "+x", "/opt/gunbc/bin/websocat"]
+}
+
+// THE TWO CHMOD ROWS ARE BOTH REAL AND MUST NOT COLLAPSE INTO EACH OTHER. gunbc.roadmap_dashboard_
+// instance_apply used to spell "/usr/bin/chmod" -- a THIRD name for this binary, disagreeing with
+// the authority above, in the very roster whose job is to assert the binary exists. Both its sites
+// now read chmod_binary_path, so this pins the value that roster and that actuator agree on, and
+// it pins the PATH-resolved row beside it as a separate fact rather than a stale duplicate a later
+// editor would helpfully point at the path. Both values are literals here, so the assertion is an
+// independent oracle rather than the module restating itself.
+test fn the_path_resolved_chmod_is_a_second_fact_not_the_binary_path() -> Bool {
+  (chmod_binary_path as String) == "/bin/chmod"
+    && (chmod_path_resolved_program as String) == "chmod"
+    && (chmod_binary_path as String) != (chmod_path_resolved_program as String)
 }
 
 test fn mkdir_parents_argv_is_the_idempotent_form() -> Bool {
