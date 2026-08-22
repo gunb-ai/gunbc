@@ -24,10 +24,9 @@ import extdeps.cpu.types {
 import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import gunbc.fleet_physical_inventory {
   cooler_srv3,
-  host_srv1,
-  host_srv3,
   installed_cooling_realizations,
 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
@@ -46,7 +45,7 @@ import product.cooling_qualification {
 // The live srv3 realization, rebuilt here from the same cited catalog rows the fleet binds, so
 // each mutation below perturbs exactly one field and leaves the rest at their real values.
 data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingRealization {
-  host: host_srv3,
+  host: operator_host_srv3,
   cooler_asset: cooler_srv3,
   cooler: dynatron_w1_catalog,
   processor: altra_max_m12830_catalog,
@@ -215,7 +214,7 @@ test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
 // proves absence resolves to Unobserved — not to a silent compatibility.
 test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
   match installed_cooling_verdict_for_host(
-    host: host_srv1,
+    host: operator_host_srv1,
     realizations: installed_cooling_realizations,
   ) {
     InstalledCoolingUnobserved { host: _ } => true
@@ -230,7 +229,7 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
 test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
   !cooling_catalog_verdict_admits_qualification(
     verdict: installed_cooling_verdict_for_host(
-      host: host_srv1,
+      host: operator_host_srv1,
       realizations: installed_cooling_realizations,
     ),
   )
@@ -241,7 +240,7 @@ test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
 test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool {
   cooling_catalog_verdict_admits_qualification(
     verdict: installed_cooling_verdict_for_host(
-      host: host_srv3,
+      host: operator_host_srv3,
       realizations: installed_cooling_realizations,
     ),
   )
@@ -259,7 +258,7 @@ data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
 test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
-      host == host_srv3 && asset == cooler_srv3
+      host == operator_host_srv3 && asset == cooler_srv3
     CoolingCatalogRefused { host: _, cause: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
@@ -271,7 +270,7 @@ data ambiguity_witness_note: String = "installed_cooling_verdict_for_host previo
 data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
   srv3_installed_cooling,
   InstalledCoolingRealization {
-    host: host_srv3,
+    host: operator_host_srv3,
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
@@ -281,7 +280,7 @@ data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
 
 data duplicate_cooling_ba: List<InstalledCoolingRealization> = [
   InstalledCoolingRealization {
-    host: host_srv3,
+    host: operator_host_srv3,
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
@@ -301,17 +300,17 @@ fn verdict_is_ambiguous(v: CoolingCatalogVerdict) -> Bool {
 }
 
 test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> Bool {
-  verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ab))
-    && verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ba))
+  verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ab))
+    && verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ba))
     && !cooling_catalog_verdict_admits_qualification(
-         verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ab))
+         verdict: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ab))
 }
 
 test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
   cooling_catalog_verdict_admits_qualification(
-    verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: installed_cooling_realizations))
+    verdict: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: installed_cooling_realizations))
     && !cooling_catalog_verdict_admits_qualification(
-         verdict: installed_cooling_verdict_for_host(host: host_srv1, realizations: installed_cooling_realizations))
+         verdict: installed_cooling_verdict_for_host(host: operator_host_srv1, realizations: installed_cooling_realizations))
 }
 
 // THE CROSS-PLATFORM COLLISION, REFUSED. This cooler agrees with the Ampere processor on BOTH

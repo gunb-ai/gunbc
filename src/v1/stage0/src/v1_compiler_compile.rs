@@ -43,6 +43,7 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
+pub use crate::v1_compiler_emit::unmodeled_file_transport_diagnostics;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
@@ -439,11 +440,21 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 }
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
-    match artifact.target.clone() {
-        RenderTarget::Rust => emit_rust(typed.clone()),
-        RenderTarget::Python => emit_python(typed.clone()),
-        RenderTarget::Go => emit_go(typed.clone()),
-        RenderTarget::Dag => emit_dag_artifact(typed.clone()),
+    {
+        let unmodeled_transports =
+            unmodeled_file_transport_diagnostics(typed.clone(), artifact.target.clone());
+        if ((unmodeled_transports.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: unmodeled_transports.clone(),
+            });
+        }
+        match artifact.target.clone() {
+            RenderTarget::Rust => emit_rust(typed.clone()),
+            RenderTarget::Python => emit_python(typed.clone()),
+            RenderTarget::Go => emit_go(typed.clone()),
+            RenderTarget::Dag => emit_dag_artifact(typed.clone()),
+        }
     }
 }
 

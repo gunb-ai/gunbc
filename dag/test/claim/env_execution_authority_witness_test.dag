@@ -1,0 +1,86 @@
+module test.claim.env_execution_authority_witness
+
+import std.types { String, List, list_length }
+import std.logic { Bool }
+import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
+import extdeps.tools.env {
+  env_binary_path,
+  env_path_resolved_program,
+  env_binding_argv,
+  env_prefixed_argv,
+  env_prefixed_args,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS ESTABLISHES, stated before the assertions so the rung is not read off the file
+// name. It proves the SERIALIZATION of an env(1) invocation: that a binding reaches argv in the
+// arity env actually requires, that the assignment and unset forms stay distinguishable, and that
+// the whole-vector and tail-only producers agree on everything except the binary. It does NOT
+// prove that any call site uses these producers -- a hand-spelled ["env", ...] elsewhere in the
+// corpus is invisible to this file, and the instrument for that is a construction wall, not an
+// assertion in a module that must compile.
+data env_execution_authority_witness_scope_note: String = "Serialization witness for extdeps.tools.env. Call-site adoption is not in scope and is not evidenced here."
+
+test fn an_assignment_occupies_one_argv_element() -> Bool {
+  env_binding_argv(binding: EnvSet { name: "A", value: "b" }) == ["A=b"]
+}
+
+// THE ARITY IS THE POINT. An unset is TWO elements because `env -u NAME` is a flag and its
+// operand; a producer that welded them would pass a variable literally named `-uNAME`, which env
+// accepts as an assignment-shaped argument and silently does not unset anything.
+test fn an_unset_occupies_two_argv_elements() -> Bool {
+  env_binding_argv(binding: EnvUnset { name: "A" }) == ["-u", "A"]
+    && list_length(items: env_binding_argv(binding: EnvSet { name: "A", value: "b" })) == 1
+}
+
+// THE DISCRIMINATOR THAT MATTERS. `NAME=` sets the variable to the empty string; `-u NAME` removes
+// it from the environment. A consumer reading an unset variable takes its default, a consumer
+// reading an empty one takes the empty string, and those are different programs. devboot's cargo
+// invocation depends on this distinction (RUSTC_WRAPPER= is a set-to-empty, deliberately NOT an
+// unset), so a model that collapsed the two would change what gets built.
+test fn setting_to_empty_is_not_the_same_as_unsetting() -> Bool {
+  env_binding_argv(binding: EnvSet { name: "RUSTC_WRAPPER", value: "" })
+    != env_binding_argv(binding: EnvUnset { name: "RUSTC_WRAPPER" })
+}
+
+test fn bindings_precede_the_command_and_the_binary_leads() -> Bool {
+  env_prefixed_argv(
+    bindings: [EnvSet { name: "GIT_INDEX_FILE", value: "/tmp/i" }],
+    command_argv: ["git", "read-tree", "HEAD"],
+  ) == ["/usr/bin/env", "GIT_INDEX_FILE=/tmp/i", "git", "read-tree", "HEAD"]
+}
+
+// The two producers must not drift: the tail is the vector minus its head, so a transport that
+// splits bin_path from args reconstructs exactly what a transport taking the whole vector gets.
+test fn the_tail_producer_is_the_vector_without_the_binary() -> Bool {
+  concat(
+    [env_binary_path as String],
+    env_prefixed_args(
+      bindings: [EnvUnset { name: "RUSTC_WRAPPER" }, EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      command_argv: ["cargo", "build"],
+    ),
+  ) == env_prefixed_argv(
+    bindings: [EnvUnset { name: "RUSTC_WRAPPER" }, EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+    command_argv: ["cargo", "build"],
+  )
+}
+
+// A bare `env` resolves through PATH and names whatever the ambient environment decided; an
+// absolute path names a file. This pins the whole-vector producer to the absolute form, which is
+// the one a caller may use only about a host this repository has observed.
+test fn the_binary_is_absolute_not_a_path_lookup() -> Bool {
+  (env_binary_path as String) == "/usr/bin/env"
+}
+
+// THE TWO ROWS ARE BOTH REAL AND MUST NOT COLLAPSE INTO EACH OTHER. This is the assertion that
+// would red if a later editor decided one of them was the nickname and pointed it at the other --
+// the exact repair that looks like tidying and is a fabricated host fact. Both values are stated
+// as literals rather than derived from the rows, so this is an independent oracle and not the
+// module agreeing with itself.
+test fn the_path_resolved_name_is_a_second_fact_not_the_binary_path() -> Bool {
+  (env_path_resolved_program as String) == "env"
+    && (env_binary_path as String) == "/usr/bin/env"
+    && (env_path_resolved_program as String) != (env_binary_path as String)
+}
