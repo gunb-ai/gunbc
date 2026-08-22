@@ -35,6 +35,7 @@ import product.installed_bom_reconcile {
 }
 import extdeps.memory.types { MemoryPopulationRow }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory.samsung { m386a4g40dm0_cpb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
 import product.inventory {
@@ -107,11 +108,21 @@ test fn srv1_live_population_confirms_the_expectation() -> Bool {
   }
 }
 
-// THE REFUSAL FIRES ON REAL DATA. srv3's observed population is seven HMA82GR7AFR8N-VK plus one
-// HMA82GR7AFR4N-VK against a uniform AFR4N expectation, so exactly ONE row differs, it is located
-// at population grain because the BMC reported no slot, and the stick total still matches — which
-// is the discrimination this witness exists for: a refusal whose count axis says Matches proves
-// the part axis alone produced it.
+// THE REFUSAL FIRES ON REAL DATA. srv3's observed population is eight M393A8G40D40-CRB0Q against
+// a uniform AFR4N expectation, so exactly ONE row differs, it is located at population grain
+// because the BMC reported no slot, and the stick total still matches -- which is the
+// discrimination this witness exists for: a refusal whose count axis says Matches proves the
+// part axis alone produced it.
+//
+// THE OBSERVATION MOVED UNDER THIS TEST ON 2026-08-22 AND THE TEST IS BETTER FOR IT, which is
+// worth recording because the alternative was to pin it to a fixture and stop reading live data.
+// It previously ran against srv3's mixed seven-plus-one Hynix population, where "exactly one row
+// differs" was a fact about two Hynix part numbers happening to collapse into one discrepancy
+// row. The replacement made srv3 uniform, so the same assertion now discriminates a cleaner
+// case: eight-of-one against eight-of-another, count identical, part axis solely responsible.
+// The expectation stays deliberately WRONG (it names the Hynix part srv3 no longer carries)
+// because this witness's subject is the refusal, not the fleet's current correctness -- the
+// matching expectation lives in gunbc.fleet_physical_inventory and is checked there.
 test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
@@ -132,7 +143,7 @@ test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
         Present { value: d } =>
           d.expected_part == hma82gr7afr4n_vk_catalog.part_number
             && match d.observed {
-              ObservedDimmCataloged { catalog: c } => c.part_number == hma82gr7afr8n_vk_catalog.part_number
+              ObservedDimmCataloged { catalog: c } => c.part_number == m393a8g40d40_crb0q_catalog.part_number
               ObservedDimmUncataloged { part_number: _ } => false
             }
             && match d.location {
@@ -265,19 +276,34 @@ test fn an_observation_of_another_host_refuses() -> Bool {
   }
 }
 
-// AN UNOBSERVED HOST STAYS UNOBSERVED. srv4 has no read at either grain, and the verdict must be
-// neither a pass nor a refusal — a pass would zero the observation deficit's frequency by
-// construction, and a refusal would accuse hardware nobody has looked at.
-test fn srv4_unobserved_reaches_neither_confirmed_nor_refused() -> Bool {
+// AN UNOBSERVED HOST STAYS UNOBSERVED. The verdict must be neither a pass nor a refusal -- a pass
+// would zero the observation deficit's frequency by construction, and a refusal would accuse
+// hardware nobody has looked at.
+//
+// THIS CONTROL LOST ITS LIVE SPECIMEN ON 2026-08-22 AND IS KEPT ANYWAY, which is the point worth
+// recording. srv4 WAS the unobserved host and drove this test directly; the authenticated Redfish
+// read that retired its deferral moved it to a real population, so nothing in the live fleet now
+// occupies DimmObservationAbsent. That is a guard going quiet, not a guard dying: the arm is still
+// reachable -- the next host racked without a read produces it -- and deleting a wall because
+// nothing currently lands in it is how a live wall gets removed while looking principled.
+//
+// So the input is now CONSTRUCTED rather than live, and the test says so in its name. The honest
+// cost of that swap is that this no longer proves anything about the fleet, only about the fold;
+// the fleet-level claim it used to carry is the report-length test below, which is where the
+// change in occupancy is actually visible.
+test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> Bool {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
-      host: "srv4" as HostIdentity,
+      host: "srv-never-read" as HostIdentity,
       catalog: hma82gr7afr4n_vk_catalog,
       stick_count: 8,
     },
-    observation: srv4_dimm_observation,
+    observation: DimmObservationAbsent {
+      host: "srv-never-read" as HostIdentity,
+      cause: "constructed: no per-DIMM read has been taken for this host at either grain",
+    },
   ) {
-    DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv4" as HostIdentity)
+    DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv-never-read" as HostIdentity)
     DimmPopulationConfirmed { host: _, stick_count: _ } => false
     DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
     DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
@@ -285,11 +311,22 @@ test fn srv4_unobserved_reaches_neither_confirmed_nor_refused() -> Bool {
 }
 
 // A confirmed population contributes nothing to the report, so the report's length counts real
-// contradictions only. Over the four live fleet verdicts that is exactly srv3's single row: srv1
-// and srv2 confirm and srv4 is unobserved, so a report of any other length would mean silence had
-// leaked into it.
-test fn the_fleet_report_carries_exactly_the_live_contradiction() -> Bool {
-  dimm_discrepancy_report(verdicts: fleet_dimm_verdicts).length() == 1
+// contradictions only. THE LIVE FLEET NOW RECONCILES AND THE EXPECTED LENGTH IS ZERO: srv1 and
+// srv2 confirm against the Hynix rows they still carry, and srv3 and srv4 confirm against the
+// Samsung rows installed on 2026-08-22 with their expectations updated in the same change.
+//
+// A ZERO-LENGTH ASSERTION IS WEAK ON ITS OWN and is deliberately not carrying this claim alone.
+// It cannot distinguish "the fleet agrees" from "the report is broken and returns nothing", which
+// is exactly the empty-observation narrow DESIGN 5 names. What discriminates it is the pair of
+// live refusal tests above -- srv3 against a deliberately wrong expectation still produces one
+// located row -- so the fold is proven able to emit a discrepancy on the same data path that here
+// emits none. Read the two together or neither means anything.
+//
+// It previously asserted ONE, which was srv3's mixed Hynix population against a uniform
+// expectation. That contradiction was resolved by making the expectation true, not by suppressing
+// it.
+test fn the_fleet_report_is_empty_while_every_expectation_matches() -> Bool {
+  dimm_discrepancy_report(verdicts: fleet_dimm_verdicts).length() == 0
 }
 
 // Every verdict the fold produces is grounded: no refusal names an empty discrepancy list with a

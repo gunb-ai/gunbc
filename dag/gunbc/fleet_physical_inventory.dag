@@ -36,7 +36,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv5,
   operator_host_srv6,
 }
-import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
+import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
 import product.inventory {
@@ -57,6 +57,7 @@ import gunbc.fleet_intent {
   srv3_memory_population,
 }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import product.installed_bom_reconcile {
   DimmObservationAbsent,
   DimmPopulationObserved,
@@ -315,8 +316,8 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 data fleet_dimm_expectations: List<HostDimmExpectation> = [
   HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
   HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
 ]
 
 data srv1_dimm_observation: HostDimmObservation = DimmPopulationObserved {
@@ -334,9 +335,9 @@ data srv3_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   rows: srv3_memory_population.rows,
 }
 
-data srv4_dimm_observation: HostDimmObservation = DimmObservationAbsent {
+data srv4_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   host: operator_host_srv4,
-  cause: "no per-DIMM read of srv4 exists at either grain: the BMC Redfish read of 192.168.1.195 was never authenticated (gunbc.fleet_intent srv4_memory_population_deferral) and no dmidecode receipt has been supplied",
+  rows: srv4_memory_population.rows,
 }
 
 data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
@@ -349,11 +350,11 @@ data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
     observation: srv2_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
     observation: srv3_dimm_observation,
   ),
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
     observation: srv4_dimm_observation,
   ),
 ]
