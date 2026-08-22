@@ -54,6 +54,16 @@ it governs. Nothing about the registered population, the prediction, or the join
 (c)/(a) landing as the repair being ineffective; or weakening a correct control to make it green,
 which is the worse of the two because it destroys the terminal acceptance test for the entire chain.
 
+**Provenance of the MEASUREMENT behind it, corrected by its author (2026-08-22).** The first run
+supporting this row was invalid: the mirror half of the (a) patch had been reverted to build a
+baseline, the patched copy was saved under `/tmp`, the container wiped `/tmp` between the two steps,
+and the restoring `cp` failed silently — so both arms were baseline against baseline. The tell was
+in the output and is worth keeping: **two arms reporting IDENTICAL counts (11 and 11, 158 and 158)
+is not agreement, it is one instrument run twice.** Re-measured on a genuinely patched binary, with
+the symbol verified in the source *and* in the built binary first, the result is unchanged and this
+row stands as written. It is recorded because this document's edit was made while the supporting
+evidence was invalid, and a claim's basis is part of the claim.
+
 **Provenance of the correction:** `calm-heron-887` first ran this pair and reported `compiled 5
 files, 0 diagnostics` — a shell race (a trailing `&` bound to the whole and-chain, so the compile
 read a partially written module), which they diagnosed and disclosed themselves rather than filing

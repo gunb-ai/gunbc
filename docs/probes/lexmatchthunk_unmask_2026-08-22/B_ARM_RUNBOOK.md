@@ -28,7 +28,11 @@ lanes' work to the repair.
      bash docs/probes/curated_cargo_probe_one.sh src/v2/compiler/03_ingest.dag ""
    ```
    This is **one entry, M=1** — the `03_ingest` closure (177 emitted files), not a whole-corpus
-   compile. Measured cost on this hardware: ~13 min cold, of which ~4m15 is the probe building
+   compile. That distinction is now enforced rather than advisory: `gunbc.whole_corpus_compile_admission`
+   refuses a both-source-roots compile with `WholeCorpusCompileBudgetBelowMeasuredDemand` when readable
+   host memory is below measured demand, instead of starting and being `SIGKILL`ed — which used to
+   report as a silent exit-137 zero, making any count grepped from such a run a memorial to a killed
+   process. An `--entry`-scoped probe is unaffected. Measured cost on this hardware: ~13 min cold, of which ~4m15 is the probe building
    `gunbc` + `cssl_assemble` from the tree it is measuring.
 2. **Twice per arm**, comparing `rustfmt`-**normalized** output. The emitter is nondeterministic —
    pure `pub use` line reordering — and the churn *set itself varies* run to run, so one run per arm
