@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.gunbc
-import extdeps.tools.mkdir { mkdir_binary_path, mkdir_parents_args }
+import extdeps.tools.mkdir { mkdir_path_resolved_program, mkdir_parents_args }
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git { git_ref_missing_exit_code }
@@ -194,18 +194,19 @@ fn devboot_witness_run(
 // "mkdir", and nothing in the corpus refuses it. The next rung is the same host_effect_apply
 // migration the row already names.
 //
-// ADOPTING THE AUTHORITY ADOPTS ITS ABSOLUTE PATH, /usr/bin/mkdir, where these sites resolved
-// through PATH before. That is a real change and it is the intended one: devboot's own subject
-// probe runs `ldd --version`, so the service is already glibc-Linux-only by construction, and the
-// coreutils mkdir sits at /usr/bin there. A host where it does not is a fact about that host,
-// belonging in extdeps.tools.mkdir beside the path it contradicts -- exactly where
-// extdeps.tools.chmod records that chmod is at /bin rather than /usr/bin -- and not a reason for
-// devboot to keep a private spelling that papers over the disagreement.
+// THE SPELLING IS UNCHANGED AND THAT IS DELIBERATE. This cites the authority's PATH-RESOLVED row,
+// so the argv devboot runs is byte-identical to what it ran before -- what ends is the private
+// spelling, not the resolution. An earlier revision of this migration adopted the absolute
+// /usr/bin/mkdir instead, reasoning that devboot's own `ldd --version` probe pins it to glibc
+// Linux; extdeps.tools.env landed the distinction that shows why that was wrong. What a host must
+// SATISFY is not what its filesystem LOOKS LIKE, and devboot's producer compiles on whichever box
+// the operator invoked it from -- a host this repository has not read. Asserting a path there
+// fabricates a host fact (DESIGN section 5) rather than repairing an unspecific one.
 fn devboot_ensure_directory(repo_root: String, path: String) -> WitnessBinRunOutcome {
   devboot_witness_run(
     site: retained_devboot_mkdir,
     workdir: repo_root,
-    bin_path: mkdir_binary_path as String,
+    bin_path: mkdir_path_resolved_program as String,
     args: mkdir_parents_args(path: path),
   )
 }

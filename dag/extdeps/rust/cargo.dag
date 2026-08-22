@@ -114,6 +114,14 @@ type CargoEnvironmentVariable
   | CargoBuildJobsEnv
   | RustcWrapperEnv
 
+// THE NAMES LIVE HERE, THE OPERAND FORM DOES NOT, and an earlier revision of this module got that
+// wrong. It carried a cargo_environment_assignment rendering "NAME=value" beside these names,
+// following what extdeps.ollama.server_env and extdeps.cache.sccache already did. That form is
+// env(1)'s argument syntax, not cargo's -- cargo owns WHICH NAMES IT READS and nothing about how a
+// process launcher spells an assignment -- so extdeps.tools.env is its single authority, and
+// rendering it again here would be the DESIGN section 3 fork this migration exists to remove,
+// committed by the change removing it. Callers pair a name from this function with an EnvSet
+// binding and let extdeps.tools.env env_bindings_argv render the operand.
 fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmptyStr {
   match variable {
     CargoHomeEnv => "CARGO_HOME"
@@ -121,14 +129,4 @@ fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmp
     CargoBuildJobsEnv => "CARGO_BUILD_JOBS"
     RustcWrapperEnv => "RUSTC_WRAPPER"
   }
-}
-
-// THE OPERAND FORM, RENDERED BESIDE THE NAME rather than joined at the call site, following the
-// same shape extdeps.ollama.server_env and extdeps.cache.sccache already use for their own
-// variables. An EMPTY value is a real cargo state and not an absent one: RUSTC_WRAPPER= tells
-// cargo to use no wrapper, which is a different instruction from leaving the variable unset and
-// inheriting an ambient one. The value is a plain String for exactly that reason -- refusing the
-// empty string here would make the only spelling of "no wrapper" unwritable.
-fn cargo_environment_assignment(variable: CargoEnvironmentVariable, value: String) -> String {
-  join([cargo_environment_variable_name(variable: variable) as String, "=", value], "")
 }

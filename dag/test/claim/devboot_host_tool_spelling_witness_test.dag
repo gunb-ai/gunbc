@@ -2,7 +2,14 @@ module test.claim.devboot_host_tool_spelling_witness
 
 import std.types { Bool, String }
 
-import extdeps.tools.mkdir { mkdir_binary_path, mkdir_parents_args, mkdir_parents_argv }
+import extdeps.tools.mkdir {
+  mkdir_binary_path,
+  mkdir_path_resolved_program,
+  mkdir_parents_args,
+  mkdir_parents_argv,
+}
+import extdeps.tools.env { env_path_resolved_program, env_bindings_argv }
+import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.cargo {
   CargoEnvironmentVariable,
   CargoHomeEnv,
@@ -10,9 +17,8 @@ import extdeps.cargo {
   CargoBuildJobsEnv,
   RustcWrapperEnv,
   cargo_environment_variable_name,
-  cargo_environment_assignment,
 }
-import extdeps.rustup { rustup_home_env_name, rustup_home_env_assignment }
+import extdeps.rustup { rustup_home_env_name }
 
 // WHAT THIS WITNESS CAN AND CANNOT REACH, said before the assertions so the coverage is not
 // inferred from the file's name. gunbc.devboot reaches the host through a raw WitnessBin.Run, so
@@ -64,25 +70,46 @@ test fn cargo_environment_variable_names_are_the_cited_upstream_spellings() -> B
     && (cargo_environment_variable_name(variable: RustcWrapperEnv) as String) == "RUSTC_WRAPPER"
 }
 
-test fn the_cargo_assignment_renders_the_name_and_the_value() -> Bool {
-  cargo_environment_assignment(variable: CargoTargetDirEnv, value: "/srv/devboot/target")
-    == "CARGO_TARGET_DIR=/srv/devboot/target"
+// THE NAME COMES FROM CARGO, THE OPERAND FORM FROM env(1), AND THE JOIN IS THE ASSERTION. This
+// pairing is the whole point of the decomposition: cargo owns which names it reads, extdeps.tools.env
+// owns how a launcher spells an assignment, and neither renders the other's half. An earlier
+// revision asserted a cargo_environment_assignment that rendered "NAME=value" inside extdeps.cargo
+// -- a second authority for env's argument syntax, which is the fork this migration removes.
+test fn the_cargo_name_and_the_env_operand_form_compose() -> Bool {
+  env_bindings_argv(bindings: [
+    EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: "/srv/devboot/target" },
+  ]) == ["CARGO_TARGET_DIR=/srv/devboot/target"]
 }
 
 // AN EMPTY VALUE IS A STATE, NOT AN ABSENCE. `RUSTC_WRAPPER=` instructs cargo to use no wrapper;
 // leaving the variable unset inherits whatever the ambient environment holds, which on a CI host
-// is sccache. The two are different builds. gunbc.devboot.build passed this exact operand as a
-// bare literal before the authority existed, and this control pins that the authority reproduces
-// it rather than refusing the empty string or rendering the name alone.
+// is sccache. The two are different builds, and env(1) models that distinction structurally --
+// EnvSet with an empty value is not EnvUnset, and they render as one argv element and two.
+// gunbc.devboot.build passed this exact operand as a bare literal before either authority existed.
 test fn an_empty_cargo_value_renders_the_no_wrapper_operand() -> Bool {
-  cargo_environment_assignment(variable: RustcWrapperEnv, value: "") == "RUSTC_WRAPPER="
+  env_bindings_argv(bindings: [
+    EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+  ]) == ["RUSTC_WRAPPER="]
 }
 
 // RUSTUP IS A SEPARATE UPSTREAM, and its variable is asserted from its own module for the reason
 // DESIGN section 3 gives: a rustup release must not require editing cargo's module. The two are
 // set side by side at devboot's one cargo site, which is exactly the coincidence that makes the
 // merge tempting and the separation load-bearing.
-test fn the_rustup_home_assignment_comes_from_rustups_own_authority() -> Bool {
+test fn the_rustup_home_name_comes_from_rustups_own_authority() -> Bool {
   (rustup_home_env_name as String) == "RUSTUP_HOME"
-    && rustup_home_env_assignment(value: "/srv/devboot/rustup") == "RUSTUP_HOME=/srv/devboot/rustup"
+    && env_bindings_argv(bindings: [
+         EnvSet { name: rustup_home_env_name as String, value: "/srv/devboot/rustup" },
+       ]) == ["RUSTUP_HOME=/srv/devboot/rustup"]
+}
+
+// THE SPELLING DEVBOOT ACTUALLY RUNS, pinned because this migration deliberately did NOT change
+// it. Both tools are cited at their PATH-RESOLVED rows, so the argv is byte-identical to what
+// devboot ran before the authorities existed; what ended is the private spelling. The absolute
+// rows are asserted alongside to prove the two forms are genuinely distinct facts and that this
+// caller picked the one for an unobserved host.
+test fn devboot_cites_the_path_resolved_form_of_both_tools() -> Bool {
+  (mkdir_path_resolved_program as String) == "mkdir"
+    && (env_path_resolved_program as String) == "env"
+    && (mkdir_path_resolved_program as String) != (mkdir_binary_path as String)
 }

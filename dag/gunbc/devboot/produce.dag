@@ -6,6 +6,8 @@ import std.content_hash { sha256_hex_digest }
 
 import extdeps.shell
 import extdeps.gunbc
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.filesystem.filesystem_io
@@ -89,7 +91,7 @@ import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.cargo {
   CargoTarget, Lib, Bin, CargoTest, Example, Bench,
-  CargoEnvironmentVariable, CargoTargetDirEnv, cargo_environment_assignment,
+  CargoEnvironmentVariable, CargoTargetDirEnv, cargo_environment_variable_name,
 }
 import gunbc.devboot.program { devboot_program_package }
 
@@ -1043,8 +1045,13 @@ fn devboot_run_build_plan(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: concat([cargo_environment_assignment(variable: CargoTargetDirEnv, value: target_dir), "cargo"], args),
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+      ],
+      command_argv: concat(["cargo"], args),
+    ),
   )
   if !built.success {
     ProduceRefused {

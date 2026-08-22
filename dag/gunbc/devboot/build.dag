@@ -15,9 +15,11 @@ import extdeps.cargo {
   CargoTargetDirEnv,
   CargoBuildJobsEnv,
   RustcWrapperEnv,
-  cargo_environment_assignment,
+  cargo_environment_variable_name,
 }
-import extdeps.rustup { rustup_home_env_assignment }
+import extdeps.rustup { rustup_home_env_name }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }
 import extdeps.git.plumbing {
   GitRepositoryAddress,
@@ -1114,21 +1116,25 @@ fn devboot_serve_built(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: [
-      rustup_home_env_assignment(value: home.rustup_home),
-      cargo_environment_assignment(variable: CargoHomeEnv, value: home.cargo_home),
-      cargo_environment_assignment(variable: CargoTargetDirEnv, value: target_dir),
-      cargo_environment_assignment(variable: CargoBuildJobsEnv, value: home.build_jobs),
-      cargo_environment_assignment(variable: RustcWrapperEnv, value: ""),
-      home.cargo_bin,
-      "build",
-      "--release",
-      "--package",
-      package,
-      "--bin",
-      bin_name,
-    ],
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: home.build_jobs },
+        EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+      ],
+      command_argv: [
+        home.cargo_bin,
+        "build",
+        "--release",
+        "--package",
+        package,
+        "--bin",
+        bin_name,
+      ],
+    ),
   )
   if !built.success {
     serve_refusal(

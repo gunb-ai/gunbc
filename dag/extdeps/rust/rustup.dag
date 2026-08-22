@@ -66,7 +66,3 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 // and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
 // directly. A second rustup variable arriving is what turns this into an enumeration.
 data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
-
-fn rustup_home_env_assignment(value: String) -> String {
-  join([rustup_home_env_name as String, "=", value], "")
-}

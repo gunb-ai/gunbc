@@ -247,15 +247,6 @@ pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> St
     }
 }
 
-pub fn cargo_environment_assignment(variable: CargoEnvironmentVariable, value: String) -> String {
-    Rc::new(vec![
-        cargo_environment_variable_name(variable.clone()),
-        "=".to_string(),
-        value.clone(),
-    ])
-    .join(&"".to_string())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Edition2015;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
