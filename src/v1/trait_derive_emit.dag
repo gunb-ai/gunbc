@@ -1638,7 +1638,7 @@ fn v1_type_expr_wf_needs_clone_param(
     )
     match map_get(type_decl_items, v1.std.core.qualified_last_segment(name: name)) {
       Present { value: decl } =>
-        let bound_params = match map_get(bounds, name) {
+        let bound_params = match map_get(bounds, v1.std.core.qualified_last_segment(name: name)) {
           Present { value: s } => s
           Absent => empty_set()
         }
