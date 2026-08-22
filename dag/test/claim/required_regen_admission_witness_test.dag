@@ -3,6 +3,8 @@ module test.claim.required_regen_admission_witness
 import v2.workflow.required_regen {
   CommittedNotEmitted,
   EmittedNotCommitted,
+  EmittedNotCommittedShadowsHandMaintained,
+  MirrorMissingShadowsHandMaintainedSource,
   EmptyCommittedPopulation,
   EmptyEmitResult,
   CommittedMirrorNoLongerEmitted,
@@ -194,6 +196,47 @@ test fn witness_new_surface_alone_still_refuses() -> Bool {
           paths |> any(p => p == "brand_new_surface.rs")
         _ => false
       })
+    RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+// THE DAMAGING-REMEDY CONTROL, and it has two halves that must hold TOGETHER.
+// An emitted basename that collides with hand-authored source under a hand-maintained directory
+// refuses under its OWN cause, naming the directory -- because the two remedies attached to
+// MirrorMissingForEmittedSurface (install the mirror, or investigate an invented surface) both
+// destroy hand-authored code when applied to this class.
+// The RED half is the second assertion: a genuine orphan mirror in the SAME run must STILL refuse
+// as MirrorMissingForEmittedSurface. A fix that silenced the collision by excluding it from the
+// compared population would take the orphan with it, and this test would go green on a wall that
+// no longer stands. Separation, not membership: neither path may appear under the other's cause.
+test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool {
+  match required_regen_sync_admission(
+    generated_outcomes: [
+      SurfaceMatches { relative_path: "std_algebra.rs" },
+      EmittedNotCommitted { relative_path: "brand_new_surface.rs" },
+      EmittedNotCommittedShadowsHandMaintained {
+        relative_path: "shared_fill.rs",
+        hand_maintained_home: "cli_run"
+      }
+    ],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 3,
+    executed_surfaces: 3
+  ) {
+    RequiredRegenSyncRefused { refusals } =>
+      (refusals |> any(r => match r {
+        MirrorMissingShadowsHandMaintainedSource { entries } =>
+          (entries |> any(e => e == "shared_fill.rs (hand-maintained under cli_run)"))
+            && !(entries |> any(e => e == "brand_new_surface.rs"))
+        _ => false
+      }))
+        && (refusals |> any(r => match r {
+          MirrorMissingForEmittedSurface { paths } =>
+            (paths |> any(p => p == "brand_new_surface.rs"))
+              && !(paths |> any(p => p == "shared_fill.rs"))
+          _ => false
+        }))
     RequiredRegenSyncRunnable { attempt: _ } => false
   }
 }
