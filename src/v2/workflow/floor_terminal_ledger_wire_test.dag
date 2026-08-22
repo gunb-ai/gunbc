@@ -61,7 +61,7 @@ fn passing_row(f: String) -> ClaimTerminalRow {
 
 fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
   match render_ledger(binding: binding(), rows: rows) {
-    LedgerUnrenderable { reason: _, offending: _ } => ""
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
     LedgerRendered { text: t } => t
   }
 }
@@ -193,7 +193,7 @@ test fn a_field_carrying_the_separator_makes_the_ledger_unrenderable() -> Bool {
   }
   match render_ledger(binding: binding(), rows: [poisoned]) {
     LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: _ } => r == "field-carries-separator"
+    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "field-carries-separator"
   }
 }
 
@@ -251,7 +251,7 @@ fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
     roster_identity: "0000000000000003",
     rows: map(rows, r => seed_row_of(row: r))
   ) {
-    LedgerUnrenderable { reason: _, offending: _ } => ""
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
     LedgerRendered { text: t } => t
   }
 }
@@ -281,7 +281,7 @@ test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
     rows: [honest, lying]
   ) {
     LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: o } =>
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
       r == "seed-disposition-disagrees" && o == honest.qualified
   }
 }
@@ -304,6 +304,52 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
     rows: [futuristic]
   ) {
     LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: _ } => r == "seed-terminal-tag-unrecognized"
+    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "seed-terminal-tag-unrecognized"
+  }
+}
+
+// THE DIAGNOSIS SURVIVES THE REFUSAL, AND CANNOT BE READ AS A LEDGER.
+//
+// A refusal that named one identity and destroyed the file would take the other rows with it --
+// the only rows that say whether the defect is isolated to one arm or spans a whole terminal
+// shape. So the rows survive under a format token `parse_ledger` refuses, which makes "a partial
+// file cited as a ledger" unspellable rather than forbidden by a convention.
+test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_ledger() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let other = seed_row_of(row: passing_row(f: "b"))
+  let lying = SeedLedgerRow {
+    qualified: "test.claim.example.c",
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: honest.terminal_detail,
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "0000000000000001",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: [honest, other, lying]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: d } =>
+      r == "seed-disposition-disagrees"
+        && o == "test.claim.example.c"
+        // every row survives: header + refusal line + three rows
+        && d.split(delimiter: "\n").length() == 5
+        && d.split(delimiter: "test.claim.example.a").length() == 2
+        && d.split(delimiter: "test.claim.example.b").length() == 2
+        && d.split(delimiter: "test.claim.example.c").length() == 3
+        // and it is not a ledger: reading it back refuses on the format, not on its contents
+        && match parse_ledger(text: d) {
+             LedgerRead {
+               repository_snapshot: _,
+               prepared_subject: _,
+               roster_identity: _,
+               rows: _,
+               footer_row_count_wire: _,
+               footer_digest: _
+             } => false
+             LedgerUnreadable { reason: pr, at: _ } => pr == "ledger-format-unrecognized"
+           }
   }
 }

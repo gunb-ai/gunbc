@@ -78,6 +78,23 @@ data ledger_wire_format: String = "gunbc-terminal-ledger/1"
 
 data ledger_wire_footer_tag: String = "#end"
 
+// A REFUSED LEDGER STILL LEAVES ITS ROWS, UNDER A NAME THAT CANNOT BE MISTAKEN FOR EVIDENCE.
+//
+// An earlier revision returned only a reason and an offending identity, and the seed then wrote
+// nothing at all. That is the instrumentation-optional shape one turn up: the diagnosis
+// disappears on precisely the run where something went wrong, so an operator holding a refusal
+// that names ONE identity has no way to tell whether the defect is isolated to that row or spans
+// every row of a whole terminal shape -- the other ten thousand rows, which are the only thing
+// that answers it, are gone with the file.
+//
+// So a refusal carries a DIAGNOSIS: every row the seed sent, in the seed's own words, plus the
+// refusal. It is not a degraded ledger and cannot be read as one -- its first field is a
+// different format token, so `parse_ledger` refuses it as `ledger-format-unrecognized` rather
+// than parsing it as a short run. That is the naming convention made structural: a partial file
+// being cited as a ledger has no spelling, instead of being forbidden by a rule someone must
+// remember. The floor still goes non-green; nothing here mints a receipt.
+data ledger_partial_format: String = "gunbc-terminal-ledger-partial/1"
+
 fn ledger_wire_separator() -> String {
   "\t"
 }
@@ -217,7 +234,7 @@ fn render_footer(rows: List<ClaimTerminalRow>) -> String {
 // RENDER IS TOTAL OR IT REFUSES; IT NEVER PRODUCES A DAMAGED LEDGER.
 type LedgerRender
   = LedgerRendered { text: String }
-  | LedgerUnrenderable { reason: Symbol, offending: String }
+  | LedgerUnrenderable { reason: Symbol, offending: String, diagnosis: String }
 
 fn ledger_unclean_fields(rows: List<ClaimTerminalRow>) -> List<String> {
   filter(
@@ -229,10 +246,93 @@ fn ledger_unclean_fields(rows: List<ClaimTerminalRow>) -> List<String> {
   )
 }
 
+// THE DIAGNOSIS IS RENDERED FROM WHAT THE SENDER SENT, DELIBERATELY WITHOUT REPAIR. Fields are
+// written raw -- including the separator-carrying field that may have caused the refusal --
+// because a diagnostician needs to see the byte that broke the grammar, and a sanitized
+// diagnosis of a sanitization defect would be useless. It carries no footer: nothing about it
+// can look finalized.
+data ledger_partial_refusal_tag: String = "#refused"
+
+fn render_partial_header(repository_snapshot: String, prepared_subject: String, roster_identity: String) -> String {
+  ledger_wire_join(fields: [
+    ledger_partial_format,
+    repository_snapshot,
+    prepared_subject,
+    roster_identity
+  ])
+}
+
+fn render_partial_refusal_line(reason: Symbol, offending: String) -> String {
+  ledger_wire_join(fields: [ledger_partial_refusal_tag, reason as String, offending])
+}
+
+fn render_typed_diagnosis(
+  binding: LedgerBinding,
+  rows: List<ClaimTerminalRow>,
+  reason: Symbol,
+  offending: String,
+) -> String {
+  ledger_wire_join_lines(
+    lines: list_append(
+      left: [
+        render_partial_header(
+          repository_snapshot: binding.repository_snapshot.digest,
+          prepared_subject: binding.prepared_subject.digest,
+          roster_identity: binding.roster_identity.digest
+        ),
+        render_partial_refusal_line(reason: reason, offending: offending)
+      ],
+      right: map(rows, r => render_row(row: r))
+    )
+  )
+}
+
+fn render_seed_row_raw(row: SeedLedgerRow) -> String {
+  ledger_wire_join(fields: [
+    row.qualified,
+    row.expectation_wire,
+    row.terminal_tag,
+    row.terminal_detail,
+    row.seed_disposition_wire
+  ])
+}
+
+fn seed_diagnosis_of(
+  repository_snapshot: String,
+  prepared_subject: String,
+  roster_identity: String,
+  rows: List<SeedLedgerRow>,
+  reason: Symbol,
+  offending: String,
+) -> String {
+  ledger_wire_join_lines(
+    lines: list_append(
+      left: [
+        render_partial_header(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          roster_identity: roster_identity
+        ),
+        render_partial_refusal_line(reason: reason, offending: offending)
+      ],
+      right: map(rows, r => render_seed_row_raw(row: r))
+    )
+  )
+}
+
 fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> LedgerRender {
   match ledger_unclean_fields(rows: rows).first() {
     Present { value: offending } =>
-      LedgerUnrenderable { reason: "field-carries-separator", offending: offending }
+      LedgerUnrenderable {
+        reason: "field-carries-separator",
+        offending: offending,
+        diagnosis: render_typed_diagnosis(
+          binding: binding,
+          rows: rows,
+          reason: "field-carries-separator",
+          offending: offending
+        )
+      }
     Absent =>
       LedgerRendered {
         text: ledger_wire_join_lines(
@@ -605,9 +705,31 @@ fn render_ledger_from_seed(
     Present { value: first_refusal } =>
       match first_refusal {
         SeedRowAdmitted { row: _ } =>
-          LedgerUnrenderable { reason: "unreachable-admitted-in-refusals", offending: "" }
+          LedgerUnrenderable {
+            reason: "unreachable-admitted-in-refusals",
+            offending: "",
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: "unreachable-admitted-in-refusals",
+              offending: ""
+            )
+          }
         SeedRowRefused { reason: reason, offending: offending } =>
-          LedgerUnrenderable { reason: reason, offending: offending }
+          LedgerUnrenderable {
+            reason: reason,
+            offending: offending,
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: reason,
+              offending: offending
+            )
+          }
       }
     Absent =>
       match filter(
@@ -615,7 +737,18 @@ fn render_ledger_from_seed(
         field => !ledger_wire_field_is_clean(field: field)
       ).first() {
         Present { value: offending } =>
-          LedgerUnrenderable { reason: "field-carries-separator", offending: offending }
+          LedgerUnrenderable {
+            reason: "field-carries-separator",
+            offending: offending,
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: "field-carries-separator",
+              offending: offending
+            )
+          }
         Absent =>
           LedgerRendered {
             text: ledger_wire_join_lines(
