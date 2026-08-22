@@ -52,9 +52,31 @@ be larger than six rows and reported the check coming back empty.)
   run whose positive control refuses cannot read its negative arms, so nothing in that run is
   evidence about any of the four rows. Re-run with `--source-root dag` beside the arm's own root.
 
-- **Flagged by structure, not yet fixtured**: non-`svc_auth_source` item properties, `uses` config
-  args, service exit-entry status patterns, transport children. Each is a presence-test-or-passthrough
-  row above; none has been executed, and none is counted as a member here.
+- **Second confirmation run, and it DISAGREES with the table above at one row.** Re-run with
+  `--source-root dag` beside the arm's own root, so the control is meaningful this time:
+
+  | fixture | verdict |
+  |---|---|
+  | control: an ordinary service, no undefined name | ACCEPTED (the control works) |
+  | `exit { nosuchname_zzz => String "…" }` | **ACCEPTED** |
+  | service `input { extra: List<String> = nosuchname_zzz }` | **ACCEPTED** |
+  | `transport shell { argv: ["echo", nosuchname_zzz] }` | **ACCEPTED** |
+
+  The first two confirm rows the table predicts. **The third contradicts it**: the table classes
+  transport `properties` as WALKED (`infer_property_values` → `infer_expr`), and a walked position
+  refuses an undefined name. So either the classification is wrong or the fixture reaches a
+  different position than intended — a list ELEMENT inside a property value is not the property
+  value.
+
+  **The three ACCEPTs may also not be three facts.** If no expression inside a `service`
+  declaration is inferred at all, they are one fact wearing three spellings, and counting them as
+  three members would inflate the class exactly as the map-key cell inflates a refusal count. That
+  is the open question, and it is being discriminated (an undefined name as the property value
+  DIRECTLY versus inside its list, against a function-body control known to refuse) rather than
+  guessed. Until it resolves, these rows stay FLAGGED.
+
+- **Flagged by structure, not yet confirmed**: non-`svc_auth_source` item properties, `uses` config
+  args, service exit-entry status patterns, transport children. None is counted as a member here.
 
 The signature that unites them is the one the two confirmed members share: **a declaration node
 whose expression child is read by resolve and reached by inference only through a presence test or
