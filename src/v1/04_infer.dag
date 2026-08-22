@@ -2045,6 +2045,16 @@ fn coproduct_variant_payload_admits_type_name(
   )
 }
 
+// The wall's decision procedure, over the record-literal field seam's own formal/actual pair.
+//
+// TWO EXCLUSIONS ARE LOAD-BEARING AND NEITHER IS INCIDENTAL. `Optional` is the language's own
+// cardinality carrier rather than an ordinary coproduct -- a `T` standing in an `Optional<T>`
+// position is the declared spelling, not a payload escape -- so both the CardOptional cardinality
+// and a formal or actual literally named `Optional` are excluded before any declaration is walked.
+// And a GENERIC coproduct is excluded because its payload positions can be type variables, which
+// makes "the actual is one of this coproduct's payload types" undecidable from the declaration
+// alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
+// forbids a fabricated success.
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -2057,8 +2067,6 @@ fn coproduct_payload_where_parent_required(
   } else {
     let formal_name = authored_name_at(source_indices: source_indices, node: formal)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-    // `Optional` is the language's own cardinality carrier, not an ordinary coproduct: a `T` in an
-    // `Optional<T>` position is the declared spelling, not a payload escape.
     let either_is_optional_carrier = qualified_last_segment(name: formal_name) == "Optional" ||
       qualified_last_segment(name: actual_name) == "Optional"
     if formal_name == "" || actual_name == "" || either_is_optional_carrier {
@@ -2073,8 +2081,6 @@ fn coproduct_payload_where_parent_required(
     } else {
       match lookup_type_by_name(env: scope.type_env, name: formal_name) {
         Present { value: decl } =>
-          // A GENERIC coproduct is excluded: its payload positions can be type variables, so
-          // "the actual is a payload type" is not decidable from the declaration alone.
           let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
           if decl_is_concrete_coproduct == false {
             false
