@@ -505,8 +505,10 @@ pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
     source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> bool {
-    ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-        == "Optional".to_string())
+    ((crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+        source_indices.clone(),
+        n.clone(),
+    )) == "Optional".to_string())
         && ((n.children.clone().len() as i64) > 0))
 }
 
@@ -514,8 +516,10 @@ pub fn is_host_diagnostics_carrier_type(
     n: Rc<Node>,
     source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-        == "Diagnostics".to_string())
+    (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+        source_indices.clone(),
+        n.clone(),
+    )) == "Diagnostics".to_string())
 }
 
 pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
@@ -896,10 +900,13 @@ pub fn is_host_text_carrier_type(
 ) -> bool {
     {
         let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (nm.clone() == "String".to_string()) {
+        if (crate::v1_std_core::qualified_last_segment(nm.clone()) == "String".to_string()) {
             true
         } else {
-            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
+            if ((crate::v1_std_core::qualified_last_segment(nm.clone())
+                == "FreeMonoid".to_string())
+                || (crate::v1_std_core::qualified_last_segment(nm.clone()) == "List".to_string()))
+            {
                 (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
                     == "Char".to_string())
             } else {
@@ -1287,7 +1294,7 @@ pub fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
 pub fn closed_alias_peel_verdict(env: Rc<TypeEnv>, n: Rc<Node>) -> ClosedAliasPeelVerdict {
     {
         let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        if (name.clone() == "String".to_string()) {
+        if (crate::v1_std_core::qualified_last_segment(name.clone()) == "String".to_string()) {
             return closed_alias_verdict_do_not_peel();
         }
         let binding = match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
@@ -3976,8 +3983,10 @@ pub fn data_item_type_is_coproduct_wire_contract(
 ) -> bool {
     match item.type_annotation.clone() {
         Some(type_node) => {
-            ((crate::v1_std_core::authored_name_at(source_indices.clone(), type_node.clone())
-                == "CoproductWireContract".to_string())
+            ((crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                type_node.clone(),
+            )) == "CoproductWireContract".to_string())
                 && module_imports_std_serialization_coproduct_wire_contract(
                     imports.clone(),
                     source_indices.clone(),
@@ -3997,8 +4006,9 @@ pub fn module_defines_local_coproduct_wire_contract_type(
             if (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                 || is_type_alias_item(item.clone(), source_indices.clone()))
                 || is_type_decl_item(item.clone(), source_indices.clone()))
-                && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                    == "CoproductWireContract".to_string()))
+                && (crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                ) == "CoproductWireContract".to_string()))
             {
                 __found = true;
                 break;
@@ -19534,13 +19544,20 @@ pub fn rust_btree_set_element_ord_eligible(
     {
         let elem_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), elem_node.clone());
-        let name_grain_eligible = (((((((elem_name.clone() == "String".to_string())
-            || (elem_name.clone() == "Int".to_string()))
-            || (elem_name.clone() == "Bool".to_string()))
-            || (elem_name.clone() == "Unit".to_string()))
-            || (elem_name.clone() == "Secret".to_string()))
-            || (elem_name.clone() == "Bytes".to_string()))
-            || rust_opaque_kernel_alias_type_eligible(elem_name.clone()));
+        let name_grain_eligible =
+            (((((((crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                == "String".to_string())
+                || (crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                    == "Int".to_string()))
+                || (crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                    == "Bool".to_string()))
+                || (crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                    == "Unit".to_string()))
+                || (crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                    == "Secret".to_string()))
+                || (crate::v1_std_core::qualified_last_segment(elem_name.clone())
+                    == "Bytes".to_string()))
+                || rust_opaque_kernel_alias_type_eligible(elem_name.clone()));
         ((name_grain_eligible.clone() && ((elem_node.children.clone().len() as i64) == 0))
             || rust_nominal_ord_type_eligible(
                 elem_node.clone(),
@@ -30089,7 +30106,7 @@ pub fn is_json_wire_declaration_type(
             source_indices.clone(),
             crate::v1_compiler_infer_types::normalize_access_type_node(t.clone()),
         );
-        if (n.clone() == "Json".to_string()) {
+        if (crate::v1_std_core::qualified_last_segment(n.clone()) == "Json".to_string()) {
             true
         } else {
             {
@@ -31760,7 +31777,9 @@ pub fn emit_data_def_body(
             scope.type_env.clone().source_indices.clone(),
             type_node.clone(),
         );
-        if (type_name.clone() == "BoundedLattice".to_string()) {
+        if (crate::v1_std_core::qualified_last_segment(type_name.clone())
+            == "BoundedLattice".to_string())
+        {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let lattice_value = field_value_by_name(
@@ -33367,7 +33386,9 @@ pub fn emit_cli_param_type_node(
                     {
                         let nname =
                             crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-                        if (nname.clone() == "String".to_string()) {
+                        if (crate::v1_std_core::qualified_last_segment(nname.clone())
+                            == "String".to_string())
+                        {
                             "String".to_string()
                         } else {
                             {

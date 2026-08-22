@@ -702,7 +702,7 @@ fn rejects_string_for_optional_coproduct_field(expected: v1.std.core.Node, got: 
     Absent => v1.std.core.with_required_cardinality(n: expected)
   }
   let expected_is_optional_coproduct = expected.return_cardinality == v1.std.core.CardOptional && expected_resolved.connective == v1.std.core.Disj
-  let got_is_string = v1.compiler.infer_types.node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
+  let got_is_string = v1.compiler.infer_types.node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: got)) == "String"
   expected_is_optional_coproduct && got_is_string
 }
 
@@ -1613,7 +1613,7 @@ fn kernel_value_declared_type_mismatch(formal: v1.std.core.Node, actual: v1.std.
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = v1.std.core.authored_name_at(source_indices: source_indices, node: actual)
-    if std.types.is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
+    if std.types.is_kernel_type(name: actual_name) == false || v1.std.core.qualified_last_segment(name: actual_name) == "Unit" {
       false
     } else {
       let formal_name = v1.std.core.authored_name_at(source_indices: source_indices, node: formal_base)
@@ -2758,7 +2758,7 @@ fn validate_cast(source_inferred: v1.std.core.InferredNode?, target_name: String
 // spelling. A cast whose TARGET is itself optional is not this class: it re-types the carrier
 // with the absence intact, so it is left to validate_cast.
 //
-// WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
+// WAS `v1.std.core.qualified_last_segment(name: source_name) == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
 // names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
 // was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
 // entirely. qualified_last_segment is the authority this file already uses for exactly this
@@ -2833,8 +2833,8 @@ fn annotate_pattern_parent_enums(pattern: v1.std.core.MatchPattern, scrutinee_su
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
           let scrutinee_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
-          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == v1.std.core.CardOptional && scrutinee_name != "Optional"
-          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
+          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == v1.std.core.CardOptional && v1.std.core.qualified_last_segment(name: scrutinee_name) != "Optional"
+          let optional_coproduct_subject = v1.std.core.qualified_last_segment(name: scrutinee_name) == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
             Present { value: "Optional" }

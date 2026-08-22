@@ -3083,9 +3083,11 @@ pub fn for_each_element_type_node(
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
-                    && (crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        normed.clone(),
+                    && (crate::v1_std_core::qualified_last_segment(
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            normed.clone(),
+                        ),
                     ) == "String".to_string()))
                 {
                     crate::v1_std_core::string_type()

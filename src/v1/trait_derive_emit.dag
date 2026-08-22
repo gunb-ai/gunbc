@@ -54,7 +54,7 @@ fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
 }
 
 fn rust_nominal_identity_carrier_shape_eligible(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.authored_name_at(source_indices: source_indices, node: n) == "Symbol"
+  v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n)) == "Symbol"
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == v1.std.core.NoConnective
 }
 
@@ -355,7 +355,7 @@ fn v1_freemonoid_element_params(
 ) -> std.types.List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      v1.std.core.authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
+      v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)) == "FreeMonoid"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
@@ -435,7 +435,7 @@ fn v1_set_element_params(
 ) -> std.types.List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "Set"
+      v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: te)) == "Set"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )

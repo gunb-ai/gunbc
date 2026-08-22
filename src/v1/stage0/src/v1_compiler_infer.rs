@@ -1278,7 +1278,10 @@ pub fn rejects_string_for_optional_coproduct_field(
             got.clone(),
             source_indices.clone(),
         ) == "Primitive(String)".to_string())
-            || (authored_name_at(source_indices.clone(), got.clone()) == "String".to_string()));
+            || (crate::v1_std_core::qualified_last_segment(authored_name_at(
+                source_indices.clone(),
+                got.clone(),
+            )) == "String".to_string()));
         (expected_is_optional_coproduct.clone() && got_is_string.clone())
     }
 }
@@ -2714,7 +2717,8 @@ pub fn kernel_value_declared_type_mismatch(
             let actual_name =
                 crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone());
             if ((crate::std_types::is_kernel_type(actual_name.clone()) == false)
-                || (actual_name.clone() == "Unit".to_string()))
+                || (crate::v1_std_core::qualified_last_segment(actual_name.clone())
+                    == "Unit".to_string()))
             {
                 false
             } else {
@@ -5007,11 +5011,14 @@ pub fn annotate_pattern_parent_enums(
                         let optional_cardinality_subject =
                             ((resolved_scrut_node.return_cardinality.clone()
                                 == Cardinality::CardOptional)
-                                && (scrutinee_name.clone() != "Optional".to_string()));
-                        let optional_coproduct_subject = ((scrutinee_name.clone()
-                            == "Optional".to_string())
-                            && ((variant_name.clone() == "Present".to_string())
-                                || (variant_name.clone() == "Absent".to_string())));
+                                && (crate::v1_std_core::qualified_last_segment(
+                                    scrutinee_name.clone(),
+                                ) != "Optional".to_string()));
+                        let optional_coproduct_subject =
+                            ((crate::v1_std_core::qualified_last_segment(scrutinee_name.clone())
+                                == "Optional".to_string())
+                                && ((variant_name.clone() == "Present".to_string())
+                                    || (variant_name.clone() == "Absent".to_string())));
                         let witness_container_subject =
                             (is_witness_type_name(scrutinee_name.clone())
                                 && ((variant_name.clone() == "Holds".to_string())

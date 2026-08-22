@@ -665,8 +665,10 @@ pub fn lookup_variant_in_type(
                     } else {
                         {
                             let optional_cardinality_subject = (scrut_opt.clone()
-                                && (authored_name_at(source_indices.clone(), scrut_node.clone())
-                                    != "Optional".to_string()));
+                                && (crate::v1_std_core::qualified_last_segment(authored_name_at(
+                                    source_indices.clone(),
+                                    scrut_node.clone(),
+                                )) != "Optional".to_string()));
                             let witness_subject =
                                 (crate::v1_compiler_infer_patterns::is_witness_type_name(
                                     authored_name_at(source_indices.clone(), scrut_node.clone()),
@@ -705,13 +707,14 @@ pub fn lookup_variant_in_type(
                                                     source_indices.clone(),
                                                     scrut_node.clone(),
                                                 );
-                                                let optional_coproduct_subject = ((scrut_name
-                                                    .clone()
-                                                    == "Optional".to_string())
-                                                    && ((variant_name.clone()
-                                                        == "Present".to_string())
-                                                        || (variant_name.clone()
-                                                            == "Absent".to_string())));
+                                                let optional_coproduct_subject =
+                                                    ((crate::v1_std_core::qualified_last_segment(
+                                                        scrut_name.clone(),
+                                                    ) == "Optional".to_string())
+                                                        && ((variant_name.clone()
+                                                            == "Present".to_string())
+                                                            || (variant_name.clone()
+                                                                == "Absent".to_string())));
                                                 let direct_match = find_child_named(
                                                     scrut_node.clone(),
                                                     variant_name.clone(),

@@ -260,7 +260,7 @@ fn extract_test_projections(typed: v1.compiler.infer_items.ResolvedGraph) -> Lis
 }
 
 fn is_type_alias_return_node(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) != "Unit"
+  v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) != "Unit"
 }
 
 fn is_service_item(item: v1.std.core.Node) -> Bool {

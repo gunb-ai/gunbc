@@ -174,8 +174,10 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
     n: Rc<Node>,
     source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> bool {
-    ((((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-        == "Symbol".to_string())
+    ((((crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+        source_indices.clone(),
+        n.clone(),
+    )) == "Symbol".to_string())
         && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
         && (n.connective.clone() == Connective::NoConnective))
@@ -645,8 +647,9 @@ pub fn v1_freemonoid_element_params(
             if {
                 let mut __found = false;
                 for te in field_type_exprs.clone().iter().cloned() {
-                    if ((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
-                        == "FreeMonoid".to_string())
+                    if ((crate::v1_std_core::qualified_last_segment(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone()),
+                    ) == "FreeMonoid".to_string())
                         && {
                             let mut __found = false;
                             for c in te.children.clone().iter().cloned() {
@@ -881,7 +884,10 @@ pub fn v1_set_element_params(
             if {
                 let mut __found = false;
                 for te in field_type_exprs.clone().iter().cloned() {
-                    if ((authored_name_at(source_indices.clone(), te.clone()) == "Set".to_string())
+                    if ((crate::v1_std_core::qualified_last_segment(authored_name_at(
+                        source_indices.clone(),
+                        te.clone(),
+                    )) == "Set".to_string())
                         && {
                             let mut __found = false;
                             for c in te.children.clone().iter().cloned() {

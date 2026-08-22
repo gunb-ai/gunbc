@@ -134,11 +134,11 @@ fn is_grounded_coproduct_native_alias(name: String) -> Bool {
 }
 
 fn is_host_optional_carrier_type(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.authored_name_at(source_indices: source_indices, node: n) == "Optional" && n.children |> count > 0
+  v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n)) == "Optional" && n.children |> count > 0
 }
 
 fn is_host_diagnostics_carrier_type(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.authored_name_at(source_indices: source_indices, node: n) == "Diagnostics"
+  v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n)) == "Diagnostics"
 }
 
 fn render_rust_diagnostics_carrier_applied(shared_types: std.types.Set<String>) -> String {
@@ -404,9 +404,9 @@ fn rust_host_text_carrier_elem_name(n: v1.std.core.Node, source_indices: std.typ
 
 fn is_host_text_carrier_type(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
-  if nm == "String" {
+  if v1.std.core.qualified_last_segment(name: nm) == "String" {
     true
-  } else if nm == "FreeMonoid" || nm == "List" {
+  } else if v1.std.core.qualified_last_segment(name: nm) == "FreeMonoid" || v1.std.core.qualified_last_segment(name: nm) == "List" {
     rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
   } else {
     false
@@ -588,7 +588,7 @@ fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
 
 fn closed_alias_peel_verdict(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node) -> ClosedAliasPeelVerdict {
   let name = v1.std.core.authored_name_at(source_indices: env.source_indices, node: n)
-  if name == "String" {
+  if v1.std.core.qualified_last_segment(name: name) == "String" {
     return closed_alias_verdict_do_not_peel()
   }
   let binding = match v1.compiler.infer_env.lookup_type_for(env: env, node: n) {
@@ -1848,7 +1848,7 @@ fn module_imports_std_serialization_coproduct_wire_contract(imports: std.types.L
 fn data_item_type_is_coproduct_wire_contract(item: v1.std.core.Node, imports: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match item.type_annotation {
     Present { value: type_node } =>
-      v1.std.core.authored_name_at(source_indices: source_indices, node: type_node) == "CoproductWireContract"
+      v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_node)) == "CoproductWireContract"
       && module_imports_std_serialization_coproduct_wire_contract(imports: imports, source_indices: source_indices)
     Absent => false
   }
@@ -1862,7 +1862,7 @@ fn module_defines_local_coproduct_wire_contract_type(module_items: std.types.Lis
         || is_type_alias_item(item: item, source_indices: source_indices)
         || is_type_decl_item(item: item, source_indices: source_indices)
       )
-      && v1.std.core.authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract"
+      && v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: item)) == "CoproductWireContract"
     )
 }
 
@@ -7831,8 +7831,8 @@ fn type_node_child_is_type_variable(c: v1.std.core.Node) -> Bool {
 
 fn rust_btree_set_element_ord_eligible(elem_node: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> Bool {
   let elem_name = v1.std.core.authored_name_at(source_indices: source_indices, node: elem_node)
-  let name_grain_eligible = elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+  let name_grain_eligible = v1.std.core.qualified_last_segment(name: elem_name) == "String" || v1.std.core.qualified_last_segment(name: elem_name) == "Int" || v1.std.core.qualified_last_segment(name: elem_name) == "Bool" || v1.std.core.qualified_last_segment(name: elem_name) == "Unit"
+    || v1.std.core.qualified_last_segment(name: elem_name) == "Secret" || v1.std.core.qualified_last_segment(name: elem_name) == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
   (name_grain_eligible && elem_node.children |> count == 0)
     || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
@@ -11106,7 +11106,7 @@ fn operation_response_200_resolved_type(op_node: v1.std.core.Node, source_indice
 
 fn is_json_wire_declaration_type(t: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let n = v1.std.core.authored_name_at(source_indices: source_indices, node: v1.compiler.infer_types.normalize_access_type_node(n: t))
-  if n == "Json" { true }
+  if v1.std.core.qualified_last_segment(name: n) == "Json" { true }
   else {
     let parts = n |> split(delimiter: ".")
     match parts |> last {
@@ -11657,7 +11657,7 @@ fn value_inferred_type_is_rc_wrapped(value: v1.std.core.Node, shared_types: std.
 fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
-  if type_name == "BoundedLattice" {
+  if v1.std.core.qualified_last_segment(name: type_name) == "BoundedLattice" {
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
         let lattice_value = field_value_by_name(record: value, field_name: "lattice", source_indices: scope.type_env.source_indices)
@@ -12234,7 +12234,7 @@ fn emit_cli_param_type_node(n: v1.std.core.Node, source_indices: std.types.Map<S
     "String"
   } else if n.children |> count == 0 {
     let nname = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
-    if nname == "String" {
+    if v1.std.core.qualified_last_segment(name: nname) == "String" {
       "String"
     } else {
       let mapped = v1.compiler.coercion.coerce_primitive_type(target: v1.compiler.artifact.Rust, dag_name: nname, decl_file: v1.compiler.coercion.type_reference_decl_file(n: n))

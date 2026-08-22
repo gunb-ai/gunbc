@@ -859,7 +859,11 @@ pub fn map_lookup_result_type(
     field: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    if (authored_name_at(source_indices.clone(), product.clone()) == "Map".to_string()) {
+    if (crate::v1_std_core::qualified_last_segment(authored_name_at(
+        source_indices.clone(),
+        product.clone(),
+    )) == "Map".to_string())
+    {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
                 if (raw.return_cardinality.clone() == Cardinality::CardOptional) {

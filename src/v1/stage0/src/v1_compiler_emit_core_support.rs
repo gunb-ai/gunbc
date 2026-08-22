@@ -14,7 +14,7 @@ pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::*;
-pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
+pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, qualified_last_segment};
 pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -690,7 +690,10 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
+    (crate::v1_std_core::qualified_last_segment(authored_name_at(
+        source_indices.clone(),
+        n.clone(),
+    )) != "Unit".to_string())
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {

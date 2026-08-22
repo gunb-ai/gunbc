@@ -308,7 +308,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
+        let optional_cardinality_subject = scrut_opt && v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: scrut_node)) != "Optional"
         let witness_subject = v1.compiler.infer_patterns.is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
         if optional_cardinality_subject && variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
@@ -321,7 +321,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         } else {
           let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
 
-          let optional_coproduct_subject = scrut_name == "Optional"
+          let optional_coproduct_subject = v1.std.core.qualified_last_segment(name: scrut_name) == "Optional"
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
 
