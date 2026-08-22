@@ -91,6 +91,25 @@ because a blocking error aborts the pipeline before the phase that would report 
 registered population, the prediction `unexplained = 0`, and the join rule in the pre-registration
 are the instrument for reading that rise when it happens.
 
+## Amendment (2026-08-22): the B arm needs a repeat-run control
+
+Recorded here, beside the A-arm baseline, rather than in the pre-registration — that file is frozen
+by design, and this is a fact learned after it, not a re-specification of it. It does not change
+the registered population, the prediction, or the join rule; it adds a control the B arm must carry.
+
+**The emitter is nondeterministic.** `royal-dove-436` observed two consecutive emits of the same
+tree, same binary, same environment differing on `v2_lens_enforcement_vocab.rs` and
+`v2_std_cross_tree_resolution.rs`. This is a known class rather than a new regression — the raw
+corpus emit churns 36–40 files run-to-run, and the seed's `--emit-fresh` twice-zero result is
+`rustfmt`-normalized rather than native determinism — but the consequence for this A/B is direct:
+**a single run per arm cannot distinguish a real A→B difference from emitter churn.**
+
+The A arm published here is one run. So the B arm, when the repair lands, must take **at least two
+emits per arm** and report the within-arm variation beside the across-arm difference; any newly
+visible site that also appears when A is re-run against itself is churn, not exposure. Without that
+control an `unexplained > 0` result — the outcome the pre-registration calls the interesting one —
+could not be told apart from noise, which would waste exactly the arm the experiment exists for.
+
 ## Status: PARKED at the B arm
 
 The unmask was re-scoped out of this lane by `smart-ram-730` and dispatched as a v1 inference repair
