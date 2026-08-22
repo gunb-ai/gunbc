@@ -62,3 +62,38 @@ until one of:
 **Not routed around.** No substitute call, no re-spelling, no local re-implementation of the builtin
 inside the census — any of those would hide a language-layer deficit inside a measurement instrument,
 which is the failure mode this lane exists to measure.
+
+## The repair's real deliverable is the ORDER, not the arm
+
+Raised by `smart-ram-730` and recorded here because it is the half that can go silently wrong, and
+because a reader who finds this doc will otherwise conclude the fix is two lines.
+
+`v1.runtime_rust` defines `sorted_map_keys` as `map_keys` followed by `keys.sort()` over `K: Ord` — so
+**emitted Rust sorts by Rust's `Ord` for the key type.** An interpreter arm would sort `Value`s, and
+`cmp_values` already exists and is what `method_call.sort_by` uses.
+
+If those two orderings disagree for any key type in real use — strings, ints, interned ids — then
+interpretation and emission compute **different key orders from the same source, silently**, and every
+downstream fold over `sorted_map_keys` diverges between the two realizations. `v1.compiler.infer`'s
+`entry_keys` and `bare_keys` folds are exactly such consumers.
+
+That would be a **fresh cross-realization divergence introduced by the fix** — the same class this
+whole lane exists to measure, created while closing a gap in it.
+
+So completion is not *"the arm exists and the census runs."* It is **"the arm exists AND the order
+provably matches emitted Rust for the key types in use, shown by execution"** — not by reading the two
+sort implementations and judging them equivalent.
+
+## The contrast worth keeping: one boundary fabricates, the other refuses
+
+This repository currently has both failure modes live, and the pair is more informative than either
+alone:
+
+| boundary | behaviour on a capability it lacks |
+|---|---|
+| emission (the `Filesystem` finding, neighbouring probe) | emits plausible-looking output; fails at `rustc`, or compiles and does the wrong thing |
+| interpretation (this finding) | names the missing function and **stops** |
+
+The difference is not difficulty. It is that one of them was built to stop. That is why this blocker
+cost an hour instead of a week spent trusting a wrong census answer — and it is the concrete argument
+for the fail-closed discipline, made by the two boundaries disagreeing about the same repository.
