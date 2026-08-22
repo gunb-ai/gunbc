@@ -45,18 +45,21 @@ pub use crate::v1_compiler_coercion::{
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 pub use crate::v1_compiler_emit::{
-    compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
-    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
+    child_from_key, compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
+    emit_container, emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
     emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
     emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
     emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    emit_unmodeled_file_transport_refusal, escape_rust_interp_text, extract_modifier_names,
-    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
-    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
-    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, tco_reassign_core, typed_named_arg_matches,
+    emit_unmodeled_file_transport_refusal_with_cause, escape_rust_interp_text,
+    extract_modifier_names, file_emission_refusal, file_operation_has_content_input,
+    file_transport_declared_verb, file_transport_verb_delete, file_transport_verb_list,
+    file_transport_verb_write_owner_only, has_nested_records_node, has_service_items,
+    is_null_coalesce, is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
+    module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
+    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
+    unwrap_single_field_product,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
@@ -181,9 +184,10 @@ pub use crate::v1_std_core::{
     resource_use_name_at, resource_use_resource, return_value, service_config_auth,
     service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
     slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
-    transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
+    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
+    transport_method, transport_path_template, transport_query, transport_request_body,
+    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -28822,7 +28826,13 @@ pub fn emit_transport_call(
             )
         } else {
             if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), RenderTarget::Rust)
+                emit_file_call(
+                    op_name.clone(),
+                    transport.clone(),
+                    inferred.clone(),
+                    op_node.clone(),
+                    source_indices.clone(),
+                )
             } else {
                 emit_local_call(op_name.clone())
             }
@@ -29376,39 +29386,6 @@ pub fn has_response_prefix(name: String) -> bool {
         false
     } else {
         (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
-pub fn child_from_key(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for p in ch.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "from_key".to_string())
-            {
-                __result.push(p);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
-            _ => None,
-        },
-        None => None,
     }
 }
 
@@ -30659,18 +30636,328 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
     }
 }
 
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+pub fn emit_file_call(
+    op_name: String,
+    transport: Rc<Node>,
+    inferred: Rc<Node>,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match file_emission_refusal(
+        op_node.clone(),
+        transport.clone(),
+        RenderTarget::Rust,
+        source_indices.clone(),
+    ) {
+        Some(refusal) => emit_unmodeled_file_transport_refusal_with_cause(
+            op_name.clone(),
+            RenderTarget::Rust,
+            refusal.clone(),
+        ),
+        None => {
+            let path_line = emit_file_path_line(transport.clone(), source_indices.clone());
+            let empty_guard = "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }".to_string();
+            let action =
+                emit_file_action_block(transport.clone(), op_node.clone(), source_indices.clone());
+            let return_line = emit_file_return(inferred.clone(), source_indices.clone());
+            Rc::new(vec![
+                path_line.clone(),
+                empty_guard.clone(),
+                action.clone(),
+                return_line.clone(),
+            ])
+            .join(&"\n".to_string())
+        }
+    }
+}
+
+pub fn emit_file_path_line(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match transport_base_path(transport.clone(), source_indices.clone()) {
+        Some(path_node) => match (*path_node.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr {
+                    value: path_str, ..
+                } = value.as_ref()
+                else {
+                    unreachable!()
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "let file_path: String = \"".to_string(),
+                        escape_string_literal_body(path_str.clone()),
+                    ),
+                    "\".to_string();".to_string(),
+                )
+            }
+            ExprData::ExprStringInterp => {
+                let parts = Rc::new({
+                    let mut __result = Vec::new();
+                    for child in path_node.children.clone().iter().cloned() {
+                        __result.push(match (*child.expr_data.clone()).clone() {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                            {
+                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                else {
+                                    unreachable!()
+                                };
+                                Rc::new(StringPart::Text {
+                                    value: text.clone(),
+                                })
+                            }
+                            _ => Rc::new(StringPart::Interpolation {
+                                expr: arg_value(child.clone()),
+                            }),
+                        });
+                    }
+                    __result
+                });
+                let fmt_str = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in parts.clone().iter().cloned() {
+                        __result.push(match (*p.clone()).clone() {
+                            StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
+                            StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
+                        });
+                    }
+                    __result
+                })
+                .join(&"".to_string());
+                let args = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in parts.clone().iter().cloned() {
+                        __result.extend(
+                            (*match (*p.clone()).clone() {
+                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                StringPart::Interpolation { expr: e, .. } => {
+                                    let var_name = emit_ident(
+                                        expr_var_name_at(e.clone(), source_indices.clone()),
+                                        RenderTarget::Rust,
+                                    );
+                                    if is_optional_typed_expr(e.clone()) {
+                                        Rc::new(vec![v1_rt::concat(
+                                            var_name.clone(),
+                                            ".as_deref().unwrap_or(\"\")".to_string(),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![var_name.clone()])
+                                    }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                });
+                if ((args.clone().len() as i64) == 0) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "let file_path: String = format!(\"".to_string(),
+                            fmt_str.clone(),
+                        ),
+                        "\");".to_string(),
+                    )
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "let file_path: String = format!(\"".to_string(),
+                                    fmt_str.clone(),
+                                ),
+                                "\", ".to_string(),
+                            ),
+                            args.clone().join(&", ".to_string()),
+                        ),
+                        ");".to_string(),
+                    )
+                }
+            }
+            _ => {
+                "compile_error!(\"file transport path must be a string literal or interpolation\");"
+                    .to_string()
+            }
+        },
+        None => "compile_error!(\"file transport declares no path\");".to_string(),
+    }
+}
+
+pub fn file_channel_binding_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = ".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_file_action_block(
+    transport: Rc<Node>,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
-        let is_product = is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
-            && ((n.children.clone().len() as i64) == 1))
+        let verb = file_transport_declared_verb(transport.clone(), source_indices.clone());
+        let body = match verb.clone() {
+            Some(v) => {
+                if (v.clone() == file_transport_verb_delete()) {
+                    file_delete_match_expr()
+                } else {
+                    if (v.clone() == file_transport_verb_list()) {
+                        file_list_match_expr()
+                    } else {
+                        file_write_owner_only_expr()
+                    }
+                }
+            }
+            None => {
+                if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
+                    file_write_expr()
+                } else {
+                    file_read_match_expr()
+                }
+            }
+        };
+        v1_rt::concat(file_channel_binding_prefix(), body.clone())
+    }
+}
+
+pub fn file_read_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_delete_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_list_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_owner_only_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_file_channel_expr(channel: String, is_optional: bool) -> String {
+    {
+        let base = if ((channel.clone() == "write_success".to_string())
+            || (channel.clone() == "success".to_string()))
         {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => resolved_type(field_node.clone()),
-                None => n.clone(),
+            "file_success".to_string()
+        } else {
+            if (((channel.clone() == "bytes_written".to_string())
+                || (channel.clone() == "bytes".to_string()))
+                || (channel.clone() == "byte_count".to_string()))
+            {
+                "file_byte_count".to_string()
+            } else {
+                if (channel.clone() == "path".to_string()) {
+                    "file_path.clone()".to_string()
+                } else {
+                    if (channel.clone() == "error".to_string()) {
+                        "file_error.clone()".to_string()
+                    } else {
+                        "file_content.clone()".to_string()
+                    }
+                }
+            }
+        };
+        if is_optional.clone() {
+            v1_rt::concat(
+                v1_rt::concat("Some(".to_string(), base.clone()),
+                ")".to_string(),
+            )
+        } else {
+            base.clone()
+        }
+    }
+}
+
+pub fn emit_file_return(
+    inferred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let effective = unwrap_single_field_product(inferred.clone());
+        let is_product = is_product_type(effective.clone());
+        if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
+            {
+                let field_exprs = Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in effective.children.clone().iter().cloned() {
+                        __result.push({
+                            let channel = match child_from_key(ch.clone(), source_indices.clone()) {
+                                Some(c) => c.clone(),
+                                None => authored_name_at(source_indices.clone(), ch.clone()),
+                            };
+                            emit_file_channel_expr(
+                                channel.clone(),
+                                (ch.return_cardinality.clone() == Cardinality::CardOptional),
+                            )
+                        });
+                    }
+                    __result
+                });
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok((".to_string(),
+                        field_exprs.clone().join(&", ".to_string()),
+                    ),
+                    "))".to_string(),
+                )
             }
         } else {
-            n.clone()
+            {
+                let channel = match child_from_key(effective.clone(), source_indices.clone()) {
+                    Some(c) => c.clone(),
+                    None => "content".to_string(),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok(".to_string(),
+                        emit_file_channel_expr(
+                            channel.clone(),
+                            (effective.return_cardinality.clone() == Cardinality::CardOptional),
+                        ),
+                    ),
+                    ")".to_string(),
+                )
+            }
         }
     }
 }

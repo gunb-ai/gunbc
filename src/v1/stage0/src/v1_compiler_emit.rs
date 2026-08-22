@@ -3,6 +3,7 @@
 
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
+use self::FileEmissionRefusal::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
 use self::TcoExprShape::*;
@@ -50,7 +51,7 @@ pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
-    is_declared_container_alias_spelling, is_unit_like, node_is_collection,
+    is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
     resolved_type,
 };
@@ -109,8 +110,8 @@ pub use crate::v1_std_core::{
     let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality,
+    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
+    transport_verb, tuple_type_name, unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
@@ -4200,15 +4201,6 @@ pub fn render_target_name(target: RenderTarget) -> String {
     }
 }
 
-pub fn unmodeled_file_transport_missing_fact() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "the file transport dispatch supplies only the operation name and an indent depth; emitting this operation requires the declared verb, the resolved path template, the operation input bindings, the payload/content input, the declared output type, and the failure/effect semantics".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn is_file_transport_after_dispatch_precedence(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4221,6 +4213,284 @@ pub fn is_file_transport_after_dispatch_precedence(
         } else {
             is_file_transport(t.clone(), source_indices.clone())
         }
+    }
+}
+
+pub fn child_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in ch.properties.clone().iter().cloned() {
+            if (field_init_node_name_at(p.clone(), source_indices.clone())
+                == "from_key".to_string())
+            {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                Some(s.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+    {
+        let is_product = is_product_type(n.clone());
+        if ((is_product.clone() && (n.ident_span.clone() == None))
+            && ((n.children.clone().len() as i64) == 1))
+        {
+            match n.children.clone().first().cloned() {
+                Some(field_node) => resolved_type(field_node.clone()),
+                None => n.clone(),
+            }
+        } else {
+            n.clone()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FileEmissionRefusal {
+    FileTargetNotModeled { target_name: String },
+    FileVerbNotModeled { verb: String },
+    FilePathNotStaticallyRenderable,
+    FileWriteMissingContentInput { verb: String },
+    FileOutputKeyNotModeled { key: String },
+}
+
+pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    FileEmissionRefusal::FileTargetNotModeled { target_name: t, .. } => v1_rt::concat(v1_rt::concat("file transport emission is modeled for the rust target only; target '".to_string(), t.clone()), "' has no file realization handler, so no operation carrying `transport file` is emitted for it".to_string()),
+    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list and write_owner_only, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
+    FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
+    FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
+    FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content".to_string()),
+}
+}
+
+pub fn file_transport_verb_delete() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "delete".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_verb_list() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "list".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_verb_write_owner_only() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "write_owner_only".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_declared_verb(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match transport_verb(t.clone(), source_indices.clone()) {
+        Some(v) => match (*v.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                Some(s.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn file_operation_has_content_input(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for p in op_node.params.clone().iter().cloned() {
+            if (param_node_name_at(p.clone(), source_indices.clone()) == "content".to_string()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn is_modeled_file_output_channel(key: String) -> bool {
+    ((((((((key.clone() == "write_success".to_string())
+        || (key.clone() == "success".to_string()))
+        || (key.clone() == "bytes_written".to_string()))
+        || (key.clone() == "bytes".to_string()))
+        || (key.clone() == "byte_count".to_string()))
+        || (key.clone() == "path".to_string()))
+        || (key.clone() == "error".to_string()))
+        || (key.clone() == "content".to_string()))
+}
+
+pub fn file_operation_output_channels(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let effective = unwrap_single_field_product(resolved_type(op_node.clone()));
+        if is_product_type(effective.clone()) {
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in effective.children.clone().iter().cloned() {
+                    __result.push(match child_from_key(ch.clone(), source_indices.clone()) {
+                        Some(k) => k.clone(),
+                        None => authored_name_at(source_indices.clone(), ch.clone()),
+                    });
+                }
+                __result
+            })
+        } else {
+            match child_from_key(effective.clone(), source_indices.clone()) {
+                Some(k) => Rc::new(vec![k.clone()]),
+                None => Rc::new(vec!["content".to_string()]),
+            }
+        }
+    }
+}
+
+pub fn file_transport_path_is_renderable(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match transport_base_path(t.clone(), source_indices.clone()) {
+        Some(p) => match (*p.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                true
+            }
+            ExprData::ExprStringInterp => true,
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn file_emission_verb_refusal(
+    op_node: Rc<Node>,
+    verb: Option<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FileEmissionRefusal>> {
+    match verb.clone() {
+        Some(v) => {
+            if ((v.clone() == file_transport_verb_delete())
+                || (v.clone() == file_transport_verb_list()))
+            {
+                None
+            } else {
+                if (v.clone() == file_transport_verb_write_owner_only()) {
+                    if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
+                        None
+                    } else {
+                        Some(Rc::new(FileEmissionRefusal::FileWriteMissingContentInput {
+                            verb: v.clone(),
+                        }))
+                    }
+                } else {
+                    Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
+                        verb: v.clone(),
+                    }))
+                }
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn file_emission_refusal(
+    op_node: Rc<Node>,
+    t: Rc<Node>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FileEmissionRefusal>> {
+    match target.clone() {
+        RenderTarget::Rust => {
+            if !file_transport_path_is_renderable(t.clone(), source_indices.clone()) {
+                Some(Rc::new(
+                    FileEmissionRefusal::FilePathNotStaticallyRenderable,
+                ))
+            } else {
+                {
+                    let verb = file_transport_declared_verb(t.clone(), source_indices.clone());
+                    let verb_refusal = file_emission_verb_refusal(
+                        op_node.clone(),
+                        verb.clone(),
+                        source_indices.clone(),
+                    );
+                    match verb_refusal.clone() {
+                        Some(r) => Some(r.clone()),
+                        None => {
+                            let unmodeled = Rc::new({
+                                let mut __result = Vec::new();
+                                for k in file_operation_output_channels(
+                                    op_node.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    if !is_modeled_file_output_channel(k.clone()) {
+                                        __result.push(k);
+                                    }
+                                }
+                                __result
+                            });
+                            match unmodeled.clone().first().cloned() {
+                                Some(k) => {
+                                    Some(Rc::new(FileEmissionRefusal::FileOutputKeyNotModeled {
+                                        key: k.clone(),
+                                    }))
+                                }
+                                None => None,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => Some(Rc::new(FileEmissionRefusal::FileTargetNotModeled {
+            target_name: render_target_name(target.clone()),
+        })),
     }
 }
 
@@ -4242,19 +4512,28 @@ pub fn unmodeled_file_transport_operation_diagnostics(
                     (*{
                         let t = effective_operation_transport(op_node.clone(), fallback.clone());
                         if is_file_transport_after_dispatch_precedence(t.clone(), si.clone()) {
-                            Rc::new(vec![make_error_node(
-                                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
-                                    transport_kind: "file".to_string(),
-                                    service: service_name.clone(),
-                                    operation: authored_name(env.clone(), op_node.clone()),
-                                    declaring_module: module_name.clone(),
-                                    target: render_target_name(target.clone()),
-                                    missing_realization_fact: unmodeled_file_transport_missing_fact(
-                                    ),
-                                    span: op_node.span.clone(),
-                                }),
-                                module_name.clone(),
-                            )])
+                            match file_emission_refusal(
+                                op_node.clone(),
+                                t.clone(),
+                                target.clone(),
+                                si.clone(),
+                            ) {
+                                Some(refusal) => Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "file".to_string(),
+                                        service: service_name.clone(),
+                                        operation: authored_name(env.clone(), op_node.clone()),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: file_emission_refusal_fact(
+                                            refusal.clone(),
+                                        ),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                None => Rc::new(vec![]),
+                            }
                         } else {
                             Rc::new(vec![])
                         }
@@ -4310,7 +4589,11 @@ pub fn unmodeled_file_transport_diagnostics(
     })
 }
 
-pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+pub fn emit_unmodeled_file_transport_refusal_with_cause(
+    op_name: String,
+    target: RenderTarget,
+    refusal: Rc<FileEmissionRefusal>,
+) -> String {
     emit_error_expr(
         v1_rt::concat(
             v1_rt::concat(
@@ -4326,9 +4609,19 @@ pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarg
                 ),
                 ") -- ".to_string(),
             ),
-            unmodeled_file_transport_missing_fact(),
+            file_emission_refusal_fact(refusal.clone()),
         ),
         target.clone(),
+    )
+}
+
+pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_unmodeled_file_transport_refusal_with_cause(
+        op_name.clone(),
+        target.clone(),
+        Rc::new(FileEmissionRefusal::FileTargetNotModeled {
+            target_name: render_target_name(target.clone()),
+        }),
     )
 }
 
