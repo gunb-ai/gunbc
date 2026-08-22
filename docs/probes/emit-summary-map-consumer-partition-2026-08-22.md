@@ -208,9 +208,23 @@ the emitted tree disagreeing with itself about one type in both directions.
 | before | 343 | 371 |
 | after | 714 | 0 |
 
-(That measurement is the namespace-cut lane's, cited not re-derived.) The split collapsing to zero
+(Those measurements are the namespace-cut lane's, cited not re-derived.) The split collapsing to zero
 *in the direction main already holds* is the discriminator — a fix that merely moved the
-disagreement would not land on main's shape. It belongs on this roster because the failure is at the
+disagreement would not land on main's shape.
+
+**The receipt survived its own confound, which is why it is quoted here.** Those trees were emitted
+by a **bootstrap binary of an older vintage** — its mirrors contain no `type_reference_decl_file`,
+`decl_identity_file` or `numeric_realization_declaring_modules` at all — and an older emitter is a
+*main-like* emitter, whose wrapping is consistent by construction. "The old binary produced the
+consistency" was therefore a live alternative explanation for the 714/0. The lane ran the control:
+same binary vintage, same tree, same roots, the leaf-reduction the only difference — **with** it
+714/0, **without** it 343/371, the original split reproduced exactly. The attribution holds because
+of that arm, not because the after-number resembles main's.
+
+The same vintage confound retired that lane's separate `Nat`-versus-`i64` realization diagnosis
+(measured with a binary lacking the identity machinery the diagnosis is about). Nothing on this
+roster rests on it. And the mirrors at that head are **provisional** — emitted by the
+vintage-behind binary — so only the controlled `shared_types` delta is claimed from them. It belongs on this roster because the failure is at the
 **consumption of a name the scan returned**, not at any lookup into the map: re-keying the map's
 keys cannot reach it.
 
