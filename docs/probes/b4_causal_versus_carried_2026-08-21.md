@@ -32,6 +32,8 @@ They reach the `Rejected` list through `v2.std.diagnostic` `rejected_with_pendin
 > - `src/v2/compiler/00_compile.dag` (107 modules): the single `body_lowering_reason_unsupported_form`.
 > - `src/v2/compiler/07_target_carriers.dag` (29), `probe/nov.dag` (4), `src/v2/std/logic.dag` (3): the single `fold_lowering_shape_invalid`.
 
+**THE ONE WAS IDENTIFIED AND CLOSED, AND ONE CLAUSE BELOW IS NOW HALF-FALSE (2026-08-21).** The 107-module subject's door-holder was the ordinary statement-form `let`; lowering it moved boundary 4's refusal to `normalized_tree_reason_wrapper_retention_not_normalized`. §1's first bullet -- "closing all 32 advances boundary 4 by zero boundaries" -- was true of the door as it then stood and is NOT true of the door as it now stands: the new holder refuses *because* retention is present, so the wrapper-retained population is upstream of the current refusal. The reading that produced this document is unaffected; what changed is which refusal is in front. -> [b4 door-holder: the statement-form let](b4_door_holder_statement_let_2026-08-21.md)
+
 ## 1. What this destroys, stated so nothing downstream keeps standing on it
 
 - **The b4 wrapper-retained census sizes a non-blocking population.** Its own §0 already corrected the census from *the closure's* population to *one module's*. This is the second and larger correction on the same numbers: whichever module they describe, closing all 32 advances boundary 4 by **zero** boundaries. The census's measurements remain real and reproducible; what is retired is the reason anyone was reading them.
