@@ -73,6 +73,17 @@ floor**, an instrument that does not share the method: it refused a deletion wit
 `unresolved type MergeReadinessVerdict`. A census's own numbers can never be its control;
 only an independent mechanism can.
 
+**This rule is self-demonstrating twice over in its own filing, which is stated here rather
+than left for a reader to notice.** Defect 7 was checked against this census *only* because
+an independent instrument refused on a different branch — nothing in this document prompted
+it, and its counters had been stable across every revision. And the three further defects
+inside the fix for it (generic headers, multi-line variant records, `operation` declarations)
+were found by **hand-reading individual rows before publishing a number**; not one of them
+was surfaced by a counter, and the counters stayed consistent while all three were live. The
+practical form for anyone extending this document: **before you publish a count, read enough
+rows behind it to be wrong out loud** — and treat a number that has never disagreed with you
+as untested rather than confirmed.
+
 A corollary, because it governs how this document should be read rather than how it was
 built: **where a confidence label and an explicit standing disagree, the standing
 governs.** `RESIDUE-UNMENTIONED` reads as strong evidence of deadness; §6's
