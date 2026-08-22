@@ -11,7 +11,22 @@ so separating entry points from recursion is fiddly rather than decidable. From 
 the set is closed and readable: which declaration node kinds does `04_infer` descend into, and for
 each expression-bearing field, does it WALK the expression or only TEST ITS PRESENCE.
 
-## The denominator
+## The denominator, and how it was derived
+
+**Ten (declaration node kind, expression-bearing field) pairs.** The enumeration is not a list of
+places anyone happened to look: it is taken from the DECLARATION CONSTRUCTORS in `v1.core` — the
+`make_*_node` functions that can store an expression on a declaration — crossed with the fields
+`04_resolve` actually populates. The constructors that carry an expression are
+`make_param_node` / `make_resolved_param_node` (`default_value`), `make_field_node`
+(`default_value`), `make_resource_use_node` (the resource node's `properties`, the config args),
+`make_transport_node` (`properties`, `children`, `body`), and the item node's own `body`,
+`children` and `properties`. So the denominator is those constructor slots, and its own denominator
+is the constructor set — which is why a row can be added to the table only by adding a constructor
+slot, not by remembering another place.
+
+Counted against it: **6 never-walked of 10**, 2 walked-typed, 2 walked-untyped (both currently
+UNCONFIRMED — see the retraction below). Of the 6, **2 are confirmed by execution** (parameter
+default, field default) and 4 are flagged.
 
 | declaration node | expression-bearing field | what inference does | class |
 |---|---|---|---|
