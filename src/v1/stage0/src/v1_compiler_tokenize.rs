@@ -9,7 +9,7 @@ pub use crate::std_source_annotation::UnboundAnnotationCapture;
 pub use crate::std_source_annotation::{
     advance_line_prefix_indent_only_text, placement_from_line_prefix,
 };
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 use crate::v1_rt;
@@ -17,8 +17,6 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::TokenShape::*;
 pub use crate::v1_std_core::{Token, TokenShape};
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -89,7 +87,7 @@ pub enum ScanStep {
 pub fn v1_tokenize_artifact_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "tokenize keeps returning List<v1.std.core.Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text.".to_string()
+            "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

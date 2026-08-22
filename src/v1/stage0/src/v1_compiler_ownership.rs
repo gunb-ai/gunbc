@@ -17,9 +17,7 @@ pub use crate::v1_std_core::{
     let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
 };
 pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex, VarBindingKind};
-pub use crate::v2_std_collection::empty_map;
 pub use crate::v2_std_node::{Edge, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -144,7 +142,7 @@ pub struct UsageAccum {
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<_, _>(),
+        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
         touched: Rc::new(vec![]),
     })

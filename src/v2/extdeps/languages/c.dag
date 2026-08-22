@@ -3,7 +3,7 @@ module v2.extdeps.languages.c
 
 
 
-data c_r3_interface_members_split_note: String = "C R3: v2.std.compilers.compilation_unit.CompilationUnit.interface renders to the unit .h (declarations only); v2.std.compilers.compilation_unit.CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
+data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
 data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. Refuses only ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared (universal cause on home PartitionR4ValidityCause). SccSplit is Rust R4, not C R4."
 
@@ -11,7 +11,7 @@ data c_by_value_type_cycle_detail: String = "incomplete by-value type containmen
 
 data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
 
-data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes v2.std.compilers.compilation_unit.partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses v2.std.compilers.compilation_unit.PartitionFoldRefused to [] (§5 absorbing-fallback). Returns v2.std.compilers.compilation_unit.PartitionFoldOutcome directly — no parallel C-local coproduct."
+data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes v2.std.compilers.compilation_unit.partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
 
 fn c_partition_fold_outcome(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
@@ -30,7 +30,7 @@ type CTranslationUnitSpelling {
   interface_nodes: List<v2.std.node.Node>
 }
 
-data c_translation_unit_basename_note: String = "C-realization spelling authority for an agnostic v2.std.compilers.compilation_unit.CompilationUnitId (review 2026-08-01). v2.std.compilers.compilation_unit.CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling law, so `../peer`, `a/b`, `a\\b`, an embedded CR/LF/NUL, and `\"` all inhabit it (the same class path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were concatenated between #include \" and \", so a quote terminated the include string and a newline split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename, so two units can never contend for one .o. Encoding rather than refusing keeps the realization TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target spelling, not the logical id."
+data c_translation_unit_basename_note: String = "C-realization spelling authority for an agnostic CompilationUnitId (review 2026-08-01). CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling law, so `../peer`, `a/b`, `a\\b`, an embedded CR/LF/NUL, and `\"` all inhabit it (the same class path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were concatenated between #include \" and \", so a quote terminated the include string and a newline split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename, so two units can never contend for one .o. Encoding rather than refusing keeps the realization TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target spelling, not the logical id."
 
 fn c_basename_char_allowed(cp: Int) -> v2.std.logic.Bool {
   (cp >= 48 && cp <= 57)
@@ -680,7 +680,7 @@ data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *,
 
 data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
 
-data c_emit_host_main_suffix_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via v2.std.host_transport.EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
+data c_emit_host_main_suffix_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
 
 fn c_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -1091,7 +1091,7 @@ data c_emit_host_type_decl_main_suffix: String = "\n\nint main(void) {\n  Point 
 
 data c_emit_host_type_decl_inject_fault_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  unsigned char out[5] = {0, 4, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
 
-data c_emit_host_type_decl_main_suffix_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via v2.std.host_transport.EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
+data c_emit_host_type_decl_main_suffix_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
 
 fn c_type_decl_host_transport_descriptor(main_suffix: String) -> v2.std.host_transport.HostTransportDescriptor {
   v2.std.host_transport.HostTransportDescriptor {

@@ -118,7 +118,7 @@ pub fn default_artifact_plan(
     }))
 }
 
-pub type DagNodeId = crate::v2_std_text::String;
+pub type DagNodeId = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

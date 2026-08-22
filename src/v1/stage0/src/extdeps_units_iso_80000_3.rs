@@ -9,10 +9,9 @@ use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -109,31 +108,31 @@ pub fn iso_80000_3_plane_angle_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn degrees_per_turn() -> Rc<Nat> {
+pub fn degrees_per_turn() -> Nat {
     360
 }
 
-pub fn arcminutes_per_degree() -> Rc<Nat> {
+pub fn arcminutes_per_degree() -> Nat {
     60
 }
 
-pub fn arcseconds_per_arcminute() -> Rc<Nat> {
+pub fn arcseconds_per_arcminute() -> Nat {
     60
 }
 
-pub fn arcseconds_per_degree_derived() -> Rc<Nat> {
+pub fn arcseconds_per_degree_derived() -> Nat {
     (arcminutes_per_degree() * arcseconds_per_arcminute())
 }
 
-pub fn arcseconds_per_turn() -> Rc<Nat> {
+pub fn arcseconds_per_turn() -> Nat {
     ((degrees_per_turn() * arcminutes_per_degree()) * arcseconds_per_arcminute())
 }
 
-pub fn square_millimetres_per_square_metre() -> Rc<Nat> {
+pub fn square_millimetres_per_square_metre() -> Nat {
     1000000
 }
 
-pub fn cubic_millimetres_per_cubic_metre() -> Rc<Nat> {
+pub fn cubic_millimetres_per_cubic_metre() -> Nat {
     1000000000
 }
 

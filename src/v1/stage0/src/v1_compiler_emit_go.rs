@@ -41,7 +41,6 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{NewlineIndex, TextFile};
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

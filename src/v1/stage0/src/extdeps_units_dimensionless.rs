@@ -4,10 +4,9 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -45,10 +44,10 @@ pub fn percent_unity_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn parts_per_ten_thousand_unity_count() -> Rc<Nat> {
+pub fn parts_per_ten_thousand_unity_count() -> Nat {
     10000
 }
 
-pub fn percent_unity_hundred_count() -> Rc<Nat> {
+pub fn percent_unity_hundred_count() -> Nat {
     100
 }

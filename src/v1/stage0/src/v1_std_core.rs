@@ -40,13 +40,12 @@ use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::container_expected_arity;
-pub use crate::std_types::{FilePath, List, Map};
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
+pub use crate::v2_std_node::NamedEdgeTargetLookup;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -590,7 +589,9 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
-        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => {
+            Rc::new(NamedEdgeTargetLookup::Absent)
+        }
     }
 }
 
@@ -1913,7 +1914,7 @@ pub fn fn_admit_callers(
             field_init_node_value(p.clone()).children.clone(),
             source_indices.clone(),
         )),
-        None => None,
+        None => Rc::new(NamedEdgeTargetLookup::Absent),
     }
 }
 
@@ -2871,7 +2872,7 @@ pub fn transport_tls_posture(
         source_indices.clone(),
     ) {
         Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),
-        None => None,
+        None => Rc::new(NamedEdgeTargetLookup::Absent),
     }
 }
 
@@ -4118,6 +4119,25 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
+    }
+}
+
+pub fn qualified_module_prefix(name: String) -> String {
+    {
+        let segs = module_path_segments(name.clone());
+        let n = (segs.clone().len() as i64);
+        if (n.clone() < 2) {
+            "".to_string()
+        } else {
+            Rc::new(
+                segs.clone()
+                    .iter()
+                    .cloned()
+                    .take((n.clone() - 1) as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&".".to_string())
+        }
     }
 }
 

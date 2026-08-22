@@ -63,8 +63,8 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
+pub use crate::v2_std_node::NamedEdgeTargetLookup;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -627,7 +627,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -681,7 +681,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<_, _>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
@@ -828,7 +828,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
-            wildcard_case: None,
+            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
@@ -1031,8 +1031,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
-            variant_pattern: None,
-            guard_prefix: None,
+            variant_pattern: Rc::new(NamedEdgeTargetLookup::Absent),
+            guard_prefix: Rc::new(NamedEdgeTargetLookup::Absent),
             empty_return_value: "struct{}{}, nil".to_string(),
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
@@ -1071,7 +1071,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "v2rt.".to_string(),
         bridge_method_case: NamingCase::PascalCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<_, _>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: "{".to_string(),
             named_close: "}".to_string(),
@@ -1203,7 +1203,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: Rc::new(NamedEdgeTargetLookup::Absent),
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -1253,7 +1253,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<_, _>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),

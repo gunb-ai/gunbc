@@ -12,12 +12,9 @@ pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -583,7 +580,7 @@ pub fn occurrence_transport_index_build(
 ) -> Rc<OccurrenceTransportIndexBuild> {
     index.entries.clone().iter().cloned().fold(
         Rc::new(OccurrenceTransportIndexBuild {
-            entries_by_id: v1_rt::rc_empty_map::<_, _>(),
+            entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
             refusal: None,
         }),
         |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
@@ -652,8 +649,8 @@ pub fn occurrence_transport_role_index_build(
     {
         let declaration_build = declarations.clone().iter().cloned().fold(
             Rc::new(OccurrenceTransportRoleIndexBuild {
-                declarations_by_id: v1_rt::rc_empty_map::<_, _>(),
-                references_by_id: v1_rt::rc_empty_map::<_, _>(),
+                declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
+                references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
                 refusal: None,
             }),
             |build: Rc<OccurrenceTransportRoleIndexBuild>,

@@ -377,7 +377,7 @@ fn git_object_id_eq(left: extdeps.git.object_store.GitObjectId, right: extdeps.g
   }
 }
 
-data git_sha1_oid_deleted_note: String = "git_sha1_oid and git_sha256_oid deleted (review 45376): extdeps.git.object_store.GitObjectId is constructed only through git_sha1_object_id / git_sha256_object_id, which enforce length and lowercase-hex invariants. Witness and merge-admission fixture helpers that need a total GitObjectId from known-valid corpus literals live beside their consumers."
+data git_sha1_oid_deleted_note: String = "git_sha1_oid and git_sha256_oid deleted (review 45376): GitObjectId is constructed only through git_sha1_object_id / git_sha256_object_id, which enforce length and lowercase-hex invariants. Witness and merge-admission fixture helpers that need a total GitObjectId from known-valid corpus literals live beside their consumers."
 
 type Blob {
   content: Bytes

@@ -32,7 +32,7 @@ data c_stage1_frontier_row_surface_projection_ordering_flags: CStage1TypeDeclFro
   disposition: CStage1Deferred {
     migration_trigger: ^c_stage1_dissolve_when_surface_layout_derived_from_grammar_productions
   },
-  semantics_note: "field_type_before_name / struct_typedef_name_after_fields / enum_name_after_variants booleans duplicate child-order already encoded in c_decl v2.std.grammar.FormalProduction rows and empty shape-marker lex selectors. DISSOLVES WHEN surface child order is derived from the active production RHS instead of parallel projection flags."
+  semantics_note: "field_type_before_name / struct_typedef_name_after_fields / enum_name_after_variants booleans duplicate child-order already encoded in c_decl FormalProduction rows and empty shape-marker lex selectors. DISSOLVES WHEN surface child order is derived from the active production RHS instead of parallel projection flags."
 }
 
 fn c_stage1_type_decl_frontier_rows() -> List<CStage1TypeDeclFrontierRow> {

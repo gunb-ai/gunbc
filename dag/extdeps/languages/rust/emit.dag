@@ -2,8 +2,8 @@ module extdeps.languages.rust.emit
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/reference/"
   }
@@ -60,14 +60,14 @@ data rust_reserved_escape_suffix: String = "_"
 
 data rust_string_types: List<String> = ["String", "Secret"]
 
-data rust_struct_derives: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_heap())
+data rust_struct_derives: String = rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.record_derive_traits_heap())
 
-data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_copy())
-data rust_enum_derives: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.payload_coproduct_derive_traits())
+data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.record_derive_traits_copy())
+data rust_enum_derives: String = rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.payload_coproduct_derive_traits())
 
-data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.nullary_coproduct_derive_traits())
+data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.nullary_coproduct_derive_traits())
 
-fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
+fn rust_trait_derive_spelling(derive_trait: extdeps.languages.rust.capabilities.RustCapability) -> String {
   match derive_trait {
     RustDebug => "Debug"
     RustClone => "Clone"
@@ -88,7 +88,7 @@ fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
   }
 }
 
-fn rust_trait_derive_attr_from_traits(traits: List<RustCapability>) -> String {
+fn rust_trait_derive_attr_from_traits(traits: List<extdeps.languages.rust.capabilities.RustCapability>) -> String {
   concat(
     "#[derive(",
     traits |> map(t => rust_trait_derive_spelling(t)) |> join(separator: ", "),
@@ -276,7 +276,7 @@ fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
 data rust_pair_completion_spelling_note: String = "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit."
 
 type RustPairCompletionSpelling {
-  capability_key: PairCompletionOp
+  capability_key: std.trait_derive_shape.PairCompletionOp
   method: String
   trait_path: String
   where_bounds: String
@@ -294,7 +294,7 @@ data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
 
 data rust_pair_completion_key_join_note: String = "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again."
 
-fn rust_pair_completion_spelling_for(op: PairCompletionOp) -> RustPairCompletionSpelling? {
+fn rust_pair_completion_spelling_for(op: std.trait_derive_shape.PairCompletionOp) -> RustPairCompletionSpelling? {
   rust_pair_completion_spellings
     |> filter(s => s.capability_key == op)
     |> first

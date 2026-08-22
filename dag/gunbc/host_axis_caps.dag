@@ -1,7 +1,7 @@
 module gunbc.host_axis_caps
 
 
-data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the gunbc.membership_reconcile.membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). extdeps.systemd.MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property extdeps.systemd.MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-extdeps.systemd.MemoryMax.conf / 50-extdeps.systemd.MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> gunbc.ownership.Owned; anything else -> a foreign occupant, gunbc.ownership.Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = gunbc.membership_reconcile.ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the gunbc.membership_reconcile.membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMemberAt = std.types.NonEmptyStr
 
@@ -95,8 +95,8 @@ type ControlShadowUnit {
   unit: std.types.NonEmptyStr
 }
 
-data control_shadow_memory_max_filename: std.types.NonEmptyStr = "50-extdeps.systemd.MemoryMax.conf"
-data control_shadow_memory_high_filename: std.types.NonEmptyStr = "50-extdeps.systemd.MemoryHigh.conf"
+data control_shadow_memory_max_filename: std.types.NonEmptyStr = "50-MemoryMax.conf"
+data control_shadow_memory_high_filename: std.types.NonEmptyStr = "50-MemoryHigh.conf"
 
 data control_shadow_managed_filenames: List<std.types.NonEmptyStr> = [
   control_shadow_memory_max_filename,
@@ -185,7 +185,7 @@ fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<gunbc.host_ax
   )
 }
 
-data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width extdeps.systemd.MemoryMax, 40-fleet-high extdeps.systemd.MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert extdeps.systemd.MemoryMax extdeps.systemd.MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
+data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
 
 data host_axis_caps_author_before_revert_enforced: Bool = true
 

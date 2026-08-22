@@ -25,6 +25,7 @@ pub use crate::std_measure::{
     byte_size, measure_count, millisecond_count, second_count, time_measure, watt,
 };
 pub use crate::std_measure::{ByteSize, Measure, Watt};
+pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 pub use crate::std_process_termination::ProcessTermination;
@@ -32,8 +33,6 @@ use crate::std_process_termination::ProcessTermination::*;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -50,7 +49,7 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Rc<Nat>>>,
+    pub time: Rc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
@@ -67,7 +66,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Rc<Nat>>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),
@@ -77,7 +76,7 @@ pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Rc<Nat>>>) -> Rc<CostAcc
     })
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Rc<Nat> {
+pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
@@ -435,7 +434,7 @@ pub fn floor_worker_observation_outcome(
     }
 }
 
-pub type FloorWorkerObservationReceiptPath = crate::v2_std_text::String;
+pub type FloorWorkerObservationReceiptPath = String;
 
 pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
     thread_local! {
@@ -747,7 +746,7 @@ pub struct WalkPlan<F: Clone> {
 pub struct WalkPopulationBudgetRefusal {
     pub population: String,
     pub plan_site: String,
-    pub population_index: Rc<Nat>,
+    pub population_index: Nat,
     pub active_unit: String,
     pub elapsed: Millisecond,
     pub budget: Millisecond,

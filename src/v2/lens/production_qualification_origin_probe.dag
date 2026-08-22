@@ -11,7 +11,7 @@ data construction_justification: v2.lens.common.construction_justification.Const
   class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }
 
-data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — v2.compiler.self_host.emitter_producer_provenance.SourceProduced and v2.compiler.self_host.emitter_producer_provenance.CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an v2.compiler.self_host.emitter_producer_provenance.EmissionQualification axis."
+data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an EmissionQualification axis."
 
 data production_evidence_grounding_vocabulary_note: String = "B0-aligned vocabulary (wise-ram-22): ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin. ProductionEvidenceGrounding = StructurallyGrounded | ExecutionMeasured | Unmeasured — measurement carries an origin, never replaces one. Rows do not populate grounding at skeleton grain yet; the carrier declares the split so probe and B0 share one epistemology."
 

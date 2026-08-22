@@ -3,7 +3,7 @@ module gunbc.runner_capacity_operator_access
 
 data runner_capacity_operator_access_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
-data runner_capacity_operator_access_note: String = "STEP E VOID (operator correction 2026-08-07): no SSH access receipt for ADD — reach is IN-BAND via gunbc.host_effect.LocalShell on a GHA job labelled for the target host. SSH is narrowed to RECOVER (zero-runner host / last-runner replace) only. Real ADD gate is PRIVILEGE (ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe). srv1 probed live 2026-08-07: User=briansrls, (ALL) NOPASSWD: ALL. APPLICATION GOES THROUGH THE WORKFLOW ONLY — operator hand-converged srv1 caps before that ruling; srv1 is the row-6 already-converged control (modeled cap path must emit ZERO effects on srv1). LIVE WIDTH = unit/process + org roster, NOT directories. #7940 subsumes runner-liveness-reconcile.timer. Read live ctrl installer at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh before wiring realizers; model-vs-fresh realizer scope is operator-open."
+data runner_capacity_operator_access_note: String = "STEP E VOID (operator correction 2026-08-07): no SSH access receipt for ADD — reach is IN-BAND via LocalShell on a GHA job labelled for the target host. SSH is narrowed to RECOVER (zero-runner host / last-runner replace) only. Real ADD gate is PRIVILEGE (ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe). srv1 probed live 2026-08-07: User=briansrls, (ALL) NOPASSWD: ALL. APPLICATION GOES THROUGH THE WORKFLOW ONLY — operator hand-converged srv1 caps before that ruling; srv1 is the row-6 already-converged control (modeled cap path must emit ZERO effects on srv1). LIVE WIDTH = unit/process + org roster, NOT directories. #7940 subsumes runner-liveness-reconcile.timer. Read live ctrl installer at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh before wiring realizers; model-vs-fresh realizer scope is operator-open."
 
 data runner_capacity_workflow_only_application_note: String = "OPERATOR RULING (2026-08-07): all host mutation goes through gunbc apply workflow — never hand-ssh fixes. A realizer refusal is a line-stop signal, not permission to act manually. srv1's five slots were hand-converged to the 14GiB model before this ruling; they are now the acceptance row 6 fixture (already correct → zero effects). srv2/srv3/srv4 remain at 16GiB until the workflow applies."
 
@@ -45,7 +45,7 @@ fn runner_capacity_execution_target_for_action(
           "zero-runner recovery on ",
           concat(
             h as String,
-            " requires GitHub-hosted job + SSH reach; ADD lane uses in-band gunbc.host_effect.LocalShell only (#7940 repair)",
+            " requires GitHub-hosted job + SSH reach; ADD lane uses in-band LocalShell only (#7940 repair)",
           ),
         ),
       }
@@ -143,7 +143,7 @@ fn in_band_privilege_observation_for_host(host: product.placement_supply.HostIde
     PrivilegeUnobserved {
       reason: concat(
         "in-band privilege probe not yet executed on ",
-        concat(host as String, " — require ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe via gunbc.host_effect.LocalShell job labelled for host"),
+        concat(host as String, " — require ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe via LocalShell job labelled for host"),
       ),
     }
   } else {

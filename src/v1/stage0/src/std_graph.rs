@@ -2,13 +2,10 @@
 // Source module: std.graph
 
 use crate::std_termination::DescentEvidence::*;
-pub use crate::std_termination::{DescentEvidence, ProofEdge};
+pub use crate::std_termination::{DescentEvidence, ProofEdge, TerminationProof};
 pub use crate::std_types::{List, Map, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_cardinality::TerminationProof;
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -51,8 +48,8 @@ pub struct SccMembersAcc {
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<()>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<()>>>>, name: String| {
+        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
         },
     )

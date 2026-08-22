@@ -3,7 +3,7 @@ module v2.test.claim.compiler_materialization_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the governed carrier door (std.realization.Memoize verdict consumed; non-std.realization.Memoize refuses store). Ladder + catalog projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal when Recompute; bypass insert on non-std.realization.Memoize carrier. reconcile-as-lookup-path is the next increment."
+data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the governed carrier door (Memoize verdict consumed; non-Memoize refuses store). Ladder + catalog projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal when Recompute; bypass insert on non-Memoize carrier. reconcile-as-lookup-path is the next increment."
 
 test fn compiler_materialization_ladder_holds() -> Bool {
   v2_compiler_materialization_ladder_holds()

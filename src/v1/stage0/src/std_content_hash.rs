@@ -7,7 +7,6 @@ use self::HashFamily::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v2_std_node::Hash;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -51,13 +50,13 @@ pub enum HashFamily {
     Sha512Family,
 }
 
-pub type Sha256DigestHex = crate::v2_std_text::String;
+pub type Sha256DigestHex = String;
 
-pub type Sha1DigestHex = crate::v2_std_text::String;
+pub type Sha1DigestHex = String;
 
-pub type Sha512DigestHex = crate::v2_std_text::String;
+pub type Sha512DigestHex = String;
 
-pub type Fnv1a64StructuralDigestHex = crate::v2_std_text::String;
+pub type Fnv1a64StructuralDigestHex = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fnv1a64Structural {

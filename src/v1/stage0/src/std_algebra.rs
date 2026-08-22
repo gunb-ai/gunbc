@@ -10,8 +10,6 @@ use self::Ordering::*;
 pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -1651,7 +1649,7 @@ pub fn all_algebra_template_names() -> Rc<Vec<String>> {
 pub fn trim_free_function_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on std.algebra.FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } — bare trim refuses via closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).".to_string()
+            "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } — bare trim refuses via closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

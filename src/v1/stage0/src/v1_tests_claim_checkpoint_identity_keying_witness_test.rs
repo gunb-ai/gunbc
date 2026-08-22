@@ -7,7 +7,6 @@ pub use crate::v1_compiler_coercion::literal_suffix;
 pub use crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

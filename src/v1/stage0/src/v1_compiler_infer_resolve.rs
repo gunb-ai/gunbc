@@ -42,10 +42,8 @@ pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, ErrorNode, ExprData, ExprErrorKind, InferredNode,
     NewlineIndex, StringPart,
 };
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

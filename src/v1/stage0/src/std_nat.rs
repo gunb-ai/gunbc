@@ -13,7 +13,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Nat(pub std::marker::PhantomData<()>);
 
-pub fn nat_compare(a: Rc<Nat>, b: Rc<Nat>) -> Ordering {
+pub fn nat_compare(a: Nat, b: Nat) -> Ordering {
     if (a.clone() < b.clone()) {
         Ordering::Less
     } else {
@@ -25,7 +25,7 @@ pub fn nat_compare(a: Rc<Nat>, b: Rc<Nat>) -> Ordering {
     }
 }
 
-pub fn nat_max(a: Rc<Nat>, b: Rc<Nat>) -> Rc<Nat> {
+pub fn nat_max(a: Nat, b: Nat) -> Nat {
     if (a.clone() > b.clone()) {
         a.clone()
     } else {
@@ -33,7 +33,7 @@ pub fn nat_max(a: Rc<Nat>, b: Rc<Nat>) -> Rc<Nat> {
     }
 }
 
-pub fn nat_min(a: Rc<Nat>, b: Rc<Nat>) -> Rc<Nat> {
+pub fn nat_min(a: Nat, b: Nat) -> Nat {
     if (a.clone() < b.clone()) {
         a.clone()
     } else {

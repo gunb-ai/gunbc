@@ -22,8 +22,6 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -229,7 +227,7 @@ pub fn binding_candidates_from_supplied_declarations(
 ) -> Rc<OccurrenceCandidatePopulationBuild> {
     supplied_candidates.clone().iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
-    seen_candidate_ids: v1_rt::rc_empty_map::<_, _>(),
+    seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     refusal: None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),

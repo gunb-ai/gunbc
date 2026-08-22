@@ -174,7 +174,7 @@ pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
     ])
 }
 
-pub type CargoProfile = crate::v2_std_text::String;
+pub type CargoProfile = String;
 
 pub fn canonical_profiles() -> Rc<Vec<String>> {
     thread_local! {

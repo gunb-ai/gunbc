@@ -71,7 +71,7 @@ fn section_2() -> List<std.markdown.MarkdownBlock> {
         gunbc.plans.md_helpers.row(cells: [cell(text: "Pull request (number, head, base, merged_at)"), cell(text: "extdeps.github.pulls.PullRequest")]),
         gunbc.plans.md_helpers.row(cells: [cell(text: "Git branch / ref"), cell(text: "extdeps.git.GitBranch")]),
         gunbc.plans.md_helpers.row(cells: [cell(text: "Mergeable / merge-state"), cell(text: "extdeps.github.mergeable_state.MergeableState, extdeps.github.merge_state.MergeStateStatus")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "Content hash / commit sha"), cell(text: "std.content_hash.ContentHash, std.types.CommitSha")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Content hash / commit sha"), cell(text: "ContentHash, std.types.CommitSha")]),
         gunbc.plans.md_helpers.row(cells: [cell(text: "Provider / commit consumer"), cell(text: "gunbc.generated_artifact.RepoConsumer (GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler)")]),
         gunbc.plans.md_helpers.row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_spec.DiffPolicy, gunbc.ci_spec.DiffMode")]),
         gunbc.plans.md_helpers.row(cells: [cell(text: "Process exit / pass-fail"), cell(text: "std.process.ProcessExit")]),

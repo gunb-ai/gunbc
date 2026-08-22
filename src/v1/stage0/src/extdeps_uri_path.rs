@@ -12,7 +12,6 @@ pub use crate::std_http_path::{PathParamBinding, PathTemplate, UrlPathToken};
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

@@ -4,10 +4,9 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -36,10 +35,10 @@ pub fn iec_80000_13_version_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn iec_kibi_factor() -> Rc<Nat> {
+pub fn iec_kibi_factor() -> Nat {
     1024
 }
 
-pub fn octet_bit_count() -> Rc<Nat> {
+pub fn octet_bit_count() -> Nat {
     8
 }

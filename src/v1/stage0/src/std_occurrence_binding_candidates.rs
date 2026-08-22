@@ -63,8 +63,6 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_types::{List, Map, NonEmptyStr, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -246,7 +244,7 @@ pub fn module_by_occurrence_build(
 ) -> Rc<OccurrenceModulePathIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(OccurrenceModulePathIndexBuild {
-            module_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
+            module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
             refusal: None,
         }),
         |build: Rc<OccurrenceModulePathIndexBuild>, row: Rc<OccurrenceModulePathRow>| {
@@ -476,7 +474,7 @@ pub fn exposure_by_occurrence_build(
 ) -> Rc<DeclarationExposureIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(DeclarationExposureIndexBuild {
-            exposure_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
+            exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
             refusal: None,
         }),
         |build: Rc<DeclarationExposureIndexBuild>, row: Rc<DeclarationExposureRow>| {
@@ -559,7 +557,7 @@ pub fn authored_order_by_occurrence_build(
 ) -> Rc<AuthoredOrderIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(AuthoredOrderIndexBuild {
-            order_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
+            order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
             refusal: None,
         }),
         |build: Rc<AuthoredOrderIndexBuild>, row: Rc<AuthoredOrderRow>| {
@@ -1188,7 +1186,7 @@ pub fn direct_module_dependencies_from_providers(
             .cloned()
             .fold(
                 Rc::new(DirectModuleDependencyDedupBuild {
-                    providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectModuleDependencyDedupBuild>,
@@ -1589,7 +1587,7 @@ pub fn module_path_file_index_from_rows(
     {
         let build = rows.clone().iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
-                entries: v1_rt::rc_empty_map::<_, _>(),
+                entries: v1_rt::rc_empty_map::<String, String>(),
                 refusal: None,
             }),
             |acc: Rc<ModulePathFileIndexBuild>, row: Rc<ModulePathFileRow>| {
@@ -1898,7 +1896,8 @@ pub fn provider_files_for_consumer_file(
                 .cloned()
                 .fold(
                     Rc::new(DirectFileDependencyDedupBuild {
-                        providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
+                        providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(
+                        ),
                         edges_first_seen: Rc::new(vec![]),
                     }),
                     |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -1933,7 +1932,7 @@ pub fn direct_file_dependencies_from_provenances(
             .cloned()
             .fold(
                 Rc::new(DirectFileDependencyDedupBuild {
-                    providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -2194,7 +2193,7 @@ pub fn occurrence_id_remap_state_with_fresh_map(
 ) -> Rc<OccurrenceIdRemapState> {
     Rc::new(OccurrenceIdRemapState {
         allocator: allocator.clone(),
-        remap: v1_rt::rc_empty_map::<_, _>(),
+        remap: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     })
 }
 

@@ -8,7 +8,6 @@ pub use crate::std_emit_model::SimpleMethodSpec;
 pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_collection::empty_map;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

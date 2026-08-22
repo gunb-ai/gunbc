@@ -9,10 +9,9 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::*;
 pub use crate::v1_std_core::{authored_name_at, make_error_node, module_items};
 pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, NewlineIndex};
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -282,7 +281,7 @@ pub fn check_duplicate_modules(
     {
         let result = modules.clone().iter().cloned().fold(
             Rc::new(DuplicateCheckState {
-                seen_names: v1_rt::rc_empty_map::<_, _>(),
+                seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
@@ -354,7 +353,7 @@ pub fn topological_sort(
                 });
                 __sorted
             }),
-            cycle_error: None,
+            cycle_error: Rc::new(NamedEdgeTargetLookup::Absent),
         })
     }
 }

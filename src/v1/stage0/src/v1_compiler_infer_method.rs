@@ -14,10 +14,8 @@ pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{Cardinality, ErrorNode, ExprData, InferredNode};
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

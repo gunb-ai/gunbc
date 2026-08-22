@@ -8,11 +8,11 @@ pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::VersionScheme;
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
+pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::nat_compare;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -52,7 +52,7 @@ pub struct SemVerVersion {
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_non_negative_int(a: Rc<Nat>, b: Rc<Nat>) -> Ordering {
+pub fn semver_compare_non_negative_int(a: Nat, b: Nat) -> Ordering {
     crate::std_nat::nat_compare(a.clone(), b.clone())
 }
 

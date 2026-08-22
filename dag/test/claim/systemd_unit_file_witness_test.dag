@@ -95,24 +95,24 @@ test fn service_type_renders_as_the_type_directive() -> Bool {
 }
 
 test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Description { text: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Description=a"
-    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.After { target: "b" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.After=b"
-    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Wants { target: "c" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Wants=c"
+  extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Description { text: "a" as std.types.NonEmptyStr }) == "Description=a"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.After { target: "b" as std.types.NonEmptyStr }) == "After=b"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Wants { target: "c" as std.types.NonEmptyStr }) == "Wants=c"
 }
 
 test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ExecStart { command: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.ExecStart=a"
-    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Restart { policy: "b" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Restart=b"
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ExecStart { command: "a" as std.types.NonEmptyStr }) == "ExecStart=a"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Restart { policy: "b" as std.types.NonEmptyStr }) == "Restart=b"
     && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Environment { assignment: "K=v" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.Environment=K=v"
+      == "Environment=K=v"
     && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.WorkingDirectory { path: "/d" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.WorkingDirectory=/d"
+      == "WorkingDirectory=/d"
 }
 
 test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.WantedBy { target: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.WantedBy=a"
+  extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.WantedBy { target: "a" as std.types.NonEmptyStr }) == "WantedBy=a"
     && extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.RequiredBy { target: "b" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.RequiredBy=b"
+      == "RequiredBy=b"
 }
 
 // An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
@@ -120,7 +120,7 @@ test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
 test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(
     directive: extdeps.systemd.unit_file.Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as std.types.NonEmptyStr },
-  ) == "extdeps.systemd.unit_file.Environment=OLLAMA_HOST=127.0.0.1:11434"
+  ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
 }
 
 // ── The timer section ───────────────────────────────────────────────────────────────────────────
@@ -180,22 +180,22 @@ test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
 
 test fn each_timer_directive_renders_its_own_systemd_name() -> Bool {
   extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnCalendar { expression: "*:0/15" as std.types.NonEmptyStr })
-    == "extdeps.systemd.unit_file.OnCalendar=*:0/15"
+    == "OnCalendar=*:0/15"
     && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnBootSec { duration: "2min" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.OnBootSec=2min"
+      == "OnBootSec=2min"
     && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnUnitInactiveSec { duration: "60s" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.OnUnitInactiveSec=60s"
+      == "OnUnitInactiveSec=60s"
     && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.AccuracySec { duration: "5s" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.AccuracySec=5s"
+      == "AccuracySec=5s"
     && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.RandomizedDelaySec { duration: "90" as std.types.NonEmptyStr })
-      == "extdeps.systemd.unit_file.RandomizedDelaySec=90"
+      == "RandomizedDelaySec=90"
 }
 
 // systemd accepts `true`/`false` and this is a modeled Bool, so the spelling is decided here once.
 // The false arm is asserted because it is the one no live unit exercises.
 test fn persistent_renders_systemds_own_boolean_spelling() -> Bool {
-  extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: true }) == "extdeps.systemd.unit_file.Persistent=true"
-    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: false }) == "extdeps.systemd.unit_file.Persistent=false"
+  extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: true }) == "Persistent=true"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: false }) == "Persistent=false"
 }
 
 // The three service directives added for the live fleet units. `User=`/`Group=` are the pair whose
@@ -207,7 +207,7 @@ test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
       == "Group=briansrls"
     && extdeps.systemd.unit_file.systemd_service_directive_line(
       directive: extdeps.systemd.unit_file.EnvironmentFile { path: "/etc/x.env" as std.types.NonEmptyStr },
-    ) == "extdeps.systemd.unit_file.EnvironmentFile=/etc/x.env"
+    ) == "EnvironmentFile=/etc/x.env"
 }
 
 // `EnvironmentFile=` is not a spelling of `Environment=`. One names a file, the other carries an

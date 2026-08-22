@@ -8,7 +8,7 @@ data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
-data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: std.algebra.Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: std.algebra.Cons { head: r, tail: std.algebra.Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: std.algebra.Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: std.algebra.Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
 
 data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: grown, right: x)\n  })\n}\n"
 

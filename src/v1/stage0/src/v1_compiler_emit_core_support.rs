@@ -15,10 +15,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
 pub use crate::v1_std_core::{ErrorNode, NewlineIndex};
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -94,7 +92,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             |acc: Rc<UniqueAccum>, item: String| {

@@ -96,7 +96,7 @@ fn scope_rest_decls(f: gunbc.design.state_response.StateFamily, m: gunbc.design.
   })
 }
 
-data state_paint_rules_note: String = "The rest-channel realize fold: one gunbc.design.material.StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
+data state_paint_rules_note: String = "The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
 
 fn state_paint_rules(f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.material.BuildRule> {
   fold(f.members, init: [], f: (acc, m) => match m.binding {
@@ -106,7 +106,7 @@ fn state_paint_rules(f: gunbc.design.state_response.StateFamily, channels: List<
   })
 }
 
-data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a gunbc.design.material.ResponseRule whose response gunbc.design.material.decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
+data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a ResponseRule whose response gunbc.design.material.decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
 
 fn channel_response_rules(f: gunbc.design.state_response.StateFamily, trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole, transition_props: String, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(f.members, m =>

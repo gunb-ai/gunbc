@@ -20,17 +20,18 @@ pub use crate::std_computation::{
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::PositiveDescentAmount::*;
 use crate::std_termination::ProportionalDivisor::*;
+use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,
     proportional_divisor_to_int,
 };
-pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, ProportionalDivisor};
+pub use crate::std_termination::{
+    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+};
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_cardinality::RankingDimension;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

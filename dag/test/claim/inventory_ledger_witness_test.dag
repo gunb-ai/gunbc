@@ -47,7 +47,7 @@ fn balance_of(lot: product.inventory.ProcurementLot, events: List<product.invent
 
 // --- WALL 1: no event sequence yields a negative balance ------------------------------------------
 
-data w_no_negative_balance_note: String = "The wall is structural rather than checked: transfer_stock is the only mutation, it refuses when the source position holds less than the requested quantity, and a refusal stops the fold. So the assertion here is that a deliberately over-drawing sequence produces a LOCATED refusal naming the position, the requested quantity and the quantity actually held — not a clamped result and not a wrapped std.nat.Nat."
+data w_no_negative_balance_note: String = "The wall is structural rather than checked: transfer_stock is the only mutation, it refuses when the source position holds less than the requested quantity, and a refusal stops the fold. So the assertion here is that a deliberately over-drawing sequence produces a LOCATED refusal naming the position, the requested quantity and the quantity actually held — not a clamped result and not a wrapped Nat."
 
 test fn w_over_draw_refuses_with_located_shortfall() -> Bool {
   let events = append(acquire_and_receive_all(), [

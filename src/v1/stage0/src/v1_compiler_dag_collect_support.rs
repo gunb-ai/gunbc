@@ -3,7 +3,7 @@
 
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::*;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, to_string};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -13,11 +13,8 @@ use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, ExprData, InferredNode, MatchPattern};
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -234,7 +231,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
         }) => {
             let base = v1_rt::atom_identity_hash(v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("v1.std.core.VariantPattern:".to_string(), n.clone()),
+                    v1_rt::concat("VariantPattern:".to_string(), n.clone()),
                     "|".to_string(),
                 ),
                 match pe.clone() {

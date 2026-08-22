@@ -13,8 +13,8 @@ test fn nullary_coproduct_predicate_satisfied() -> v2.std.logic.Bool {
 }
 
 test fn record_heap_attr_contains_serde() -> v2.std.logic.Bool {
-  let heap_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_heap())
-  let copy_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_copy())
+  let heap_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.record_derive_traits_heap())
+  let copy_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.record_derive_traits_copy())
   heap_attr != "" && heap_attr != copy_attr
 }
 
@@ -27,8 +27,8 @@ test fn ord_carrier_shape_rejects_nullary_copy_traits() -> v2.std.logic.Bool {
 }
 
 test fn ord_carrier_attr_differs_from_nullary() -> v2.std.logic.Bool {
-  let ord_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(std.trait_derive_shape.symbol_wrapped_ord_carrier_derive_traits())
-  let nullary_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(std.trait_derive_shape.nullary_coproduct_derive_traits())
+  let ord_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.symbol_wrapped_ord_carrier_derive_traits())
+  let nullary_attr = extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(extdeps.languages.rust.capabilities.nullary_coproduct_derive_traits())
   ord_attr != "" && ord_attr != nullary_attr
 }
 

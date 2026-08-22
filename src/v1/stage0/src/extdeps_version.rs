@@ -25,11 +25,11 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type VersionIdentity = crate::v2_std_text::String;
+pub type VersionIdentity = String;
 
 #[derive(Clone)]
 pub struct VersionScheme {
     pub compare: Rc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
 }
 
-pub type VersionConstraint = crate::v2_std_text::String;
+pub type VersionConstraint = String;

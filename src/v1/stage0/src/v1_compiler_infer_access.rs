@@ -2,7 +2,7 @@
 // Source module: v1.compiler.infer_access
 
 pub use crate::std_types::is_ordered_element_collection;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 pub use crate::v1_compiler_infer_types::{
     for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
     node_type_equals, normalize_access_type_node, resolved_type,
@@ -16,9 +16,7 @@ pub use crate::v1_std_core::{
     with_optional_cardinality,
 };
 pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex};
-pub use crate::v2_lens_application::SourceSpan;
 pub use crate::v2_std_node::Node;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

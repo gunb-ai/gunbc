@@ -34,7 +34,7 @@ type ScanStep
   = ScannedToken { result: ScanResult }
   | ScannedAnnotation { pos: Int, capture: std.source_annotation.UnboundAnnotationCapture, interp_depth: List<Int> }
 
-data v1_tokenize_artifact_note: String = "tokenize keeps returning List<v1.std.core.Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
+data v1_tokenize_artifact_note: String = "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
 
 type V1LexArtifact {
   tokens: List<v1.std.core.Token>

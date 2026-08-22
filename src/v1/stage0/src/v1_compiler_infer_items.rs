@@ -5,7 +5,7 @@ use self::ItemKind::*;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -13,7 +13,6 @@ use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{authored_name_at, make_field_node, no_span, node_name_span};
 pub use crate::v1_std_core::{Cardinality, InferredNode, NewlineIndex};
-pub use crate::v2_lens_application::SourceSpan;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
 use crate::NonEmptyBTreeSet;
@@ -65,7 +64,7 @@ pub struct ModuleInterface {
 pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): v1.compiler.infer_items.TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string())
+            unbound_dissolution("🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

@@ -5,11 +5,9 @@ use self::CheckedInt::*;
 use self::CheckedIntOperands::*;
 use self::CheckedNat::*;
 use self::IntegerArithmeticOperation::*;
+pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -266,7 +264,7 @@ pub fn checked_int_optional(r: Rc<CheckedInt>) -> Option<i64> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CheckedNat {
-    CheckedNatReady { value: Rc<Nat> },
+    CheckedNatReady { value: Nat },
     CheckedNatOverflow { cause: Rc<IntegerOverflow> },
 }
 
@@ -294,7 +292,7 @@ pub fn nat_magnitude_residue_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nat_magnitude(a: i64) -> Rc<Nat> {
+pub fn nat_magnitude(a: i64) -> Nat {
     if (a.clone() < 0) {
         (0 - a.clone())
     } else {

@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 type VersionIdentity = std.types.NonEmptyStr where brand("VersionIdentity")
 
 type VersionScheme {
-  compare: fn(VersionIdentity, VersionIdentity) -> Ordering
+  compare: fn(VersionIdentity, VersionIdentity) -> std.algebra.Ordering
 }
 
 type VersionConstraint = std.types.NonEmptyStr where brand("VersionConstraint")

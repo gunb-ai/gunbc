@@ -49,10 +49,9 @@ pub use crate::v1_std_core::{
     Cardinality, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
     MethodSemantics, NewlineIndex,
 };
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -78,7 +77,7 @@ pub fn lookup_in_scope(
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&locals, name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
-        None => None,
+        None => Rc::new(NamedEdgeTargetLookup::Absent),
     }
 }
 
@@ -105,8 +104,10 @@ pub fn lookup_func_sig(
 pub fn func_sig_if_resolved(lookup: Rc<FuncSigLookup>) -> Option<Rc<ResolvedFuncSig>> {
     match (*lookup.clone()).clone() {
         FuncSigLookup::FuncSigResolved { sig: sig, .. } => Some(sig.clone()),
-        FuncSigLookup::FuncSigUnresolved => None,
-        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => None,
+        FuncSigLookup::FuncSigUnresolved => Rc::new(NamedEdgeTargetLookup::Absent),
+        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
+            Rc::new(NamedEdgeTargetLookup::Absent)
+        }
     }
 }
 
@@ -346,7 +347,14 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             inferred: raw_return.clone(),
                                             is_async: false,
                                             output_provenance: Rc::new(vec![]),
-                                            variant_provenance: v1_rt::rc_empty_map::<_, _>(),
+                                            variant_provenance: v1_rt::rc_empty_map::<
+                                                String,
+                                                HashMap<
+                                                    String,
+                                                    HashMap<String, Rc<SubValueRelation>>,
+                                                >,
+                                            >(
+                                            ),
                                         },
                                     })
                                 } else {
@@ -364,7 +372,14 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 inferred: qualified_return.clone(),
                                                 is_async: false,
                                                 output_provenance: Rc::new(vec![]),
-                                                variant_provenance: v1_rt::rc_empty_map::<_, _>(),
+                                                variant_provenance: v1_rt::rc_empty_map::<
+                                                    String,
+                                                    HashMap<
+                                                        String,
+                                                        HashMap<String, Rc<SubValueRelation>>,
+                                                    >,
+                                                >(
+                                                ),
                                             },
                                         })
                                     }
@@ -533,7 +548,11 @@ pub fn lookup_coproduct_common_field_node(
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(env.clone(), n.clone(), v1_rt::rc_empty_map::<_, _>())
+    resolve_scrutinee_type_node_seen(
+        env.clone(),
+        n.clone(),
+        v1_rt::rc_empty_map::<String, bool>(),
+    )
 }
 
 pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {

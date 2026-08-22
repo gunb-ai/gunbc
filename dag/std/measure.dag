@@ -692,7 +692,7 @@ type MoneyPerKilowattHour = MoneyRate<PerKilowattHour>
 
 type MoneyPerSquareFootYear = MoneyRate<PerSquareFootYear>
 
-data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, std.nat.Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
+data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
 
 fn money_rate_micros<P>(q: MoneyRate<P>) -> std.nat.Nat {
   money_amount_micro_count(m: q.amount)
@@ -735,7 +735,7 @@ fn billing_month_as_hour_count() -> std.nat.Nat {
 
 data billing_month_as_hour_count_note: String = "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote."
 
-data billing_month_as_hour_count_representation_note: String = "std.nat.Nat divisor via fn not Measure<Time, One, std.nat.Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), std.nat.Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
+data billing_month_as_hour_count_representation_note: String = "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
 
 fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
   MoneyPerHour {
@@ -802,7 +802,7 @@ fn character_count_value(c: CharacterCount) -> std.nat.Nat {
   measure_count(c)
 }
 
-data token_count_note: String = "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over std.nat.Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall."
+data token_count_note: String = "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall."
 
 fn token_count(count: std.nat.Nat) -> TokenCount {
   Measure { count: count }
@@ -951,7 +951,7 @@ fn percent_scale_hundred() -> Int {
   extdeps.units.dimensionless.percent_unity_hundred_count()
 }
 
-data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, std.nat.Nat>; percent(n) accepts literal std.nat.Nat only. Runtime eval refuses computed Int→std.nat.Nat cast (runtime error: cannot cast Int to std.nat.Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=std.nat.Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
+data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
 
 type BasisPoint = Measure<Dimensionless, One, std.nat.Nat>
 
@@ -967,7 +967,7 @@ fn basis_point_unity_count() -> std.nat.Nat {
   extdeps.units.dimensionless.parts_per_ten_thousand_unity_count()
 }
 
-data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, std.nat.Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
+data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
 
 type AmortizationMonths = Measure<Count, One, std.nat.Nat>
 

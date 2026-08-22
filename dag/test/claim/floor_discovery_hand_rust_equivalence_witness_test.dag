@@ -57,13 +57,13 @@ fn fixture_live_tree_malformed_variant_content() -> String {
 fn fixture_live_tree_duplicate_decl_content() -> String {
   concat(
     "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\n",
-    "data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly\n"
+    "data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n"
   )
 }
 
 fn fixture_live_tree_trailing_comment_content() -> String {
   concat(
-    "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree // was v2.std.live_tree.SubstrateInputsOnly\n"
+    "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree // was SubstrateInputsOnly\n"
   )
 }
 

@@ -91,10 +91,8 @@ pub use crate::v1_std_core::{
     Cardinality, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
     MethodSemantics, NewlineIndex, StringPart, UnaryOpKind,
 };
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -542,30 +540,30 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: TypeEnv {
             module_path: "".to_string(),
-            bindings: v1_rt::rc_empty_map::<_, _>(),
-            str_bindings: v1_rt::rc_empty_map::<_, _>(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<_, _>(),
+            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: v1_rt::rc_empty_map::<_, _>(),
-            inductive_fields: v1_rt::rc_empty_map::<_, _>(),
-            source_indices: v1_rt::rc_empty_map::<_, _>(),
+            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: crate::v1_std_core::empty_intern_table(),
-            source_visible_names: v1_rt::rc_empty_map::<_, _>(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
         },
         func_env: ResolvedFuncEnv {
             name: "".to_string(),
-            local: v1_rt::rc_empty_map::<_, _>(),
+            local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             parents: Rc::new(vec![]),
         },
-        locals: v1_rt::rc_empty_map::<_, _>(),
-        body_locals: v1_rt::rc_empty_map::<_, _>(),
-        match_bound_names: v1_rt::rc_empty_map::<_, _>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
-        service_registry: v1_rt::rc_empty_map::<_, _>(),
-        item_registry: v1_rt::rc_empty_map::<_, _>(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<_, _>(),
+        service_registry: v1_rt::rc_empty_map::<String, Vec<Rc<OpEntry>>>(),
+        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
     })
 }
@@ -574,16 +572,16 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
-        locals: v1_rt::rc_empty_map::<_, _>(),
-        body_locals: v1_rt::rc_empty_map::<_, _>(),
-        match_bound_names: v1_rt::rc_empty_map::<_, _>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: crate::v1_std_core::authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),
         ),
-        service_registry: v1_rt::rc_empty_map::<_, _>(),
+        service_registry: v1_rt::rc_empty_map::<String, Vec<Rc<OpEntry>>>(),
         item_registry: typed_module.item_registry.clone(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<_, _>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
     })
 }

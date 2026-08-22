@@ -595,4 +595,4 @@ fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexi
   }
 }
 
-data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via v2.std.compilers.lexing.ModeledLexRules/v2.std.compilers.lexing.LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."
+data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via ModeledLexRules/LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."

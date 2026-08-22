@@ -23,8 +23,8 @@ fn is_kernel_type(name: String) -> Bool {
 // mitigatable. Trigger and the three-conjunct wall it needs (including the six service-operation
 // false-refusals a leaf-only test would hit): docs/plans/qualified-container-spelling-residual.md
 data container_type_arity: std.types.Map<String, Int> = {
-  "List": 1, "std.types.List": 1, "Set": 1, "std.types.Set": 1, "Map": 2, "std.types.Map": 2, "Witness": 1,
-  "v2.std.witness.Witness": 1
+  "List": 1, "List": 1, "Set": 1, "Set": 1, "Map": 2, "Map": 2, "Witness": 1,
+  "Witness": 1
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -59,7 +59,7 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
 
 data ordered_element_collections: std.types.Map<String, Bool> = {
   "List": true,
-  "std.types.List": true
+  "List": true
 }
 
 fn is_ordered_element_collection(name: String) -> Bool {
@@ -68,13 +68,13 @@ fn is_ordered_element_collection(name: String) -> Bool {
 
 data container_template_algebra_rows: std.types.Map<String, String> = {
   "List": "FreeMonoid",
-  "std.types.List": "FreeMonoid",
+  "List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
-  "std.types.Set": "PointwisePower",
+  "Set": "PointwisePower",
   "set": "PointwisePower",
   "Map": "PartialFunction",
-  "std.types.Map": "PartialFunction",
+  "Map": "PartialFunction",
   "map": "PartialFunction",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
@@ -84,21 +84,21 @@ data container_template_algebra_rows: std.types.Map<String, String> = {
   "partial_function": "PartialFunction",
   "PointwisePower": "PointwisePower",
   "pointwise_power": "PointwisePower",
-  "std.algebra.FreeMonoid": "FreeMonoid",
-  "std.algebra.BooleanAlgebra": "BooleanAlgebra",
-  "std.algebra.PointwisePower": "PointwisePower",
-  "std.algebra.PartialFunction": "PartialFunction"
+  "FreeMonoid": "FreeMonoid",
+  "BooleanAlgebra": "BooleanAlgebra",
+  "PointwisePower": "PointwisePower",
+  "PartialFunction": "PartialFunction"
 }
 
 data container_template_alias_rows: std.types.Map<String, String> = {
   "List": "FreeMonoid",
-  "std.types.List": "FreeMonoid",
+  "List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
-  "std.types.Set": "PointwisePower",
+  "Set": "PointwisePower",
   "set": "PointwisePower",
   "Map": "PartialFunction",
-  "std.types.Map": "PartialFunction",
+  "Map": "PartialFunction",
   "map": "PartialFunction"
 }
 
@@ -111,7 +111,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 }
 
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "std.types.Map", "PartialFunction", "Set", "std.types.Set", "Witness", "std.algebra.FreeMonoid", "v2.std.witness.Witness", "std.algebra.BooleanAlgebra", "std.algebra.PartialFunction"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "List", "Map", "Map", "PartialFunction", "Set", "Set", "Witness", "FreeMonoid", "Witness", "BooleanAlgebra", "PartialFunction"]
 }
 
 type Bool = True | False
@@ -133,7 +133,7 @@ fn list_length<T>(items: List<T>) -> Int {
 
 type CommitSha    = String
 
-data commit_sha_text_holds_note: String = "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: std.types.CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes."
+data commit_sha_text_holds_note: String = "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes."
 
 fn commit_sha_text_holds(head: String) -> Bool {
   head.length() == 40 && all(chars(s: head), cp =>

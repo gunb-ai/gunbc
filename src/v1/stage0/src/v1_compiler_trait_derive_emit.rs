@@ -3,6 +3,14 @@
 
 use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
+pub use crate::extdeps_languages_rust_capabilities::RustCapability;
+use crate::extdeps_languages_rust_capabilities::RustCapability::*;
+pub use crate::extdeps_languages_rust_capabilities::{
+    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
+    map_key_required_derive_traits, nullary_coproduct_derive_traits,
+    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
+    rust_capability_shape_table, symbol_wrapped_ord_carrier_derive_traits,
+};
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
     rust_btree_set_supplemental_generic_bound_rows,
@@ -15,16 +23,12 @@ pub use crate::extdeps_languages_rust_emit::{
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::*;
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::*;
 pub use crate::std_trait_derive_shape::{
-    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
-    map_key_required_derive_traits, nullary_coproduct_derive_traits,
-    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
-    repr_grounding_supplemental_bool_host_bridge_target, symbol_wrapped_ord_carrier_derive_traits,
+    repr_grounding_supplemental_bool_host_bridge_target,
 };
-pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGroundingDeriveTrait};
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -39,13 +43,12 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ContainerSpellingVerdict::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr,
+    param_node_type_expr, qualified_last_segment,
 };
 pub use crate::v1_std_core::{ContainerSpellingVerdict, NewlineIndex};
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -72,7 +75,7 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
 pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and std.types.List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
+            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -99,7 +102,7 @@ pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> String {
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because std.types.List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: std.types.List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone()).".to_string()
+            "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone()).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -204,13 +207,13 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 }
 
 pub fn v1_with_map_key_requirement(
-    base: Vec<ReprGroundingDeriveTrait>,
+    base: Rc<Vec<RustCapability>>,
     map_key_required: bool,
-) -> Vec<ReprGroundingDeriveTrait> {
+) -> Rc<Vec<RustCapability>> {
     if map_key_required.clone() {
-        crate::std_trait_derive_shape::derive_traits_union(
+        crate::extdeps_languages_rust_capabilities::derive_traits_union(
             base.clone(),
-            crate::std_trait_derive_shape::map_key_required_derive_traits(),
+            crate::extdeps_languages_rust_capabilities::map_key_required_derive_traits(),
         )
     } else {
         base.clone()
@@ -371,7 +374,7 @@ pub fn v1_map_key_round_add(
 pub fn map_key_alias_hop_gap_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `std.types.Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
+            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -431,7 +434,10 @@ pub fn v1_map_key_propagate_round(
 }
 
 pub fn map_has_declared_type(type_decl_items: HashMap<String, Rc<Node>>, name: String) -> bool {
-    match v1_rt::map_get(&type_decl_items, name.clone()) {
+    match v1_rt::map_get(
+        &type_decl_items,
+        crate::v1_std_core::qualified_last_segment(name.clone()),
+    ) {
         Some(_) => true,
         None => false,
     }
@@ -543,19 +549,17 @@ pub fn v1_freemonoid_row_route(
     row: Rc<RustVecSupplementalGenericBoundRow>,
 ) -> Option<V1FreeMonoidSupplementalRoute> {
     match row.derive_trait.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveDebug => {
+        RustCapability::RustDebug => Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl),
+        RustCapability::RustPartialEq => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl)
         }
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => {
-            Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl)
-        }
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => {
+        RustCapability::RustSerialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => {
+        RustCapability::RustDeserialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
-        _ => None,
+        _ => Rc::new(NamedEdgeTargetLookup::Absent),
     }
 }
 
@@ -577,20 +581,36 @@ pub fn v1_freemonoid_unroutable_row_refusal() -> String {
     }
 }
 
-pub fn v1_freemonoid_hand_written_traits() -> Vec<ReprGroundingDeriveTrait> {
+pub fn v1_freemonoid_hand_written_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in Rc::new({ let mut __result = Vec::new(); for row in crate::extdeps_languages_rust_derive_contracts::rust_vec_freemonoid_supplemental_generic_bound_rows().iter().cloned() { if match v1_freemonoid_row_route(row.clone()) {
-    Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl) => true,
-    _ => false,
-} { __result.push(row); } } __result }).iter().cloned() { __result.push(row.derive_trait.clone()); }
+        for row in Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl) => true,
+                    _ => false,
+                } {
+                    __result.push(row);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(row.derive_trait.clone());
+        }
         __result
     })
 }
 
 pub fn v1_freemonoid_filter_hand_written(
-    traits: Vec<ReprGroundingDeriveTrait>,
-) -> Vec<ReprGroundingDeriveTrait> {
+    traits: Rc<Vec<RustCapability>>,
+) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for t in traits.clone().iter().cloned() {
@@ -841,7 +861,7 @@ pub fn v1_freemonoid_serde_bound_attr(
 pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: std.types.Set<P> } realizes std.types.Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised std.types.Set<P> generic field in the corpus (verified: the sole generic std.types.Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic std.types.Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
+            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -912,7 +932,7 @@ pub fn v1_set_unroutable_row_refusal() -> String {
     }
 }
 
-pub fn v1_set_hand_written_traits() -> Vec<ReprGroundingDeriveTrait> {
+pub fn v1_set_hand_written_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
@@ -939,9 +959,7 @@ pub fn v1_set_hand_written_traits() -> Vec<ReprGroundingDeriveTrait> {
     })
 }
 
-pub fn v1_set_filter_hand_written(
-    traits: Vec<ReprGroundingDeriveTrait>,
-) -> Vec<ReprGroundingDeriveTrait> {
+pub fn v1_set_filter_hand_written(traits: Rc<Vec<RustCapability>>) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for t in traits.clone().iter().cloned() {
@@ -962,9 +980,7 @@ pub fn v1_set_filter_hand_written(
     })
 }
 
-pub fn v1_set_required_traits_for(
-    derive_trait: ReprGroundingDeriveTrait,
-) -> Vec<ReprGroundingDeriveTrait> {
+pub fn v1_set_required_traits_for(derive_trait: RustCapability) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
@@ -988,7 +1004,7 @@ pub fn v1_set_required_traits_for(
     })
 }
 
-pub fn v1_set_supplemental_bound_spelling_for(derive_trait: ReprGroundingDeriveTrait) -> String {
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
     unique_strings(Rc::new({
         let mut __result = Vec::new();
         for t in v1_set_required_traits_for(derive_trait.clone())
@@ -1007,10 +1023,8 @@ pub fn v1_set_serde_bound_attr(
     set_params: Vec<String>,
 ) -> String {
     {
-        let ser_supplement =
-            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveSerialize);
-        let de_supplement =
-            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+        let ser_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustSerialize);
+        let de_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustDeserialize);
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
             for p in generic_param_names.clone().iter().cloned() {
@@ -1086,9 +1100,9 @@ pub fn v1_set_serde_bound_attr(
 }
 
 pub fn v1_set_serde_bound_attr_for_traits(
-    traits: Vec<ReprGroundingDeriveTrait>,
-    generic_param_names: Vec<String>,
-    set_params: Vec<String>,
+    traits: Rc<Vec<RustCapability>>,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
 ) -> String {
     if ((set_params.clone().len() as i64) == 0) {
         "".to_string()
@@ -1101,7 +1115,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                 if !({
                     let mut __found = false;
                     for t in traits.clone().iter().cloned() {
-                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveSerialize) {
+                        if (t.clone() == RustCapability::RustSerialize) {
                             __found = true;
                             break;
                         }
@@ -1110,7 +1124,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                 } && {
                     let mut __found = false;
                     for t in traits.clone().iter().cloned() {
-                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                        if (t.clone() == RustCapability::RustDeserialize) {
                             __found = true;
                             break;
                         }
@@ -1533,8 +1547,8 @@ pub fn v1_set_impl_type_params(
     set_params: Vec<String>,
     field_type_exprs: Vec<Rc<Node>>,
     structural_spelling: String,
-    derive_trait: ReprGroundingDeriveTrait,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    derive_trait: RustCapability,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((generic_param_names.clone().len() as i64) == 0) {
         "".to_string()
@@ -1605,7 +1619,7 @@ pub fn v1_set_enum_debug_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
-            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            RustCapability::RustDebug,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -1705,7 +1719,7 @@ pub fn v1_set_enum_partial_eq_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
-            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            RustCapability::RustPartialEq,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -1863,7 +1877,7 @@ pub fn v1_set_enum_partial_eq_impl(
 pub fn trait_derive_emit_ord_propagation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct std.types.Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is std.types.Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct std.types.Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
+            "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2007,7 +2021,7 @@ pub fn v1_set_struct_debug_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
-            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            RustCapability::RustDebug,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -2051,7 +2065,7 @@ pub fn v1_set_struct_partial_eq_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
-            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            RustCapability::RustPartialEq,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -2126,7 +2140,7 @@ pub fn v1_emit_struct_derives(
             v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat("trait_derive_emit: '".to_string(), name.clone()), "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster".to_string()))
         } else {
             crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                crate::std_trait_derive_shape::fn_field_derive_traits(),
+                crate::extdeps_languages_rust_capabilities::fn_field_derive_traits(),
             )
         }
     } else {
@@ -2137,17 +2151,13 @@ pub fn v1_emit_struct_derives(
                     children.clone(),
                     source_indices.clone(),
                 );
-                let traits = v1_with_map_key_requirement(
-                    crate::std_trait_derive_shape::symbol_wrapped_ord_carrier_derive_traits(),
-                    map_key_required.clone(),
-                );
-                if crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(
+                let traits = v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::symbol_wrapped_ord_carrier_derive_traits(), map_key_required.clone());
+                if repr_grounding_derive_completeness_predicate(
+                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
                     traits.clone(),
                     shape.clone(),
                 ) {
-                    crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                        traits.clone(),
-                    )
+                    rust_trait_derive_attr_from_traits(traits.clone())
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: symbol-wrapped ord carrier refused".to_string(),
@@ -2158,14 +2168,14 @@ pub fn v1_emit_struct_derives(
             if v1_rt::set_contains(&shared_types, name.clone()) {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
                     v1_with_map_key_requirement(
-                        crate::std_trait_derive_shape::record_derive_traits_heap(),
+                        crate::extdeps_languages_rust_capabilities::record_derive_traits_heap(),
                         map_key_required.clone(),
                     ),
                 )
             } else {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
                     v1_with_map_key_requirement(
-                        crate::std_trait_derive_shape::record_derive_traits_copy(),
+                        crate::extdeps_languages_rust_capabilities::record_derive_traits_copy(),
                         map_key_required.clone(),
                     ),
                 )
@@ -2188,7 +2198,7 @@ pub fn v1_emit_enum_derives(
                     return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster".to_string());
                 }
                 return crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    crate::std_trait_derive_shape::fn_field_derive_traits(),
+                    crate::extdeps_languages_rust_capabilities::fn_field_derive_traits(),
                 );
             }
         }
@@ -2202,20 +2212,7 @@ pub fn v1_emit_enum_derives(
             )
         };
         if ((fm_params.clone().len() as i64) > 0) {
-            return v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_freemonoid_unroutable_row_refusal(),
-                        crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                            v1_freemonoid_filter_hand_written(
-                                crate::std_trait_derive_shape::payload_coproduct_derive_traits(),
-                            ),
-                        ),
-                    ),
-                    "\n".to_string(),
-                ),
-                v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()),
-            );
+            return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_freemonoid_unroutable_row_refusal(), crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits()))), "\n".to_string()), v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()));
         }
         let set_params = if map_key_required.clone() {
             Rc::new(vec![])
@@ -2231,11 +2228,11 @@ pub fn v1_emit_enum_derives(
             source_indices.clone(),
         );
         let nullary_traits = v1_with_map_key_requirement(
-            nullary_coproduct_derive_traits(),
+            crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(),
             map_key_required.clone(),
         );
         let payload_traits = v1_with_map_key_requirement(
-            payload_coproduct_derive_traits(),
+            crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits(),
             map_key_required.clone(),
         );
         let set_row_refusal = if ((set_params.clone().len() as i64) > 0) {
@@ -2246,6 +2243,7 @@ pub fn v1_emit_enum_derives(
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
+                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
@@ -2276,6 +2274,7 @@ pub fn v1_emit_enum_derives(
             }
             ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
                 if repr_grounding_derive_completeness_predicate(
+                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
@@ -2597,7 +2596,10 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                 }) {
                     true
                 } else {
-                    match v1_rt::map_get(&type_decl_items, name.clone()) {
+                    match v1_rt::map_get(
+                        &type_decl_items,
+                        crate::v1_std_core::qualified_last_segment(name.clone()),
+                    ) {
                         Some(decl) => v1_declared_type_app_mentions_param_non_phantom(
                             param_name.clone(),
                             name.clone(),
@@ -3028,8 +3030,11 @@ pub fn v1_type_expr_head_is_known(
     name: String,
     type_decl_items: HashMap<String, Rc<Node>>,
 ) -> bool {
-    (crate::std_types::is_container_type(name.clone())
-        || (v1_rt::map_get(&type_decl_items, name.clone()) != None))
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        (crate::std_types::is_container_type(leaf.clone())
+            || (v1_rt::map_get(&type_decl_items, leaf.clone()) != None))
+    }
 }
 
 pub fn v1_item_generic_param_name_set(
@@ -3102,7 +3107,10 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                match v1_rt::map_get(
+                    &type_decl_items,
+                    crate::v1_std_core::qualified_last_segment(name.clone()),
+                ) {
                     Some(decl) => v1_declared_type_app_clone_impl_needs_param(
                         param_name.clone(),
                         name.clone(),
@@ -3311,7 +3319,10 @@ pub fn v1_type_expr_wf_needs_clone_param(
                     }
                     __found
                 };
-                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                match v1_rt::map_get(
+                    &type_decl_items,
+                    crate::v1_std_core::qualified_last_segment(name.clone()),
+                ) {
                     Some(decl) => {
                         let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
                             Some(s) => s.clone(),
@@ -3653,7 +3664,7 @@ pub fn v1_clone_bounded_type_params(
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.clone().iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<_, _>(),
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
@@ -3723,7 +3734,7 @@ pub fn v1_clone_impl_required_type_params(
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.clone().iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<_, _>(),
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
@@ -3816,8 +3827,8 @@ pub fn v1_emit_type_params_with_clone_bounds(
     v1_emit_type_params_with_bounds(
         params.clone(),
         clone_param_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+            v1_rt::rc_empty_map::<String, Vec<String>>(),
+            |m: HashMap<String, Vec<String>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
             },
         ),
@@ -3863,9 +3874,9 @@ pub fn v1_emit_struct_from_capability_table(
         if ((fm_params.clone().len() as i64) > 0) {
             {
                 let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                    crate::std_trait_derive_shape::record_derive_traits_heap()
+                    crate::extdeps_languages_rust_capabilities::record_derive_traits_heap()
                 } else {
-                    crate::std_trait_derive_shape::record_derive_traits_copy()
+                    crate::extdeps_languages_rust_capabilities::record_derive_traits_copy()
                 };
                 let derive_attr = v1_rt::concat(
                     v1_rt::concat(
@@ -3930,9 +3941,9 @@ pub fn v1_emit_struct_from_capability_table(
                 if ((ord_propagated_params.clone().len() as i64) > 0) {
                     {
                         let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                            record_derive_traits_heap()
+                            crate::extdeps_languages_rust_capabilities::record_derive_traits_heap()
                         } else {
-                            record_derive_traits_copy()
+                            crate::extdeps_languages_rust_capabilities::record_derive_traits_copy()
                         };
                         let set_row_refusal = v1_set_unroutable_row_refusal();
                         let derived_traits = v1_set_filter_hand_written(base.clone());
@@ -3986,16 +3997,8 @@ pub fn v1_emit_struct_from_capability_table(
                             map_key_required.clone(),
                             source_indices.clone(),
                         );
-                        let impl_bodies = if (repr_grounding_group_completion_carrier(
-                            module_path.clone(),
-                            name.clone(),
-                        ) && repr_grounding_derive_completeness_predicate(
-                            kernel_int_arithmetic_traits(),
-                            ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
-                        )) {
-                            rust_supplemental_impls_group_completion(
-                                carrier_param_needs_clone.clone(),
-                            )
+                        let impl_bodies = if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
+                            rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
                         } else {
                             "".to_string()
                         };
@@ -4105,7 +4108,8 @@ pub fn v1_emit_enum_supplemental_impls(
                     module_path.clone(),
                     name.clone(),
                 ) && repr_grounding_derive_completeness_predicate(
-                    nullary_coproduct_derive_traits(),
+                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
+                    crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(),
                     ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
                 )) {
                     crate::extdeps_languages_rust_emit::rust_supplemental_impls_bool_coproduct()
@@ -4157,7 +4161,7 @@ pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> Rc<DissolutionCondi
 pub fn trait_derive_emit_v1_coproduct_shape_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 v1.std.core.Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string())
+            crate::std_dissolution::unbound_dissolution("v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

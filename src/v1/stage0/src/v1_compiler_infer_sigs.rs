@@ -19,9 +19,8 @@ pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_nod
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex,
 };
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_node::{Edge, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Edge, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -95,7 +94,7 @@ pub fn flatten_parent_envs(
         });
         let dedup = ordered.clone().iter().cloned().fold(
             Rc::new(FlattenAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
@@ -123,7 +122,7 @@ pub struct ParentSigScan {
 pub fn func_sig_lookup_outcome_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 / 8 step 1, fn path: v1.compiler.infer_sigs.ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms.".to_string()
+            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -265,7 +264,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
 }
 
 pub fn none_resolved_sig() -> Option<Rc<ResolvedFuncSig>> {
-    None
+    Rc::new(NamedEdgeTargetLookup::Absent)
 }
 
 pub fn collect_func_call_edges(
@@ -698,7 +697,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

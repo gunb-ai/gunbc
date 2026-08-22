@@ -14,10 +14,8 @@ pub use crate::v1_std_core::{
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex};
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -100,7 +98,7 @@ pub fn collect_typed_service_calls(
         let result = collect_typed_service_calls_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -196,7 +194,7 @@ pub fn collect_called_func_names(
         let result = collect_called_func_names_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),

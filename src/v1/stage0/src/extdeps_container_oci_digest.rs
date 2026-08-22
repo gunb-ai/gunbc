@@ -13,7 +13,6 @@ use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -171,9 +170,9 @@ pub fn oci_other_digest_encoded(value: String) -> bool {
     oci_encoded_digest_syntax_valid(value.clone(), 0)
 }
 
-pub type OciOtherDigestAlgorithm = crate::v2_std_text::String;
+pub type OciOtherDigestAlgorithm = String;
 
-pub type OciOtherDigestEncoded = crate::v2_std_text::String;
+pub type OciOtherDigestEncoded = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciOtherDigestBody {

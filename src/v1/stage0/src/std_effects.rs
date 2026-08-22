@@ -15,7 +15,6 @@ use crate::std_types::HttpMethod::*;
 pub use crate::std_types::{HttpMethod, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -53,7 +52,7 @@ pub enum CreateCause<K> {
 pub fn keyless_fallback_cause_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "std.effects.KeylessFallback de-conflates std.effects.PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered std.effects.PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for std.effects.KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.".to_string()
+            "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -92,7 +91,7 @@ impl IdempotencyEvidence {
 pub fn generic_predicate_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "EffectShape<K>/std.effects.CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
+            "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

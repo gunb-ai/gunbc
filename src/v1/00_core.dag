@@ -154,7 +154,7 @@ type CompilerDiagnostic
   | SoleConstructorViolation { type_name: String, span: std.types.SourceSpan }
   | OptionalCastNotEliminated { source_type: String, target_type: String, span: std.types.SourceSpan }
   | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: std.types.SourceSpan }
-  | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
+  | SourceAnnotationRefused { refusal: std.source_annotation.AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
       constructor_module_path: String,
       constructor_decl_name: String,

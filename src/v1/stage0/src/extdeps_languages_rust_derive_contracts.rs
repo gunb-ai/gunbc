@@ -2,6 +2,8 @@
 // Source module: extdeps.languages.rust.derive_contracts
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_languages_rust_capabilities::RustCapability;
+use crate::extdeps_languages_rust_capabilities::RustCapability::*;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_decl_ref::DeclField::*;
@@ -9,8 +11,6 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::*;
 use crate::std_disposition::Disposition::*;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
-pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::*;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -226,8 +226,8 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustVecSupplementalGenericBoundRow {
-    pub derive_trait: ReprGroundingDeriveTrait,
-    pub required: ReprGroundingDeriveTrait,
+    pub derive_trait: RustCapability,
+    pub required: RustCapability,
     pub authority: Rc<ExternalAuthority>,
 }
 
@@ -236,20 +236,20 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
     thread_local! {
             static CACHED: Vec<Rc<RustVecSupplementalGenericBoundRow>> = {
                 Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDebug,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustDebug,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_vector_debug_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDerivePartialEq,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustPartialEq,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_vector_partial_eq_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustSerialize,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_vector_serialize_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustDeserialize,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_vector_deserialize_impl_authority(),
     })])
             };
@@ -271,28 +271,28 @@ pub fn rust_btree_set_supplemental_generic_bound_rows(
     thread_local! {
             static CACHED: Vec<Rc<RustVecSupplementalGenericBoundRow>> = {
                 Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDebug,
-        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        derive_trait: RustCapability::RustDebug,
+        required: RustCapability::RustOrd,
         authority: im_15_1_0_ord_set_debug_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDerivePartialEq,
-        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        derive_trait: RustCapability::RustPartialEq,
+        required: RustCapability::RustOrd,
         authority: im_15_1_0_ord_set_partial_eq_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        derive_trait: RustCapability::RustSerialize,
+        required: RustCapability::RustOrd,
         authority: im_15_1_0_ord_set_serialize_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustSerialize,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_ord_set_serialize_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        derive_trait: RustCapability::RustDeserialize,
+        required: RustCapability::RustOrd,
         authority: im_15_1_0_ord_set_deserialize_impl_authority(),
     }), Rc::new(RustVecSupplementalGenericBoundRow {
-        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        derive_trait: RustCapability::RustDeserialize,
+        required: RustCapability::RustClone,
         authority: im_15_1_0_ord_set_deserialize_impl_authority(),
     })])
             };

@@ -127,7 +127,7 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
       atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
     Present { value: v1.std.core.VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
       let base = atom_identity_hash(concat(
-        "v1.std.core.VariantPattern:", n, "|",
+        "VariantPattern:", n, "|",
         match pe { Present { value: p } => p  Absent => "" }))
       let field_hashes = fbs |> map(f => dag_node_surface_fingerprint_rec(node: f))
       hash_combine(base, dag_node_seq_hash(digests: field_hashes))

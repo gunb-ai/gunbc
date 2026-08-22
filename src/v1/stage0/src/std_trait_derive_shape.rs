@@ -6,7 +6,6 @@ use self::PairCompletionComponent::*;
 use self::PairCompletionOp::*;
 use self::PairCompletionOperand::*;
 use self::ReprGroundingDeriveElemShape::*;
-pub use crate::std_algebra::FreeMonoid;
 use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::*;
@@ -69,7 +68,7 @@ pub enum ReprGroundingDeriveElemShape {
     ReprDeriveElemUnknown,
 }
 
-pub fn repr_grounding_derive_shape_has_trait<K: Clone + PartialEq>(
+pub fn repr_grounding_derive_shape_has_trait<K: Clone>(
     table: Rc<TargetCapabilityShapeTable<K>>,
     shape: ReprGroundingDeriveElemShape,
     capability_key: K,
@@ -95,7 +94,7 @@ pub fn repr_grounding_derive_shape_has_trait<K: Clone + PartialEq>(
     }
 }
 
-pub fn repr_grounding_derive_completeness_predicate<K: Clone + PartialEq>(
+pub fn repr_grounding_derive_completeness_predicate<K: Clone>(
     table: Rc<TargetCapabilityShapeTable<K>>,
     required: Rc<Vec<K>>,
     shape: ReprGroundingDeriveElemShape,

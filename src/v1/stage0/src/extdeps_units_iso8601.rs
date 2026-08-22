@@ -4,10 +4,9 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v2_std_nat::Nat;
-use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -36,10 +35,10 @@ pub fn iso8601_duration_units_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn iso8601_seconds_per_minute() -> Rc<Nat> {
+pub fn iso8601_seconds_per_minute() -> Nat {
     60
 }
 
-pub fn iso8601_minutes_per_hour() -> Rc<Nat> {
+pub fn iso8601_minutes_per_hour() -> Nat {
     60
 }

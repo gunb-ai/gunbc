@@ -32,11 +32,14 @@ use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::PositiveDescentAmount::*;
+use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     descent_evidence_lattice_meet, map_evidence_merge_at, optional_evidence_meet,
 };
-pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, ProofEdge};
-pub use crate::std_types::{List, Map, Set};
+pub use crate::std_termination::{
+    DescentEvidence, PositiveDescentAmount, ProofEdge, RankingDimension, TerminationProof,
+};
+pub use crate::std_types::{List, Map, Set, SourceSpan};
 pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_infer_sigs::CallEdge;
 pub use crate::v1_compiler_infer_types::{node_is_collection, resolved_type};
@@ -62,11 +65,8 @@ pub use crate::v1_std_core::{
     return_value,
 };
 pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex};
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_cardinality::TerminationProof;
-pub use crate::v2_std_collection::empty_map;
-pub use crate::v2_std_node::{Edge, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Edge, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -154,7 +154,7 @@ pub struct CostInternTable {
 
 pub fn empty_cost_intern_table() -> Rc<CostInternTable> {
     Rc::new(CostInternTable {
-        summaries: v1_rt::rc_empty_map::<_, _>(),
+        summaries: v1_rt::rc_empty_map::<String, Rc<ComplexitySummary>>(),
     })
 }
 
@@ -186,7 +186,7 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
         Rc::new(ComplexitySummary {
             work: Rc::new(CostExpr::CostConst { value: 0 }),
             span: Rc::new(CostExpr::CostConst { value: 0 }),
-            output_size: v1_rt::rc_empty_map::<_, _>(),
+            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
             certainty: Certainty::Proven,
             peak_space: None,
         }),
@@ -316,9 +316,9 @@ pub fn method_callback_element_position(
         Some(MethodSemantics::AlgebraMethodSemantics {
             algebra_template: at,
             ..
-        }) => match at.clone() {
+        }) => match (*at.clone()).clone() {
             Some(template) => panic!("error type cascade"),
-            None => None,
+            NamedEdgeTargetLookup::Absent => None,
         },
         _ => None,
     }
@@ -366,8 +366,8 @@ pub fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
 
 pub fn empty_parser_progress_env() -> Rc<ParserProgressEnv> {
     Rc::new(ParserProgressEnv {
-        state_aliases: v1_rt::rc_empty_map::<_, _>(),
-        result_sources: v1_rt::rc_empty_map::<_, _>(),
+        state_aliases: v1_rt::rc_empty_map::<String, DescentEvidence>(),
+        result_sources: v1_rt::rc_empty_map::<String, Rc<ParserResultSource>>(),
     })
 }
 
@@ -1365,7 +1365,7 @@ pub fn parser_member_is_always_advancing(
                 parser_name_set.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<_, _>(),
+                v1_rt::rc_empty_map::<String, bool>(),
                 si.clone(),
             );
             ({
@@ -1385,7 +1385,7 @@ pub fn parser_member_is_always_advancing(
                 state_param.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<_, _>(),
+                v1_rt::rc_empty_map::<String, bool>(),
                 si.clone(),
             ) == DescentEvidence::Strict))
         }
@@ -1495,7 +1495,7 @@ pub fn infer_parser_always_advancing_members(
             func_index.clone(),
             parser_name_set.clone(),
             reverse_graph.clone(),
-            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<String, bool>(),
             si.clone(),
         )
     }
@@ -1678,7 +1678,7 @@ pub fn collect_parser_edges_for_scc(
                                             scc_name_set.clone(),
                                             empty_parser_progress_env(),
                                             parser_always_advancing.clone(),
-                                            v1_rt::rc_empty_map::<_, _>(),
+                                            v1_rt::rc_empty_map::<String, bool>(),
                                             si.clone(),
                                         ),
                                         None => Rc::new(vec![]),
@@ -2246,7 +2246,7 @@ pub fn target_call_has_arithmetic_descent(
                     let callee_measure_params =
                         match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                             Some(params) => params.clone(),
-                            None => v1_rt::rc_empty_map::<_, _>(),
+                            None => v1_rt::rc_empty_map::<String, String>(),
                         };
                     {
                         let mut __found = false;
@@ -2421,7 +2421,7 @@ pub fn condition_param_names(
                 let name = expr_var_name_at(expr.clone(), si.clone());
                 match v1_rt::map_get(&param_set, name.clone()) {
                     Some(_) => seed_string_map(name.clone(), name.clone()),
-                    None => v1_rt::rc_empty_map::<_, _>(),
+                    None => v1_rt::rc_empty_map::<String, String>(),
                 }
             }
             _ => expr.children.clone().iter().cloned().fold(
@@ -2464,7 +2464,7 @@ pub fn recursive_measure_param_names(
                     Some(eb) => {
                         recursive_measure_param_names(eb.clone(), params.clone(), si.clone())
                     }
-                    None => v1_rt::rc_empty_map::<_, _>(),
+                    None => v1_rt::rc_empty_map::<String, String>(),
                 };
                 v1_rt::rc_map_merge(
                     v1_rt::rc_map_merge(
@@ -2501,7 +2501,7 @@ pub fn recursive_measure_param_names(
             }
             ExprData::ExprLet => match let_body(body.clone()) {
                 Some(b) => recursive_measure_param_names(b.clone(), params.clone(), si.clone()),
-                None => v1_rt::rc_empty_map::<_, _>(),
+                None => v1_rt::rc_empty_map::<String, String>(),
             },
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, String>(),
@@ -3651,7 +3651,7 @@ pub fn all_self_calls_descend(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         si.clone(),
@@ -4381,7 +4381,7 @@ pub fn try_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         false,
@@ -4401,7 +4401,7 @@ pub fn try_branching_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         true,
@@ -5131,7 +5131,7 @@ pub fn construct_termination_proof(
                         self_set.clone(),
                         empty_parser_progress_env(),
                         parser_always_advancing.clone(),
-                        v1_rt::rc_empty_map::<_, _>(),
+                        v1_rt::rc_empty_map::<String, bool>(),
                         si.clone(),
                     );
                     if (((edges.clone().len() as i64) > 0) && {
@@ -6016,7 +6016,7 @@ pub fn collect_scc_child_edges(
                         let callee_params =
                             match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                                 Some(p) => p.clone(),
-                                None => v1_rt::rc_empty_map::<_, _>(),
+                                None => v1_rt::rc_empty_map::<String, String>(),
                             };
                         let progress = body.children.clone().iter().cloned().fold(
                             DescentEvidence::DescentUnknown,
@@ -6549,7 +6549,7 @@ pub fn is_scc_container_child_descent(
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
+                                        v1_rt::rc_empty_map::<String, bool>(),
                                         true,
                                         true,
                                         si.clone(),
@@ -6654,7 +6654,7 @@ pub fn collect_scc_proof_edges_for_dim(
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
+                                        v1_rt::rc_empty_map::<String, bool>(),
                                         check_child.clone(),
                                         check_list.clone(),
                                         si.clone(),
@@ -6762,7 +6762,7 @@ pub fn collect_scc_independent_dim_edges(
                                     let tree_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
+                                        v1_rt::rc_empty_map::<String, bool>(),
                                         true,
                                         false,
                                         si.clone(),
@@ -6792,7 +6792,7 @@ pub fn collect_scc_independent_dim_edges(
                                     let list_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
+                                        v1_rt::rc_empty_map::<String, bool>(),
                                         false,
                                         true,
                                         si.clone(),
@@ -6919,7 +6919,7 @@ pub fn collect_scc_tree_parser_dim_edges(
                                             let tree_vars = collect_descent_vars(
                                                 entry.body.clone(),
                                                 pname.clone(),
-                                                v1_rt::rc_empty_map::<_, _>(),
+                                                v1_rt::rc_empty_map::<String, bool>(),
                                                 true,
                                                 false,
                                                 si.clone(),
@@ -7626,7 +7626,7 @@ pub fn build_scc_index(
         let result = topo_order.clone().iter().cloned().fold(
             Rc::new(SccBuildAcc {
                 assigned: v1_rt::rc_empty_set::<String>(),
-                index: v1_rt::rc_empty_map::<_, _>(),
+                index: v1_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
             |acc: Rc<SccBuildAcc>, name: String| {
                 if v1_rt::set_contains(&acc.assigned.clone(), name.clone()) {
@@ -7824,7 +7824,7 @@ pub fn cost_account_space_from_summary_note() -> String {
 pub fn cost_account_space_from_summary(
     summary: Rc<ComplexitySummary>,
     size_env: Rc<HashMap<String, i64>>,
-) -> Option<Rc<Measure<(), (), Rc<Nat>>>> {
+) -> Option<Rc<Measure<(), (), Nat>>> {
     match summary.peak_space.clone() {
         Some(ps) => match eval_cost_expr_concrete(ps.clone(), size_env.clone()) {
             Some(bytes) => Some(byte_size(bytes.clone())),
@@ -8013,7 +8013,7 @@ pub fn collection_output(binder: String, size: Rc<SizeExpr>) -> Rc<HashMap<Strin
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    v1_rt::rc_empty_map::<_, _>()
+    v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -8165,7 +8165,7 @@ pub fn resolve_callback_cost(
             summary: Rc::new(ComplexitySummary {
                 work: Rc::new(CostExpr::CostConst { value: 1 }),
                 span: Rc::new(CostExpr::CostConst { value: 1 }),
-                output_size: v1_rt::rc_empty_map::<_, _>(),
+                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: Certainty::Conservative,
                 peak_space: None,
             }),
@@ -8246,7 +8246,7 @@ pub fn cost_of_method_by_shape(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 1 }),
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -8297,7 +8297,7 @@ pub fn cost_of_method_by_shape(
                     ),
                 )
             } else {
-                v1_rt::rc_empty_map::<_, _>()
+                v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
             };
             Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
@@ -8320,7 +8320,7 @@ pub fn cost_of_method_by_shape(
                     recv_r.summary.clone().span.clone(),
                     Rc::new(CostExpr::CostConst { value: 1 }),
                 ),
-                output_size: v1_rt::rc_empty_map::<_, _>(),
+                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: recv_r.summary.clone().certainty.clone(),
                 peak_space: None,
             }),
@@ -8356,9 +8356,9 @@ pub struct ComplexityReport {
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
-        function_classes: v1_rt::rc_empty_map::<_, _>(),
-        space_classes: v1_rt::rc_empty_map::<_, _>(),
-        function_space_bytes: v1_rt::rc_empty_map::<_, _>(),
+        function_classes: v1_rt::rc_empty_map::<String, String>(),
+        space_classes: v1_rt::rc_empty_map::<String, String>(),
+        function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
         violations: Rc::new(vec![]),
         structural_bounds: Rc::new(vec![]),
     })
@@ -8836,7 +8836,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
         let unique = deduplicate(size_names.clone());
         if ((unique.clone().len() as i64) == 0) {
             Rc::new(Legend {
-                substitution: v1_rt::rc_empty_map::<_, _>(),
+                substitution: v1_rt::rc_empty_map::<String, String>(),
                 suffix: "".to_string(),
             })
         } else {
@@ -8851,7 +8851,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                         suffix: "".to_string(),
                     }),
                     None => Rc::new(Legend {
-                        substitution: v1_rt::rc_empty_map::<_, _>(),
+                        substitution: v1_rt::rc_empty_map::<String, String>(),
                         suffix: "".to_string(),
                     }),
                 }
@@ -8859,7 +8859,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                 {
                     let indexed = unique.clone().iter().cloned().fold(
                         Rc::new(Legend {
-                            substitution: v1_rt::rc_empty_map::<_, _>(),
+                            substitution: v1_rt::rc_empty_map::<String, String>(),
                             suffix: "".to_string(),
                         }),
                         |acc: Rc<Legend>, name: String| {
@@ -9061,7 +9061,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
             Rc::new(DeduplicateAcc {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<DeduplicateAcc>, item: String| match v1_rt::map_get(
@@ -9129,7 +9129,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9139,7 +9139,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9149,7 +9149,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9192,7 +9192,7 @@ pub fn cost_of_expr(
                                 rr.summary.clone().span.clone(),
                             ),
                         ),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -9215,7 +9215,7 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 1 }),
                             span: Rc::new(CostExpr::CostConst { value: 1 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -9227,13 +9227,13 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 0 }),
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
                         table: callee_result.table.clone(),
                     }),
-                    |acc: _, a: Rc<Node>| {
+                    |acc: Rc<SummaryResult>, a: Rc<Node>| {
                         let ar = cost_of_expr(
                             arg_value(a.clone()),
                             func_index.clone(),
@@ -9253,7 +9253,7 @@ pub fn cost_of_expr(
                                     acc.summary.clone().span.clone(),
                                     ar.summary.clone().span.clone(),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9329,7 +9329,7 @@ pub fn cost_of_expr(
                                             recv_r.summary.clone().span.clone(),
                                             Rc::new(CostExpr::CostConst { value: 1 }),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: recv_r.summary.clone().certainty.clone(),
                                         peak_space: None,
                                     }),
@@ -9348,13 +9348,13 @@ pub fn cost_of_expr(
                                 summary: Rc::new(ComplexitySummary {
                                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                     certainty: Certainty::Proven,
                                     peak_space: None,
                                 }),
                                 table: recv_r.table.clone(),
                             }),
-                            |acc: _, a: Rc<Node>| {
+                            |acc: Rc<SummaryResult>, a: Rc<Node>| {
                                 let ar = cost_of_expr(
                                     arg_value(a.clone()),
                                     func_index.clone(),
@@ -9374,7 +9374,7 @@ pub fn cost_of_expr(
                                             acc.summary.clone().span.clone(),
                                             ar.summary.clone().span.clone(),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: Certainty::Proven,
                                         peak_space: None,
                                     }),
@@ -9398,7 +9398,7 @@ pub fn cost_of_expr(
                                         args_result.summary.clone().span.clone(),
                                     ),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9425,7 +9425,7 @@ pub fn cost_of_expr(
                             summary: Rc::new(ComplexitySummary {
                                 work: Rc::new(CostExpr::CostConst { value: 0 }),
                                 span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9531,7 +9531,7 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 0 }),
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -9608,13 +9608,13 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 0 }),
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: _, s: Rc<Node>| {
+                |acc: Rc<SummaryResult>, s: Rc<Node>| {
                     let sr = cost_of_expr(
                         s.clone(),
                         func_index.clone(),
@@ -9674,7 +9674,7 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: cost_seq(c_r.summary.clone().work.clone(), loop_work.clone()),
                         span: cost_seq(c_r.summary.clone().span.clone(), loop_work.clone()),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: bd_r.summary.clone().certainty.clone(),
                         peak_space: None,
                     }),
@@ -9686,13 +9686,13 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 0 }),
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: _, child: Rc<Node>| {
+                |acc: Rc<SummaryResult>, child: Rc<Node>| {
                     let cr = cost_of_expr(
                         child.clone(),
                         func_index.clone(),
@@ -9725,13 +9725,13 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 1 }),
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: _, child: Rc<Node>| {
+                |acc: Rc<SummaryResult>, child: Rc<Node>| {
                     let cr = cost_of_expr(
                         child.clone(),
                         func_index.clone(),
@@ -9804,7 +9804,7 @@ pub fn get_or_compute_summary(
                 let zero_placeholder = Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Conservative,
                     peak_space: None,
                 });
@@ -9900,7 +9900,7 @@ pub fn get_or_compute_summary(
                                     func_name.clone(),
                                 ),
                             }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
@@ -9918,7 +9918,7 @@ pub fn get_or_compute_summary(
                             span: Rc::new(CostExpr::CostExtern {
                                 name: func_name.clone(),
                             }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
@@ -10458,12 +10458,12 @@ pub fn build_complexity_report(
         let result = scc_result.processing_order.clone().iter().cloned().fold(
             Rc::new(TopoBuildAcc {
                 table: empty_cost_intern_table(),
-                classes: v1_rt::rc_empty_map::<_, _>(),
-                space_classes: v1_rt::rc_empty_map::<_, _>(),
-                function_space_bytes: v1_rt::rc_empty_map::<_, _>(),
+                classes: v1_rt::rc_empty_map::<String, String>(),
+                space_classes: v1_rt::rc_empty_map::<String, String>(),
+                function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
                 violations: Rc::new(vec![]),
                 fan_in: fan_in.clone(),
-                processed: v1_rt::rc_empty_map::<_, _>(),
+                processed: v1_rt::rc_empty_map::<String, bool>(),
             }),
             |acc: Rc<TopoBuildAcc>, func_name: String| match v1_rt::map_get(
                 &func_index,
@@ -10494,7 +10494,7 @@ pub fn build_complexity_report(
                     );
                     let space_bytes_opt = cost_account_space_from_summary(
                         sr.summary.clone(),
-                        v1_rt::rc_empty_map::<_, _>(),
+                        v1_rt::rc_empty_map::<String, i64>(),
                     );
                     let new_function_space_bytes = match space_bytes_opt.clone() {
                         Some(bs) => v1_rt::rc_map_insert(

@@ -27,7 +27,7 @@ use crate::std_syntax::ItemFormKind::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec};
 pub use crate::std_types::is_container_type;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
@@ -61,10 +61,8 @@ pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
     MatchPattern, NewlineIndex, OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
-pub use crate::v2_lens_application::SourceSpan;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

@@ -22,7 +22,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::PositiveDescentAmount::*;
 use crate::std_termination::ProportionalDivisor::*;
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::{List, Map, SourceSpan};
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 pub use crate::v1_compiler_artifact::default_artifact_plan;
 use crate::v1_compiler_artifact::RenderTarget::*;
@@ -84,11 +84,9 @@ pub use crate::v1_std_core::{
     MatchPattern, MethodSemantics, NewlineIndex, StringPart, TextFile, Token, UnaryOpKind,
     VarBindingKind,
 };
-pub use crate::v2_lens_application::SourceSpan;
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
-pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
+use crate::v2_std_node::NamedEdgeTargetLookup::*;
+pub use crate::v2_std_node::{Connective, NamedEdgeTargetLookup, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -202,7 +200,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
                             __found = true;
                             break;
                         }
@@ -223,7 +221,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
+                            if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
                                 __result.push(item);
                             }
                         }
@@ -264,7 +262,7 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         for item in Rc::new({
             let mut __result = Vec::new();
             for item in m.items.clone().iter().cloned() {
-                if (item.body.clone() != None) {
+                if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
                     __result.push(item);
                 }
             }
@@ -293,7 +291,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != Rc::new(NamedEdgeTargetLookup::Absent)) {
                             __found = true;
                             break;
                         }
@@ -895,7 +893,7 @@ pub fn serialize_field_binding(
 
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: HashMap<String, Rc<NewlineIndex>>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
@@ -904,7 +902,7 @@ pub fn serialize_match_pattern(
         } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"Bind\", \"name\": ".to_string(),
-                json_quote(panic!("error type cascade")),
+                json_quote(declaration.name.clone()),
             ),
             "}".to_string(),
         ),
@@ -926,7 +924,7 @@ pub fn serialize_match_pattern(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                "{\"kind\": \"v1.std.core.VariantPattern\", \"name\": ".to_string(),
+                                "{\"kind\": \"VariantPattern\", \"name\": ".to_string(),
                                 json_quote(inner.clone()),
                             ),
                             ", \"parent_enum\": ".to_string(),
@@ -1094,8 +1092,7 @@ pub fn serialize_method_semantics(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        "{\"kind\": \"v1.std.core.ServiceMethodSemantics\", \"service_name\": "
-                            .to_string(),
+                        "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(),
                         json_quote(service_name.clone()),
                     ),
                     ", \"op_params\": ".to_string(),
@@ -2751,7 +2748,7 @@ pub fn compile_to_resolved_with_options(
             None => Rc::new(ResolvedPipelineResult {
                 graph: None,
                 diagnostics: frontend.diagnostics.clone(),
-                source_indices: v1_rt::rc_empty_map::<_, _>(),
+                source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: empty_complexity_report(),
                 ownership: Rc::new(vec![]),
                 newline_indices: newline_indices.clone(),

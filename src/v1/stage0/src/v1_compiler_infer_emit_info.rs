@@ -23,10 +23,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, NewlineIndex,
 };
-pub use crate::v2_std_collection::empty_map;
 use crate::v2_std_node::Connective::*;
 pub use crate::v2_std_node::{Connective, Node};
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -84,7 +82,7 @@ pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let acc = items.clone().iter().cloned().fold(
             Rc::new(UniqueStringAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             |inner: Rc<UniqueStringAccum>, item: String| {
@@ -191,22 +189,22 @@ pub struct EmitInfoBuildState {
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
-        type_summaries: v1_rt::rc_empty_map::<_, _>(),
-        type_decl_items: v1_rt::rc_empty_map::<_, _>(),
-        fn_decl_items: v1_rt::rc_empty_map::<_, _>(),
+        type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+        type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
         shared_types: v1_rt::rc_empty_set::<String>(),
-        ownership_index: v1_rt::rc_empty_map::<_, _>(),
+        ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         movable: v1_rt::rc_empty_set::<String>(),
-        variant_to_enum: v1_rt::rc_empty_map::<_, _>(),
+        variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-        read_only_params_index: v1_rt::rc_empty_map::<_, _>(),
+        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         read_only_params: v1_rt::rc_empty_set::<String>(),
-        clone_bounded_type_params: v1_rt::rc_empty_map::<_, _>(),
+        clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         map_key_required_type_names: v1_rt::rc_empty_set::<String>(),
-        clone_impl_required_type_params: v1_rt::rc_empty_map::<_, _>(),
+        clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
         fn_return_type: None,
@@ -672,7 +670,7 @@ pub fn build_field_type_map(
 ) -> Rc<FieldTypeMapBuild> {
     children.clone().iter().cloned().fold(
         Rc::new(FieldTypeMapBuild {
-            field_types: v1_rt::rc_empty_map::<_, _>(),
+            field_types: v1_rt::rc_empty_map::<String, String>(),
             import_surface_names: Rc::new(vec![]),
         }),
         |acc: Rc<FieldTypeMapBuild>, child: Rc<Node>| match child
@@ -777,7 +775,7 @@ pub fn build_type_summary(
                     ),
                     field_type_map: field_types.field_types.clone(),
                     field_import_surface_names: field_types.import_surface_names.clone(),
-                    variant_name_set: v1_rt::rc_empty_map::<_, _>(),
+                    variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
                     generic_param_names: gpn.clone(),
                     has_fn_fields: has_fn.clone(),
                 }))
@@ -806,7 +804,7 @@ pub fn build_type_summary(
                         item.children.clone(),
                         source_indices.clone(),
                     ),
-                    field_type_map: v1_rt::rc_empty_map::<_, _>(),
+                    field_type_map: v1_rt::rc_empty_map::<String, String>(),
                     field_import_surface_names: enum_variant_payload_surface_names(
                         item.children.clone(),
                         source_indices.clone(),
@@ -1004,74 +1002,80 @@ pub fn add_emit_item_summary(
         };
         match build_type_summary(item.clone(), source_indices.clone()) {
             Some(summary) => {
-                let with_variants = match (*summary.repr.clone()).clone() {
-                    TypeRepr::EnumRepr { unit_only: _, .. } => {
-                        item.children.clone().iter().cloned().fold(
-                            state.type_summaries.clone(),
-                            |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
-                                if ((variant.children.clone().len() as i64) > 0) {
-                                    {
-                                        let v_has_fn = {
-                                            let mut __found = false;
-                                            for vc in variant.children.clone().iter().cloned() {
-                                                if match vc.inferred.clone().as_deref().cloned() {
-                                                    Some(InferredNode::Resolved {
-                                                        node: rt,
-                                                        ..
-                                                    }) => {
-                                                        (rt.connective.clone()
-                                                            == Rc::new(Connective::Arrow))
+                let with_variants =
+                    match (*summary.repr.clone()).clone() {
+                        TypeRepr::EnumRepr { unit_only: _, .. } => {
+                            item.children.clone().iter().cloned().fold(
+                                state.type_summaries.clone(),
+                                |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
+                                    if ((variant.children.clone().len() as i64) > 0) {
+                                        {
+                                            let v_has_fn = {
+                                                let mut __found = false;
+                                                for vc in variant.children.clone().iter().cloned() {
+                                                    if match vc.inferred.clone().as_deref().cloned()
+                                                    {
+                                                        Some(InferredNode::Resolved {
+                                                            node: rt,
+                                                            ..
+                                                        }) => {
+                                                            (rt.connective.clone()
+                                                                == Rc::new(Connective::Arrow))
+                                                        }
+                                                        _ => false,
+                                                    } {
+                                                        __found = true;
+                                                        break;
                                                     }
-                                                    _ => false,
-                                                } {
-                                                    __found = true;
-                                                    break;
                                                 }
-                                            }
-                                            __found
-                                        };
-                                        let vname = crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            variant.clone(),
-                                        );
-                                        let qualified_vname = variant_summary_key(
-                                            summary.name.clone(),
-                                            vname.clone(),
-                                        );
-                                        let variant_field_types = build_field_type_map(
-                                            variant.children.clone(),
-                                            source_indices.clone(),
-                                        );
-                                        v1_rt::rc_map_insert(
-                                            acc.clone(),
-                                            qualified_vname.clone(),
-                                            Rc::new(TypeSummary {
-                                                name: qualified_vname.clone(),
-                                                repr: Rc::new(TypeRepr::StructRepr),
-                                                field_summaries: build_struct_field_summaries(
-                                                    variant.clone(),
-                                                    source_indices.clone(),
-                                                ),
-                                                field_type_map: variant_field_types
-                                                    .field_types
-                                                    .clone(),
-                                                field_import_surface_names: variant_field_types
-                                                    .import_surface_names
-                                                    .clone(),
-                                                variant_name_set: v1_rt::rc_empty_map::<_, _>(),
-                                                generic_param_names: Rc::new(vec![]),
-                                                has_fn_fields: v_has_fn.clone(),
-                                            }),
-                                        )
+                                                __found
+                                            };
+                                            let vname = crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                variant.clone(),
+                                            );
+                                            let qualified_vname = variant_summary_key(
+                                                summary.name.clone(),
+                                                vname.clone(),
+                                            );
+                                            let variant_field_types = build_field_type_map(
+                                                variant.children.clone(),
+                                                source_indices.clone(),
+                                            );
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                qualified_vname.clone(),
+                                                Rc::new(TypeSummary {
+                                                    name: qualified_vname.clone(),
+                                                    repr: Rc::new(TypeRepr::StructRepr),
+                                                    field_summaries: build_struct_field_summaries(
+                                                        variant.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                    field_type_map: variant_field_types
+                                                        .field_types
+                                                        .clone(),
+                                                    field_import_surface_names: variant_field_types
+                                                        .import_surface_names
+                                                        .clone(),
+                                                    variant_name_set: v1_rt::rc_empty_map::<
+                                                        String,
+                                                        bool,
+                                                    >(
+                                                    ),
+                                                    generic_param_names: Rc::new(vec![]),
+                                                    has_fn_fields: v_has_fn.clone(),
+                                                }),
+                                            )
+                                        }
+                                    } else {
+                                        acc.clone()
                                     }
-                                } else {
-                                    acc.clone()
-                                }
-                            },
-                        )
-                    }
-                    _ => state.type_summaries.clone(),
-                };
+                                },
+                            )
+                        }
+                        _ => state.type_summaries.clone(),
+                    };
                 let next_summaries = v1_rt::rc_map_insert(
                     with_variants.clone(),
                     summary.name.clone(),

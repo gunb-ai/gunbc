@@ -2760,9 +2760,9 @@ fn optional_cast_diags(
   source_inferred: InferredNode?,
   target_type: v1.std.core.Node,
   span: std.types.SourceSpan,
-  source_indices: Map<String, NewlineIndex>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
   module_name: String
-) -> List<ErrorNode> {
+) -> List<v1.std.core.ErrorNode> {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -2770,7 +2770,7 @@ fn optional_cast_diags(
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(
-          diagnostic: OptionalCastNotEliminated {
+          diagnostic: v1.std.core.OptionalCastNotEliminated {
             source_type: concat(source_name, "?"),
             target_type: authored_name_at(source_indices: source_indices, node: target_type),
             span: span
@@ -2782,12 +2782,12 @@ fn optional_cast_diags(
 }
 
 fn type_variable_node(id: String) -> v1.std.core.Node {
-  v1.std.core.Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  v1.std.core.Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
   match inferred {
-    TypeVariable { id: _ } => true
+    v1.std.core.TypeVariable { id: _ } => true
     _ => false
   }
 }

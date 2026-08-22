@@ -402,7 +402,7 @@ fn serialize_field_binding(binding: v1.std.core.Node, source_indices: Map<String
     "}")
 }
 
-fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn serialize_match_pattern(pattern: v1.std.core.MatchPattern, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match pattern {
     Bind { declaration: declaration } =>
       concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
@@ -410,7 +410,7 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
     VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
       concat(
-        "{\"kind\": \"v1.std.core.VariantPattern\", \"name\": ", json_quote(s: inner),
+        "{\"kind\": \"VariantPattern\", \"name\": ", json_quote(s: inner),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices))),
         "}")
@@ -471,7 +471,7 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
         "}")
     Present { value: v1.std.core.ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
-        "{\"kind\": \"v1.std.core.ServiceMethodSemantics\", \"service_name\": ",
+        "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),
