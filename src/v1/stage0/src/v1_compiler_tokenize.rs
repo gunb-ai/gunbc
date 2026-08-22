@@ -390,7 +390,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                 let eol = source_scan_to_eol(source.clone(), pos.pos.clone());
                 return Rc::new(ScanStep::ScannedAnnotation {
                     pos: eol.clone(),
-                    capture: Rc::new(UnboundAnnotationCapture {
+                    capture: UnboundAnnotationCapture {
                         lexeme: source_substring(source.clone(), pos.pos.clone(), eol.clone()),
                         origin: make_file_span(source.file.clone(), pos.pos.clone(), eol.clone()),
                         placement: placement_from_line_prefix(line_prefix_is_indent_only(
@@ -405,7 +405,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                             source.clone(),
                             pos.pos.clone(),
                         ),
-                    }),
+                    },
                     interp_depth: pos.interp_depth.clone(),
                 });
             }

@@ -273,7 +273,7 @@ let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.c
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Vec<String>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -408,7 +408,7 @@ pub fn check_service_method_call_node(
                             }))
                         } else {
                             Some(Rc::new(ServiceMethodResult {
-                                result_type: Rc::new(Node {
+                                result_type: Node {
                                     name: "".to_string(),
                                     span: no_span(),
                                     ident_span: None,
@@ -454,7 +454,7 @@ pub fn check_service_method_call_node(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
-                                }),
+                                },
                                 op_params: op.params.clone(),
                             }))
                         }

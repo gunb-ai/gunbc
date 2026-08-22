@@ -21,10 +21,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "www.rfc-editor.org/rfc/rfc3986#section-3.3".to_string(),
-    }),
+    },
     })
             };
         }
@@ -364,9 +364,9 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
         });
         match segments.clone().first().cloned() {
             None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                template: Rc::new(PathTemplate {
+                template: PathTemplate {
                     tokens: Rc::new(vec![]),
-                }),
+                },
             }),
             Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
                 PathSegmentTokensResult::MalformedPathSegment {
@@ -394,9 +394,9 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     .cloned()
                     .fold(
                         Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                            template: Rc::new(PathTemplate {
+                            template: PathTemplate {
                                 tokens: first_tokens.clone(),
-                            }),
+                            },
                         }),
                         |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
                         {
@@ -417,12 +417,12 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                                     tokens: seg_tokens,
                                     ..
                                 } => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                                    template: Rc::new(PathTemplate {
+                                    template: PathTemplate {
                                         tokens: v1_rt::concat(
                                             path.tokens.clone(),
                                             seg_tokens.clone(),
                                         ),
-                                    }),
+                                    },
                                 }),
                             },
                         },

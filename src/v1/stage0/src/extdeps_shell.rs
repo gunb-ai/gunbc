@@ -16,10 +16,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html".to_string(),
-    }),
+    },
     })
             };
         }
@@ -92,16 +92,10 @@ impl ShellFind {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(Rc::new(
-                    stdout
-                        .lines()
-                        .filter(|l| !l.is_empty())
-                        .map(|l| l.trim().to_string())
-                        .collect(),
-                )),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -132,7 +126,7 @@ impl ShellFind {
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -167,7 +161,7 @@ impl ShellFind {
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -201,7 +195,7 @@ impl ShellFind {
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -234,7 +228,7 @@ impl ShellFind {
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -269,14 +263,14 @@ impl ShellEnv {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(Some(stdout.clone())),
+                0 => Some(stdout.clone()),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -338,18 +332,18 @@ impl ShellPosixCommandV {
                 0 => Ok((output.status.success(), Some(stdout.clone()))),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
     }
 }
 
-pub fn posix_command_v_check_argv(command: String) -> Rc<Vec<String>> {
+pub fn posix_command_v_check_argv(command: String) -> Vec<String> {
     Rc::new(vec![
         "sh".to_string(),
         "-c".to_string(),
@@ -388,14 +382,14 @@ impl ShellTest {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -415,14 +409,14 @@ impl ShellTest {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -442,14 +436,14 @@ impl ShellTest {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -469,14 +463,14 @@ impl ShellTest {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -496,21 +490,21 @@ impl ShellTest {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 1 => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
     }
 }
 
-pub fn shell_test_is_executable_argv(path: String) -> Rc<Vec<String>> {
+pub fn shell_test_is_executable_argv(path: String) -> Vec<String> {
     Rc::new(vec!["test".to_string(), "-x".to_string(), path.clone()])
 }
 
@@ -544,7 +538,7 @@ impl ShellUname {
                 0 => Ok((stdout.clone(), output.status.success())),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -565,7 +559,7 @@ impl ShellUname {
                 0 => Ok((stdout.clone(), output.status.success())),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -606,7 +600,7 @@ impl ShellMktemp {
                 0 => Ok((stdout.clone(), output.status.success())),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -627,7 +621,7 @@ impl ShellMktemp {
                 0 => Ok((stdout.clone(), output.status.success())),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -652,7 +646,7 @@ impl ShellMktemp {
                 0 => Ok((stdout.clone(), output.status.success())),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -687,10 +681,10 @@ impl ShellMkdir {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -729,10 +723,10 @@ impl ShellLink {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -772,10 +766,10 @@ impl ShellSymlink {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -810,10 +804,10 @@ impl ShellRemove {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -835,10 +829,10 @@ impl ShellRemove {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -859,10 +853,10 @@ impl ShellRemove {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -901,10 +895,10 @@ impl ShellMove {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -928,10 +922,10 @@ impl ShellMove {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -969,10 +963,10 @@ impl ShellChmod {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -994,10 +988,10 @@ impl ShellChmod {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -1020,10 +1014,10 @@ impl ShellChmod {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -1046,10 +1040,10 @@ impl ShellChmod {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -1088,10 +1082,10 @@ impl ShellCopy {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -1115,10 +1109,10 @@ impl ShellCopy {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let exit_code = output.status.code().unwrap_or(-1);
             match exit_code {
-                0 => Ok(output.status.success()),
+                0 => stdout.clone(),
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }
@@ -1162,7 +1156,7 @@ impl ShellGCloud {
                 }
                 _ => {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Err(stderr.into())
+                    Err(stderr)
                 }
             }
         }

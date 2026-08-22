@@ -8,7 +8,6 @@ pub use crate::extdeps_rustup::rustup_install_url;
 pub use crate::extdeps_shell::ShellPosixCommandV;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::extdeps_version::VersionConstraint;
 pub use crate::std_types::{FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -21,10 +20,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools".to_string(),
-    }),
+    },
     })
             };
         }

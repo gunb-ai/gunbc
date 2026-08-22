@@ -13,7 +13,7 @@ use self::UriScheme::*;
 use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_types::List;
 pub use crate::std_unicode_types::{
     unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
     unicode_surrogate_last_code_point,

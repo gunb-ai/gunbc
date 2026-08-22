@@ -21,19 +21,16 @@ pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::*;
-use crate::std_measure::ClockBasis::*;
 pub use crate::std_measure::{
     byte_size, measure_count, millisecond_count, second_count, time_measure, watt,
 };
-pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
+pub use crate::std_measure::{ByteSize, Measure, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 pub use crate::std_process_termination::ProcessTermination;
 use crate::std_process_termination::ProcessTermination::*;
 pub use crate::std_types::{List, NonEmptyStr};
-pub use crate::std_witness_admission::WitnessConsumerCadence;
-use crate::std_witness_admission::WitnessConsumerCadence::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

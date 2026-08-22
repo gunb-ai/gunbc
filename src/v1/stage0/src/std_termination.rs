@@ -7,7 +7,7 @@ use self::PositiveDescentAmount::*;
 use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
 pub use crate::std_algebra::BoundedLattice;
-pub use crate::std_types::{List, Map};
+pub use crate::std_types::Map;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

@@ -22,10 +22,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md".to_string(),
-    }),
+    },
     })
             };
         }
@@ -36,13 +36,13 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
                 Rc::new(ExternalModelScope {
-        subject: Rc::new(ExternalSubjectRef {
-        declaration: Rc::new(DeclarationRef {
+        subject: ExternalSubjectRef {
+        declaration: DeclarationRef {
         module_path: "extdeps.container.oci.digest".to_string(),
         decl_name: "OciContentDigest".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    }),
-    }),
+    },
+    },
         first_citation: crate::extdeps_container_oci_digest::extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![]),
     })

@@ -153,7 +153,7 @@ pub fn annotation_subjects(
                                 acc.clone(),
                                 Rc::new(AnnotationSubject {
                                     occurrence: entry.projection.clone().occurrence.clone(),
-                                    span: Rc::new(SourceSpan {
+                                    span: SourceSpan {
                                         file: span.file.clone(),
                                         start: span.start.clone(),
                                         end: module_item_extent_end(
@@ -162,7 +162,7 @@ pub fn annotation_subjects(
                                             limit.clone(),
                                             span.end.clone(),
                                         ),
-                                    }),
+                                    },
                                     module_root: false,
                                 }),
                             )

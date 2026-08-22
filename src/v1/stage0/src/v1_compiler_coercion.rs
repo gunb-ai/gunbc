@@ -25,14 +25,13 @@ use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
-use crate::v1_std_core::InferredNode::*;
-pub use crate::v1_std_core::{InferredNode, Node};
+pub use crate::v1_std_core::Node;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn target_checkpoints(target: RenderTarget) -> Vec<Rc<TypeCheckpoint>> {
     match target.clone() {
         RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_type_checkpoints(),
         RenderTarget::Python => crate::extdeps_languages_python_types::python_type_checkpoints(),
@@ -41,7 +40,7 @@ pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     }
 }
 
-pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn target_inhabitants(target: RenderTarget) -> Vec<Rc<InhabitantDecl>> {
     match target.clone() {
         RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_algebra_inhabitants(),
         RenderTarget::Python => crate::extdeps_languages_python_types::python_algebra_inhabitants(),
@@ -144,7 +143,7 @@ pub fn type_reference_identity_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
+pub fn structural_declaration_modules_for(dag_name: String) -> Vec<String> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
         "String" => Rc::new(vec![
@@ -203,7 +202,7 @@ pub fn numeric_realization_roster_extension_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
+pub fn numeric_realization_declaring_modules() -> Vec<String> {
     Rc::new(vec![
         "dag/std/nat.dag".to_string(),
         "dag/std/integer.dag".to_string(),
@@ -274,14 +273,14 @@ pub fn type_realization_decision(
                     };
                     match native.clone() {
                         Some(host) => Rc::new(TypeRealizationDecision::Realized {
-                            checkpoint: Rc::new(TypeCheckpoint {
+                            checkpoint: TypeCheckpoint {
                                 dag_name: dag_name.clone(),
                                 target_type: host.clone(),
                                 grounding_type: host.clone(),
                                 default_expr: None,
                                 is_copy: None,
                                 literal_suffix: None,
-                            }),
+                            },
                         }),
                         None => Rc::new(TypeRealizationDecision::Unrealized),
                     }
@@ -408,7 +407,7 @@ pub enum CoercionAssertion {
     },
     TemplateAssertion {
         template: String,
-        args: Rc<Vec<String>>,
+        args: Vec<String>,
         expected: String,
     },
 }
@@ -416,7 +415,7 @@ pub enum CoercionAssertion {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
-    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+    pub assertions: Vec<Rc<CoercionAssertion>>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {
@@ -428,7 +427,7 @@ pub fn target_label(target: RenderTarget) -> String {
     }
 }
 
-pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn checkpoint_tests(target: RenderTarget) -> Vec<Rc<CoercionTestEntry>> {
     {
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
@@ -456,14 +455,14 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn inhabitant_test_names() -> Rc<Vec<String>> {
+pub fn inhabitant_test_names() -> Vec<String> {
     v1_rt::concat(
         crate::std_types::canonical_container_names(),
         Rc::new(vec!["PointwisePower".to_string()]),
     )
 }
 
-pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn inhabitant_tests(target: RenderTarget) -> Vec<Rc<CoercionTestEntry>> {
     {
         let label = target_label(target.clone());
         let assertions = Rc::new({
@@ -500,7 +499,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn copy_tests() -> Vec<Rc<CoercionTestEntry>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
@@ -533,8 +532,8 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
 }
 
 pub fn unique_inhabitants_for_template_tests(
-    inhs: Rc<Vec<Rc<InhabitantDecl>>>,
-) -> Rc<Vec<Rc<InhabitantDecl>>> {
+    inhs: Vec<Rc<InhabitantDecl>>,
+) -> Vec<Rc<InhabitantDecl>> {
     inhs.clone().iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
@@ -558,7 +557,7 @@ pub fn unique_inhabitants_for_template_tests(
     )
 }
 
-pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn template_application_tests() -> Vec<Rc<CoercionTestEntry>> {
     {
         let targets = Rc::new(vec![
             RenderTarget::Rust,
@@ -641,7 +640,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn extract_coercion_tests() -> Vec<Rc<CoercionTestEntry>> {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(

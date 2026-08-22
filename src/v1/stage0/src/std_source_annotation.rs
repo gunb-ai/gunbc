@@ -525,11 +525,11 @@ pub fn annotation_attach_step(
                                     open.text.clone(),
                                     v1_rt::concat("\n".to_string(), capture.text.clone()),
                                 ),
-                                origin: Rc::new(SourceSpan {
+                                origin: SourceSpan {
                                     file: open.origin.clone().file.clone(),
                                     start: open.origin.clone().start.clone(),
                                     end: capture.origin.clone().end.clone(),
-                                }),
+                                },
                             })),
                             pending_adjacent: true,
                         }),
@@ -583,11 +583,11 @@ pub fn annotation_attach_resolve(
                                 open.text.clone(),
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
-                            origin: Rc::new(SourceSpan {
+                            origin: SourceSpan {
                                 file: open.origin.clone().file.clone(),
                                 start: open.origin.clone().start.clone(),
                                 end: capture.origin.clone().end.clone(),
-                            }),
+                            },
                         })),
                         pending_adjacent: true,
                     })

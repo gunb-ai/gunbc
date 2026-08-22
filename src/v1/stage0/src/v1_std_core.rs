@@ -19,44 +19,30 @@ use self::OperationModifier::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::UnaryOpKind::*;
+use self::UseLineCandidateRefusalCause::*;
 use self::VarBindingKind::*;
-use crate::std_algebra::CollectionSizeEffect::*;
-use crate::std_algebra::CostShape::*;
-pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-use crate::std_occurrence_identity::OccurrenceRole::*;
-use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
-    InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
-    UnknownOccurrenceIdentity, WrongOccurrenceRole,
-};
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceId, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
+    AuthoredTokenOrdinal, AuthoredTokenOrdinalSpace, OccurrenceId, OccurrenceTransportRefusal,
 };
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
     annotation_attachment_refusal_message, annotation_attachment_refusal_origin,
 };
-use crate::std_syntax::AlgebraFieldKind::{
-    AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
-};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::{
-    container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
-};
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
+pub use crate::std_types::container_expected_arity;
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -565,6 +551,21 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    UseLineCandidateRefused {
+        name: String,
+        cause: UseLineCandidateRefusalCause,
+        span: Rc<SourceSpan>,
+    },
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum UseLineCandidateRefusalCause {
+    UseLineRegistryResolveFailed,
+    UseLineRegistryResolvesToSelf,
+    UseLineProviderExportProofUnproven,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -628,6 +629,21 @@ pub fn occurrence_transport_refusal_diagnostic_message(
 }
 }
 
+pub fn use_line_candidate_refusal_cause_message(c: UseLineCandidateRefusalCause) -> String {
+    match c.clone() {
+        UseLineCandidateRefusalCause::UseLineRegistryResolveFailed => {
+            "the bare-name registry resolves it to no module".to_string()
+        }
+        UseLineCandidateRefusalCause::UseLineRegistryResolvesToSelf => {
+            "the registry resolves it to the consuming module itself".to_string()
+        }
+        UseLineCandidateRefusalCause::UseLineProviderExportProofUnproven => {
+            "its provider is known but does not prove the symbol in its transitive export surface"
+                .to_string()
+        }
+    }
+}
+
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
@@ -657,10 +673,11 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
-            annotation_attachment_refusal_origin(r.clone())
+            crate::std_source_annotation::annotation_attachment_refusal_origin(r.clone())
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UseLineCandidateRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
@@ -706,9 +723,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
+    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::UseLineCandidateRefused { name: n, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("use-line candidate '".to_string(), n.clone()), "' refused: ".to_string()), use_line_candidate_refusal_cause_message(c.clone())),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
@@ -779,6 +797,7 @@ pub fn diagnostic_frontier_occurrence_key_note() -> String {
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::UseLineCandidateRefused { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
@@ -804,6 +823,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::UseLineCandidateRefused { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         _ => true,
@@ -813,6 +833,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::UseLineCandidateRefused { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
@@ -3977,7 +3998,8 @@ pub fn empty_intern_table() -> Rc<InternTable> {
         strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
-        authored_token_ordinals: authored_token_ordinal_space_initial(),
+        authored_token_ordinals:
+            crate::std_occurrence_identity::authored_token_ordinal_space_initial(),
     })
 }
 
@@ -4039,13 +4061,16 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.clone().iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            let merged_allocator = occurrence_id_allocator_advance_to(
-                merged.authored_token_ordinals.clone().allocator.clone(),
-                t.authored_token_ordinals.clone(),
-            );
+            let merged_allocator =
+                crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    t.authored_token_ordinals.clone(),
+                );
             let merged = intern_table_with_authored_token_ordinals(
                 merged.clone(),
-                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
+                crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                    merged_allocator.clone(),
+                ),
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),
@@ -4167,6 +4192,25 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
+    }
+}
+
+pub fn qualified_module_prefix(name: String) -> String {
+    {
+        let segs = module_path_segments(name.clone());
+        let n = (segs.clone().len() as i64);
+        if (n.clone() < 2) {
+            "".to_string()
+        } else {
+            Rc::new(
+                segs.clone()
+                    .iter()
+                    .cloned()
+                    .take((n.clone() - 1) as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&".".to_string())
+        }
     }
 }
 
@@ -4388,6 +4432,12 @@ pub struct Idempotent;
 pub struct Readonly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hermetic;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UseLineRegistryResolveFailed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UseLineRegistryResolvesToSelf;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UseLineProviderExportProofUnproven;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChildrenListField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

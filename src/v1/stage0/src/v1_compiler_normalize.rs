@@ -9,13 +9,12 @@ use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ContainerSpellingVerdict::*;
 use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, make_error_node, module_items,
 };
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, InferredNode,
-    NewlineIndex, Node,
+    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, NewlineIndex,
+    Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

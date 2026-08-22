@@ -15,13 +15,12 @@ pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
-use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, global_bare_policy_candidate,
     lookup_binding_by_name, lookup_binding_by_name_local, lookup_type_for, qualified_all_but_last,
     qualify_borrowed_type_names, symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::OpEntry;
@@ -338,7 +337,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
                                     Rc::new(FuncSigLookup::FuncSigResolved {
-                                        sig: Rc::new(ResolvedFuncSig {
+                                        sig: ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
                                             inferred: raw_return.clone(),
@@ -346,15 +345,13 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
-                                                Rc<
-                                                    HashMap<
-                                                        String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                    >,
+                                                HashMap<
+                                                    String,
+                                                    HashMap<String, Rc<SubValueRelation>>,
                                                 >,
                                             >(
                                             ),
-                                        }),
+                                        },
                                     })
                                 } else {
                                     {
@@ -365,7 +362,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             excluded.clone(),
                                         );
                                         Rc::new(FuncSigLookup::FuncSigResolved {
-                                            sig: Rc::new(ResolvedFuncSig {
+                                            sig: ResolvedFuncSig {
                                                 name: name.clone(),
                                                 params: node.params.clone(),
                                                 inferred: qualified_return.clone(),
@@ -373,20 +370,13 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,
-                                                    Rc<
-                                                        HashMap<
-                                                            String,
-                                                            Rc<
-                                                                HashMap<
-                                                                    String,
-                                                                    Rc<SubValueRelation>,
-                                                                >,
-                                                            >,
-                                                        >,
+                                                    HashMap<
+                                                        String,
+                                                        HashMap<String, Rc<SubValueRelation>>,
                                                     >,
                                                 >(
                                                 ),
-                                            }),
+                                            },
                                         })
                                     }
                                 }

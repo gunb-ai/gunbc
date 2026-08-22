@@ -1664,11 +1664,11 @@ pub fn expect(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<TokenR
                 };
                 let wanted = expected_token_name(expected.clone());
                 Rc::new(TokenResult {
-                    token: Rc::new(Token {
+                    token: Token {
                         text: "".to_string(),
                         span: crate::v1_std_core::no_span(),
                         shape: TokenShape::ShEof,
-                    }),
+                    },
                     tokens: tokens.clone(),
                     err: Some(parse_error(
                         format!("expected {}, found {}", wanted.clone(), found.clone()),
@@ -3076,7 +3076,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
         match form.clone() {
     Some(f) => parse_item_by_form(tokens.clone(), ctx.clone(), f.clone()),
     None => Rc::new(ItemResult {
-    item: Rc::new(Node {
+    item: Node {
     name: "<unknown>".to_string(),
     span: span.clone(),
     ident_span: Some(span.clone()),
@@ -3095,7 +3095,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
-}),
+},
     tokens: tokens.clone(),
     ctx: ctx.clone(),
     err: Some(parse_error("expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
@@ -3454,7 +3454,7 @@ pub fn outputs_to_inferred(
 ) -> Option<Rc<InferredNode>> {
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
-            node: Rc::new(Node {
+            node: Node {
                 name: "".to_string(),
                 span: span.clone(),
                 ident_span: None,
@@ -3479,7 +3479,7 @@ pub fn outputs_to_inferred(
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
-            }),
+            },
         }))
     } else {
         None

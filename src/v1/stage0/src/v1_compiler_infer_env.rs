@@ -141,7 +141,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-        inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+        inductive_fields: v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
         source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         intern_table: empty_intern_table(),
         source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
@@ -333,7 +333,7 @@ pub fn visible_bindings_invariant() -> String {
 
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        deps_map: v1_rt::rc_empty_map::<String, Vec<String>>(),
         str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -745,7 +745,7 @@ pub fn merge_type_env_cache_guarded(
             conflicts.clone(),
         );
         Rc::new(GuardedTypeEnvCacheMerge {
-            cache: Rc::new(TypeEnvCache {
+            cache: TypeEnvCache {
                 deps_map: union_deps_map_skip_equal(
                     base.deps_map.clone(),
                     overlay.deps_map.clone(),
@@ -759,7 +759,7 @@ pub fn merge_type_env_cache_guarded(
                     base.variant_locals.clone(),
                     overlay.variant_locals.clone(),
                 ),
-            }),
+            },
             conflicts: str_union.conflicts.clone(),
         })
     }
@@ -1931,7 +1931,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
         .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
-                resolved: Rc::new(Node {
+                resolved: Node {
                     name: tp_name.clone(),
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
                     ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
@@ -1952,7 +1952,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                }),
+                },
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             });
             Rc::new(TypeEnv {
