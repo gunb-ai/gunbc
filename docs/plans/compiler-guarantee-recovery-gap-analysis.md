@@ -2434,6 +2434,241 @@ enforces end to end.
    non-`v2` modules, which neither this row nor `module_skips_direct_call_arg_check` reaches.
    Two seams have now been measured; the number of seams is NOT known to be two (gunbc#8868).
 
+24. **A type name declared in two modules resolves to whichever binding `lookup_binding_by_name`
+   returns, and the occurrence-identity arm that could have adjudicated it is dead in type
+   position across an entire compiler closure** (opened 2026-08-22, session proud-ant-819, found
+   while establishing the join key for cut A's transparency discriminator — recorded, not fixed,
+   because repairing it means editing global resolution and that was explicitly held out of the
+   cut).
+
+   INVALID STATE. `v1.compiler.04_env` `lookup_type_for` has two arms: an occurrence-identity arm
+   taken when `node.ident` is `Present`, and a name arm — `lookup_type_by_name` — taken when it
+   is `Absent`. Where a name is declared by two different modules, the name arm returns one of
+   them with no refusal, nothing recording that a choice was made, and no way for a consumer to
+   discover that a second declaration existed.
+
+   DISTINGUISHING FACTS, measured by execution over the `src/v2/compiler/03_ingest.dag` closure
+   with `lookup_type_for` instrumented at both arms: **370,118 observations, 370,118 on the NAME
+   arm, 0 on the IDENT arm**, across 2,690 distinct names, none observed under both arms. So the
+   identity arm is not merely rare in type position — it is dead there, and every type resolution
+   in that closure is name-keyed. Four names were observed colliding: `Byte` (105 observations),
+   `FilePath` (45), `NonNegativeInt` (18), `PositiveInt` (18). Eight names are declared twice by
+   source scan (`Byte`, `FilePath`, `FixedPointCheck`, `Float32`, `Float64`, `NonNegativeInt`,
+   `ObjectId`, `PositiveInt`); the other four are not reached by this closure. `PositiveInt` is
+   the sharpest specimen because its two declarations have *different shapes*, not merely
+   different homes: `dag/std/integer.dag` declares `type PositiveInt = Nat where gt_zero`, a
+   brand, and `src/v2/std/refinement.dag` declares `type PositiveInt { refined: Refined<Int> }`,
+   a record.
+
+   THE TENSION WITH DESIGN.md, stated here rather than left for a reader to collide with. §4b's
+   guarantee-recovery paragraph names, as one of three confirmed structural holes on the
+   source→`.dag`-acceptance path, "a census-AMBIGUOUS type name resolves by silent
+   last-import-wins instead of refusing", and records all three as having **0 live exposure today
+   by targeted grep**. This row measures four such names actually resolved, 186 times, in one
+   closure, by execution. THE TWO ARE NOT NECESSARILY IN CONTRADICTION AND THIS ROW DOES NOT
+   ASSERT THAT THEY ARE: a grep for ambiguous *imports* and an execution count of *names declared
+   twice and resolved by name* are different instruments over populations that may not coincide —
+   an ambiguous import is a source-level condition, a colliding declaration resolved by name is a
+   runtime one, and a name can be the second without ever being the first. What is owed is the
+   adjudication, and it is cheap because the execution side already exists: decide whether these
+   four are instances of the class DESIGN calls zero-exposure. If they are, that clause needs
+   updating and the class needs re-ranking. If they are not, the boundary between the two
+   populations needs stating in the clause itself.
+
+   RUNG FOUND AT: **below the floor** if a wrong declaration can be selected silently, because
+   DESIGN's own floor clause is *names resolve* and this resolves a name to one of two
+   declarations by construction order rather than by any modeled fact. Stated conditionally
+   because the selection's *correctness* per site is unmeasured here: what is measured is that
+   nothing adjudicates, not that a specific site got the wrong answer.
+
+   CEILING: **structurally impossible**. Ambiguity is decidable — the two declarations are both
+   in the module graph the compiler already walks — so a name resolving to more than one
+   declaration can be a typed, located refusal rather than a silent pick, and the invalid state
+   then has no spelling.
+
+   NEXT TRIGGER, in order: (1) adjudicate the DESIGN tension above, which is a population
+   comparison and not a code change; (2) a discriminating RED — a two-module fixture declaring
+   one name twice and calling across it, asserting a located refusal; (3) the refusal in
+   `lookup_type_by_name`. Step (1) blocks the others: re-ranking a class whose exposure two
+   instruments disagree about would set the priority off the wrong number.
+
+25. **Two structurally different named records interchange at the direct-call argument seam with
+   no diagnostic** (opened 2026-08-22, session proud-ant-819, found as a *failed negative control*
+   while building cut A's acceptance set — it was authored to prove the widened transparency test
+   had not erased compatibility checking, and it turned out to prove nothing because the seam was
+   already silent there).
+
+   INVALID STATE. `fn takes_other(o: Other) -> Int` called as `takes_other(o: x)` where
+   `x: AliasRec` and `type AliasRec = Rec`, with `Rec` and `Other` two records sharing no field
+   name, produces **zero diagnostics** — before and after cut A, so this is pre-existing and
+   untouched by it.
+
+   HARM, and why it reframes cut A's own result. This is DESIGN's floor clause *values inhabit
+   declared types* failing for the most ordinary case there is: two unrelated nominal records.
+   The seam was simultaneously refusing a record ALIAS against its own base — a refusal it owed
+   nobody — while accepting two unrelated records outright. Cut A removes a false refusal at a
+   seam that is failing to make true ones, and stating only the first half would make the seam
+   look stricter than it is.
+
+   DISTINGUISHING FACTS, and the paired nonzero is what makes the zero mean anything: measured
+   in the same before/after dispatch as cut A's acceptance set, on the same fixture file, so the
+   silence is not a scoping artifact — a genuine kernel-vs-record mismatch in the *same file*
+   (`String` passed where `Rec` is declared) refuses in both arms, located, with identical text.
+   So the seam is reached, is executing, and does judge; it simply does not discriminate record
+   against record. Without that control, "no diagnostic appears" would be equally consistent with
+   the seam not running at this position at all, and the row would be dismissable.
+
+   THE REFUSAL IS ALSO ASYMMETRIC, measured on one file across two binaries (main, and gunbc#8873
+   at `e78c61c888`): `String` passed at a `Rec` formal refuses on both, while an alias of `Rec`
+   passed at a `String` formal is SILENT on both. So the seam's kernel-vs-record judgment runs in
+   one direction only. Recorded inside this row rather than as a fourth row, because one
+   observation of a neighbouring asymmetry is a distinguishing fact about this class, not an
+   independent class.
+
+   FOUND TWICE, INDEPENDENTLY, WHICH IS THE ONE FORM OF EVIDENCE AN AUTHOR CANNOT PRODUCE ALONE.
+   Reproduced by session still-carp-717 from a different direction and under a different
+   hypothesis — they were chasing the empty-record explanation for an unrelated failure, not
+   looking for this — with a fixture sharing no text with the one above: `type RevA { a: String }`
+   and `type RevB { b: Int }`, no alias relation between them, `consume_a(r: b)` compiling clean,
+   identical on both binaries, and two empty records substituting for each other as well. Their
+   arm carries the same `String`-at-a-record-formal control and it refuses there too
+   (`expected 'Product(RevA)', got 'Primitive(String)'`). Two lanes, two hypotheses, two fixtures,
+   one result.
+
+   SCOPE, sharpened by that second reproduction beyond what the first established. (1) It
+   reproduces in an ordinary NON-EXEMPT module, so it does not sit behind
+   `module_skips_direct_call_arg_check` and cut B — deleting that exemption — would not touch it;
+   this is measured, not expected. (2) The two records differ in field NAMES *and* field TYPES and
+   stand in no alias relation, so this is not the transparent-alias class: neither the withdrawn
+   cut A repair nor gunbc#8873 addresses it, and neither should be credited with closing it.
+   Shape-wise it is the gunbc#8865 coproduct-payload class arriving at a different seam.
+
+   NOT THE SAME AS ROW 23, which now sits directly above it and concerns record-typed arguments
+   at the same seam — the two are one seam failing in two independent ways and must not be merged.
+   Row 23 is about an EXPRESSION FORM: an `ExprRecordLit` actual returns the empty diagnostic list
+   *before the compatibility predicate is reached at all*, so no type is compared. This row is
+   about the PREDICATE ITSELF: two named record types are compared and found compatible. Fixing
+   either leaves the other live — routing record literals into the predicate would hand them to a
+   comparison that does not discriminate record against record, and teaching the predicate to
+   discriminate would still leave literals bypassing it.
+
+   RUNG FOUND AT: **below the floor** on the source→`.dag`-acceptance path — accepted, silent,
+   no diagnostic. The source→interpretation path is UNMEASURED here and is a separate row when
+   someone measures it; a field access on the wrong record may well refuse at runtime, and that
+   would make this below-*ordinary-compiler*-baseline rather than silent wrongness, exactly as
+   row 21 distinguishes.
+
+   CEILING: **structurally guaranteed**. Two named records with different declarations are
+   distinguishable from modeled structure the compiler already has.
+
+   NEXT TRIGGER: measure the interpretation path first, which decides the rung and therefore the
+   ranking; then a discriminating RED at the seam.
+
+26. **A brand is unenforced at the direct-call argument seam in both directions, and a cross-brand
+   equality is not merely deferred but entirely unobserved** (opened 2026-08-22, session
+   proud-ant-819, established as cut A's discovery step: find any consumer that ENFORCES brands,
+   both outcomes being answers).
+
+   INVALID STATE, led by the sharpest specimen because it is the one with no observation at all:
+   given `type Branded = String where brand("Branded")`, the expression `b == s` for
+   `b: Branded, s: String` compiles with **no diagnostic of any kind** — not a refusal, not an
+   advisory, nothing. That is distinct from, and worse than, the seam's other arms: passing a bare
+   `String` into a `Branded` parameter, and a `Branded` into a `String` parameter, both compile
+   with no refusal but DO raise the deferred-predicate advisory
+   (`where-refinement unenforced: predicate 'Brand' … predicate deferred at compile time`). So the
+   class is two rungs, not one: observed-but-unenforced at the argument positions, and *absent*
+   at the equality.
+
+   HARM. This is DESIGN §4b's own warning — "richer type names are not safety; a brand, wrapper,
+   or `Validated<T>` is cosmetic until construction and acceptance enforce the distinction" —
+   instantiated with a receipt rather than left as a caution. A brand that neither refuses nor is
+   observed at `==` is a comment.
+
+   WHAT MUST NOT BE READ INTO THE ADVISORY. "Observed but unenforced" is not a licence. The
+   advisory records that a predicate was deferred; it does not record that the value satisfies it,
+   and nothing downstream consumes it as evidence. A reader who takes the advisory's existence as
+   partial enforcement has read a diagnostic, not a guarantee.
+
+   DISTINGUISHING FACTS AND COVERAGE BOUND. Measured PER SITE on an authored fixture
+   (`.cutA6/consumers.dag`, five advisory sites, identical before and after cut A), not as a
+   corpus population — so this row establishes the mechanism at the sites it names and makes no
+   claim about how many brand sites exist in the tree. The baseline is the planted fixture, not a
+   measurement of current main.
+
+   RUNG FOUND AT: *mitigatable* at the argument positions (the deferral is typed, located and
+   counted, so its frequency is observable) and **below the ladder** at the equality, where
+   nothing fires at all.
+
+   CEILING: **structurally guaranteed** for the nominal half — brand-ness is carried structurally
+   and the compiler can refuse a cross-brand interchange from modeled facts. The *predicate* half
+   is a separate, weaker question (a general `fn(T) -> Bool` refinement is the undecidable residue
+   §4b names) and this row does not claim it climbs.
+
+   NEXT TRIGGER: the equality arm first, because it is the one with no observation and therefore
+   no frequency — a class whose deficit rate is zero by construction never ranks for climbing
+   (§5's absorbing-fallback argument applied to a missing check rather than a widening one).
+
+27. **NEGATIVE RESULT: widening the resolve-seam alias peel breaks variant projection, and the
+   mechanism is unidentified after three refuted hypotheses** (opened 2026-08-22, session
+   proud-ant-819. This row exists because the change that caused it was WITHDRAWN — nothing in
+   `main` is broken by it — so it is recorded for the next person who reaches for the resolve seam,
+   not as an outstanding defect).
+
+   WHAT WAS ATTEMPTED. `v1.compiler.04_resolve` `is_transparent_primitive_alias_rhs` decides
+   transparency by asking whether the alias's base is a KERNEL type, which makes transparency a
+   property of the BASE rather than of the DECLARATION, so `type AliasRec = Rec` keeps a nominal
+   identity it never declared and the direct-call seam refuses the interchange. The attempted
+   repair replaced the kernel test with "the resolved structural node carries a non-empty authored
+   name". Six authored witnesses passed. CI over the corpus refused in three classes at once.
+
+   WHY IT IS THE WRONG SEAM, which is the transferable part. Resolve has THREE downstream
+   consumers and the attempt broke all three: the direct-call comparison (20 diagnostics,
+   `expected 'Product(Hash)', got 'Product(Fnv1a64Structural)'` — peeled on one side of the
+   comparison and not the other, and `type Hash = Fnv1a64Structural` is the alias behind 92 of the
+   115 relations the census was built on, so the repair turned its own headline population into a
+   NEW red); variant projection (18 diagnostics, below); and EMISSION (regen surface drift in
+   `extdeps_cargo_version.rs`, `extdeps_version_semver.rs`, `std_integer.rs`). A transparency
+   relation belongs at the COMPARISON, where leniency is meaningful — emission and variant
+   projection are not judgment surfaces and there is no coherent sense in which they should be
+   lenient. gunbc#8873 places it there and closes this defect: measured on one identical fixture,
+   `main` produces 5 diagnostics (4 alias false reds across record and coproduct kinds, both
+   directions, plus one genuine kernel-vs-record mismatch) and gunbc#8873 at `e78c61c888` produces
+   1 — the genuine one, same site, same text.
+
+   THE UNEXPLAINED CLASS. 18 diagnostics of the form `variant 'X' not found in type 'X'`, the two
+   names identical: `OllamaRuntime` (×2), `MtJadeRev1_0` (×6), `AcceptanceNodeReopensActiveFrontier`
+   (×6), `GoogleCloudInteractiveAuthenticationRequired` (×4).
+
+   REPRODUCTION, established by corpus subtraction rather than by an authored fixture:
+   `dag/gunbc/spark/serving_release.dag` compiled alone at module scope
+   (`--source-root dag --source-root src/v2 --entry <it>`) is rc=0 with 0 blocking diagnostics on
+   `main` and rc=1 with `variant 'OllamaRuntime' not found in type 'OllamaRuntime'` on the widened
+   binary. So the class is attributable to the change and reproduces WITHOUT whole-corpus context.
+   `dag/extdeps/ocp/mt_jade/subject.dag` does NOT reproduce at module scope in either arm, so that
+   instance needs a wider closure and the two are not the same reproduction.
+
+   THREE REFUTED HYPOTHESES, listed because knowing which explanations are dead is worth more to
+   the next reader than a fourth that merely sounds right. (1) *The base is an empty record.*
+   `type OllamaRuntime {}` and `type MtJadeRev1_0 {}` are empty records, and an empty record is
+   `NoConnective` with zero children — structurally indistinguishable from the childless leaf the
+   predicate keys on. REFUTED by its own fixture: an authored `type EmptyRec {}` /
+   `type AliasOfEmpty = EmptyRec` pair behaves exactly like a full-record pair (four mismatches
+   before, clean after) and produces no variant diagnostic in either arm. (2) *Asymmetric peeling
+   between the two call sites.* Consistent with class 1 but never measured, and it does not explain
+   a variant lookup failing. (3) *The kernel-versus-named axis is the discriminator.* The corpus
+   two-column pass agreed with it at 213 declarations with 0 counterexamples in either column —
+   and that agreement is exactly what made the change look safe, so the pass measured what the
+   predicate decides, not what its consumers do with the decision.
+
+   RUNG: not on the ladder — this is a property of a withdrawn change, not of `main`. Recorded as a
+   hazard for the seam.
+
+   NEXT TRIGGER, for anyone who reaches for the resolve peel: start from the module-scope
+   reproduction above, not from an authored fixture. Two independent authors wrote eleven
+   adversarial arms between them (six here, five in gunbc#8873) and ALL ELEVEN pass on the widened
+   binary, including a boundary control written specifically to catch over-peeling. The corpus was
+   the only instrument that detected any of this.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
