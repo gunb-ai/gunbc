@@ -1711,6 +1711,7 @@ pub fn record_lit_fields_from_expected(
     }
 }
 
+
 pub fn field_declared_type_node(sf: Rc<Node>) -> Rc<Node> {
     match sf.inferred.as_deref() {
         Some(InferredNode::Resolved { node: rt }) => {
@@ -1767,9 +1768,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
                                                     inferred: Some(Rc::new(
                                                         InferredNode::Resolved {
                                                             node: substitute_generics(
-                                                                field_declared_type_node(
-                                                                    sf.clone(),
-                                                                ),
+                                                                field_declared_type_node(sf.clone()),
                                                                 subst.clone(),
                                                                 scope
                                                                     .type_env
