@@ -20,7 +20,7 @@ import v1.std.core {
   cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body,
   method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end,
   with_required_cardinality, Connective, Conj, Disj, CardOptional, is_rest_transport,
-  is_shell_transport, is_file_transport
+  is_shell_transport
 }
 
 import v1.compiler.artifact { RenderTarget, Python }
@@ -411,7 +411,6 @@ fn emit_py_transport_body(transport: Node, op_name: String, source_indices: Map<
     transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Python,
     render_rest: (n, t, d, si) => emit_py_rest_call(op_name: n, transport: t, source_indices: si),
     render_shell: (n, t, d, si) => emit_py_shell_call(op_name: n, transport: t, source_indices: si),
-    render_file: (n, d) => emit_py_file_call(op_name: n),
     render_local: (n, d) => emit_py_local_call(op_name: n))
 }
 
@@ -484,15 +483,6 @@ fn emit_py_shell_call(op_name: String, transport: Node, source_indices: Map<Stri
     "    capture_output=True, text=True,\n",
     ")\n",
     "return result.stdout"
-  )
-}
-
-fn emit_py_file_call(op_name: String) -> String {
-  let self_base_path = concat("{", "self.base_path", "}")
-  concat(
-    "path = f\"", self_base_path, "/", emit_ident(name: op_name, target: Python), "\"\n",
-    "with open(path) as f:\n",
-    "    return f.read()"
   )
 }
 

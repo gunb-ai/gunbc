@@ -3,7 +3,7 @@ module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  WitnessFloorYamlArtifact, CorpusTypeJudgmentYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -15,6 +15,7 @@ import gunbc.generated_artifact {
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.corpus_type_judgment_workflow { expected_corpus_type_judgment_yml, CorpusTypeJudgmentGenerated, CorpusTypeJudgmentGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
@@ -55,6 +56,10 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       WitnessFloorGenerated { content } => artifact_generated(content: content)
       WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
     }
+    CorpusTypeJudgmentYamlArtifact => match expected_corpus_type_judgment_yml() {
+      CorpusTypeJudgmentGenerated { content } => artifact_generated(content: content)
+      CorpusTypeJudgmentGenerationRefused => ArtifactGenerationRefused { reason: "corpus type judgment workflow capability closure refused" }
+    }
     FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
       FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
       FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -90,6 +95,7 @@ data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loy
 fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
     WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    CorpusTypeJudgmentYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
