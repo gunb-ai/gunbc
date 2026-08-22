@@ -2671,6 +2671,80 @@ enforces end to end.
    binary, including a boundary control written specifically to catch over-peeling. The corpus was
    the only instrument that detected any of this.
 
+28. **THE POSITION CENSUS, RE-MEASURED INDEPENDENTLY, AND THE TWO CELLS IT ADDS: a parameter's
+   default-value expression is analysed by nothing, and the map-key position refuses by grammar
+   while passing by typing** (opened 2026-08-22, session quiet-boar-696, measured on the compiler
+   floor lane rather than inherited from either lane that found a seam).
+
+   WHY THIS ROW IS NOT A SECOND COPY OF gunbc#8925's. That row enumerates the fourteen
+   `parse_type_expr` sites and reports seven accepting a plain kernel value where a coproduct is
+   declared. THIS row re-measures the same question from an independent fixture set and REACHES
+   THE SAME SEVEN, which is the one form of evidence an author cannot produce alone; it is
+   recorded as corroboration, not as a citation of that row. What it ADDS is two cells neither
+   census carried, and one correction of tense.
+
+   INVALID STATE (a), AND IT IS THE SHARPEST CELL IN THE CENSUS. A parameter's DEFAULT-VALUE
+   expression is judged by nothing at all. `fn a_pd(r: Rel = 7)` compiles clean, and so does
+   `fn a_pd(r: Rel = nosuchname_zzz)`. The reachability control PASSING is what makes this a
+   finding rather than a fourteenth silence: at every other value-bearing position an undefined
+   name refuses, so this is not a type judgment missing from a live position — the expression is
+   not analysed at all. It is strictly worse than the seven, and it is the only cell where "no
+   judgment runs here" is established by a control rather than inferred from a quiet arm.
+
+   INVALID STATE (b). The map-KEY position refuses by grammar and passes by typing. `{ 7: 1 }` and
+   `{ mk_inner(): 1 }` at a declared `Map<Rel, Int>` are refused as `module index refused: 1
+   unparseable .dag source(s)`, a PARSE refusal; `{ nosuchname_zzz: 1 }` is ACCEPTED, the undefined
+   name silently read as a string key. So the position reads as walled from its refusal column and
+   is not — the refusals belong to the key form, and the one specimen that reaches typing passes.
+   A reader folding map-key into the angle-argument site's "refuses" evidence would be citing the
+   grammar as a type wall.
+
+   CORRECTION OF TENSE, small and load-bearing. gunbc#8925's disposition table reads the named
+   record/variant field position as *refuses*, qualified as "and only because #8876 walls it".
+   Measured on `main` at `abf7194e2b2`, #8876 is NOT merged, so the payload-at-parent specimen is
+   ACCEPTED at **all twelve reached positions**, the record field included. The qualification is
+   in that row and a reader who takes the cell without it will count eleven.
+
+   DISTINGUISHING FACTS. Thirteen arm families, four specimens each — a member of the declared
+   coproduct, a plain kernel value, one arm's payload at the parent position, and an undefined
+   name as the reachability control — each a single self-contained module differing only in the
+   marked expression, compiled with `gunbc compile --source-root <arm> --entry <arm>/probe.dag
+   --dry-run` against a binary built from the tree at `abf7194e2b2`. Two independent dispatches;
+   every cell identical across both. Receipts, instrument and the site-grain fold:
+   `docs/probes/declared_type_inhabitance_position_census_2026-08-22/`.
+
+   TWO INSTRUMENT FAILURES, RECORDED BECAUSE BOTH FAIL TOWARD ZERO and both produced a clean
+   all-zero table that reads exactly like the finding: a whole-root compile refuses on the memory
+   budget and EXITS 0 (`WholeCorpusCompileBudgetBelowMeasuredDemand`, remedy `--entry`), and a
+   `--source-root` outside the workspace root PANICS (`repo_relative_path_normalized`). Neither is
+   visible in a diagnostic count. The reachability control's own zero is what exposed both, which
+   is the general reason that control is not optional here.
+
+   RUNG FOUND AT: **below the floor**, unchanged — DESIGN §4b puts *values inhabit declared types*
+   in the ordinary compiler floor, so this is a below-baseline safety regression and not a class
+   sitting at mitigatable. CEILING: **structurally guaranteed** for the decidable classes (exact
+   member, transparent alias, payload-at-parent, kernel-at-structured); the undecidable residue
+   (generic coproducts, the `Optional` carrier, a produced side whose identity was erased upstream)
+   is a typed, COUNTED `Undecidable`, never a silent accept and never a fabricated refusal.
+
+   NEXT TRIGGER, in order. (1) One `DeclaredTypeObligation` per value-bearing position and ONE
+   `declared_type_inhabitance` relation deciding it — consuming gunbc#8873's transparent-alias
+   identity rather than reimplementing it — with the position supplying only its tag and span;
+   seven local predicates would be seven representations of one rule, and the corpus already
+   carries the receipt for what that costs (three existing predicates with three different scopes,
+   between which an actual that is a CALL falls). (2) Per position, five arms: positive, kernel
+   negative, payload negative, reachability, and a DISCRIMINATOR — that position's obligation
+   producer disabled, exactly that position's controls red. (3) Positions land one at a time, each
+   with its own corpus measurement, because turning a wall on IS the census. The direct-call
+   argument position is LAST and is BLOCKED on gunbc#8925 merging: deleting the `v2.` exemption is
+   necessary and insufficient, and closing it first would report the class closed while seven
+   positions stay silent. The design is
+   `docs/probes/declared_type_inhabitance_position_census_2026-08-22/design.md`.
+
+   NOT CLAIMED. No count of live corpus defects at any of these positions. This row measures what
+   the compiler judges, not what the corpus contains, and gunbc#8876's eight live sites are the
+   standing evidence that the two numbers are not each other.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
