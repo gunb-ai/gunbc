@@ -20,9 +20,9 @@ import gunbc.fleet_runner_connectivity {
   SlotConnectivityUnknown,
 }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
-import gunbc.runner_slot_allocation { host_github_slot_count, host_fabric_slot_count }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_github_slot_count, host_fabric_slot_count }
 
-data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Additions are the run of slot indices between observed and the host's GitHub ceiling, DERIVED rather than enumerated, and clamped to the GitHub population so this plan can never add a compute-fabric slot. Count equality is a POSTCONDITION, never a refusal, and the plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
+data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Additions are the run of slot indices between observed and the host's GitHub ceiling, DERIVED rather than enumerated, and clamped to the GitHub population so this plan can never add a compute-fabric slot. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
 type RunnerCapacityAction
   = RunnerSlotAdd { to: RunnerSlotIdentity }
