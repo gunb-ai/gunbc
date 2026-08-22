@@ -25,6 +25,10 @@ import gunbc.gitignore_model {
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted,
   PythonProbeScriptAllowlisted,
   FloorCutNameResolutionPartitionScriptAllowlisted,
+  ShadowDirectCallArgConformanceSummarizeScriptAllowlisted,
+  ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted,
+  ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted,
+  E0308ClassifySitesScriptAllowlisted,
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
@@ -130,6 +134,10 @@ data gitignore_authority: List<IgnoreGroup> = [
       PythonAuditScriptAllowlisted,
       PythonProbeScriptAllowlisted,
       FloorCutNameResolutionPartitionScriptAllowlisted,
+      ShadowDirectCallArgConformanceSummarizeScriptAllowlisted,
+      ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted,
+      ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted,
+      E0308ClassifySitesScriptAllowlisted,
     ]
   },
   IgnoreGroup {
