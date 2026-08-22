@@ -13,6 +13,7 @@ import gunbc.devboot.transport {
   devboot_witness_run,
   devboot_repo_address,
   devboot_store_address,
+  devboot_ref_observation,
   retained_devboot_mkdir,
   retained_devboot_rm_file,
   retained_devboot_rm_rf,
@@ -71,6 +72,18 @@ import gunbc.devboot.subject {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.git { git_ref_missing_exit_code }
+import extdeps.git.object_store { GitRefName, git_object_id_from_untagged_hex }
+import extdeps.git.plumbing {
+  GitRefObservation,
+  GitRefMutationOutcome,
+  GitRefMutationApplied,
+  GitRefMutationPreconditionNotHeld,
+  GitRefMutationExecutionRefused,
+  GitRefMutationObservationRefused,
+  GitRefMutationReadBackMismatch,
+  GitDeleteRefIfExpected,
+  git_ref_mutation_outcome,
+}
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
@@ -1382,28 +1395,69 @@ type LeaseRecovery
 
 // THE DECISION IS SEPARATE FROM THE TRANSPORT, so the arm a caller receives can be witnessed without a repository. What belongs to this module is the mapping -- a successful compare-and-swap is a broken lease, a failed one is a refusal naming who was expected -- while the compare-and-swap SEMANTICS belong to git and are cited there. Fusing them left the mapping reachable only through an effect, which is how it ended up resting on a manual run.
 
+// THE REFUSAL USED TO NAME A CAUSE THE EXIT CODE CANNOT SUPPORT. This function decided from a
+// Bool derived from `update-ref -d`'s exit status and then reported, as fact, that the lease
+// "was not held by <holder> at the moment of the break". `update-ref` exits 128 both when the
+// expected old value no longer matches AND when it could not reach the object store, so an
+// unreachable store was reported as a lease someone else had taken -- a fabricated cause, and
+// one whose remedy (wait for the other producer) is the opposite of the true one (fix the
+// store). It is the exit-128 conflation extdeps.git.plumbing git_ref_mutation_outcome exists
+// to resolve, sitting in a caller of the very operation that carries the resolution.
+//
+// So the decision now comes from the outcome, which took an independent read-back, and each
+// arm says what it actually knows. The `succeeded` Bool is gone rather than kept beside the
+// outcome: a caller could otherwise pass a true Bool next to a refusing outcome and the pair
+// would carry one fact twice with a contradiction writable between them.
 fn lease_recovery_from_outcome(
-  succeeded: Bool,
-  exit_code: Int,
-  stderr: String,
+  outcome: GitRefMutationOutcome,
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  if succeeded {
-    LeaseBroken { token: token, former_holder: expected_holder }
-  } else {
-    LeaseRecoveryRefused {
-      detail: join([
-        "the lease for ",
-        token,
-        " was not held by ",
-        expected_holder,
-        " at the moment of the break, so it was left alone (git exit ",
-        to_string(exit_code),
-        "): ",
-        trim(s: stderr),
-      ], ""),
-    }
+  match outcome {
+    GitRefMutationApplied { mutation } =>
+      LeaseBroken { token: token, former_holder: expected_holder }
+    GitRefMutationPreconditionNotHeld { mutation, observed } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease for ",
+          token,
+          " was not held by ",
+          expected_holder,
+          " at the moment of the break, so it was left alone",
+        ], ""),
+      }
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease for ",
+          token,
+          " is still held by ",
+          expected_holder,
+          " and the store refused to delete it (git exit ",
+          to_string(exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the lease ref for ",
+          token,
+          " could not be read, so whether it was broken is unknown (git exit ",
+          to_string(exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+    GitRefMutationReadBackMismatch { mutation, observed } =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the delete of the lease for ",
+          token,
+          " reported success and the ref is still present",
+        ], ""),
+      }
   }
 }
 
@@ -1411,24 +1465,61 @@ fn lease_recovery_from_outcome(
 // strip a lease a LIVE producer had just taken; naming the holder as the expected old value
 // means the delete refuses unless the ref still holds exactly the claim this caller observed
 // as stranded.
+// The read-back the break's adjudication needs, over the STORE address rather than the
+// worktree one -- the lease lives in the bare artifact store, so gunbc.devboot.transport's
+// worktree observer is the wrong repository to ask.
+fn devboot_lease_observation(store_root: String, repo_root: String, token: String) -> GitRefObservation {
+  let read = git.Plumbing.ObserveRef(
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+    ref_name: lease_ref_of(token: token),
+  )
+  devboot_ref_observation(
+    exit_code: read.exit_code,
+    revision: read.revision,
+    stderr: read.stderr,
+  )
+}
+
 fn devboot_break_stranded_lease(
   store_root: String,
   repo_root: String,
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  let broken = git.Plumbing.DeleteRefIfExpected(
-    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
-    ref_name: lease_ref_of(token: token),
-    expected_old: expected_holder,
-  )
-  lease_recovery_from_outcome(
-    succeeded: broken.exit_code == 0,
-    exit_code: broken.exit_code,
-    stderr: broken.stderr,
-    token: token,
-    expected_holder: expected_holder,
-  )
+  match git_object_id_from_untagged_hex(hex: trim(s: expected_holder)) {
+    Absent =>
+      LeaseRecoveryRefused {
+        detail: join([
+          "the observed lease holder for ",
+          token,
+          " is not an object id this producer can decode, so no exact break is possible: ",
+          trim(s: expected_holder),
+        ], ""),
+      }
+    Present { value: holder_oid } =>
+      let broken = git.Plumbing.DeleteRefIfExpected(
+        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+        ref_name: lease_ref_of(token: token),
+        expected_old: expected_holder,
+      )
+      lease_recovery_from_outcome(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitDeleteRefIfExpected {
+            name: lease_ref_of(token: token) as GitRefName,
+            expected_old: holder_oid,
+          },
+          exit_code: broken.exit_code,
+          stderr: trim(s: broken.stderr),
+          observed_after: devboot_lease_observation(
+            store_root: store_root,
+            repo_root: repo_root,
+            token: token,
+          ),
+        ),
+        token: token,
+        expected_holder: expected_holder,
+      )
+  }
 }
 
 // THE PLATFORM C LIBRARY IS OBSERVED HERE, once, because both the producer and the caller need the same reading and a second implementation of it would be a second answer to one question. ldd reports the version as the trailing field of its first line; the vendor text ahead of it differs between distributions, so the field is taken from the end positionally rather than by matching any distribution's phrasing. A reading that fails yields LibcUnobserved, which the subject then refuses -- never a fabricated version, because a wrong version here is exactly a wrong artifact identity.
