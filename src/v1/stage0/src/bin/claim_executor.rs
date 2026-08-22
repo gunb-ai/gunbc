@@ -10538,12 +10538,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     // judges.
     //
     // It reaches for `corpus_type_judgment_census`, which assembles THE SAME subject
-    // `--required-ci`'s floor phase prepares (`assemble_prepared_subject` under the floor's own
-    // exclusions) and runs THE SAME whole-corpus compile, then reports the per-class judgment
-    // population instead of collapsing it to a pass/fail. Nothing is evaluated: no claim scope, no
-    // interpreter context, no witness. That is the whole of the difference, and it is why this is
-    // a mode here rather than a second discovery in a bin of its own — a measurement over a
-    // population CI does not compile answers a neighbouring question (DESIGN §3).
+    // `--required-ci`'s floor phase prepares, over the SAME source roots, and runs the SAME
+    // whole-corpus compile — then reports the located judgment population instead of collapsing it
+    // to pass/fail. Nothing is evaluated: no claim scope, no interpreter context, no witness.
+    //
+    // THIS MODE TAKES NO SUBJECT ARGUMENT, and that is the design rather than an omission. The
+    // roots come from the `gunbc.ci_layer_roots` authority, so `--source-root` is REFUSED here
+    // instead of honoured: every instrument this lane has watched fail measured some closure and
+    // reported it as the corpus, and a scoping flag only moves that error onto whoever forgets it.
+    // There is no spelling of "measure part of it", so there is nothing to forget.
     //
     // WHY IT EXISTS. The strict gate asks that compile exactly one question — is anything blocking
     // — and discards the rest. So the advisory residue (the method-existence frontier and its
@@ -10557,60 +10560,84 @@ fn run() -> Result<ExitCode, ExitCode> {
     // stops the line on it is `--required-ci`, and duplicating that verdict here would be a second
     // authority for the same fact.
     if corpus_type_judgment_mode {
-        let exclusions = v1_compiler::cli_run::floor_prepared_subject_exclusions();
-        let census =
-            match v1_compiler::cli_run::corpus_type_judgment_census(&source_roots, &exclusions) {
-                Ok(c) => c,
-                Err(e) => {
-                    // A REFUSAL PRINTS NO COUNT. The one thing this mode must never do is answer
-                    // a question it could not measure with the number that reads as good news.
-                    eprintln!("corpus-type-judgment: {e}");
-                    return Err(ExitCode::from(1));
-                }
-            };
-        // The control prints FIRST and unconditionally: it is what makes every number below it
+        if !source_roots.is_empty() {
+            eprintln!(
+                "corpus-type-judgment: CORPUS-TYPE-JUDGMENT REFUSAL cause=SubjectSupplied — this \
+                 mode measures the corpus the required run compiles and derives its roots from \
+                 gunbc.ci_layer_roots; --source-root is refused rather than honoured, because a \
+                 scopeable corpus measurement is how a closure gets reported as the corpus"
+            );
+            return Err(ExitCode::from(2));
+        }
+        let census = match v1_compiler::cli_run::corpus_type_judgment_census() {
+            Ok(c) => c,
+            Err(e) => {
+                // A REFUSAL PRINTS NO COUNT. The one thing this mode must never do is answer a
+                // question it could not measure with the number that reads as good news.
+                eprintln!("corpus-type-judgment: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        // The plant prints FIRST and unconditionally: it is what makes every number below it
         // readable, so it must not be something a reader has to scroll past a zero to find.
-        for row in &census.control_rows {
+        for site in &census.planted_sites {
             println!(
-                "CORPUS_JUDGMENT_CONTROL\t{}\t{}\t{}\t{}",
-                row.class,
-                row.subject_name,
-                row.severity.as_str(),
-                row.count
+                "CORPUS_JUDGMENT_PLANT\t{}\t{}\t{}\t{}",
+                site.identity(),
+                site.severity.as_str(),
+                site.line,
+                site.col
             );
         }
-        println!("CORPUS_JUDGMENT_SUBJECT\t{}", census.subject_statement);
+        println!("CORPUS_JUDGMENT_SUBJECT\t{}", census.subject_statement());
         println!(
-            "CORPUS_JUDGMENT_TOTALS\tdiagnostics={}\tblocking={}\tadvisory={}\tunclassified={}",
-            census.diagnostics_total,
+            "CORPUS_JUDGMENT_PARTITION\tblocking={}\tadvisory={}\tunclassified={}\tsites={}",
             census.blocking_total,
             census.advisory_total,
-            census.unclassified_total
+            census.unclassified_total,
+            census.sites.len()
         );
-        for row in &census.rows {
+        // THE PARTITIONS DO NOT CARRY THE SAME EVIDENCE, and saying so is not a caveat — it is the
+        // rung each one occupies (DESIGN §4b, rung honesty at a declared grain). The blocking
+        // partition has a second observer: required-ci prints its own located diagnostics when
+        // strict preparation refuses, so these identities can be joined against it on the same
+        // head. The advisory partition has NO independent observer anywhere in the repository,
+        // because the gate that computes it discards it. Reporting both as one number would carry
+        // the joined partition's standing over to the unjoined one.
+        println!(
+            "CORPUS_JUDGMENT_EVIDENCE\tblocking=joinable-against-required-ci\t\
+             advisory=no-independent-observer\tnext-trigger=a-second-observer-of-the-advisory-partition"
+        );
+        for site in &census.sites {
             println!(
-                "CORPUS_JUDGMENT_ROW\t{}\t{}\t{}\t{}",
-                row.class,
-                row.subject_name,
-                row.severity.as_str(),
-                row.count
+                "CORPUS_JUDGMENT_SITE\t{}\t{}\t{}\t{}\t{}",
+                site.identity(),
+                site.severity.as_str(),
+                site.line,
+                site.col,
+                site.module
             );
         }
-        // `unclassified` is not a rounding bucket. A class counted by neither severity predicate
-        // is a frontier that renders to a terminal while every gate reports zero of it, so it is
-        // named on its own line rather than left to a reader to notice in a column.
+        // `unclassified` is not a rounding bucket. A class counted by neither severity predicate is
+        // a frontier that renders to a terminal while every gate reports zero of it, so it is named
+        // on its own line rather than left to a reader to notice in a column.
         if census.unclassified_total > 0 {
             eprintln!(
-                "corpus-type-judgment: {} diagnostic(s) are admitted by NEITHER the blocking \
+                "corpus-type-judgment: {} judgment(s) are admitted by NEITHER the blocking \
                  predicate nor the advisory allowlist — each is a judgment the corpus produced \
                  that no severity policy counts",
                 census.unclassified_total
             );
         }
-        eprintln!(
-            "corpus-type-judgment: measured (no witness evaluated) {}",
-            census.subject_statement
+        // TERMINAL COMPLETION, printed only here. A run that refused above never reaches this
+        // line, so the presence of the line is what distinguishes a whole population from a
+        // truncated one — a consumer that reads rows without finding it is reading a partial run.
+        println!(
+            "CORPUS_JUDGMENT_TERMINAL\tcomplete\tplanted_observed={}\t{}",
+            census.planted_sites.len(),
+            census.subject_statement()
         );
+        eprintln!("corpus-type-judgment: measured, no witness evaluated");
         return Ok(ExitCode::SUCCESS);
     }
 
