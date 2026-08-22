@@ -12,6 +12,8 @@ import v1.compiler.infer_env { TypeEnv, lookup_type_for }
 import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr, Resolved }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // The step-1 shadow census: for every type-reference occurrence the v1 emitter would
 // render, compute BOTH the legacy short-circuit answer and the strict identity
@@ -610,5 +612,48 @@ fn typed_census_tsv(rows: List<TypedCarrierRow>) -> String {
     f: (acc, r) => concat(concat(acc, "\n"), typed_row_tsv(r: r)))
 }
 
+// EXPLORATION ONLY -- NEVER COMMITTED. These entries read sources and write a receipt so a
+// human can see the table while A/B/C/D is undecided. They stay in the working tree and
+// reach the runner as a ctrl-build patch. Landing them would re-grow the seed closure by
+// the modules the reduced-scope admission removed, and the emitter cannot emit them anyway.
+type CensusSources = SourcesRead { sources: List<SourceFile> } | SourceReadRefused { path: String }
 
+fn census_sources_step(acc: CensusSources, path: String) -> CensusSources {
+  match acc {
+    SourceReadRefused { path: p } => SourceReadRefused { path: p }
+    SourcesRead { sources: so_far } =>
+      let read_out = Filesystem.Read(path: path)
+      if !read_out.success {
+        SourceReadRefused { path: path }
+      } else {
+        SourcesRead { sources: concat(so_far, [SourceFile { path: path, content: read_out.content }]) }
+      }
+  }
+}
 
+fn census_sources_from_paths(paths: List<String>) -> CensusSources {
+  paths |> fold(init: SourcesRead { sources: [] }, f: (acc, p) => census_sources_step(acc: acc, path: p))
+}
+
+fn typed_census_receipt_for_paths(paths: List<String>) -> String {
+  match census_sources_from_paths(paths: paths) {
+    SourceReadRefused { path: p } => concat("REFUSED: could not read source: ", p)
+    SourcesRead { sources: srcs } =>
+      let result = compile_to_resolved(sources: srcs)
+      match result.graph {
+        Absent => "REFUSED: compile_to_resolved produced no graph"
+        Present { value: g } =>
+          typed_census_tsv(rows: g.modules |> fold(init: no_typed_rows(), f: (acc, m) =>
+            concat(acc, typed_module_rows(m: m, si: result.source_indices))))
+      }
+  }
+}
+
+data typed_census_receipt_path: String = "target/carrier_realization_typed.tsv"
+
+fn census_run_typed() -> ProcessExit {
+  if Filesystem.Write(path: typed_census_receipt_path,
+                      content: typed_census_receipt_for_paths(paths: census_smoke_subject_paths)).success {
+    ExitSuccess
+  } else { exit_failure(reason: "typed receipt write failed") }
+}
