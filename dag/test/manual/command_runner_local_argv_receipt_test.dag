@@ -135,6 +135,30 @@ test fn zero_exit_with_output_is_present() -> Bool {
 // enrolled evidence for this class is now the type declaration itself, which every caller of every
 // builder compiles against.
 //
+// THE CLIMB IS MEASURED, NOT ASSUMED, AND THE MEASUREMENT IS THE PART WORTH KEEPING. `program` is
+// NonEmptyStr, which std.types declares as `String where non_empty` -- a REFINEMENT, not a mint -- so
+// the climb is real only if that predicate is enforced at CONSTRUCTION. A type name is not safety
+// (DESIGN section 4b: a brand or Validated<T> is cosmetic until construction enforces the
+// distinction). Run against a freshly built gunbc on 2026-08-22, one discriminating pair, same file
+// and same mechanism with only the literal changed:
+//
+//   data probe: NonEmptyStr = ""       -> REFUSED at the declaration:
+//                                         type mismatch: expected 'Product(NonEmptyStr)',
+//                                         got 'Primitive(String)'
+//   data probe: NonEmptyStr = "mkdir"  -> ACCEPTED; the module resolved and its function
+//                                         evaluated to a word count
+//
+// `"" as NonEmptyStr` at a call site refuses the same way, so neither construction route admits an
+// empty program. THE BOUNDARY, per section 4b's rule that a rung is per PATH: this measures
+// source -> .dag acceptance. It says nothing about the Rust emission path, where a mirror's own
+// constructor is a separate question this lane did not open.
+//
+// NOT ENROLLED AS A WITNESS, and the reason is a real limitation rather than a choice: the only
+// in-corpus vehicle for asserting a REFUSAL is compile_dag_diagnostic_census over a virtual module,
+// which reads the live tree -- and a ReadsLiveTree file is declined by the floor before the fold, so
+// enrolling it would add an inert witness, which is worse than none. The measurement above is
+// recorded here with its command and its output so the next author can reproduce it in one dispatch.
+//
 // RUNG, STATED HONESTLY: structurally impossible for the empty-argv class specifically -- the state
 // has no representation in the carrier. That is a claim about this ONE class, not about argv
 // construction generally: hand-spelled FLAGS remain writable inside a builder's own module, which is

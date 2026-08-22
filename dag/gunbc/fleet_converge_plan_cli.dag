@@ -47,6 +47,10 @@ import gunbc.spark.serving_execution_schedule {
 
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
+// The apply script is written by this CLI and then executed, so its mode is a decision this module
+// makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
+data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
+
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
 
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
@@ -192,7 +196,7 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    chmod_set_mode_command(mode: "0755" as NonEmptyStr, path: fleet_converge_plan_apply_shell_path),
+                    chmod_set_mode_command(mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
                     cat_command(path: fleet_converge_plan_body_path),
                     cat_command(path: fleet_converge_plan_content_hash_path),
                   ],

@@ -73,6 +73,8 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "true_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
