@@ -20,11 +20,21 @@ import gunbc.fleet_converge_plan {
   fleet_converge_locked_apply_script,
   fleet_converge_plan_apply_shell_path,
   fleet_converge_parse_nonneg_generation_text,
-  fleet_converge_generation_from_store_content,
+  fleet_converge_generation_observation,
+  fleet_converge_generation_admission,
+  fleet_converge_first_generation,
+  fleet_converge_locked_apply_inner_script,
+  fleet_converge_locked_apply_emit_refused_poison,
+  GenerationObserved,
+  GenerationStoreAbsent,
+  GenerationUnobserved,
+  GenerationAdmitted,
+  GenerationAdmissionRefused,
   fleet_converge_plan_content_hash_path,
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
 }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -301,14 +311,45 @@ test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
     }
 }
 
-test fn generation_from_store_content_missing_is_zero_corrupt_refuses() -> Bool {
-  match fleet_converge_generation_from_store_content(store_present: false, content: "") {
-    Present { value: 0 } => true
+// THE THREE STATES ARE THREE VALUES, and this is the RED that the old two-valued reader could not
+// express: an absent store and a present-unreadable one used to be the same answer, and that
+// answer was a number. Here they are different variants, and neither of the not-observed ones
+// carries a generation at all.
+test fn generation_observation_separates_absent_from_unreadable() -> Bool {
+  match fleet_converge_generation_observation(store_present: false, content: "") {
+    GenerationStoreAbsent => true
     _ => false
   }
-    && match fleet_converge_generation_from_store_content(store_present: true, content: "garbage") {
-      Absent => true
-      Present { value: _ } => false
+    && match fleet_converge_generation_observation(store_present: true, content: "garbage") {
+      GenerationUnobserved { reason: _ } => true
+      _ => false
+    }
+    && match fleet_converge_generation_observation(store_present: true, content: "7") {
+      GenerationObserved { generation: n } => n == 7
+      _ => false
+    }
+}
+
+// The decision, not the read, is where "no store yet" becomes a number — and an unreadable store
+// never becomes one.
+test fn generation_admission_admits_absent_as_first_and_refuses_unreadable() -> Bool {
+  match fleet_converge_generation_admission(
+    observation: fleet_converge_generation_observation(store_present: false, content: ""),
+  ) {
+    GenerationAdmitted { generation: n } => n == fleet_converge_first_generation
+    GenerationAdmissionRefused { reason: _ } => false
+  }
+    && match fleet_converge_generation_admission(
+      observation: fleet_converge_generation_observation(store_present: true, content: "garbage"),
+    ) {
+      GenerationAdmissionRefused { reason: _ } => true
+      GenerationAdmitted { generation: _ } => false
+    }
+    && match fleet_converge_generation_admission(
+      observation: fleet_converge_generation_observation(store_present: true, content: "9"),
+    ) {
+      GenerationAdmitted { generation: n } => n == 9
+      GenerationAdmissionRefused { reason: _ } => false
     }
 }
 
@@ -318,11 +359,67 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
   )
-  string_contains(s: script, pattern: "flock -x")
-    && string_contains(s: script, pattern: "[ \"$CURRENT\" != \"4\" ]")
-    && string_contains(s: script, pattern: "LeaseGenerationStale planned=5")
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: script, pattern: "flock")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
     && string_contains(s: script, pattern: fleet_converge_plan_apply_shell_path)
+    && inner != fleet_converge_locked_apply_emit_refused_poison
+    && script != fleet_converge_locked_apply_emit_refused_poison
+}
+
+// THE INNER PROGRAM ENTERS THE OUTER ONE AS A WORD, NOT AS SPLICED TEXT, and that is what these
+// two assert. The inner body appears in the outer script only under the serializer's own
+// encoding, so the raw inner text — which is what a hand-typed `bash -c '` ++ inner ++ `'` would
+// have produced — is NOT a substring of the emitted script. That second clause is the RED: it
+// fails the moment anyone reintroduces the splice.
+test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  let script = fleet_converge_locked_apply_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: script, pattern: posix_single_quote(spelling: inner))
+    && !string_contains(s: script, pattern: concat("'", concat(inner, "'")))
+}
+
+// THE EMITTED GUARD MUST NOT CARRY THE COERCION THE MODEL REFUSES. `|| echo 0` and a discarded
+// stderr on the store read are exactly the two spellings that turned an unreadable store into
+// generation zero; the default now comes from fleet_converge_first_generation and the store is
+// read only where it exists.
+test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool {
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  !string_contains(s: inner, pattern: "|| echo 0")
+    && !string_contains(s: inner, pattern: "2>/dev/null")
+    && string_contains(s: inner, pattern: "-e")
+    && string_contains(s: inner, pattern: to_string(fleet_converge_first_generation))
+}
+
+// The operands the emitted comparison uses are the modelled ones. The comparison is still spelled
+// twice (see fleet_converge_locked_apply_current_var's note); this witness is what keeps the two
+// spellings from drifting apart silently.
+test fn locked_apply_guard_compares_the_modelled_prior_generation() -> Bool {
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: inner, pattern: to_string(4))
+    && string_contains(s: inner, pattern: "planned=5")
+    && !fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 5)
+    && fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 4)
 }
 
 test fn subject_host_matches_same_host() -> Bool {
@@ -350,4 +447,17 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
         && !string_contains(s: artifact.apply_shell, pattern: "/etc/systemd/system/")
     Absent => false
   }
+}
+
+// The stale diagnostic names the observed generation as ONE word. Split across two echo
+// arguments it renders `observed= 4`, which reads as an empty observation followed by a
+// number — precisely the confusion this PR removes from the guard itself (review 54519).
+test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool {
+  let inner = fleet_converge_locked_apply_inner_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  !string_contains(s: inner, pattern: "observed= ")
+    && string_contains(s: inner, pattern: "observed=")
 }
