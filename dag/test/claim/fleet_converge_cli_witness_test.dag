@@ -54,6 +54,13 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
     && !converge_cli_routes_to_slice1(host: "srv2")
 }
 
+// THE CAUSE THIS ASSERTS CHANGED WITH THE ARM THAT PRODUCED IT, and the assertion is anchored on
+// the authority rather than on a module name typed as a substring. srv2 used to refuse because
+// gunbc.host_converge_realize found an unimplemented knob target and said so in prose containing
+// its own module name; it now refuses because the converge-side in-process apply is withdrawn
+// outright. Both are fail-closed refusals with applied == 0, and the new one is strictly stronger
+// — it does not depend on which knob targets happen to be unmodelled, so a future implemented
+// target cannot quietly turn this green into an actuation.
 test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
   let host_knobs = converge_cli_run_host_knobs(host: "srv2")
   let r = converge_cli_run(host: "srv2")
@@ -65,7 +72,7 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
     && match host_knobs.reason {
       Present { value: cause } =>
         match cause {
-          KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
+          KnobFrontier { reason: why } => string_contains(s: why, pattern: converge_in_process_apply_withdrawn_reason)
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
           SparkPreEnrollment { host: _ } => false
@@ -77,7 +84,7 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
     && match r.reason {
       Present { value: cause } =>
         match cause {
-          KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
+          KnobFrontier { reason: why } => string_contains(s: why, pattern: converge_in_process_apply_withdrawn_reason)
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
           SparkPreEnrollment { host: _ } => false

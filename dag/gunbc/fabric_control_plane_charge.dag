@@ -1,0 +1,90 @@
+module gunbc.fabric_control_plane_charge
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+
+data fabric_control_plane_charge_authority: Disposition = SingleAuthority {
+  reason: "Single authority for what a statically pinned fabric control-plane resident COSTS on a host. It owns the placement row, the resource envelope, and the per-host claim that gunbc.fleet_host_budget charges. It does not own the control plane's lifecycle, its supervision, or its liveness promise -- those are separate facts and belong with whatever eventually deploys it. It is deliberately HOST-PARAMETRIC: it answers what the resident costs on host H rather than what it costs on srv1, because a hardcoded host is how a placement gets decided by which machine was named first."
+}
+
+// THE THREE ARMS ARE THE POINT AND A ByteSize? WOULD HAVE MERGED TWO OF THEM. "Not placed on this
+// host" and "placed on this host, size unknown" have OPPOSITE conservation consequences: the first
+// is genuinely a zero charge, the second must refuse the host plan. An optional byte size with
+// Absent meaning zero cannot tell them apart, and the arm that gets silently chosen is the one that
+// keeps the current plan green -- the fabricated-plausible-output failure with a capacity number
+// attached. So the distinction is carried in the type rather than in a convention about Absent.
+type HostFabricControlPlaneClaim
+  = ControlPlaneNotPlaced
+  | ControlPlaneClaimResolved { memory: ByteSize }
+  | ControlPlaneClaimUnmeasured { cause: String }
+
+// UNMEASURED REFUSES ON EVERY HOST, because unmeasured is unmeasured -- that arm is host-independent
+// and is not a capacity judgment. Whether a MEASURED envelope fits is a separate question the
+// conservation arithmetic answers per host, and the two must not be run together: merging them
+// produces a refusal that cannot say whether the problem is the size or the ignorance.
+type FabricControlPlaneEnvelope
+  = ControlPlaneEnvelopeDeclared { memory_max: ByteSize, provenance: NonEmptyStr }
+  | ControlPlaneEnvelopeUnmeasured { cause: String }
+
+type FabricControlPlanePlacement
+  = ControlPlaneUnplaced
+  | ControlPlaneStaticPinned { host: HostIdentity, envelope: FabricControlPlaneEnvelope }
+
+// THE LIVE ROW IS Unplaced AND THAT IS THE TRUE FACT RATHER THAN A STAND-IN. The fabric control
+// plane is not deployed on any host, so every host's claim is a genuine zero and conservation is
+// unchanged by this module landing. Writing StaticPinned here to manufacture a forcing function
+// would be authoring a false row about the fleet, which is worse than the deferral it buys.
+//
+// WHY THIS IS NOT A WALL THAT CANNOT FIRE, stated with the test rather than the assurance. The
+// discriminating question is: what edit makes the refusal fire, and is it an edit someone makes in
+// the ordinary course of the work? Here it is ONE row, written by the person deploying the control
+// plane, at the moment they deploy it -- the refusal fires exactly when the fact it guards becomes
+// true. Contrast the case this pattern is usually hiding, where no edit to any row reaches the
+// refusal because the production input is a different population and the producer must be rebuilt
+// first. That one is unfirable; this one has a precondition that has not occurred.
+//
+// THAT DISTINCTION ONLY HOLDS WHILE THE PRECONDITION IS SCHEDULED, so the trigger is named rather
+// than left open-ended: NEXT STEP is to measure the broker's resource envelope by running it and
+// recording what it uses, which is a task producing a FACT and not a decision awaiting a ruling.
+// A wall whose precondition never occurs becomes indistinguishable from an unfirable one, and the
+// whole difference is whether anyone is scheduled to make it true.
+data fabric_control_plane_placement: FabricControlPlanePlacement = ControlPlaneUnplaced
+
+// AND THE FIRST VERSION OF THIS MODULE SHIPPED A Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
+// control_plane_claim_is_unmeasured returned true for one arm and false for the others, had zero
+// call sites anywhere in the tree, and existed three lines below a comment explaining why no such
+// projection should exist. The point of having no projection is that the coproduct must be matched;
+// shipping an unconsumed Bool view of it reopens exactly the spelling the paragraph forbids, and
+// leaves a reader unsure which of the two the module actually means. Deleted (review 54686).
+// THERE IS NO claim -> ByteSize PROJECTION, AND ITS ABSENCE IS THE DESIGN. An earlier revision of
+// this module had one, with an annotation saying the unmeasured arm was deliberately absent from it
+// -- and a body mapping that arm to zero. The prose and the code disagreed inside one declaration,
+// and the code was doing the thing the prose forbade: charging nothing for a resident whose size
+// nobody knows. A total function from this coproduct to ByteSize CANNOT exist honestly, because one
+// arm has no bytes to return and every value it could return is a lie about a different arm.
+//
+// So the consumer matches the claim itself and refuses on the unmeasured arm. That is construction
+// rather than validation: with no projection to call, "charge the control plane" has no spelling
+// that skips the refusal, instead of having one that a reviewer must notice.
+//
+fn host_fabric_control_plane_claim(host: HostIdentity) -> HostFabricControlPlaneClaim {
+  host_fabric_control_plane_claim_under(host: host, placement: fabric_control_plane_placement)
+}
+
+fn host_fabric_control_plane_claim_under(host: HostIdentity, placement: FabricControlPlanePlacement) -> HostFabricControlPlaneClaim {
+  match placement {
+    ControlPlaneUnplaced => ControlPlaneNotPlaced
+    ControlPlaneStaticPinned { host: placed, envelope: envelope } =>
+      if (placed as String) == (host as String) {
+        match envelope {
+          ControlPlaneEnvelopeUnmeasured { cause: c } => ControlPlaneClaimUnmeasured { cause: c }
+          ControlPlaneEnvelopeDeclared { memory_max: m, provenance: _ } =>
+            ControlPlaneClaimResolved { memory: m }
+        }
+      } else {
+        ControlPlaneNotPlaced
+      }
+  }
+}

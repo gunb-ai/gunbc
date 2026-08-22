@@ -7,7 +7,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.tools.free { SwapStats }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.host_phase_status { observation_verdict_eq, fleet_subsumption_hosts }
+import gunbc.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, proc_swaps_read_probe }
 import product.placement_supply { HostIdentity }
 
@@ -142,13 +142,3 @@ fn host_swap_backing_host_verdict(host: HostIdentity) -> ObservationVerdict {
   )
 }
 
-fn host_swap_backing_unobserved_count(hosts: List<HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h => observation_verdict_eq(a: host_swap_backing_host_verdict(host: h), b: UnknownRefused),
-  ).length()
-}
-
-fn host_swap_backing_fleet_unobserved_count() -> Int {
-  host_swap_backing_unobserved_count(hosts: fleet_subsumption_hosts)
-}
