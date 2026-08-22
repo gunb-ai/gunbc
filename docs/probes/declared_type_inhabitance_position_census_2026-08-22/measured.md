@@ -127,7 +127,7 @@ grammar's key form, and the one specimen that reaches typing passes.
 
 ## The pass-coverage axis, measured second
 
-The grammar axis is not the only cut. ' `ExprVar` arm returns the node
+The grammar axis is not the only cut. `resolve_expr_types`' `ExprVar` arm returns the node
 unchanged with an empty diagnostic list, so RESOLVE can refuse an undefined name at no position
 at all; inference is what refuses one. That makes "reached by resolve, not by inference" a second
 axis, and it is NOT a subset of the fourteen grammar sites.
