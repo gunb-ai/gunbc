@@ -60,7 +60,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
-pub use crate::std_types::{List, Map, NonEmptyStr, Set};
+pub use crate::std_types::{CommitSha, FilePath, List, Map, NonEmptyStr, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

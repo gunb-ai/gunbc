@@ -133,6 +133,7 @@ use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::*;
 use crate::v1_std_core::StringPart::*;
+use crate::v1_std_core::UseLineCandidateRefusalCause::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
@@ -157,7 +158,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, StringPart, TextFile, VarBindingKind,
+    NewlineIndex, Node, StringPart, TextFile, UseLineCandidateRefusalCause, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -5412,7 +5413,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
-        let module_files = Rc::new({
+        let module_emit_results = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
                 __result.push(emit_module_full(
@@ -5436,6 +5437,20 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         None => Rc::new(vec![]),
                     },
                 ));
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for r in module_emit_results.clone().iter().cloned() {
+                __result.push(r.file.clone());
+            }
+            __result
+        });
+        let use_line_refusals = Rc::new({
+            let mut __result = Vec::new();
+            for r in module_emit_results.clone().iter().cloned() {
+                __result.extend((*r.refusals.clone()).iter().cloned());
             }
             __result
         });
@@ -5557,7 +5572,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         Rc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: use_line_refusals.clone(),
         })
     }
 }
@@ -5940,6 +5955,8 @@ pub fn emit_module(
             module_index.clone(),
             Rc::new(vec![]),
         )
+        .file
+        .clone()
     }
 }
 
@@ -7452,7 +7469,19 @@ pub fn reference_provider_module(
     }
 }
 
-pub fn reference_derived_use_lines(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UseLineDispositions {
+    pub lines: Rc<Vec<String>>,
+    pub refusals: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleEmitResult {
+    pub file: Rc<TextFile>,
+    pub refusals: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn reference_derived_use_line_dispositions(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
     this_module_name: String,
@@ -7464,7 +7493,7 @@ pub fn reference_derived_use_lines(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+) -> Rc<UseLineDispositions> {
     {
         let module_source = match Rc::new({
             let mut __result = Vec::new();
@@ -7482,6 +7511,23 @@ pub fn reference_derived_use_lines(
         {
             Some(tm) => module_authored_source_text(tm.module.clone(), source_indices.clone()),
             None => "".to_string(),
+        };
+        let module_span = match Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed_modules.clone().iter().cloned() {
+                if (crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone())
+                    == this_module_name.clone())
+                {
+                    __result.push(tm);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(tm) => tm.module.clone().span.clone(),
+            None => crate::v1_std_core::no_span(),
         };
         let value_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
@@ -7524,6 +7570,37 @@ pub fn reference_derived_use_lines(
             emit_info.type_summaries.clone(),
             emit_info.variant_to_enum.clone(),
         );
+        let declared_field_type_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend((*{
+            let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+if (nm.clone() == "".to_string()) {
+                Rc::new(vec![])
+            } else {
+                v1_rt::concat(match v1_rt::map_get(&emit_info.type_summaries.clone(), nm.clone()) {
+    Some(sm) => Rc::new({ let mut __result = Vec::new(); for ft in Rc::new(v1_rt::map_values(&sm.field_type_map.clone())).iter().cloned() { if (ft.clone() != "".to_string()) { __result.push(ft); } } __result }),
+    None => Rc::new(vec![]),
+}, if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
+                    Rc::new({ let mut __result = Vec::new(); for variant in item.children.clone().iter().cloned() { __result.extend((*{
+                        let vn = crate::v1_std_core::authored_name_at(source_indices.clone(), variant.clone());
+if (vn.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            match v1_rt::map_get(&emit_info.type_summaries.clone(), crate::v1_compiler_infer_emit_info::variant_summary_key(nm.clone(), vn.clone())) {
+    Some(vs) => Rc::new({ let mut __result = Vec::new(); for ft in Rc::new(v1_rt::map_values(&vs.field_type_map.clone())).iter().cloned() { if (ft.clone() != "".to_string()) { __result.push(ft); } } __result }),
+    None => Rc::new(vec![]),
+}
+                        }
+}).iter().cloned()); } __result })
+                } else {
+                    Rc::new(vec![])
+                })
+            }
+}).iter().cloned());
+            }
+            __result
+        });
         let emitter_attested_anon_heads =
             crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                 let mut __result = Vec::new();
@@ -7547,12 +7624,15 @@ pub fn reference_derived_use_lines(
                 for name in crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                            type_surface_names.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                type_surface_names.clone(),
+                            ),
+                            field_surface_names.clone(),
                         ),
-                        field_surface_names.clone(),
+                        variant_payload_structs.clone(),
                     ),
-                    variant_payload_structs.clone(),
+                    declared_field_type_names.clone(),
                 ))
                 .iter()
                 .cloned()
@@ -7656,6 +7736,45 @@ pub fn reference_derived_use_lines(
             }
             __result
         });
+        let use_line_refusals = Rc::new({
+            let mut __result = Vec::new();
+            for name in candidates.clone().iter().cloned() {
+                __result.extend((*{
+            let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+let provider = reference_provider_module(name.clone(), registry.clone());
+if ((crate::v1_compiler_infer_types::emit_map_has(already.clone(), leaf.clone()) || is_kernel_type(leaf.clone())) || is_known_variant(emit_info.type_summaries.clone(), leaf.clone())) {
+                Rc::new(vec![])
+            } else {
+                if (provider.clone() == "".to_string()) {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UseLineCandidateRefused {
+    name: name.clone(),
+    cause: UseLineCandidateRefusalCause::UseLineRegistryResolveFailed,
+    span: module_span.clone(),
+}), this_module_name.clone())])
+                } else {
+                    if (provider.clone() == this_module_name.clone()) {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UseLineCandidateRefused {
+    name: name.clone(),
+    cause: UseLineCandidateRefusalCause::UseLineRegistryResolvesToSelf,
+    span: module_span.clone(),
+}), this_module_name.clone())])
+                    } else {
+                        if !provider_proven_exports_symbol(leaf.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UseLineCandidateRefused {
+    name: name.clone(),
+    cause: UseLineCandidateRefusalCause::UseLineProviderExportProofUnproven,
+    span: module_span.clone(),
+}), this_module_name.clone())])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                }
+            }
+}).iter().cloned());
+            }
+            __result
+        });
         let providers = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for m in Rc::new({
@@ -7674,7 +7793,7 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
-        Rc::new({
+        let emitted_use_lines = Rc::new({
             let mut __result = Vec::new();
             for provider in providers.clone().iter().cloned() {
                 __result.extend((*{
@@ -7699,6 +7818,10 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
 }).iter().cloned());
             }
             __result
+        });
+        Rc::new(UseLineDispositions {
+            lines: emitted_use_lines.clone(),
+            refusals: use_line_refusals.clone(),
         })
     }
 }
@@ -7714,7 +7837,7 @@ pub fn emit_module_full(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     unlisted_type_names: Rc<Vec<String>>,
-) -> Rc<TextFile> {
+) -> Rc<ModuleEmitResult> {
     {
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
@@ -7842,7 +7965,7 @@ pub fn emit_module_full(
                 __result
             }),
         );
-        let reference_use_lines = reference_derived_use_lines(
+        let use_line_dispositions = reference_derived_use_line_dispositions(
             typed_module.items.clone(),
             unlisted_type_names.clone(),
             crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
@@ -7855,6 +7978,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
+        let reference_use_lines = use_line_dispositions.lines.clone();
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
             reference_use_lines.clone(),
@@ -8100,12 +8224,15 @@ pub fn emit_module_full(
                 "".to_string()
             };
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
-        Rc::new(TextFile {
-            path: v1_rt::concat(
-                v1_rt::concat(rust_source_root(), filename.clone()),
-                rust_source_ext(),
-            ),
-            content: content.clone(),
+        Rc::new(ModuleEmitResult {
+            file: Rc::new(TextFile {
+                path: v1_rt::concat(
+                    v1_rt::concat(rust_source_root(), filename.clone()),
+                    rust_source_ext(),
+                ),
+                content: content.clone(),
+            }),
+            refusals: use_line_dispositions.refusals.clone(),
         })
     }
 }

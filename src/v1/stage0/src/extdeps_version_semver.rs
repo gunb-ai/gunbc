@@ -8,6 +8,7 @@ pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::VersionScheme;
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
+pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_compiler_emit_core_support::to_string;

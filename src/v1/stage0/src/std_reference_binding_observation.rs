@@ -24,6 +24,7 @@ use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     OccurrenceId, OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
 };
+pub use crate::std_types::{FilePath, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

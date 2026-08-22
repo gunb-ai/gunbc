@@ -8,6 +8,7 @@ pub use crate::extdeps_rustup::rustup_install_url;
 pub use crate::extdeps_shell::ShellPosixCommandV;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::extdeps_version::VersionConstraint;
 pub use crate::std_types::{FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

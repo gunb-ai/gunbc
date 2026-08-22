@@ -6,7 +6,7 @@ use self::BinOp::*;
 use self::BodyKind::*;
 use self::ItemFormKind::*;
 use self::LiteralValue::*;
-pub use crate::std_types::List;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

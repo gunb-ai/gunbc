@@ -5,6 +5,7 @@ use self::CargoDepSource::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
+pub use crate::extdeps_cargo_version::{CargoPackageVersion, CargoVersionRequirement};
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};

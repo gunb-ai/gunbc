@@ -130,6 +130,7 @@ use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::*;
+use crate::v1_std_core::StringPart::*;
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
@@ -160,8 +161,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, UnaryOpKind,
-    VarBindingKind,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

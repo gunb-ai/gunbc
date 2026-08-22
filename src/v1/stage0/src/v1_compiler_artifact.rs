@@ -6,7 +6,7 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
-pub use crate::std_types::List;
+pub use crate::std_types::{List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
