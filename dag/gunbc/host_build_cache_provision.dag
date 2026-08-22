@@ -6,7 +6,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDisp
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
-import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
+import extdeps.cache.sccache { sccache_local_id }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
@@ -16,23 +16,8 @@ import gunbc.host_effect { HostEffect, EnsureBuildCacheInstance }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import gunbc.build_cache_instance { ci_cache_instance }
 import product.placement_supply { HostIdentity }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import gunbc.build_cache_instance {
-  RunnerSlotLifecycle,
-  DesiredRunnerSlot,
-  BuildCacheServerPlacement,
-  ServerManagedUnitOwned,
-  ServerRunnerOwned,
-  ServerUnsupervised,
-  ServerPlacementAbsent,
-  ServerPlacementUnknown,
-  RunnerSlotIdentity,
-  RetiredRunnerSlot,
-}
 
-data host_build_cache_provision_naming_hazard_note: String = "NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag) and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated concepts (this one a catalog-gate/verdict fold; that one a concat-shell body builder), and one was edited while the other was deleted in the SAME PR (#8598, the A5 EnsureBuildCacheInstance arm swap) -- a trap the tree itself set, not a naming choice either file made carelessly. It produced a real false-negative: a dependents-census grep answering 'does a disconnected verdict fold exist' checked the deleted file's own leftover state and reported that as though it answered the question about THIS file's fold, which was not re-grepped. The next person doing anything near either name: grep the exact module path, not the shared prefix. This module's own fold (BuildCacheDaemonObservation / provision_build_cache_verdict / placement_verdict / build_cache_provision_gate_accepts) is a separate, PRE-EXISTING dead-code finding -- zero non-test, non-self-file callers tree-wide, confirmed 2026-08-20 -- filed as its own deletion candidate in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note, 2026-08-20), not created or fixed by #8598 and not deleted here."
-
-data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling TWO forbidden widens; it must never ship as the authority verdict fold. (1) The absorbing fallback (the -u RUSTC_WRAPPER cache-drop): the live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2) — the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts, so no cache-drop widen remains and this fixture guards the fold against its re-introduction. (2) The PLACEMENT widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged'. That is precisely the behavior that shipped on srv1 — a lazily auto-spawned server in dead slot srv1-10's cgroup accumulated 229780 memory.max breach events and 12 oom_kills while every provision read reported converged. Re-confirmed live 2026-08-01: pid 3975946, age 31.2d, cgroup actions-runner@srv1-10.service (unit inactive+disabled, slots 01-05 are the live ones), holding LISTEN on /var/lib/ctrl/sccache-ci/server.sock, resident beside an active runner's rustc. INCIDENT CLEARED 2026-08-07 (lane_e_srv1_ci_noncompletion_root_cause_receipt): pid 3975946 no longer exists and srv1-10 is inactive+disabled; the stranded-server symptom is gone but the defect CLASS is live — srv1 now carries a young runner-owned server on an ACTIVE slot (srv1-02, ~2026-08-07), which is exactly the ServerRunnerOwned arm this fold must refuse ProvisionConverged on until ServerManagedUnitOwned lands."
+data host_build_cache_provision_naming_hazard_note: String = "NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag) and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated concepts (this one a catalog-gate/verdict fold; that one a concat-shell body builder), and one was edited while the other was deleted in the SAME PR (#8598, the A5 EnsureBuildCacheInstance arm swap) -- a trap the tree itself set, not a naming choice either file made carelessly. It produced a real false-negative: a dependents-census grep answering 'does a disconnected verdict fold exist' checked the deleted file's own leftover state and reported that as though it answered the question about THIS file's fold, which was not re-grepped. The next person doing anything near either name: grep the exact module path, not the shared prefix. The catalog-gate/verdict fold this module used to hold (BuildCacheDaemonObservation / provision_build_cache_verdict / placement_verdict / build_cache_provision_gate_accepts) was a separate finding: zero non-test, non-self-file callers tree-wide, confirmed 2026-08-20, filed in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note) first as a deletion candidate and then, the same day, corrected to the opposite disposition -- an unconsumed authority naming itself as the fix for a live incident class, which must be wired rather than deleted. IT IS WIRED AS OF 2026-08-21, AND IT NO LONGER LIVES HERE -- it moved to gunbc.build_cache_provision_verdict, because wiring it meant gunbc.host_effect_realize had to call it and this module's import of gunbc.host_toolchain_ensure would have closed a cycle through that module. The zero no longer reproduces: gunbc.host_effect_realize build_cache_ensure_step folds provision_build_cache_verdict over the endpoint re-observed AFTER its ensure shell ran, so the fold is the POSTCONDITION on the provisioning path while gunbc.build_cache_ensure admit_ensure_build_cache_instance is the precondition. The sentence is rewritten rather than annotated because a stale 'zero callers' claim in a naming-hazard warning is the exact false-negative this note exists to prevent, pointed the other way."
 
 data lane_e_srv1_ci_noncompletion_root_cause_receipt: String = "LANE E ROOT-CAUSE RECEIPT (2026-08-06 investigation; quarantine mechanism RETIRED 2026-08-07 — see retirement paragraph). SYMPTOM CLASS INVESTIGATED: cargo check -p v1-compiler-tests --tests killed at the 15m compile-gate ceiling while still compiling v1-compiler. HARM MEASURE: count long cancelled jobs as capacity absorption, not only conclusion=failure — a 14m cancelled build costs the same slot-hours as a 15m killed build. EXECUTED EVIDENCE (historical failure): runs 31060400858 (srv1-05) and 31060543168 (srv1-01), killed at 15m mid-Compiling v1-compiler; srv1-02 build cancelled at 14m (still-bat-561 sample). SLOT DISCRIMINANT (Lane E measurement): srv1 is NOT uniformly broken — still-bat-561 measured srv1-04 build success in ~1m and srv1-03 regen success in the same window srv1-01/05 cold-killed at 15m; warm-cache fleet runs complete the compile gate in ~50s–1m. MECHANISM (load-bearing): one CI sccache endpoint per host; cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS (extdeps.cache.sccache sccache_server_process_facts), so the server's cgroup bounds every compile on the host — not the slot that issued the compile. A server stranded in a retired slot's cgroup (pid 3975946 in srv1-10, 2026-08-01 receipt) exported one dead slot's memory ceiling to all live slots on cache miss. FIX AUTHORITY: ServerManagedUnitOwned on the managed compile-pool slice — ServerRunnerOwned on ANY lifecycle (active or retired) must refuse ProvisionConverged (placement_verdict, build_cache_placement_observation_test witness_both_runner_lifecycles_refuse_at_the_verdict). 2026-08-07 STATUS: INCIDENT CLEARED, NOT REPAIRED — pid 3975946 gone; surviving server on srv1 is runner-owned on ACTIVE slot srv1-02 (~90s old at observation), same ServerRunnerOwned class srv2/srv3 already carried per 2026-08-01 receipt; ephemeral runner recycle is the only reason it has not stranded again — the class can strand again the next time a slot retires while holding the server. POST-INCIDENT MEASUREMENT (still-bat-561, 45 completed runs sampled 2026-08-07, kill-shape = non-success with duration 13–18m): srv1 16 jobs / 5 non-success / 0 kill-shape; srv2 26 / 6 / 2; srv3 29 / 12 / 0; srv4 49 / 14 / 1 — srv1 has zero kill-shape failures while srv2 and srv4 still show them; host-scoped CI quarantine would route work toward hosts currently exhibiting the defect. QUARANTINE RETIREMENT: ci-fleet-admit host-label gate (PR #7889) retired rather than merged — premise expired and measurement inverted the remedy; this receipt is the durable home for the investigation."
 
@@ -55,196 +40,6 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-data build_cache_path_authority_observation_note: String = "CI and ctrl-build sessions consume the cache as bare `sccache` on PATH (RUSTC_WRAPPER=sccache), so provisioning the modeled binary is NOT sufficient — the PATH-visible sccache must BE the modeled one. A second sccache earlier in PATH (a distro package, a stale copy) is precisely the two-authority state this lane exists to remove, and it is invisible to a read-back that probes the absolute path: that read-back greens on the binary we provisioned while the compiler calls a different one. DaemonPathShadowed carries BOTH paths so the refusal is located (which binary won, which one was expected) rather than merely typed. This judgement is modeled HERE, in the verdict fold (proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the typed-argv dissolve-on (#5828) rather than landing as hand-shell now (review 42343). The model carries the state and its refusal today; only the live producer is deferred."
-
-data build_cache_supervision_observation_note: String = "A stats read-back CANNOT see whether the daemon it just talked to is supervised — and this is not a gap in the probe, it is the probe's semantics: `--show-stats` answers with a fully-formed table WHETHER OR NOT any server exists, so it reports health it has not established. CORRECTED 2026-08-01, and the correction matters because the original sentence named the wrong mechanism: this note previously said the call AUTO-STARTS a server and therefore manufactures the evidence it reports. Measured false for sccache 0.15.0 — two private-endpoint controls (UDS and TCP, each with a private cache dir) took the listener count 0 -> 0 across `--show-stats` while it printed all zeroes and returned rc=0; a third control showed that a real COMPILE is what takes the count 0 -> 1, with the new server inheriting the invoking process's cgroup. See extdeps.cache.sccache sccache_stats_query_does_not_spawn_note. The conclusion is unchanged and if anything sharper: stats establishes nothing about supervision OR existence, so it may only ever be supplemental data read AFTER ownership is independently grounded. On srv3 2026-07-25 it printed a full stats table while the modeled unit had been `inactive (dead)` for six hours and no sccache process existed beforehand. Read through the verdict fold as it stood, that host observed DaemonStatsOk and therefore converged: the provisioning act would have reported success over a host with NO durable cache — a fabricated plausible output (§5), and the same shape as DaemonPathShadowed (a read-back that greens on evidence it produced rather than on the state the lane exists to establish). DaemonUnsupervised splits that conflation: 'a daemon answered' and 'the modeled supervisor is running it' are different states with different remedies, so they get different names rather than one Ok. The LIVE observation is STAGED exactly as the PATH-shadow one is — the supervisor read (`systemctl --user is-active`) is not emitted as hand-shell here, because this module's script side is an A5 `decompose` census row that may shrink but must not grow (review 42343); it lands with the typed-argv dissolve-on (#5828). The model carries the state and its refusal today; only the live producer is deferred. Construction covers the case this observation would catch on a host provisioned BY THIS LANE — build_cache_unit_daemon_runs_until_stopped makes the self-exiting unit unwritable — so the observation's standing job is the residue construction cannot reach: a host whose unit was stopped, masked, or replaced out of band."
-
-data build_cache_server_placement_doc: String = "WHY PLACEMENT IS A VERDICT AXIS AND NOT A DETAIL: extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS. So the server's cgroup is the cgroup every compile on the host runs in, and the server's caps bound every compile on the host — not just the caps of the job that issued them. A lazily auto-spawned server therefore silently exports one arbitrary job's memory caps onto the whole host's compile traffic, and SCCACHE_IDLE_TIMEOUT=0 keeps it there indefinitely. Answering --show-stats proves the server is RESPONSIVE; it proves nothing about WHERE it runs. Collapsing those two into one DaemonStatsOk arm is the DESIGN.md §5 state-space conflation, and it fabricates a plausible ProvisionConverged over a host whose compiles are being throttled and killed."
-
-data build_cache_placement_authority_is_elsewhere_note: String = "BuildCacheServerPlacement is IMPORTED from gunbc.build_cache_instance, not declared here. It used to be declared in this module with three arms (ServerUnitOwned | ServerLazySpawned | ServerPlacementUnknown). It moved because placement is derived from an observation of a DEPLOYED INSTANCE and this fold is a consumer of it; leaving a copy here would be two definitions of 'correctly placed' that can drift (DESIGN section 3). The arms also changed shape with the move, and the renames are honesty rather than churn: ServerLazySpawned named an INFERRED CAUSE (that the server was lazily auto-spawned) while what an observer can actually see is the current owner, so it is now ServerRunnerOwned carrying the slot and its lifecycle; and ServerUnitOwned became ServerManagedUnitOwned to say WHICH unit, since 'a unit owns it' is satisfied by any unit including the wrong one."
-
-type BuildCacheDaemonObservation
-  = DaemonStatsOk { stats_line: String, placement: BuildCacheServerPlacement }
-  | DaemonAbsent
-  | DaemonUnresponsive { detail: NonEmptyStr }
-  | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
-  | DaemonPathShadowed { resolved: String, expected: String }
-  | DaemonUnsupervised { unit: String, unit_state: String }
-
-type BuildCacheProvisionRefusal
-  = RefusalDaemonAbsent
-  | RefusalDaemonUnresponsive
-  | RefusalDaemonMisconfigured
-  | RefusalPrivilegeDenied
-  | RefusalCatalogUnknown
-  | RefusalPathShadowed
-  | RefusalDaemonUnsupervised
-  | RefusalServerRunnerOwned
-  | RefusalPlacementUnknown
-
-type BuildCacheProvisionVerdict
-  = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
-  | ProvisionRefused { cause: BuildCacheProvisionRefusal, reason: NonEmptyStr }
-
-fn provision_build_cache_absorbing_fallback_widen_sketch(
-  catalog_id: CacheInterfaceId,
-  observed: BuildCacheDaemonObservation,
-) -> BuildCacheProvisionVerdict {
-  match observed {
-    DaemonAbsent =>
-      ProvisionConverged {
-        catalog_id: catalog_id,
-        stats_line: "local-build-without-rustc-wrapper-widen-sketch",
-      }
-    DaemonStatsOk { stats_line: line, placement: _ } =>
-      ProvisionConverged { catalog_id: catalog_id, stats_line: line }
-    DaemonUnresponsive { detail: d } =>
-      ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
-    DaemonMisconfigured { matched_fragment: frag, detail: d } =>
-      ProvisionRefused {
-        cause: RefusalDaemonMisconfigured,
-        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
-      }
-    DaemonPathShadowed { resolved: r, expected: e } =>
-      ProvisionConverged {
-        catalog_id: catalog_id,
-        stats_line: concat("path-shadow-widen-sketch: ", concat(r, concat(" vs ", e))),
-      }
-    DaemonUnsupervised { unit: u, unit_state: s } =>
-      ProvisionConverged {
-        catalog_id: catalog_id,
-        stats_line: concat("unsupervised-widen-sketch: ", concat(u, concat(" is ", s))),
-      }
-  }
-}
-
-data provision_gate_consumes_the_fold_note: String = "THE GATE ASKS THE AUTHORITY; IT DOES NOT HOLD A SECOND OPINION. It used to be a full hand-written traversal of BuildCacheDaemonObservation — and, inside the DaemonStatsOk arm, of BuildCacheServerPlacement — mapping each arm to the verdict shape it expected. That mapping is exactly what provision_build_cache_verdict and placement_verdict already compute, so the same fact was written twice and either copy could drift while both typechecked (review 46217; DESIGN sections 2 and 3). The drift is not hypothetical for a gate whose whole job is to reject widens: a placement arm added to the coproduct and handled in the fold but forgotten here would silently keep accepting whatever the gate's stale arm said. Consuming the fold means a new arm is impossible to forget, because there is nowhere left to forget it. What the gate still owns is the one judgement the fold cannot make for itself: WHICH PART of a verdict is contractual. Two verdicts agree when they agree on converged-versus-refused and, when refused, on the CAUSE — the located reason string is a diagnostic payload, not part of the contract, so comparing it would make every wording edit a gate failure while catching nothing a cause comparison misses."
-
-fn verdict_shape_matches(
-  actual: BuildCacheProvisionVerdict,
-  canonical: BuildCacheProvisionVerdict,
-) -> Bool {
-  match actual {
-    ProvisionConverged { catalog_id: _, stats_line: _ } =>
-      match canonical {
-        ProvisionConverged { catalog_id: _, stats_line: _ } => true
-        ProvisionRefused { cause: _, reason: _ } => false
-      }
-    ProvisionRefused { cause: actual_cause, reason: _ } =>
-      match canonical {
-        ProvisionConverged { catalog_id: _, stats_line: _ } => false
-        ProvisionRefused { cause: canonical_cause, reason: _ } =>
-          discriminant(v: actual_cause) == discriminant(v: canonical_cause)
-      }
-  }
-}
-
-fn build_cache_provision_gate_accepts(
-  catalog_id: CacheInterfaceId,
-  verdict: BuildCacheProvisionVerdict,
-  observed: BuildCacheDaemonObservation,
-) -> Bool {
-  verdict_shape_matches(
-    actual: verdict,
-    canonical: provision_build_cache_verdict(catalog_id: catalog_id, observed: observed),
-  )
-}
-
-fn placement_verdict(
-  catalog_id: CacheInterfaceId,
-  stats_line: String,
-  placement: BuildCacheServerPlacement,
-) -> BuildCacheProvisionVerdict {
-  match placement {
-    ServerManagedUnitOwned { unit: _ } =>
-      ProvisionConverged { catalog_id: catalog_id, stats_line: stats_line }
-    ServerRunnerOwned { slot: s, lifecycle: lc } =>
-      ProvisionRefused {
-        cause: RefusalServerRunnerOwned,
-        reason: concat(
-          concat("host_build_cache_provision: the configured cache endpoint is owned by a RUNNER-SLOT process, not by the managed unit. Slot index ", to_string(s.slot_index)),
-          concat(runner_slot_lifecycle_refusal_clause(lifecycle: lc), " Cache-miss compiles execute as children of the endpoint owner, so that slot's memory ceiling bounds every compile on this host. Refusing: responsive is not placed."),
-        ) as NonEmptyStr,
-      }
-    ServerUnsupervised { cgroup: cg } =>
-      ProvisionRefused {
-        cause: RefusalDaemonUnsupervised,
-        reason: concat("host_build_cache_provision: the endpoint owner is not the intended managed unit; observed cgroup ", concat(cg as String, ". Refusing rather than accepting an out-of-band supervisor.")) as NonEmptyStr,
-      }
-    ServerPlacementAbsent =>
-      ProvisionRefused {
-        cause: RefusalDaemonAbsent,
-        reason: "host_build_cache_provision: no process holds the LISTEN on the configured endpoint; the instance is not running." as NonEmptyStr,
-      }
-    ServerPlacementUnknown { detail: d } =>
-      ProvisionRefused {
-        cause: RefusalPlacementUnknown,
-        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as NonEmptyStr,
-      }
-  }
-}
-
-fn runner_slot_lifecycle_refusal_clause(lifecycle: RunnerSlotLifecycle) -> String {
-  match lifecycle {
-    DesiredRunnerSlot =>
-      " on a slot the fleet still desires, so BIRTH ORDERING failed: a runner was able to run before a managed cache endpoint existed, and its client created the server inside its own cgroup."
-    RetiredRunnerSlot =>
-      " on a RETIRED slot, so birth ordering AND retirement both failed: the slot's unit was disabled while its cgroup stayed computationally alive, still owning the endpoint and still parenting new compiler children under a ceiling nothing recycles."
-  }
-}
-
-fn provision_build_cache_verdict(
-  catalog_id: CacheInterfaceId,
-  observed: BuildCacheDaemonObservation,
-) -> BuildCacheProvisionVerdict {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
-    ProvisionBuildCacheCatalogRefused { reason: reason } =>
-      ProvisionRefused {
-        cause: RefusalCatalogUnknown,
-        reason: reason,
-      }
-    ProvisionBuildCacheCatalogRealizable =>
-      match observed {
-        DaemonStatsOk { stats_line: line, placement: p } =>
-          placement_verdict(catalog_id: catalog_id, stats_line: line, placement: p)
-        DaemonAbsent =>
-          ProvisionRefused {
-            cause: RefusalDaemonAbsent,
-            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
-          }
-        DaemonUnresponsive { detail: d } =>
-          ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
-        DaemonMisconfigured { matched_fragment: frag, detail: d } =>
-          ProvisionRefused {
-            cause: RefusalDaemonMisconfigured,
-            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
-          }
-        DaemonPathShadowed { resolved: r, expected: e } =>
-          ProvisionRefused {
-            cause: RefusalPathShadowed,
-            reason: concat(
-              concat("host_build_cache_provision: PATH resolves sccache to ", r),
-              concat(
-                concat(" but the modeled install authority is ", e),
-                "; the compiler would call a binary this lane never provisioned. Fail-closed, no local-build fallback.",
-              ),
-            ) as NonEmptyStr,
-          }
-        DaemonUnsupervised { unit: u, unit_state: s } =>
-          ProvisionRefused {
-            cause: RefusalDaemonUnsupervised,
-            reason: concat(
-              concat("host_build_cache_provision: sccache answers but its supervisor unit ", u),
-              concat(
-                concat(" is ", s),
-                "; the daemon is only alive because an invocation auto-started it, so it exits on its own idle timeout and nothing restarts it. Fail-closed, no local-build fallback.",
-              ),
-            ) as NonEmptyStr,
-          }
-      }
-  }
-}
-
 fn provision_build_cache_effect_for_host(host: HostIdentity) -> HostEffect {
   EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
 }
@@ -264,65 +59,7 @@ fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
   }
 }
 
-fn daemon_absent_refuses_fail_closed() -> Bool {
-  match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
-    observed: DaemonAbsent,
-  ) {
-    ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
-  }
-}
 
-data managed_compile_pool_slice_fixture: NonEmptyStr = gunbc_managed_compile_pool_slice
-
-fn stats_ok_lazy_spawned_refuses() -> Bool {
-  match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
-      stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
-    },
-  ) {
-    ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
-  }
-}
-
-fn stats_ok_placement_unknown_refuses() -> Bool {
-  match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
-      stats_line: "compile_requests=42",
-      placement: ServerPlacementUnknown { detail: "cgroup read unavailable" },
-    },
-  ) {
-    ProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
-  }
-}
-
-fn stats_ok_unit_owned_converges() -> Bool {
-  match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
-      stats_line: "compile_requests=42",
-      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
-    },
-  ) {
-    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
-    ProvisionRefused { cause: _, reason: _ } => false
-  }
-}
-
-fn misconfigured_matches_cited_fragment() -> Bool {
-  string_contains(
-    s: sccache_fatal_error_log_fragment,
-    pattern: "fatal error",
-  )
-}
 
 func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
   uses net: Network

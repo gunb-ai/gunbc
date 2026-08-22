@@ -276,6 +276,7 @@ pub fn type_realization_decision(
                             checkpoint: Rc::new(TypeCheckpoint {
                                 dag_name: dag_name.clone(),
                                 target_type: host.clone(),
+                                grounding_type: host.clone(),
                                 default_expr: None,
                                 is_copy: None,
                                 literal_suffix: None,
