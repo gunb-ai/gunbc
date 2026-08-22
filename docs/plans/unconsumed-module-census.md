@@ -349,10 +349,31 @@ have a live caller.**
    claim, found while implementing (e).** `type GraphInvariant<Projection> { … }` binds
    `Projection`; it does not reference `v2.std.projection`, which was that module's *only*
    link and had scored it CONSUMED-DECISIVE. Excluding the parameter list of a generic
-   declaration moves it to AMBIGUOUS and takes CONSUMED-DECISIVE 93 → **92**. Note the
-   symmetry with defect 7's own bug (a): a generic header defeated *declaration*
-   extraction there and inflates *reference* extraction here, so the same construct broke
-   both halves of the instrument in opposite directions.
+   declaration moves it to AMBIGUOUS and takes CONSUMED-DECISIVE 93 → **92**.
+
+   ***(f) has two halves, and the obvious fix reaches only one.*** (f1) is the parameter
+   list in the header; **(f2) is every use of the bound name inside that declaration's
+   body** — `type GraphInvariant<Projection> { projection: Projection … }`, where the field
+   type on the next line is a *second, independent* false reference that survives stripping
+   the header. Reported by the deletion lane, whose extractor still failed the
+   discriminator after implementing (f1) exactly as this document first described it.
+
+   **And the tempting fix for (f2) is the delete-a-live-module direction — this document
+   shipped it.** Shadowing the bound name **file-wide** is what the first implementation
+   here did, and it is wrong: a name bound as a parameter in one declaration may be
+   **genuinely referenced in another**, and removing references moves a live module *into*
+   the residue. The shadow must be scoped to the binding declaration's region — the same
+   region walk the variant extractor already performs, run over the reference side instead
+   of the declaration side. Correcting it **restored 5 real references and moved 5 modules
+   out of STILL-UNCONSUMED**, taking the §4h residue list 117 → **112**. Every one of those
+   five was a deletion candidate solely because of an over-broad fix to a false-positive
+   defect.
+
+   **The symmetry is three-way, not two.** One construct — a generic header — *defeats*
+   declaration extraction (bug (a)), *inflates* reference extraction in the header (f1),
+   and *inflates it again* in the body (f2); and the body half survives the obvious fix for
+   the header half. A binder read as a reference is the representation-vs-subject error
+   this whole document is about, at the smallest grain the language has.
 
    **(e) was implemented, and implementing it confirmed the zero rather than resting on
    the measurement.** Crediting `operation`/`resource` names moved **zero** rows — the
