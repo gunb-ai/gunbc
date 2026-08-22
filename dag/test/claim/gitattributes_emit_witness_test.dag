@@ -3,7 +3,7 @@ module test.claim.gitattributes_emit_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-data witness_note: String = "Lane 2 executable model surface for the .gitattributes Git compatibility projection (generated-file conflict policy charter). The load-bearing claims: (1) every gunbc.generated_artifact.committed_generated_artifact_paths() entry — including .gitattributes itself — carries merge=generated-artifact derived from registry membership, not a hand-maintained roster; (2) the **/*.dag linguist row is an independent presentation-policy fact; (3) committed bytes match gunbc.gitattributes_emit.expected_gitattributes() (drift-gated via GitattributesArtifact). RED controls: dropping a path from the emission while it remains committed, or omitting the linguist row, must fail."
+data witness_note: String = "Lane 2 executable model surface for the .gitattributes Git compatibility projection (generated-file conflict policy charter). The load-bearing claims: (1) every committed_generated_artifact_paths() entry — including .gitattributes itself — carries merge=generated-artifact derived from registry membership, not a hand-maintained roster; (2) the **/*.dag linguist row is an independent presentation-policy fact; (3) committed bytes match expected_gitattributes() (drift-gated via GitattributesArtifact). RED controls: dropping a path from the emission while it remains committed, or omitting the linguist row, must fail."
 
 fn emitted_content_has_merge_row_for(content: String, path: String) -> Bool {
   string_contains(

@@ -58,7 +58,7 @@ fn every_discovered_module_is_retained() -> v2.std.logic.Bool {
 // so a retained row cannot point at a module that has no executable content.
 //
 // Identities are the FULL path plus `::` plus the test fn, verified by
-// execution: "src/v1/tests/src/field_of_fractions_construction_test.rs::field_..."
+// execution: "src/v1/tests/src/rs::field_..."
 //
 // The needle is anchored on the full directory prefix, not the bare file name
 // (review 51141). Matching on `concat(source_file, "::")` alone is a substring

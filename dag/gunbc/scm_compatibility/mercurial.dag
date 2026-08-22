@@ -3,7 +3,7 @@ module gunbc.scm_compatibility.mercurial
 
 data mercurial_compatibility_binding_note: std.types.NonEmptyStr = "The Mercurial R1 handler consumes Mercurial's own projection decoder, portable changeset identities, named-branch relation, and independent read-back assessment. Clone-local revisions, phases, bookmarks, tags, evolution, repository completeness, and node identities remain in MercurialCompatibilityReceipt. The shared carrier does not rename any of them commit, ref, or branch authority, and R0 honestly reports conditional advance as unavailable."
 
-data mercurial_compatibility_read_back_identity_note: std.types.NonEmptyStr = "A MercurialCompatibilityReceipt is constructible by this handler only after extdeps.mercurial.mercurial_assess_read_back proves that the independently decoded observation equals repository. The common read-back handle therefore fingerprints that complete decoded repository state plus observed_by; it never treats the observer label itself as the state identity."
+data mercurial_compatibility_read_back_identity_note: std.types.NonEmptyStr = "A MercurialCompatibilityReceipt is constructible by this handler only after mercurial_assess_read_back proves that the independently decoded observation equals repository. The common read-back handle therefore fingerprints that complete decoded repository state plus observed_by; it never treats the observer label itself as the state identity."
 
 type MercurialCompatibilityReceipt {
   target: extdeps.mercurial.MercurialNamedBranchName

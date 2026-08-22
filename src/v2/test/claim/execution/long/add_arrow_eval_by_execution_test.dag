@@ -322,7 +322,7 @@ fn add_arrow_eval_inferred_run_tree(
 
 fn add_arrow_eval_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
-    label: "manual/add_arrow: source-bridged add Arrow.body executes through v2.compiler.eval.eval callee dispatch",
+    label: "manual/add_arrow: source-bridged add Arrow.body executes through eval callee dispatch",
     anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
     input: input,
     expected_value: expected,

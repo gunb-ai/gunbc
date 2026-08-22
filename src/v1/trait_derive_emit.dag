@@ -319,10 +319,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    extdeps.languages.rust.capabilities.RustDebug => Present { value: FreeMonoidHandWrittenImpl }
-    extdeps.languages.rust.capabilities.RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    extdeps.languages.rust.capabilities.RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    extdeps.languages.rust.capabilities.RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDebug => Present { value: FreeMonoidHandWrittenImpl }
+    RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }

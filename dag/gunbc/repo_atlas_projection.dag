@@ -106,7 +106,7 @@ type AtlasCellAccumulator {
   occupants: Map<Int, List<v2.lens.module_impact_query.ModuleIdentity>>
 }
 
-data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item]) copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed regardless of the realized n, and v2.std.algebra.list_reverse of a cons-accumulated fold is exactly the append-accumulated order, so the projection is unchanged by construction."
+data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item]) copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the append-accumulated order, so the projection is unchanged by construction."
 
 data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED index list beside the occupancy map, and cells project by walking that list with a map probe per entry. Reading the map's own key order instead would expose host traversal order — the exact nondeterminism v2.std.determinism refuses at map_keys / map_values — and the atlas would render in an order the model does not control. This is the pattern that thread prescribes: meaningful order in a list, the map for membership only."
 
@@ -298,7 +298,7 @@ type AtlasProjectionAccumulator {
   unprojected_rev: List<UnprojectedChange>
 }
 
-data repo_atlas_multi_seed_note: String = "A path may resolve to zero, one, or SEVERAL modules and this never selects the first. v2.lens.module_impact_query.impact_seeds_for_path returns a list precisely because the staged many-to-many path/module relation makes one storage location a conservative question, and picking one seed would silently answer a question the pool cannot answer. All resolved modules are marked; zero resolved modules is a real answer and lands as PathDeclaresNoModule rather than vanishing."
+data repo_atlas_multi_seed_note: String = "A path may resolve to zero, one, or SEVERAL modules and this never selects the first. impact_seeds_for_path returns a list precisely because the staged many-to-many path/module relation makes one storage location a conservative question, and picking one seed would silently answer a question the pool cannot answer. All resolved modules are marked; zero resolved modules is a real answer and lands as PathDeclaresNoModule rather than vanishing."
 
 fn atlas_project_entry(
   acc: AtlasProjectionAccumulator,

@@ -43,7 +43,7 @@ fn authored_identity_missing_from_roster_message(identity: String, source_chunk_
         "' is authored inside ",
         concat(
           source_chunk_qualified_name,
-          " but does not appear in the evaluated roster. If this is not an authored roster identity, the chunk body v2.std.algebra.contains a construction that v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes does not yet model as a non-authored atom kind (a call, a parameter reference, a nullary-variant-value binding, or similar) -- the fix is to model that atom kind at that derivation, in decl_facts_skeleton.dag, NOT to add an exclusion lexeme here or anywhere else. An exclusion list is exactly the lexeme-shape heuristic this check exists to avoid, reintroduced one identity at a time by whoever meets this refusal next."
+          " but does not appear in the evaluated roster. If this is not an authored roster identity, the chunk body contains a construction that v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes does not yet model as a non-authored atom kind (a call, a parameter reference, a nullary-variant-value binding, or similar) -- the fix is to model that atom kind at that derivation, in decl_facts_skeleton.dag, NOT to add an exclusion lexeme here or anywhere else. An exclusion list is exactly the lexeme-shape heuristic this check exists to avoid, reintroduced one identity at a time by whoever meets this refusal next."
         )
       )
     )

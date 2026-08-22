@@ -4,7 +4,7 @@ module test.claim.long.roadmap_page_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
+data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
 
 // Rendered UNFOCUSED deliberately. These claims are about ROW MARKUP, not about which lanes appear; leaving them on the focused page made them silently depend on the focus setting and go red when a lane they sampled was hidden. The served page's own focus behaviour is covered by roadmap_focus_witness_test, where it belongs.
 fn authority_page_html() -> String {

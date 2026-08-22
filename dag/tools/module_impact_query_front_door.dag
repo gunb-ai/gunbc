@@ -145,7 +145,7 @@ fn render_reading(
     empty: no_lines,
     cons: fn(acc, m) {
       std.algebra.Cons {
-        head: "    {m.name}   [{render_modules_paths(paths: v2.lens.module_impact_query.impact_paths_for_module(nodes: nodes, module_id: m))}]",
+        head: "    {m.name}   [{render_modules_paths(paths: impact_paths_for_module(nodes: nodes, module_id: m))}]",
         tail: acc
       }
     }
@@ -254,7 +254,7 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
       render_lines(lines: [
         "change impact — outcome: COMPLETE",
         "  standing: {render_standing(reading: reading)}",
-        "  skip authority: {render_skip_authority(authority: v2.lens.module_impact_query.changed_surface_skip_authority(outcome: outcome))}",
+        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
         "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
         "  causes ({count_text(xs: reading.causes)}):",
         render_lines(lines: v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
@@ -267,7 +267,7 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
       render_lines(lines: [
         "change impact — outcome: PARTIAL (the answer is NOT whole; unresolved subjects below)",
         "  standing: {render_standing(reading: reading)}",
-        "  skip authority: {render_skip_authority(authority: v2.lens.module_impact_query.changed_surface_skip_authority(outcome: outcome))}",
+        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
         "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
         "  unresolved subjects ({count_text(xs: unresolved_subjects)}):",
         render_lines(lines: v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(

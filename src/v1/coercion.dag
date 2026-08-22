@@ -213,7 +213,7 @@ fn type_realization_decision(
       Absent =>
         let native = if (target == Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
         match native {
-          Present { value: host } => std.coercion.Realized { checkpoint: std.coercion.TypeCheckpoint { dag_name: dag_name, target_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
+          Present { value: host } => std.coercion.Realized { checkpoint: std.coercion.TypeCheckpoint { dag_name: dag_name, target_type: host, grounding_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
           Absent => Unrealized
         }
     }
@@ -275,7 +275,7 @@ fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String
     target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
   } else {
     match type_realization_decision(target: target, dag_name: dag_name, decl_file: decl_file) {
-      Realized { checkpoint: cp } => Present { value: cp }
+      std.coercion.Realized { checkpoint: cp } => Present { value: cp }
       Unrealized => none
       Refused { cause: _ } => none
     }

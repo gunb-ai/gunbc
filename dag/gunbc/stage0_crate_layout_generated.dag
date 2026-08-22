@@ -44,7 +44,7 @@ data generated_stage0_filenames: List<String> = [
   "data_initializer_identity.rs",
   "resolved_graph_cache.rs",
   "shared_typecheck_store.rs",
-  "source_closure.rs",
+  "rs",
   "recorded_fixture.rs",
   "phase_profile.rs",
   "pre_push.rs",

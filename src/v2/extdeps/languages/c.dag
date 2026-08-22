@@ -11,7 +11,7 @@ data c_by_value_type_cycle_detail: String = "incomplete by-value type containmen
 
 data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
 
-data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes v2.std.compilers.compilation_unit.partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
+data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
 
 fn c_partition_fold_outcome(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,

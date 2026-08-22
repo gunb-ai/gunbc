@@ -1,7 +1,7 @@
 module v2.test.claim.interface_summary.typed_module_key
 
 
-data purpose_note: std.types.NonEmptyStr = "RED controls proving each term of std.interface_summary.typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
+data purpose_note: std.types.NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
 
 fn synthetic_interface_hash() -> std.interface_summary.InterfaceHash {
   std.interface_summary.interface_summary_rollup(exports: [])

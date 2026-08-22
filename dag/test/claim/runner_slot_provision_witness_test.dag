@@ -6,7 +6,7 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
     Present { value: artifact } =>
       string_contains(
         s: actions_runner_download_url(artifact: artifact),
-        pattern: "github.com/actions/runner/releases/download/0/actions-runner-linux-arm64-2.334.0.tar.gz",
+        pattern: "github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-arm64-2.334.0.tar.gz",
       )
     Absent => false
   }
@@ -31,41 +31,56 @@ test fn witness_srv3_deploy_row_names_six_slots() -> Bool {
     && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 5).first(), pattern: "srv3-06")
 }
 
+// The reconcile fixtures plant their OWN five-slot deploy row rather than
+// reading the live fleet, so the expected counts below are exact literals
+// authored beside a known input — not a restatement of whatever width the
+// fleet happens to declare. srv3's real width is asserted separately, by
+// witness_srv3_deploy_row_names_six_slots.
+fn fixture_five_slot_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wfix",
+    ssh_target: "fixture@invalid.example",
+    runner_user: "fixture",
+    job_user: "fixture",
+    app: gunbc_ci_github_app,
+    runner_count: 5,
+  }
+}
+
 test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
-  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
-    gunbc.runner_slot_provision.RunnerSlotMember {
-      instance_name: "srv3-01" as std.types.NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
+  let observed: List<RunnerSlotMember> = [
+    RunnerSlotMember {
+      instance_name: "wfix-01" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
     },
-    gunbc.runner_slot_provision.RunnerSlotMember {
-      instance_name: "srv3-02" as std.types.NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-02" as std.types.NonEmptyStr,
+    RunnerSlotMember {
+      instance_name: "wfix-02" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/wfix-02" as NonEmptyStr,
     },
   ]
   let plan = runner_slot_membership_reconcile(
-    desired: desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    desired: desired_runner_slot_members(deploy: fixture_five_slot_deploy()),
     observed: observed,
   )
-  membership_added_count(plan: plan) == 5
-    && membership_added_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - 2
+  membership_added_count(plan: plan) == 3
 }
 
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
     Present { value: artifact } =>
-      let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
-        gunbc.runner_slot_provision.RunnerSlotMember {
-          instance_name: "srv3-01" as std.types.NonEmptyStr,
-          slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
+      let observed: List<RunnerSlotMember> = [
+        RunnerSlotMember {
+          instance_name: "wfix-01" as NonEmptyStr,
+          slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
         },
       ]
       let plan = runner_slot_provision_plan(
-        deploy: srv3_runner_host_deploy,
+        deploy: fixture_five_slot_deploy(),
         artifact: artifact,
         observed: observed,
       )
       runner_slot_provision_has_width_increase(plan: plan)
-        && list_length(items: plan.upsert_extract_scripts) == 6
+        && list_length(items: plan.upsert_extract_scripts) == 4
         && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
         && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
     Absent => false
@@ -73,10 +88,10 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
 }
 
 test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
-  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
-    gunbc.runner_slot_provision.RunnerSlotMember {
-      instance_name: "srv3-01" as std.types.NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
+  let observed: List<RunnerSlotMember> = [
+    RunnerSlotMember {
+      instance_name: "srv3-01" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
     },
   ]
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {

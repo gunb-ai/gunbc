@@ -4,7 +4,9 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_coercion::literal_suffix;
-pub use crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base;
+pub use crate::v1_compiler_emit_rust::{
+    rust_scalar_checkpoint_grounding_base, rust_scalar_checkpoint_reference_base,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -15,87 +17,64 @@ use std::rc::Rc;
 pub fn checkpoint_identity_keying_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "EXECUTING evidence for the declaration-identity keying of Rust primitive realization, and for the checkpoint-table bypass that keying does NOT close.\n\nWHY THIS FILE EXISTS RATHER THAN THE ROWS IT REPLACES. The same assertions were authored as generated Rust in v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into src/v1/stage0/src/compiler_tests.rs. That module is declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate, while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package that consumes v1-compiler as an ordinary dependency -- so cfg(test) is never set for it and the module is not compiled, let alone run. Measured by execution rather than by reading: the binary that step builds enumerates 30 tests and none of them is this one, against a positive control confirming the enumeration is non-empty. The assertions were therefore authored, plausible, type-correct and NEVER EXECUTED, and v1.compiler.emit_rust checkpoint_table_bypasses_identity_note nonetheless cited them as the class's executing evidence. That is rung inflation in the disclosure of a ceiling -- the DESIGN section 4b(1) failure applied to the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The claim is repaired by making it TRUE here rather than by softening the sentence.\n\nWHAT DISCRIMINATES. rust_scalar_checkpoint_render_base takes a bare type name and the resolved declaration's ident_span file. The first four rows are the keying itself: a name with a table row renders from the table; a name WITHOUT one (Nat) reaches the identity arm and answers differently for two declarations that share a spelling -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag does not, and an EMPTY decl_file (identity unknown at the site) refuses rather than guessing. Those four cannot be satisfied together by any constant, by a disabled mechanism, or by a rule keyed on the name alone, which is precisely the property the deleted global corpus mode lacked.\n\nTHE RESIDUE ROWS ASSERT THE CURRENT BYPASSING ANSWERS ON PURPOSE. The table is keyed on the bare name and consulted BEFORE identity, so a table-present name bypasses declaration keying entirely: Int under a src/v2 path still renders i64 even though that declaration is GroupCompletion<Nat> and not a machine integer. They are counted here rather than assumed closed. They FLIP to Absent when a name gets its own row in v1.compiler.coercion structural_declaration_modules_for, and that flip is the dissolution signal, NOT a regression -- do not make them pass again. Hash already made that flip: lookup_checkpoint (v1.compiler.coercion) now refuses before the bare-name table is consulted whenever decl_file names a module enrolled in structural_declaration_modules_for, and \"src/v2/std/node.dag\" is that module's one enrolled row, so table_present_hash_refuses_under_structural_declaration below is CLOSED rather than residue. String made the same flip in a later change: structural_declaration_modules_for now also enrolls \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"], both of which declare the structural FreeMonoid<Char> carrier rather than a host string, so table_present_string_refuses_under_structural_declaration_text and its _string_type sibling below are CLOSED and residue_table_present_string_bypasses_identity is retired rather than repaired back to passing. Bool was added in the same change -- structural_declaration_modules_for now also enrolls \"Bool\" => [\"src/v2/std/logic.dag\"], whose `type Bool = True | False` sits beside a BooleanAlgebra<Bool> instance modeling machine-bool bit/width/encoding facts and so cannot shortcut to the primitive it derives, so table_present_bool_refuses_under_structural_declaration_logic below is CLOSED. dag/std/types.dag is NOT enrolled (see RE-GROUNDING NOTE 2): its `type Bool = True | False` is the ordinary corpus-wide prelude Bool, the genuine native declaring module parallel to dag/std/integer.dag for Int, so table_present_bool_renders_natively_for_the_corpus_prelude below asserts the positive answer instead. No residue_table_present_bool row ever existed in this file to retire. Int remains open -- it has no row yet -- and is exactly the residue population the next instance of this class inherits.\n\nWHERE THIS EXECUTES, STATED PRECISELY BECAUSE THE PREVIOUS CLAIM'S WHOLE DEFECT WAS AN IMPRECISE ONE. The row is enrolled in gunbc.ci_layer_roots v1_claim_scoped_witness_entries, consumed by v1_claim_scoped_witness_batch, whose source-root envelope is dag plus src/v1 -- the envelope this file needs, since it imports v1.compiler.emit_rust. The entry carries the empty function name, so it expands to every test fn here rather than pinning a roster of them. That batch runs SelectionApplied, so this witness executes on changes that affect it and emits a ScopedWitnessSelectionSkipped receipt with provenance otherwise; it is NOT claimed to run on every PR. That is the correct scope rather than a concession: evidence guarding a decision inside emit_rust should execute when emit_rust changes, and a provenance failure refuses loudly instead of widening. Note also what the enrollment is NOT: witness_discovery_scan_dirs is the owned-data-decl scope, not the witness scope, so membership there would neither add nor remove execution here. The assertions were additionally run directly during authoring -- all fourteen PASS -- but direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the same class of error this file exists to repair.\n\nRE-GROUNDING NOTE (smart-ram-730 blocker, session merry-lark-67): the ORIGINAL String residue row here queried decl_file \"src/v2/std/string.dag\", a path that does not exist anywhere in the corpus -- its predicted flip to `none` was therefore structurally unreachable regardless of whether structural_declaration_modules_for was correct, and the row measured nothing. It is replaced, not repaired, by the two CLOSED rows above keyed on the REAL declarations (src/v2/std/text.dag, dag/std/string_type.dag), each asserting the strong `== none` shape the Hash flip already established rather than the weaker `!= none` the broken row used. Two further specimens close the packet: a positive control (literal_suffix_positive_control_symbol_not_enrolled) proving the gate is not a blanket refusal, since without one every refusal row below would be satisfied vacuously by a mechanism that refuses unconditionally; and literal_suffix -- a DIFFERENT consumer of lookup_checkpoint than rust_scalar_checkpoint_render_base, with its own return shape and its own production call site -- is exercised separately rather than inferred from the type-alias rows, and that direct execution surfaced a genuine, distinct disclosure: the literal-rendering call site in v1.compiler.05_emit emit_literal never threads a real decl_file (LitStr passes the empty string), so literal_suffix at PRODUCTION sites cannot be gated by this roster however correctly the roster and lookup_checkpoint discriminate when a real decl_file is supplied. That is measured directly below, not assumed from the declaration-site gap this note's sibling (checkpoint_table_bypasses_identity_note) already names.\n\nRE-GROUNDING NOTE 2 (CI blocker, session merry-lark-67, PR #8708 @ c084813): the ORIGINAL Bool enrollment listed BOTH src/v2/std/logic.dag AND dag/std/types.dag, mirroring String's two-row shape without checking whether either declaration was actually the genuine native one -- unlike String's two rows (text.dag, string_type.dag), neither of which is imported as the corpus's everyday String, dag/std/types.dag IS the corpus's everyday Bool: import std.types { Bool } appears in 300+ dag/test/claim modules. Enrolling it made lookup_checkpoint refuse native `bool` for every one of them, which the required-floor CI phase caught as five genuine (non-KNOWN-RED) failures in optional_carrier_signature_test.dag and e0308_mechanical_trio_test.dag -- fixtures that use `flag: Bool` as an incidental parameter and assert nothing about Bool's own realization, so the breakage was pure collateral, not a caught defect in those fixtures. The correction follows the numeric_realization_declaring_modules precedent (v1.compiler.emit_rust numeric_realization_roster_extension_note): a name belongs in the NEGATIVE structural roster only when none of its dag declarations is genuinely native, the way Hash's is purely coincidental spelling; a declaration that IS the grounded native one -- dag/std/integer.dag for Int, dag/std/types.dag for Bool -- must keep rendering from the table. dag/std/types.dag is removed from Bool's row; src/v2/std/logic.dag stays, since its BooleanAlgebra<Bool>/BoolWidthFact/BoolEncodingFact modeling is a genuine structural encoding of what a bool bit-pattern is, not the everyday corpus type.\n\ndissolve-on: a corpus-side declaration-to-Rust-type binding supersedes the bare-name row, at which point the residue rows flip and this note's second half retires with them. The extdeps table keeps Rust-type-to-spelling (which is what its cited authority can answer); which dag declaration realizes as which Rust type is a gunbc-corpus fact and does not belong in an upstream row.".to_string()
+            "EXECUTING evidence for the declaration-identity keying of Rust primitive realization, and for the checkpoint-table bypass that keying does NOT close.\n\nWHY THIS FILE EXISTS RATHER THAN THE ROWS IT REPLACES. The same assertions were authored as generated Rust in v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into src/v1/stage0/src/compiler_tests.rs. That module is declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate, while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package that consumes v1-compiler as an ordinary dependency -- so cfg(test) is never set for it and the module is not compiled, let alone run. Measured by execution rather than by reading: the binary that step builds enumerates 30 tests and none of them is this one, against a positive control confirming the enumeration is non-empty. The assertions were therefore authored, plausible, type-correct and NEVER EXECUTED, and v1.compiler.emit_rust checkpoint_table_bypasses_identity_note nonetheless cited them as the class's executing evidence. That is rung inflation in the disclosure of a ceiling -- the DESIGN section 4b(1) failure applied to the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The claim is repaired by making it TRUE here rather than by softening the sentence.\n\nWHAT DISCRIMINATES. rust_scalar_checkpoint_reference_base takes a bare type name and the resolved declaration's ident_span file. The first four rows are the keying itself: a name with a table row renders from the table; a name WITHOUT one (Nat) reaches the identity arm and answers differently for two declarations that share a spelling -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag does not, and an EMPTY decl_file (identity unknown at the site) refuses rather than guessing. Those four cannot be satisfied together by any constant, by a disabled mechanism, or by a rule keyed on the name alone, which is precisely the property the deleted global corpus mode lacked.\n\nTHE RESIDUE ROWS ASSERT THE CURRENT BYPASSING ANSWERS ON PURPOSE. The table is keyed on the bare name and consulted BEFORE identity, so a table-present name bypasses declaration keying entirely: Int under a src/v2 path still renders i64 even though that declaration is GroupCompletion<Nat> and not a machine integer. They are counted here rather than assumed closed. They FLIP to Absent when a name gets its own row in v1.compiler.coercion structural_declaration_modules_for, and that flip is the dissolution signal, NOT a regression -- do not make them pass again. Hash already made that flip: lookup_checkpoint (v1.compiler.coercion) now refuses before the bare-name table is consulted whenever decl_file names a module enrolled in structural_declaration_modules_for, and \"src/v2/std/node.dag\" is that module's one enrolled row, so table_present_hash_refuses_under_structural_declaration below is CLOSED rather than residue. String made the same flip in a later change: structural_declaration_modules_for now also enrolls \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"], both of which declare the structural FreeMonoid<Char> carrier rather than a host string, so table_present_string_refuses_under_structural_declaration_text and its _string_type sibling below are CLOSED and residue_table_present_string_bypasses_identity is retired rather than repaired back to passing. Bool was added in the same change -- structural_declaration_modules_for now also enrolls \"Bool\" => [\"src/v2/std/logic.dag\"], whose `type Bool = True | False` sits beside a BooleanAlgebra<Bool> instance modeling machine-bool bit/width/encoding facts and so cannot shortcut to the primitive it derives, so table_present_bool_refuses_under_structural_declaration_logic below is CLOSED. dag/std/types.dag is NOT enrolled (see RE-GROUNDING NOTE 2): its `type Bool = True | False` is the ordinary corpus-wide prelude Bool, the genuine native declaring module parallel to dag/std/integer.dag for Int, so table_present_bool_renders_natively_for_the_corpus_prelude below asserts the positive answer instead. No residue_table_present_bool row ever existed in this file to retire. Int remains open -- it has no row yet -- and is exactly the residue population the next instance of this class inherits.\n\nWHERE THIS EXECUTES, STATED PRECISELY BECAUSE THE PREVIOUS CLAIM'S WHOLE DEFECT WAS AN IMPRECISE ONE. The row is enrolled in gunbc.ci_layer_roots v1_claim_scoped_witness_entries, consumed by v1_claim_scoped_witness_batch, whose source-root envelope is dag plus src/v1 -- the envelope this file needs, since it imports v1.compiler.emit_rust. The entry carries the empty function name, so it expands to every test fn here rather than pinning a roster of them. That batch runs SelectionApplied, so this witness executes on changes that affect it and emits a ScopedWitnessSelectionSkipped receipt with provenance otherwise; it is NOT claimed to run on every PR. That is the correct scope rather than a concession: evidence guarding a decision inside emit_rust should execute when emit_rust changes, and a provenance failure refuses loudly instead of widening. Note also what the enrollment is NOT: witness_discovery_scan_dirs is the owned-data-decl scope, not the witness scope, so membership there would neither add nor remove execution here. The assertions were additionally run directly during authoring -- all fourteen PASS -- but direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the same class of error this file exists to repair.\n\nRE-GROUNDING NOTE (smart-ram-730 blocker, session merry-lark-67): the ORIGINAL String residue row here queried decl_file \"src/v2/std/string.dag\", a path that does not exist anywhere in the corpus -- its predicted flip to `none` was therefore structurally unreachable regardless of whether structural_declaration_modules_for was correct, and the row measured nothing. It is replaced, not repaired, by the two CLOSED rows above keyed on the REAL declarations (src/v2/std/text.dag, dag/std/string_type.dag), each asserting the strong `== none` shape the Hash flip already established rather than the weaker `!= none` the broken row used. Two further specimens close the packet: a positive control (literal_suffix_positive_control_symbol_not_enrolled) proving the gate is not a blanket refusal, since without one every refusal row below would be satisfied vacuously by a mechanism that refuses unconditionally; and literal_suffix -- a DIFFERENT consumer of lookup_checkpoint than rust_scalar_checkpoint_reference_base, with its own return shape and its own production call site -- is exercised separately rather than inferred from the type-alias rows, and that direct execution surfaced a genuine, distinct disclosure: the literal-rendering call site in v1.compiler.05_emit emit_literal never threads a real decl_file (LitStr passes the empty string), so literal_suffix at PRODUCTION sites cannot be gated by this roster however correctly the roster and lookup_checkpoint discriminate when a real decl_file is supplied. That is measured directly below, not assumed from the declaration-site gap this note's sibling (checkpoint_table_bypasses_identity_note) already names.\n\nRE-GROUNDING NOTE 2 (CI blocker, session merry-lark-67, PR #8708 @ c084813): the ORIGINAL Bool enrollment listed BOTH src/v2/std/logic.dag AND dag/std/types.dag, mirroring String's two-row shape without checking whether either declaration was actually the genuine native one -- unlike String's two rows (text.dag, string_type.dag), neither of which is imported as the corpus's everyday String, dag/std/types.dag IS the corpus's everyday Bool: import std.types { Bool } appears in 300+ dag/test/claim modules. Enrolling it made lookup_checkpoint refuse native `bool` for every one of them, which the required-floor CI phase caught as five genuine (non-KNOWN-RED) failures in optional_carrier_signature_test.dag and e0308_mechanical_trio_test.dag -- fixtures that use `flag: Bool` as an incidental parameter and assert nothing about Bool's own realization, so the breakage was pure collateral, not a caught defect in those fixtures. The correction follows the numeric_realization_declaring_modules precedent (v1.compiler.emit_rust numeric_realization_roster_extension_note): a name belongs in the NEGATIVE structural roster only when none of its dag declarations is genuinely native, the way Hash's is purely coincidental spelling; a declaration that IS the grounded native one -- dag/std/integer.dag for Int, dag/std/types.dag for Bool -- must keep rendering from the table. dag/std/types.dag is removed from Bool's row; src/v2/std/logic.dag stays, since its BooleanAlgebra<Bool>/BoolWidthFact/BoolEncodingFact modeling is a genuine structural encoding of what a bool bit-pattern is, not the everyday corpus type.\n\ndissolve-on: a corpus-side declaration-to-Rust-type binding supersedes the bare-name row, at which point the residue rows flip and this note's second half retires with them. The extdeps table keeps Rust-type-to-spelling (which is what its cited authority can answer); which dag declaration realizes as which Rust type is a gunbc-corpus fact and does not belong in an upstream row.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn table_present_name_renders_from_the_table() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Int".to_string(),
-        "dag/std/integer.dag".to_string(),
-    )
-    .as_deref()
+    (rust_scalar_checkpoint_reference_base("Int".to_string(), "dag/std/integer.dag".to_string())
+        .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn table_absent_name_realizes_natively_for_the_std_declaration() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Nat".to_string(),
-        "dag/std/nat.dag".to_string(),
-    )
-    .as_deref()
+    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "dag/std/nat.dag".to_string())
+        .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn same_spelling_different_declaration_does_not_realize_natively() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Nat".to_string(),
-        "src/v2/std/nat.dag".to_string(),
-    ) == None)
+    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "src/v2/std/nat.dag".to_string())
+        == None)
 }
 
 pub fn unknown_declaration_identity_refuses_rather_than_guessing() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Nat".to_string(),
-        "".to_string(),
-    ) == None)
+    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "".to_string()) == None)
 }
 
 pub fn residue_table_present_int_bypasses_identity() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Int".to_string(),
-        "src/v2/std/integer.dag".to_string(),
-    )
-    .as_deref()
+    (rust_scalar_checkpoint_reference_base("Int".to_string(), "src/v2/std/integer.dag".to_string())
+        .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn table_present_hash_refuses_under_structural_declaration() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Hash".to_string(),
-        "src/v2/std/node.dag".to_string(),
-    ) == None)
+    (rust_scalar_checkpoint_reference_base("Hash".to_string(), "src/v2/std/node.dag".to_string())
+        == None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_text() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "String".to_string(),
-        "src/v2/std/text.dag".to_string(),
-    ) == None)
+    (rust_scalar_checkpoint_reference_base("String".to_string(), "src/v2/std/text.dag".to_string())
+        == None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_string_type() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+    (rust_scalar_checkpoint_reference_base(
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
     ) == None)
 }
 
 pub fn table_present_bool_refuses_under_structural_declaration_logic() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Bool".to_string(),
-        "src/v2/std/logic.dag".to_string(),
-    ) == None)
+    (rust_scalar_checkpoint_reference_base("Bool".to_string(), "src/v2/std/logic.dag".to_string())
+        == None)
 }
 
 pub fn table_present_bool_renders_natively_for_the_corpus_prelude() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-        "Bool".to_string(),
-        "dag/std/types.dag".to_string(),
-    )
-    .as_deref()
+    (rust_scalar_checkpoint_reference_base("Bool".to_string(), "dag/std/types.dag".to_string())
+        .as_deref()
         == Some("bool".to_string()).as_deref())
 }
 
@@ -133,4 +112,22 @@ pub fn literal_suffix_production_call_site_never_threads_declaration_identity() 
     )
     .as_deref()
         == Some(".to_string()".to_string()).as_deref())
+}
+
+pub fn reference_position_renders_the_bare_spelling() -> bool {
+    (rust_scalar_checkpoint_reference_base("String".to_string(), "dag/std/types.dag".to_string())
+        .as_deref()
+        == Some("String".to_string()).as_deref())
+}
+
+pub fn declaration_position_renders_the_grounding_spelling() -> bool {
+    (rust_scalar_checkpoint_grounding_base("String".to_string(), "dag/std/types.dag".to_string())
+        .as_deref()
+        == Some("std::string::String".to_string()).as_deref())
+}
+
+pub fn numeric_name_grounds_in_its_own_reference_spelling() -> bool {
+    (rust_scalar_checkpoint_grounding_base("Int".to_string(), "dag/std/integer.dag".to_string())
+        .as_deref()
+        == Some("i64".to_string()).as_deref())
 }

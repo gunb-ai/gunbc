@@ -14,6 +14,7 @@ use std::rc::Rc;
 pub struct TypeCheckpoint {
     pub dag_name: String,
     pub target_type: String,
+    pub grounding_type: String,
     pub default_expr: Option<String>,
     pub is_copy: Option<bool>,
     pub literal_suffix: Option<String>,

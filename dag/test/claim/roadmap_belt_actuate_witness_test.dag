@@ -1,5 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 fn roadmap_belt_actuate_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {

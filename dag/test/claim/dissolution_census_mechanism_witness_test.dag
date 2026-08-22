@@ -48,7 +48,7 @@ test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
 
 fn w_unbound_dissolution_empty_literal_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module dissolution_empty_literal_red\nimport std.dissolution { DissolutionCondition, std.dissolution.unbound_dissolution }\ndata bad: DissolutionCondition = std.dissolution.unbound_dissolution(description: \"\")\n",
+    "module dissolution_empty_literal_red\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata bad: DissolutionCondition = unbound_dissolution(description: \"\")\n",
     "src/dissolution_empty_literal_red.rs",
     [],
     []
@@ -57,7 +57,7 @@ fn w_unbound_dissolution_empty_literal_red() -> Bool {
 
 fn w_unbound_dissolution_nonempty_literal_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module dissolution_nonempty_literal_green\nimport std.dissolution { DissolutionCondition, std.dissolution.unbound_dissolution }\ndata ok: DissolutionCondition = std.dissolution.unbound_dissolution(description: \"a real condition\")\n",
+    "module dissolution_nonempty_literal_green\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata ok: DissolutionCondition = unbound_dissolution(description: \"a real condition\")\n",
     "src/dissolution_nonempty_literal_green.rs",
     [],
     []

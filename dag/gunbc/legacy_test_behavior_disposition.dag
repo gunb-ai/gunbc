@@ -315,7 +315,7 @@ fn legacy_test_behavior_unclassified_count_live() -> Int {
 // control must be re-checked, and it dies with the kernel. A control whose
 // independence is relative to a named adversary needs that adversary written
 // down, or the next lane inherits the trap this repoint just paid for.
-data legacy_discovery_known_positive: String = "src/v1/tests/src/field_of_fractions_construction_test.rs::field_of_fractions_pair_stays_boxed_record_not_native_collapse"
+data legacy_discovery_known_positive: String = "src/v1/tests/src/rs::field_of_fractions_pair_stays_boxed_record_not_native_collapse"
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.

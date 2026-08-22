@@ -235,7 +235,7 @@ fn validation_empty_sync_found() -> v2.std.logic.Bool {
 }
 
 data claim_duplicate_productions_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_duplicate_productions returns true for duplicate production names",
+  label: "grammar_has_duplicate_productions returns true for duplicate production names",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_duplicate_productions(root: validation_dup_root)),
   rhs: validation_bool_atom(b: true),
@@ -243,7 +243,7 @@ data claim_duplicate_productions_detected: v2.std.verification.TestClaim = v2.st
 }
 
 data claim_distinct_productions_not_duplicate: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_duplicate_productions returns false for distinct production names",
+  label: "grammar_has_duplicate_productions returns false for distinct production names",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_duplicate_productions(root: validation_two_distinct_root)),
   rhs: validation_bool_atom(b: false),
@@ -251,7 +251,7 @@ data claim_distinct_productions_not_duplicate: v2.std.verification.TestClaim = v
 }
 
 data claim_lookup_production_present_holds: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_lookup_production returns Holds with the production matching the requested name",
+  label: "grammar_lookup_production returns Holds with the production matching the requested name",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_lookup_present_holds_named()),
   rhs: validation_bool_atom(b: true),
@@ -259,7 +259,7 @@ data claim_lookup_production_present_holds: v2.std.verification.TestClaim = v2.s
 }
 
 data claim_lookup_production_absent_violates: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_lookup_production returns Violates for a name absent from productions",
+  label: "grammar_lookup_production returns Violates for a name absent from productions",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_lookup_missing_violates()),
   rhs: validation_bool_atom(b: true),
@@ -267,7 +267,7 @@ data claim_lookup_production_absent_violates: v2.std.verification.TestClaim = v2
 }
 
 data claim_undefined_nonterminal_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_undefined_nonterminals returns true for missing start production",
+  label: "grammar_has_undefined_nonterminals returns true for missing start production",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_undefined_nonterminals(root: validation_missing_start_root)),
   rhs: validation_bool_atom(b: true),
@@ -275,7 +275,7 @@ data claim_undefined_nonterminal_detected: v2.std.verification.TestClaim = v2.st
 }
 
 data claim_dangling_nonterminal_in_expression_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_undefined_nonterminals returns true when start production references undefined nonterminal",
+  label: "grammar_has_undefined_nonterminals returns true when start production references undefined nonterminal",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_undefined_nonterminals(root: validation_dangling_ref_root)),
   rhs: validation_bool_atom(b: true),
@@ -283,7 +283,7 @@ data claim_dangling_nonterminal_in_expression_detected: v2.std.verification.Test
 }
 
 data claim_empty_sync_set_no_token_drain: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.parse_skip_to_sync with empty sync set returns found_sync: false for non-empty input",
+  label: "parse_skip_to_sync with empty sync set returns found_sync: false for non-empty input",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_empty_sync_found()),
   rhs: validation_bool_atom(b: false),
@@ -291,7 +291,7 @@ data claim_empty_sync_set_no_token_drain: v2.std.verification.TestClaim = v2.std
 }
 
 data claim_left_recursion_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_left_recursion returns true for A = A 'x' (direct left recursion)",
+  label: "grammar_has_left_recursion returns true for A = A 'x' (direct left recursion)",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_left_recursion(root: validation_left_recursive_root)),
   rhs: validation_bool_atom(b: true),
@@ -299,7 +299,7 @@ data claim_left_recursion_detected: v2.std.verification.TestClaim = v2.std.verif
 }
 
 data claim_right_recursion_not_left_recursive: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_left_recursion returns false for A = 'x' A? (right-recursive, non-left)",
+  label: "grammar_has_left_recursion returns false for A = 'x' A? (right-recursive, non-left)",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_left_recursion(root: validation_right_recursive_root)),
   rhs: validation_bool_atom(b: false),
@@ -317,7 +317,7 @@ data claim_right_recursive_parse_succeeds: v2.std.verification.TestClaim = v2.st
 }
 
 data claim_choice_ambiguity_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
+  label: "grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_choice_ambiguity(root: validation_ambiguous_choice_root)),
   rhs: validation_bool_atom(b: true),
@@ -325,7 +325,7 @@ data claim_choice_ambiguity_detected: v2.std.verification.TestClaim = v2.std.ver
 }
 
 data claim_disjoint_choice_not_ambiguous: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_has_choice_ambiguity returns false when Choice FIRST sets are disjoint",
+  label: "grammar_has_choice_ambiguity returns false when Choice FIRST sets are disjoint",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: v2.compiler.parse.grammar_has_choice_ambiguity(root: validation_disjoint_choice_root)),
   rhs: validation_bool_atom(b: false),
@@ -333,7 +333,7 @@ data claim_disjoint_choice_not_ambiguous: v2.std.verification.TestClaim = v2.std
 }
 
 data claim_validate_accepts_overlap_with_counted_residue: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime routes it to parse_choice_residue_backtrack",
+  label: "grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime routes it to parse_choice_residue_backtrack",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
   rhs: validation_bool_atom(b: true),
@@ -341,7 +341,7 @@ data claim_validate_accepts_overlap_with_counted_residue: v2.std.verification.Te
 }
 
 data claim_validate_rejects_nullable_choice_ambiguity: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
+  label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
   rhs: validation_bool_atom(b: true),
@@ -357,7 +357,7 @@ data claim_disjoint_choice_validate_residue_none: v2.std.verification.TestClaim 
 }
 
 data claim_validate_accepts_disjoint_choice: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
-  label: "v2.compiler.parse.grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
+  label: "grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
   anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_disjoint_choice_validate_accepts()),
   rhs: validation_bool_atom(b: true),

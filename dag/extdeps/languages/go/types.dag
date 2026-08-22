@@ -9,14 +9,14 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 data go_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
-  { dag_name: "Int",    target_type: "int64",       default_expr: "0",          is_copy: none, literal_suffix: none },
-  { dag_name: "Float",  target_type: "float64",     default_expr: "0.0",        is_copy: none, literal_suffix: none },
-  { dag_name: "Bool",   target_type: "bool",        default_expr: "false",      is_copy: none, literal_suffix: none },
-  { dag_name: "Unit",   target_type: "struct{}",    default_expr: "struct{}{}", is_copy: none, literal_suffix: none },
-  { dag_name: "String", target_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
-  { dag_name: "Bytes",  target_type: "[]byte",      default_expr: "nil",        is_copy: none, literal_suffix: none },
-  { dag_name: "Secret", target_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
-  { dag_name: "Json",   target_type: "interface{}", default_expr: "nil",        is_copy: none, literal_suffix: none }
+  { dag_name: "Int",    target_type: "int64", grounding_type: "int64",       default_expr: "0",          is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "float64", grounding_type: "float64",     default_expr: "0.0",        is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "bool", grounding_type: "bool",        default_expr: "false",      is_copy: none, literal_suffix: none },
+  { dag_name: "Unit",   target_type: "struct{}", grounding_type: "struct{}",    default_expr: "struct{}{}", is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "string", grounding_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "[]byte", grounding_type: "[]byte",      default_expr: "nil",        is_copy: none, literal_suffix: none },
+  { dag_name: "Secret", target_type: "string", grounding_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
+  { dag_name: "Json",   target_type: "interface{}", grounding_type: "interface{}", default_expr: "nil",        is_copy: none, literal_suffix: none }
 ]
 
 data go_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [

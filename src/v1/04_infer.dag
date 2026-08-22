@@ -2787,7 +2787,7 @@ fn type_variable_node(id: String) -> v1.std.core.Node {
 
 fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
   match inferred {
-    v1.std.core.TypeVariable { id: _ } => true
+    TypeVariable { id: _ } => true
     _ => false
   }
 }

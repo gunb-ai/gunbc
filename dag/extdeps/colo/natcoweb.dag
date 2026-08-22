@@ -21,7 +21,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
   further_citations: []
 }
 
-data natcoweb_provenance_note: std.types.NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a std.measure.bandwidth-upgrade quote. STALENESS FLAG (operator concern, re-verified 2026-08-18): a second same-day fetch of the operator page confirms the 1/10 Mbps figures are what the LIVE page says, publishes no gigabit upgrade price, and carries no last-updated date - so the rows are an accurate reading of a possibly stale surface, and the quote must confirm every figure before any is treated as current."
+data natcoweb_provenance_note: std.types.NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a bandwidth-upgrade quote. STALENESS FLAG (operator concern, re-verified 2026-08-18): a second same-day fetch of the operator page confirms the 1/10 Mbps figures are what the LIVE page says, publishes no gigabit upgrade price, and carries no last-updated date - so the rows are an accurate reading of a possibly stale surface, and the quote must confirm every figure before any is treated as current."
 
 data natcoweb_clifton: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Natcoweb",
@@ -31,7 +31,7 @@ data natcoweb_clifton: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.C
   },
   municipality: "Clifton",
   region_code: "NJ",
-  facility_note: "Operator page (read 2026-08-18): SSAE 16 certified building; diverse redundant fiber to the Equinix suites at 111 8th Ave and Hudson St in New York; std.measure.bandwidth sold as pure Cogent or a Level(3)/Zayo/Cogent blend; free VLAN creation; additional IPv4 at 1 USD per address per month.",
+  facility_note: "Operator page (read 2026-08-18): SSAE 16 certified building; diverse redundant fiber to the Equinix suites at 111 8th Ave and Hudson St in New York; bandwidth sold as pure Cogent or a Level(3)/Zayo/Cogent blend; free VLAN creation; additional IPv4 at 1 USD per address per month.",
 }
 
 data natcoweb_plan_1u: extdeps.colo.types.RetailPlanRow = extdeps.colo.types.RetailPlanRow {
@@ -105,5 +105,5 @@ data natcoweb_remote_hands: List<extdeps.colo.types.RemoteHandsWindowRate> = [
 ]
 
 data natcoweb_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesPublished {
-  plans_note: "Four plans published from 1U to full cabinet, all month-to-month with free setup. Every power figure is amps with no stated voltage and every plan includes 10 Mbps or less of committed transfer, so the published prices bound the space cost but decide nothing about a watt-sized, gigabit-sized placement until a quote supplies voltage, usable continuous watts, and std.measure.bandwidth-upgrade pricing.",
+  plans_note: "Four plans published from 1U to full cabinet, all month-to-month with free setup. Every power figure is amps with no stated voltage and every plan includes 10 Mbps or less of committed transfer, so the published prices bound the space cost but decide nothing about a watt-sized, gigabit-sized placement until a quote supplies voltage, usable continuous watts, and bandwidth-upgrade pricing.",
 }
