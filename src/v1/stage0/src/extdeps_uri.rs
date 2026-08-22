@@ -914,7 +914,7 @@ pub fn uri_percent_encode_scalar_outcome(cp: i64) -> Rc<UriPercentEncodeScalarOu
 pub fn uri_percent_encode_outcomes_first_refusal(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
-    outcomes.clone().iter().cloned().fold(
+    outcomes.iter().cloned().fold(
         None,
         |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
          outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
@@ -935,7 +935,7 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 pub fn uri_percent_encode_outcome_wires(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
 ) -> Rc<Vec<String>> {
-    outcomes.clone().iter().cloned().fold(
+    outcomes.iter().cloned().fold(
         Rc::new(vec![]),
         |wires: Rc<Vec<String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| match (*outcome
             .clone())
@@ -960,7 +960,7 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
         {
             let outcomes = Rc::new({
                 let mut __result = Vec::new();
-                for cp in code_points.clone().iter().cloned() {
+                for cp in code_points.iter().cloned() {
                     __result.push(uri_percent_encode_scalar_outcome(cp.clone()));
                 }
                 __result

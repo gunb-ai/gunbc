@@ -3,6 +3,7 @@ module test.claim.cited_symbol_resolution_witness_test
 import gunbc.doc_graph_roots {
   hand_authored_cited_symbol_control_declaration_refs,
   hand_authored_doc_declaration_refs,
+  hand_authored_outside_index_count,
   hand_authored_production_doc_declaration_refs,
 }
 
@@ -14,6 +15,11 @@ test fn cited_symbol_planted_doc_graph_controls_are_enrolled() -> Bool {
   length(xs: hand_authored_cited_symbol_control_declaration_refs()) == 3
 }
 
+data cited_symbol_partition_third_bucket_note: String = "THE PARTITION GAINED A THIRD BUCKET AND THIS WITNESS IS WHAT NOTICED. It read all-works == production + planted-controls, which held while every authored work was in exactly one of two buckets. Marking the four references that decl_facts cannot index as OutsideDeclIndexTestWitnessModule removed them from the production projection, so the two-term identity went short by exactly four and this row went red on the required floor — a fail-closed report of a real change to the population, not a stale assertion.\n\nWHY IT IS RESTATED AS THREE TERMS RATHER THAN RELAXED. The property being protected is that NO AUTHORED WORK FALLS OUT OF EVERY BUCKET: a reference silently dropped from the production population is exactly how a census greens over something nobody checked, which is the failure this lens exists to catch. Loosening the equality to an inequality, or subtracting the outside-index rows from the left side, would both make that unrepresentable-to-detect. The three-term identity keeps the sum exact, so a fourth bucket added later reds here too."
+
 test fn cited_symbol_production_population_excludes_planted_controls() -> Bool {
-  length(xs: hand_authored_doc_declaration_refs()) == length(xs: hand_authored_production_doc_declaration_refs()) + length(xs: hand_authored_cited_symbol_control_declaration_refs())
+  length(xs: hand_authored_doc_declaration_refs())
+    == length(xs: hand_authored_production_doc_declaration_refs())
+      + length(xs: hand_authored_cited_symbol_control_declaration_refs())
+      + hand_authored_outside_index_count()
 }
