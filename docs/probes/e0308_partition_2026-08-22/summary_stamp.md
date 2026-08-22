@@ -8,26 +8,30 @@
 | emitted roster | 177 files, 503 emit diagnostics (same roster count as the 2026-08-21 run — same subject) |
 | raw E0308 blocks | **128** (40.5% of 316 coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
 | canonical sites | **154** |
-| clusters | 13 + residue |
-| unclassified residue | **6 (3.9%)**, printed in full; residue arm known-positive |
+| clusters | 14 + residue |
+| unclassified residue | **7 (4.5%)**, printed in full; residue arm known-positive |
 | classifier | `docs/probes/e0308_classify_sites.py` (committed; re-runnable over the published raw log) |
 
 ## Clusters (site grain, this subject only) — every one a CANDIDATE root
 
+Repartitioned 2026-08-22 after a keying defect found by review; precedence between delta-keyed,
+carrier-keyed and context-keyed arms is now declared in the classifier and in the receipt's
+*keying ruling*, not left to source order.
+
 | cluster | sites | % |
 |---|---:|---:|
-| R1 bare↔`Rc` wrap (17 outer / 14 type-argument depth / 6 element) | 39 | 25.3% |
-| R2 Optional surface fork | 22 | 14.3% |
+| R1 bare↔`Rc` wrap (19 outer / 15 type-argument depth) | 34 | 22.1% |
+| R2 Optional surface fork | 24 | 15.6% |
+| D alias arity / generic argument count | 16 | 10.4% |
 | T3 collection carrier fork | 14 | 9.1% |
-| D alias arity / generic argument count | 13 | 8.4% |
 | A-clone generic `Clone` bound absent | 12 | 7.8% |
 | ARG-ORDER call argument order | 11 | 7.1% |
 | B3 modeled `Nat` vs native integer | 10 | 6.5% |
-| W `Witness<_>` type argument | 9 | 5.8% |
+| RESIDUE | 7 | 4.5% |
+| C carrier collapses to `()` | 6 | 3.9% |
 | B2 `Bool` vs `bool`/variant | 6 | 3.9% |
-| RESIDUE | 6 | 3.9% |
-| C carrier collapses to `()` | 4 | 2.6% |
-| ELEM-COLL element vs its own collection (**NEW**) | 4 | 2.6% |
+| ELEM-COLL element vs its own collection (**NEW**) | 5 | 3.2% |
+| W `Witness<_>` type argument | 5 | 3.2% |
 | DIAG diagnostic carrier fork | 3 | 1.9% |
 | BOX-WRAP `Box` wrap decision (**NEW**) | 1 | 0.6% |
 
@@ -44,8 +48,8 @@
 
 ## Cost shape
 
-Four clusters cover 57% of sites; six more are single-file and cover another 45. Tail = 6 residue
-sites in 4 files. This is a small number of producer decisions with wide fanout, not a site-by-site
+Four clusters cover 57% of sites; six more are single- or two-file and cover another 49. Tail = 7
+residue sites in 5 files. This is a small number of producer decisions with wide fanout, not a site-by-site
 tail — the same shape the 2026-08-21 board reported on a different population.
 
 ## The 182 in the commissioning brief
