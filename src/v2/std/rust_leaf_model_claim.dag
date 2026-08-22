@@ -1,0 +1,60 @@
+module v2.std.rust_leaf_model_claim
+
+import v2.std.grammar { GrammarProduction }
+import v2.std.leaf_model_verification { TargetInvocation }
+import v2.std.compilers.lexing { LexRule }
+import v2.std.logic { Bool }
+import v2.std.model_core { AlgebraInhabitanceDecl }
+import v2.std.node { Node, Symbol }
+import v2.std.runtime { RuntimeOutcome }
+
+type RustPrimitive
+  = RustPrimitiveI32 {}
+
+type AlgebraCarrier
+  = AlgebraCarrierOrderedRing {}
+
+data rust_leaf_phase1_primitive_i32: RustPrimitive = RustPrimitiveI32 {}
+data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarrierOrderedRing {}
+
+type RustClaimSubject
+  = RustPrimitiveTypeSubject { primitive: RustPrimitive }
+  | RustAlgebraInhabitanceSubject { inhabitance_decl: AlgebraInhabitanceDecl }
+  | RustAtomRealizationSubject { atom: Node }
+
+  | RustAtomRealizationProjectionMismatchSubject {
+      atom: Node
+      declared_type_form: Symbol
+      exercised_value_form: Symbol
+    }
+  | RustCollectionRealizationSubject { collection: Node }
+  | RustGrammarProductionSubject { production: GrammarProduction }
+  | RustLexRuleSubject { rule: LexRule }
+
+type Rustc_ErrorCode_Phase1
+  = E0107
+  | E0308
+  | E0423
+  | E0599
+
+data rust_leaf_phase1_err_e0107: Rustc_ErrorCode_Phase1 = E0107
+data rust_leaf_phase1_err_e0308: Rustc_ErrorCode_Phase1 = E0308
+data rust_leaf_phase1_err_e0423: Rustc_ErrorCode_Phase1 = E0423
+data rust_leaf_phase1_err_e0599: Rustc_ErrorCode_Phase1 = E0599
+
+type RustClaimExpectation
+  = RustcAcceptsExpectation { invocation_form: TargetInvocation }
+  | RustcRejectsExpectation {
+      invocation_form: TargetInvocation
+      expected_error_code: Rustc_ErrorCode_Phase1
+    }
+  | RustRuntimeBehaviorExpectation {
+      invocation_form: TargetInvocation
+      expected_outcome: RuntimeOutcome
+    }
+  | RustEmitProjectionEqualityExpectation {
+      atom_realization_row: Node
+      type_emit_must_change: Bool
+      value_emit_must_change: Bool
+    }
+  | RustGrammarRoundTripExpectation { production: GrammarProduction }
