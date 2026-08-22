@@ -6004,46 +6004,6 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
     true
 }
 
-/// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
-/// `(entry, function, eval_wall_ms, resolve_ms)` identity — the grain
-/// falsifier_cadence_surface_note requires before per-row placement is admissible. The
-/// complete machine-readable record is the TSV file; rendered streams may project a subset
-/// later (W2 ruling: one record, two projections). Fail-closed on write error.
-///
-/// TWO COLUMN CORRECTIONS (2026-08-05), both cases of a column that could not say what it
-/// meant:
-///
-/// 1. `eval_ms` -> `eval_wall_ms`. The figure is and always was WALL, while the fast-lane
-///    cap that kills these rows is enforced on THREAD CPU, so the old name invited a
-///    threshold built on this file to select a different population than the cap kills.
-///    Renaming is the honest half; the *enforced* quantity still does not appear here at
-///    all, because these rows project through `std.observation.ObservationEvent`, which
-///    carries wall and rss but no cpu. See `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`
-///    for the bound that makes this narrower than it sounds (eval is single-threaded, so
-///    wall bounds cpu above: a row under the cap on wall is provably under on cpu) and for
-///    the std change that would close it.
-///
-/// 2. `outcome` and `detail` are now EMITTED rather than dropped. The row tuple always
-///    carried them; the writer discarded the last two fields. Because `discovery_claim_result`
-///    pushes selection-skipped rows into this same receipt with zero timings, a `0` in the
-///    eval column meant "never executed" OR "ran in under a millisecond" and the file could
-///    not distinguish them — the empty-observation narrow, in an artifact whose whole
-///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
-///    counted skipped rows as fast ones.
-///
-///    Note the `.dag` model was never wrong here: `WitnessCostReceiptRow` already carries
-///    `outcome` and the projection witness already matches on it. Only this writer dropped
-///    it — the model/realization fork, not a modeling gap.
-///
-/// 3. An absent measurement now renders as `unmeasured`, not `0`. Emitting the outcome column
-///    made the two cases *decidable*, but the number itself was still fabricated, and
-///    `std.observation`'s `observation_measured_note` rules on exactly this: "A renderer
-///    projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the
-///    field, because a silently omitted number is the same fabrication one layer up." An
-///    executed witness may legitimately measure 0 ms, and those rows keep their `0`; a row
-///    that never ran has no cost to report and now says so. The cell is deliberately
-///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
-///    unexecuted row as a fast one.
 fn batch_is_wet(batch: &[Runnable]) -> bool {
     batch.iter().any(|runnable| match runnable {
         Runnable::DiscoveryBatch { execution_mode, .. } => *execution_mode == ExecutionMode::Wet,
@@ -6268,11 +6228,20 @@ fn witness_row_cost_verdict_via_authority(
     }
 }
 
-/// Drift comparison on the falsifier cadence only (margin ruling: row grew >2× against its
-/// dated basis = counted drift receipt, never merge-refusing). A row with no dated basis is
-/// BasisAbsent — typed, located, counted; never assume fine. Comparator authority is
-/// `dag/gunbc/witness_row_cost.dag` (resolved once; per-row exceeds_basis calls).
-
+/// ONE stage's own receipt, written before the next stage begins. The aggregate receipt
+/// below cannot substitute for it: written only after the whole sequence, it does not
+/// exist for stage N while stage N+1 is running, and a process death between the two
+/// loses every stage that had in fact completed. Per-stage, the disk state answers
+/// "which stages ran, and what did each cost" at any instant.
+///
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.types` `path_segment_is_safe`,
+/// the single law for "safe as ONE path segment"). This mirrors that predicate clause for
+/// clause because the executor is the Rust seed and cannot call the `.dag` surface at the
+/// point it observes the environment. It is a REALIZATION of that authority, not a second
+/// rule: if the two ever disagree, the `.dag` predicate is right and this is the defect.
+/// dissolve-on: the executor's env observation running as a modeled effect, at which point
+/// the branding constructor `gunbc.merge_admission.walk_attempt_id` is the only gate and
+/// this function deletes.
 fn walk_attempt_id_segment_is_safe(raw: &str) -> bool {
     !(raw.is_empty()
         || raw == "."
