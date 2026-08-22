@@ -1,0 +1,1203 @@
+module v2.workflow.dag_acceptance
+
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import v2.compiler.compile {
+  CompileOutput,
+  Eval,
+  EvalResult,
+  TranslateResult,
+  TranslateTo,
+  compile_inferred
+}
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.staged_front_end {
+  FrontEndRun,
+  FrontEndStage,
+  FrontEndStagePassed,
+  FrontEndStageReceipt,
+  FrontEndStageRejected,
+  FrontEndStageStep,
+  FrontEndTokenize,
+  FrontEndParse,
+  FrontEndNormalize,
+  FrontEndResolve,
+  FrontEndResolvedModule,
+  FrontEndBoundReached,
+  FrontEndRefused,
+  run_front_end_to
+}
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import v2.std.diagnostic { Accepted, Diagnostics, None, NonEmptyDiagnostics, Rejected, Some }
+import v2.std.leaf_model_verification {
+  TargetCompileAccepted,
+  TargetCompileRejected,
+  TargetCompileVerdict
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_count }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data dag_acceptance_note: String = "STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a NAMED acceptance contract — acceptance is never bound to one compiler stage. It exists to be the automated oracle for .dag model work: without one, every layer above it is judged by a person reading diffs, and iteration is capped at one person's attention.\n\nIT IS TRANSPORT-FREE ON PURPOSE. The product is a pure function of a String, so the resident-host question is a REALIZATION fact about it, never part of its interface (DESIGN section 3: interface, realization and policy are three facts). A route on gunbc serve was considered and REFUSED: that seam is a declared frozen quarry route — gunbc.roadmap_serve roadmap_serve_seam_restoration_note, mirrored at the Commands::Serve arm of src/v1/stage0/src/main.rs, states no new options, no new verbs, no new routes into the interpreter, no completion work — and its declared successor is roadmap_serve_interpreted_scaffold dissolving to emit-on-demand, a trigger that already fired in production. The amortization that route was reached for (one corpus load, many candidates) is satisfied by the existing batch executor, which builds its module index once at startup, with no new interpreter surface at all."
+
+data dag_acceptance_stage_graph_note: String = "The stage graph is NOT a linear ladder. tokenize -> parse -> normalize -> resolve -> infer is a chain; Eval and TranslateTo are SIBLING realizations over the same inferred tree and neither is later than the other; and TargetCompile is a FIFTH stage that the compiler does not perform at all — compile_inferred_translate is exactly emit(tree, target) and never invokes the target toolchain, so TranslateTo proves an emitter produced target source and proves NOTHING about whether that source compiles. Collapsing those two would inflate every metric built on this harness. The edges live in exactly one place, obligation_prerequisites, and the runner CONSULTS that function rather than re-spelling the order — so a new obligation cannot be added without answering what it needs."
+
+data dag_acceptance_target_compile_construction_note: String = "TargetCompileClaim CARRIES the TranslationClaim whose output it consumes, so 'target-compile an emission nobody requested' has no spelling in this model — structural impossibility rather than a runtime refusal (DESIGN section 4b). The obligation's prerequisite is then DERIVED from the claim it already holds, not authored beside it, which is the same fact stated once."
+
+data dag_acceptance_verdict_derivation_note: String = "THE VERDICT IS DERIVED, NEVER STORED. DagAcceptanceReceipt carries the contract identity, the candidate identity, and the executed rows; the verdict is a fold over those rows. There is no verdict field to transcribe, so rung inflation on this harness's own output is unrepresentable rather than lens-caught — the meta-obligation of DESIGN section 4b applied to the instrument itself."
+
+type DagCandidate {
+  file: Symbol,
+  source: String
+}
+
+fn candidate_identity(candidate: DagCandidate) -> Fnv1a64Structural {
+  content_hash_atom(value: candidate.source)
+}
+
+type EvalExpectation
+  = EvaluatesWithoutRefusal
+  | EvaluatesToNodeCount { expected: Int }
+
+type CandidateEvalBudget
+  = NoDeclaredCandidateBudget
+  | CandidateCpuBudgetMs { limit_ms: Int }
+
+data eval_claim_coverage_obligation_note: String = "A COVERAGE OBLIGATION, DECLARED RATHER THAN LEFT AS AN IMPLIED PASS. An Eval claim names the runtime node to evaluate, and there is today no resolution from `evaluate the function named X in this candidate` to that node — so the Eval branch is NOT exercised end to end from a source string anywhere in this repository, and the fail-fast versus full-ledger split is proven at the decision function instead. That is a gap in what is OBSERVED, not a gap in what is modeled, and it is named here so it can be closed rather than rediscovered: the trigger is a candidate-relative entry-point resolution reaching this claim, at which point EvalClaim carries the resolved node and the policy split gets its end-to-end pair."
+
+type EvalClaim {
+  identity: Symbol,
+  evaluated_function: Symbol,
+  runtime: Node,
+  budget: CandidateEvalBudget,
+  expectation: EvalExpectation
+}
+
+type TranslationClaim {
+  target: TargetModel,
+  target_identity: Symbol,
+  emitter_identity: Symbol
+}
+
+data target_compile_policy_absent_note: String = "THERE IS NO POLICY FIELD ON THIS CLAIM, AND THAT IS A MODELING DECISION RATHER THAN AN OMISSION. The acceptance rule is fixed today: a target toolchain that rejects the emitted source rejects the candidate, an unreadable failure is undecided, and an unavailable toolchain is not a verdict at all. A policy axis carrying exactly one point is a second name for that fixed rule — the nickname class DESIGN section 3 forbids — and it would read as configurability that does not exist. Next-rung trigger: a SECOND acceptance rule with a real consumer, at which point the axis is minted with two inhabitants and this row is deleted."
+
+type TargetCompileClaim {
+  translation: TranslationClaim,
+  toolchain_identity: Symbol
+}
+
+type DagStageObligation
+  = TokenizeStage
+  | ParseStage
+  | NormalizeStage
+  | ResolveStage
+  | InferStage
+  | EvalStage { claim: EvalClaim }
+  | TranslateStage { claim: TranslationClaim }
+  | TargetCompileStage { claim: TargetCompileClaim }
+
+fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObligation> {
+  match obligation {
+    TokenizeStage => []
+    ParseStage => [TokenizeStage]
+    NormalizeStage => [ParseStage]
+    ResolveStage => [NormalizeStage]
+    InferStage => [ResolveStage]
+    EvalStage { claim: _ } => [InferStage]
+    TranslateStage { claim: _ } => [InferStage]
+    TargetCompileStage { claim: c } => [TranslateStage { claim: c.translation }]
+  }
+}
+
+data obligation_identity_note: String = "Obligation equality is STRUCTURAL over the identities each claim already carries, never a discriminant comparison: two TranslateObligations naming different targets are different obligations, and folding them together would let one target's receipt satisfy another target's prerequisite. Every claim therefore names itself — an Eval claim that cannot say what was evaluated is not evidence, and 'the candidate passed Eval' is meaningless without it."
+
+fn translation_claim_eq(a: TranslationClaim, b: TranslationClaim) -> Bool {
+  (a.target_identity == b.target_identity) && (a.emitter_identity == b.emitter_identity)
+}
+
+fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> Bool {
+  match a {
+    EvalStage { claim: ca } =>
+      match b {
+        EvalStage { claim: cb } => ca.identity == cb.identity
+        _ => false
+      }
+    TranslateStage { claim: ca } =>
+      match b {
+        TranslateStage { claim: cb } => translation_claim_eq(a: ca, b: cb)
+        _ => false
+      }
+    TargetCompileStage { claim: ca } =>
+      match b {
+        TargetCompileStage { claim: cb } =>
+          (ca.toolchain_identity == cb.toolchain_identity)
+            && translation_claim_eq(a: ca.translation, b: cb.translation)
+        _ => false
+      }
+    _ => discriminant(v: a) == discriminant(v: b)
+  }
+}
+
+fn obligation_label(obligation: DagStageObligation) -> Symbol {
+  match obligation {
+    TokenizeStage => ^obligation_tokenize
+    ParseStage => ^obligation_parse
+    NormalizeStage => ^obligation_normalize
+    ResolveStage => ^obligation_resolve
+    InferStage => ^obligation_infer
+    EvalStage { claim: c } => c.identity
+    TranslateStage { claim: c } => c.target_identity
+    TargetCompileStage { claim: c } => c.toolchain_identity
+  }
+}
+
+type NonEmptyObligations {
+  head: DagStageObligation,
+  tail: List<DagStageObligation>
+}
+
+type AcceptancePolicy
+  = InteractiveFailFast
+  | FullLedger
+
+data acceptance_policy_note: String = "TWO POLICIES, ONE RECEIPT SHAPE. InteractiveFailFast is ordinary best-of-N candidate search: once a rejection is decisive, independent branches are skipped and say so as SkippedAfterDecisiveRejection. FullLedger is model promotion and recipe comparison: every requested independent branch runs even when a sibling rejects, because the stage-level spread is the measurement. They are one runner with a policy parameter, never two harnesses — a second harness would fork the contract and the two would answer differently within a week."
+
+type StageCostRow {
+  obligation: DagStageObligation,
+  required: Millisecond
+}
+
+type VerifierBudgetLedger
+  = VerifierBudgetUnbounded
+  | VerifierBudgetTotal { total: Millisecond }
+
+data verifier_budget_measure_note: String = "DURATIONS ARE Millisecond, THE CITED std.measure CARRIER, NOT BARE Int. Two `_ms` scalars can be added and compared with nothing checking that they are the same quantity, and a module that carries its own millisecond scalars is a second representation of duration standing beside std/measure.dag (review 54506 caught exactly that in the first cut).\n\nAND THE LEDGER COUNTS WHAT IT HAS SPENT RATHER THAN WHAT REMAINS, which is a consequence of the same move. Nat is a CommutativeSemiring — it has addition and no subtraction — so a decrementing ledger would have needed an operation its own carrier does not provide. Admission is therefore `spent + required` against the declared total, and a refusal reports all three of required, total and already-spent rather than a single derived remainder, which is strictly more of the fact than the remainder carried."
+
+data verifier_budget_subject_note: String = "THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate that blows its declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running out of budget before a stage starts is a fact about US and lands as StageNotRun VerifierBudgetUnavailable — it must never become a semantic rejection, or a slow machine reads as a bad model. Every duration here is a DECLARED input: the required cost comes from the contract's own cost policy and the total from the runner's ledger. This module never estimates either, because an invented cost would make the refusal a fabrication rather than a measurement."
+
+type DagAcceptanceContract {
+  name: Symbol,
+  obligations: NonEmptyObligations,
+  policy: AcceptancePolicy,
+  stage_costs: List<StageCostRow>
+}
+
+type TargetCompileObservation
+  = TargetCompileDecided { verdict: TargetCompileVerdict }
+  | TargetCompileFailedUnparsed { exit_code: Int, stderr_length: Int }
+  | TargetCompilerUnavailable { cause: String }
+
+data target_compile_invocation_refusal_absent_note: String = "A CALL THAT REFUSES AND A TOOLCHAIN THAT IS ABSENT ARE DIFFERENT SUBJECTS, AND THIS MODEL CARRIES ONLY ONE OF THEM ON PURPOSE. An earlier revision declared both, and review 54507 caught what that cost: nothing produced the invocation-refusal arm, and the row mapping collapsed it onto the same ExecutorUnavailable row as the absent toolchain — a distinction asserted on the input side and erased on the output side, which is the state-space conflation the notes around it warn about, plus a constructor with no producer, which is specification without execution (DESIGN section 5). The surviving arm still refuses rather than fabricating a verdict, so the property that mattered — never assert a verdict over a call that did not answer — is preserved. Next-rung trigger: a transport that surfaces call-level refusal as its own observed fact, at which point the arm returns WITH a producer and WITH its own row, rather than as vocabulary waiting for one."
+
+data target_compile_observation_note: String = "THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Whether a target toolchain accepted or rejected a compilation is already modeled: v2.std.leaf_model_verification TargetCompileVerdict, with its accepted arm and its rejected arm carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can be that a modeled expectation cannot — the floor caught the first cut of this file minting a second TargetCompileAccepted beside that authority, which is the section-3 nicknaming violation exactly, and it broke every existing consumer of the real one.\n\nSO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing verdict authority. Unavailable is a fact about US and may never read as the toolchain having said no — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could read — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and its own count."
+
+type TargetCompileExecutor {
+  compile_target_source: fn(String) -> TargetCompileObservation
+}
+
+type AcceptanceEnvironment {
+  target_compile: TargetCompileExecutor,
+  budget: VerifierBudgetLedger
+}
+
+type StageReceipt
+  = FrontEndReceiptRow { stage: FrontEndStage, receipt: FrontEndStageReceipt }
+  | InferReceiptRow { node_count: Int }
+  | EvalReceiptRow { claim: EvalClaim, result_node_count: Int }
+  | TranslateReceiptRow { claim: TranslationClaim, emitted_length: Int }
+  | TargetCompileReceiptRow { claim: TargetCompileClaim }
+
+type StageRefusal
+  = StageDiagnosticRefusal { diagnostics: NonEmptyDiagnostics }
+  | EvalExpectationUnmet { claim: EvalClaim, observed_node_count: Int, expected_node_count: Int }
+  | TargetCompileRefusal { claim: TargetCompileClaim, observation: TargetCompileObservation }
+
+type StageNotRunReason
+  = NotRequiredByContract
+  | BlockedByPrerequisite { prerequisite: Symbol }
+  | SkippedAfterDecisiveRejection { rejected_obligation: Symbol }
+  | VerifierBudgetUnavailable {
+      required: Millisecond,
+      budget_total: Millisecond,
+      already_spent: Millisecond
+    }
+  | ExecutorUnavailable { cause: String }
+
+data stage_not_run_reason_note: String = "BlockedByPrerequisite and SkippedAfterDecisiveRejection are DIFFERENT FACTS and conflating them is the state-space conflation DESIGN section 5 names. Resolve rejected means infer is IMPOSSIBLE — nothing could have run it. Eval rejected leaves TranslateTo entirely possible; a fail-fast policy CHOSE not to pay for it. The first is a property of the candidate, the second a property of our policy, and the remedies differ: one says fix the candidate, the other says re-run under FullLedger."
+
+type StageUndecidedCause
+  = TargetCompileFailureUnparsed { exit_code: Int, stderr_length: Int }
+
+type StageExecution
+  = StagePassed { obligation: DagStageObligation, receipt: StageReceipt }
+  | StagePassedWithFrontier {
+      obligation: DagStageObligation,
+      receipt: StageReceipt,
+      diagnostics: NonEmptyDiagnostics
+    }
+  | StageRejected { obligation: DagStageObligation, refusal: StageRefusal }
+  | StageNotRun { obligation: DagStageObligation, reason: StageNotRunReason }
+  | StageUndecided { obligation: DagStageObligation, cause: StageUndecidedCause }
+
+data stage_execution_frontier_note: String = "ACCEPTED CLEAN AND ACCEPTED-WITH-DIAGNOSTICS ARE DIFFERENT ARMS, and this is the difference between an oracle and a blindfold. A stage can return Accepted while carrying typed, located diagnostics — DESIGN names that state FrontierAccepted and calls it distinct from silent below-floor AND from a refusal, with live specimens in the compiler today. If this receipt folded it into an ordinary pass, every metric built on the harness would count a frontier candidate as clean, and the deficit frequency would be zero by construction. A separate CONSTRUCTOR rather than an optional field is deliberate: a consumer matching StagePassed cannot silently absorb the advisory case, because the advisory case is not a StagePassed."
+
+data stage_execution_arity_note: String = "FIVE ARMS, AND THE LAST TWO ARE THE ONES THAT USUALLY GO MISSING. Passed, Rejected and NotRun cannot express 'the stage executed and the result is unknowable', which is exactly what an unparseable target-toolchain failure is. Folding it into Rejected would inflate rejection counts with our own ignorance; folding it into NotRun would claim work we did pay for never happened. Undecided is counted, and it drives the verdict to Incomplete rather than to Rejected."
+
+type DagAcceptanceVerdict
+  = AcceptanceContractSatisfied { frontier_stages: List<Symbol> }
+  | AcceptanceContractRejected { first_rejection: Symbol, further_rejections: List<Symbol> }
+  | AcceptanceContractIncomplete { first_unfinished: Symbol, further_unfinished: List<Symbol> }
+
+type DagAcceptanceReceipt {
+  contract_name: Symbol,
+  candidate_identity: Fnv1a64Structural,
+  rows: List<StageExecution>
+}
+
+data acceptance_accounting_note: String = "REPRESENT EVERY OBLIGATION, EXECUTE LAZILY. The receipt does not always RUN every stage; it always ACCOUNTS for every stage. The five unparameterized obligations therefore always carry a row — NotRequiredByContract when a shallow contract never needed them — and the parameterized ones carry a row for exactly the effective set, which is the contract's obligations closed under prerequisites. A stage a contract did not ask for and a stage that could not run are different facts, and only rows make that difference readable."
+
+fn no_obligations() -> List<DagStageObligation> {
+  []
+}
+
+fn no_rows() -> List<StageExecution> {
+  []
+}
+
+fn no_labels() -> List<Symbol> {
+  []
+}
+
+fn no_translations() -> List<TranslationOutputRow> {
+  []
+}
+
+fn contract_obligation_list(contract: DagAcceptanceContract) -> List<DagStageObligation> {
+  concat([contract.obligations.head], contract.obligations.tail)
+}
+
+fn obligation_member(xs: List<DagStageObligation>, obligation: DagStageObligation) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || obligation_eq(a: x, b: obligation) })
+}
+
+fn dedupe_obligations(xs: List<DagStageObligation>) -> List<DagStageObligation> {
+  fold(xs, init: no_obligations(), f: fn(acc, o) {
+    if obligation_member(xs: acc, obligation: o) { acc } else { list_snoc_item(xs: acc, item: o) }
+  })
+}
+
+fn obligation_closure(obligation: DagStageObligation) -> List<DagStageObligation> {
+  list_snoc_item(
+    xs: fold(obligation_prerequisites(obligation: obligation), init: no_obligations(), f: fn(acc, p) {
+      concat(acc, obligation_closure(obligation: p))
+    }),
+    item: obligation
+  )
+}
+
+fn effective_obligations(contract: DagAcceptanceContract) -> List<DagStageObligation> {
+  dedupe_obligations(
+    xs: fold(contract_obligation_list(contract: contract), init: no_obligations(), f: fn(acc, o) {
+      concat(acc, obligation_closure(obligation: o))
+    })
+  )
+}
+
+fn obligation_front_end_depth(obligation: DagStageObligation) -> Int {
+  match obligation {
+    TokenizeStage => 1
+    ParseStage => 2
+    NormalizeStage => 3
+    _ => 4
+  }
+}
+
+fn required_front_end_depth(obligations: List<DagStageObligation>) -> Int {
+  fold(obligations, init: 1, f: fn(acc, o) {
+    let d = obligation_front_end_depth(obligation: o)
+    if d > acc { d } else { acc }
+  })
+}
+
+fn no_cost() -> Millisecond {
+  millisecond(count: 0)
+}
+
+fn stage_cost(contract: DagAcceptanceContract, obligation: DagStageObligation) -> Millisecond {
+  fold(contract.stage_costs, init: no_cost(), f: fn(acc, row) {
+    if obligation_eq(a: row.obligation, b: obligation) { row.required } else { acc }
+  })
+}
+
+fn millisecond_sum(a: Millisecond, b: Millisecond) -> Millisecond {
+  millisecond(count: millisecond_count(m: a) + millisecond_count(m: b))
+}
+
+fn ledger_admits(
+  ledger: VerifierBudgetLedger,
+  spent: Millisecond,
+  required: Millisecond
+) -> Bool {
+  match ledger {
+    VerifierBudgetUnbounded => true
+    VerifierBudgetTotal { total: total } =>
+      !(millisecond_count(m: millisecond_sum(a: spent, b: required)) > millisecond_count(m: total))
+  }
+}
+
+fn ledger_total(ledger: VerifierBudgetLedger) -> Millisecond {
+  match ledger {
+    VerifierBudgetUnbounded => no_cost()
+    VerifierBudgetTotal { total: total } => total
+  }
+}
+
+type TranslationOutputRow {
+  claim: TranslationClaim,
+  emitted: String
+}
+
+type AcceptanceRunState {
+  rows: List<StageExecution>,
+  resolved: Optional<Node>,
+  inferred: Optional<InferredTree>,
+  translations: List<TranslationOutputRow>,
+  spent: Millisecond,
+  first_rejection: Optional<Symbol>
+}
+
+fn front_end_stage_obligation(stage: FrontEndStage) -> DagStageObligation {
+  match stage {
+    FrontEndTokenize => TokenizeStage
+    FrontEndParse => ParseStage
+    FrontEndNormalize => NormalizeStage
+    FrontEndResolve => ResolveStage
+  }
+}
+
+fn front_end_step_row(step: FrontEndStageStep) -> StageExecution {
+  match step {
+    FrontEndStagePassed { stage: s, receipt: r, diagnostics: d } =>
+      passed_row(
+        obligation: front_end_stage_obligation(stage: s),
+        receipt: FrontEndReceiptRow { stage: s, receipt: r },
+        diagnostics: d
+      )
+    FrontEndStageRejected { stage: s, diagnostics: d } =>
+      StageRejected {
+        obligation: front_end_stage_obligation(stage: s),
+        refusal: StageDiagnosticRefusal { diagnostics: d }
+      }
+  }
+}
+
+fn front_end_step_for_stage(
+  run: FrontEndRun,
+  stage: FrontEndStage
+) -> Optional<FrontEndStageStep> {
+  fold(run.steps, init: optional_absent(), f: fn(acc, step) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if front_end_step_stage_matches(step: step, stage: stage) {
+          optional_present(value: step)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn front_end_step_stage_matches(step: FrontEndStageStep, stage: FrontEndStage) -> Bool {
+  match step {
+    FrontEndStagePassed { stage: s, receipt: _, diagnostics: _ } =>
+      discriminant(v: s) == discriminant(v: stage)
+    FrontEndStageRejected { stage: s, diagnostics: _ } =>
+      discriminant(v: s) == discriminant(v: stage)
+  }
+}
+
+fn front_end_row_for_stage(
+  run: FrontEndRun,
+  stage: FrontEndStage,
+  effective: List<DagStageObligation>,
+  admitted: Bool,
+  budget_refusal: StageNotRunReason
+) -> StageExecution {
+  let obligation = front_end_stage_obligation(stage: stage)
+  if !obligation_member(xs: effective, obligation: obligation) {
+    StageNotRun { obligation: obligation, reason: NotRequiredByContract }
+  } else if !admitted {
+    StageNotRun {
+      obligation: obligation,
+      reason: budget_refusal
+    }
+  } else {
+    match front_end_step_for_stage(run: run, stage: stage) {
+      Present { value: step } => front_end_step_row(step: step)
+      Absent =>
+        StageNotRun {
+          obligation: obligation,
+          reason: missing_step_reason(obligation: obligation)
+        }
+    }
+  }
+}
+
+fn first_prerequisite_label(obligation: DagStageObligation) -> Optional<Symbol> {
+  fold(obligation_prerequisites(obligation: obligation), init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => optional_present(value: obligation_label(obligation: p))
+    }
+  })
+}
+
+data missing_step_reason_note: String = "The prerequisite named in a block is READ FROM obligation_prerequisites, never re-spelled here — one authority for the edges, consulted by every consumer of them. The no-prerequisite arm is the front end's first stage, for which a missing step means the staged fold returned nothing at all; that is our own executor failing, not a fact about the candidate, so it refuses as ExecutorUnavailable rather than being dressed up as a block behind a stage that does not exist."
+
+fn missing_step_reason(obligation: DagStageObligation) -> StageNotRunReason {
+  match first_prerequisite_label(obligation: obligation) {
+    Present { value: label } => BlockedByPrerequisite { prerequisite: label }
+    Absent => ExecutorUnavailable { cause: "staged front end returned no step for its first stage" }
+  }
+}
+
+fn front_end_stage_order() -> List<FrontEndStage> {
+  [FrontEndTokenize, FrontEndParse, FrontEndNormalize, FrontEndResolve]
+}
+
+fn front_end_declared_cost(
+  contract: DagAcceptanceContract,
+  effective: List<DagStageObligation>
+) -> Millisecond {
+  fold(front_end_stage_order(), init: no_cost(), f: fn(acc, stage) {
+    let obligation = front_end_stage_obligation(stage: stage)
+    if obligation_member(xs: effective, obligation: obligation) {
+      millisecond_sum(a: acc, b: stage_cost(contract: contract, obligation: obligation))
+    } else {
+      acc
+    }
+  })
+}
+
+data front_end_budget_grain_note: String = "The front end is budget-gated ONCE, as the staged unit it executes as, against the SUM of the declared costs of the front-end obligations the contract actually needs. Gating its four stages individually would be a second story about how the work is performed: they run inside one staged fold, so a per-stage refusal after the fold had already run would report a saving that was never made."
+
+fn front_end_run_resolved(run: FrontEndRun) -> Optional<Node> {
+  match run.completion {
+    FrontEndResolvedModule { resolved: n } => optional_present(value: n)
+    FrontEndBoundReached { last: _ } => optional_absent()
+    FrontEndRefused => Absent
+  }
+}
+
+fn passed_row(
+  obligation: DagStageObligation,
+  receipt: StageReceipt,
+  diagnostics: Diagnostics
+) -> StageExecution {
+  match diagnostics {
+    None => StagePassed { obligation: obligation, receipt: receipt }
+    Some { diagnostics: d } =>
+      StagePassedWithFrontier { obligation: obligation, receipt: receipt, diagnostics: d }
+  }
+}
+
+fn row_obligation(row: StageExecution) -> DagStageObligation {
+  match row {
+    StagePassed { obligation: o, receipt: _ } => o
+    StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } => o
+    StageRejected { obligation: o, refusal: _ } => o
+    StageNotRun { obligation: o, reason: _ } => o
+    StageUndecided { obligation: o, cause: _ } => o
+  }
+}
+
+fn row_passed(row: StageExecution) -> Bool {
+  match row {
+    StagePassed { obligation: _, receipt: _ } => true
+    StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => true
+    StageRejected { obligation: _, refusal: _ } => false
+    StageNotRun { obligation: _, reason: _ } => false
+    StageUndecided { obligation: _, cause: _ } => false
+  }
+}
+
+fn obligation_passed_in(rows: List<StageExecution>, obligation: DagStageObligation) -> Bool {
+  fold(rows, init: false, f: fn(acc, row) {
+    acc || (obligation_eq(a: row_obligation(row: row), b: obligation) && row_passed(row: row))
+  })
+}
+
+fn unsatisfied_prerequisite(
+  rows: List<StageExecution>,
+  obligation: DagStageObligation
+) -> Optional<Symbol> {
+  fold(obligation_prerequisites(obligation: obligation), init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if obligation_passed_in(rows: rows, obligation: p) {
+          optional_absent()
+        } else {
+          optional_present(value: obligation_label(obligation: p))
+        }
+    }
+  })
+}
+
+fn translation_for(
+  translations: List<TranslationOutputRow>,
+  claim: TranslationClaim
+) -> Optional<String> {
+  fold(translations, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if translation_claim_eq(a: row.claim, b: claim) {
+          optional_present(value: row.emitted)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn state_with_row(state: AcceptanceRunState, row: StageExecution) -> AcceptanceRunState {
+  AcceptanceRunState {
+    rows: list_snoc_item(xs: state.rows, item: row),
+    resolved: state.resolved,
+    inferred: state.inferred,
+    translations: state.translations,
+    spent: state.spent,
+    first_rejection: acceptance_first_rejection(prior: state.first_rejection, row: row)
+  }
+}
+
+fn acceptance_first_rejection(prior: Optional<Symbol>, row: StageExecution) -> Optional<Symbol> {
+  match prior {
+    Present { value: _ } => prior
+    Absent =>
+      match row {
+        StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
+        _ => Absent
+      }
+  }
+}
+
+fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
+  match state.resolved {
+    Absent =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: InferStage,
+          reason: ExecutorUnavailable { cause: "resolve passed but the staged front end carried no resolved module" }
+        }
+      )
+    Present { value: resolved } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: d } =>
+          state_with_row(
+            state: state,
+            row: StageRejected {
+              obligation: InferStage,
+              refusal: StageDiagnosticRefusal { diagnostics: d }
+            }
+          )
+        Accepted { value: inferred, diagnostics: d } =>
+          state_with_inferred(
+            state: state_with_row(
+              state: state,
+              row: passed_row(
+                obligation: InferStage,
+                receipt: InferReceiptRow { node_count: node_subtree_count(n: inferred.root) },
+                diagnostics: d
+              )
+            ),
+            inferred: inferred
+          )
+      }
+  }
+}
+
+fn state_with_inferred(state: AcceptanceRunState, inferred: InferredTree) -> AcceptanceRunState {
+  AcceptanceRunState {
+    rows: state.rows,
+    resolved: state.resolved,
+    inferred: optional_present(value: inferred),
+    translations: state.translations,
+    spent: state.spent,
+    first_rejection: state.first_rejection
+  }
+}
+
+fn state_with_translation(
+  state: AcceptanceRunState,
+  row: TranslationOutputRow
+) -> AcceptanceRunState {
+  AcceptanceRunState {
+    rows: state.rows,
+    resolved: state.resolved,
+    inferred: state.inferred,
+    translations: list_snoc_item(xs: state.translations, item: row),
+    spent: state.spent,
+    first_rejection: state.first_rejection
+  }
+}
+
+fn state_with_spent(state: AcceptanceRunState, spent: Millisecond) -> AcceptanceRunState {
+  AcceptanceRunState {
+    rows: state.rows,
+    resolved: state.resolved,
+    inferred: state.inferred,
+    translations: state.translations,
+    spent: spent,
+    first_rejection: state.first_rejection
+  }
+}
+
+fn eval_expectation_row(
+  claim: EvalClaim,
+  observed_node_count: Int,
+  diagnostics: Diagnostics
+) -> StageExecution {
+  match claim.expectation {
+    EvaluatesWithoutRefusal =>
+      passed_row(
+        obligation: EvalStage { claim: claim },
+        receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count },
+        diagnostics: diagnostics
+      )
+    EvaluatesToNodeCount { expected: expected } =>
+      if expected == observed_node_count {
+        passed_row(
+          obligation: EvalStage { claim: claim },
+          receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count },
+          diagnostics: diagnostics
+        )
+      } else {
+        StageRejected {
+          obligation: EvalStage { claim: claim },
+          refusal: EvalExpectationUnmet {
+            claim: claim,
+            observed_node_count: observed_node_count,
+            expected_node_count: expected
+          }
+        }
+      }
+  }
+}
+
+data candidate_cpu_budget_rung_note: String = "A DECLARED CANDIDATE CPU BUDGET IS HONESTLY UNENFORCED HERE, AND IT REFUSES RATHER THAN PRETENDING. Nothing in this substrate observes thread CPU time, so a contract declaring a candidate CPU budget gets StageNotRun ExecutorUnavailable — a fact about the verifier, counted, with a named cause. The alternative was to run the eval and report a pass, which would claim a bound was enforced when nothing measured it: rung inflation on the exact axis the contract asked about. Next-rung trigger: an observed per-evaluation CPU measurement reaching this seam, at which point the arm becomes a candidate rejection carrying the observed cost."
+
+fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunState {
+  match claim.budget {
+    CandidateCpuBudgetMs { limit_ms: _ } =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: EvalStage { claim: claim },
+          reason: ExecutorUnavailable { cause: "no candidate cpu-time observer exists at this seam" }
+        }
+      )
+    NoDeclaredCandidateBudget =>
+      match state.inferred {
+        Absent =>
+          state_with_row(
+            state: state,
+            row: StageNotRun {
+              obligation: EvalStage { claim: claim },
+              reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
+            }
+          )
+        Present { value: inferred } =>
+          match compile_inferred(inferred: inferred, mode: Eval { runtime: claim.runtime }) {
+            Rejected { diagnostics: d } =>
+              state_with_row(
+                state: state,
+                row: StageRejected {
+                  obligation: EvalStage { claim: claim },
+                  refusal: StageDiagnosticRefusal { diagnostics: d }
+                }
+              )
+            Accepted { value: compiled, diagnostics: d } =>
+              state_with_row(
+                state: state,
+                row: eval_output_row(claim: claim, output: compiled, diagnostics: d)
+              )
+          }
+      }
+  }
+}
+
+fn eval_output_row(
+  claim: EvalClaim,
+  output: CompileOutput,
+  diagnostics: Diagnostics
+) -> StageExecution {
+  match output {
+    EvalResult { value: m } =>
+      eval_expectation_row(
+        claim: claim,
+        observed_node_count: node_subtree_count(n: m.carried),
+        diagnostics: diagnostics
+      )
+    TranslateResult { source: _ } =>
+      StageNotRun {
+        obligation: EvalStage { claim: claim },
+        reason: ExecutorUnavailable { cause: "eval mode returned a translation output" }
+      }
+  }
+}
+
+fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> AcceptanceRunState {
+  match state.inferred {
+    Absent =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: TranslateStage { claim: claim },
+          reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
+        }
+      )
+    Present { value: inferred } =>
+      match compile_inferred(inferred: inferred, mode: TranslateTo { target: claim.target }) {
+        Rejected { diagnostics: d } =>
+          state_with_row(
+            state: state,
+            row: StageRejected {
+              obligation: TranslateStage { claim: claim },
+              refusal: StageDiagnosticRefusal { diagnostics: d }
+            }
+          )
+        Accepted { value: compiled, diagnostics: d } =>
+          translate_output_state(state: state, claim: claim, output: compiled, diagnostics: d)
+      }
+  }
+}
+
+fn translate_output_state(
+  state: AcceptanceRunState,
+  claim: TranslationClaim,
+  output: CompileOutput,
+  diagnostics: Diagnostics
+) -> AcceptanceRunState {
+  match output {
+    TranslateResult { source: m } =>
+      state_with_row(
+        state: state_with_translation(
+          state: state,
+          row: TranslationOutputRow { claim: claim, emitted: m.carried }
+        ),
+        row: passed_row(
+          obligation: TranslateStage { claim: claim },
+          receipt: TranslateReceiptRow { claim: claim, emitted_length: string_length(s: m.carried) },
+          diagnostics: diagnostics
+        )
+      )
+    EvalResult { value: _ } =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: TranslateStage { claim: claim },
+          reason: ExecutorUnavailable { cause: "translate mode returned an eval output" }
+        }
+      )
+  }
+}
+
+fn target_compile_row(
+  claim: TargetCompileClaim,
+  observation: TargetCompileObservation
+) -> StageExecution {
+  match observation {
+        TargetCompileDecided { verdict: verdict } =>
+          target_compile_decided_row(claim: claim, verdict: verdict, observation: observation)
+        TargetCompileFailedUnparsed { exit_code: code, stderr_length: len } =>
+          StageUndecided {
+            obligation: TargetCompileStage { claim: claim },
+            cause: TargetCompileFailureUnparsed { exit_code: code, stderr_length: len }
+          }
+        TargetCompilerUnavailable { cause: cause } =>
+          StageNotRun {
+            obligation: TargetCompileStage { claim: claim },
+            reason: ExecutorUnavailable { cause: cause }
+          }
+      }
+}
+
+fn target_compile_decided_row(
+  claim: TargetCompileClaim,
+  verdict: TargetCompileVerdict,
+  observation: TargetCompileObservation
+) -> StageExecution {
+  match verdict {
+    TargetCompileAccepted =>
+      StagePassed {
+        obligation: TargetCompileStage { claim: claim },
+        receipt: TargetCompileReceiptRow { claim: claim }
+      }
+    TargetCompileRejected { diagnostic_code: _ } =>
+      StageRejected {
+        obligation: TargetCompileStage { claim: claim },
+        refusal: TargetCompileRefusal { claim: claim, observation: observation }
+      }
+  }
+}
+
+fn target_compile_execution(
+  state: AcceptanceRunState,
+  env: AcceptanceEnvironment,
+  claim: TargetCompileClaim
+) -> AcceptanceRunState {
+  match translation_for(translations: state.translations, claim: claim.translation) {
+    Absent =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: TargetCompileStage { claim: claim },
+          reason: ExecutorUnavailable { cause: "no emitted target source was recorded for the declared translation" }
+        }
+      )
+    Present { value: emitted } =>
+      state_with_row(
+        state: state,
+        row: target_compile_row(
+          claim: claim,
+          observation: env.target_compile.compile_target_source(emitted)
+        )
+      )
+  }
+}
+
+data policy_precedence_note: String = "PRECEDENCE, STATED SO IT IS NOT REDISCOVERED FROM THE CODE. A block dominates everything: a stage whose prerequisite did not pass is IMPOSSIBLE, not merely unpaid for. Then the fail-fast skip, because the policy decides not to pay BEFORE any budget is consulted — reporting a budget refusal for work the policy had already declined would attribute our own choice to a resource we never spent. The budget check comes last, and only for work we actually intended to do."
+
+fn declined_reason(
+  contract: DagAcceptanceContract,
+  state: AcceptanceRunState,
+  obligation: DagStageObligation,
+  required: Millisecond,
+  ledger: VerifierBudgetLedger
+) -> Optional<StageNotRunReason> {
+  match unsatisfied_prerequisite(rows: state.rows, obligation: obligation) {
+    Present { value: p } => optional_present(value: BlockedByPrerequisite { prerequisite: p })
+    Absent =>
+      match fail_fast_skip_reason(contract: contract, state: state) {
+        Present { value: r } => optional_present(value: r)
+        Absent =>
+          if ledger_admits(ledger: ledger, spent: state.spent, required: required) {
+            optional_absent()
+          } else {
+            optional_present(
+              value: budget_refusal(ledger: ledger, spent: state.spent, required: required)
+            )
+          }
+      }
+  }
+}
+
+fn fail_fast_skip_reason(
+  contract: DagAcceptanceContract,
+  state: AcceptanceRunState
+) -> Optional<StageNotRunReason> {
+  match contract.policy {
+    FullLedger => optional_absent()
+    InteractiveFailFast =>
+      match state.first_rejection {
+        Absent => optional_absent()
+        Present { value: label } =>
+          optional_present(value: SkippedAfterDecisiveRejection { rejected_obligation: label })
+      }
+  }
+}
+
+fn execute_obligation(
+  state: AcceptanceRunState,
+  env: AcceptanceEnvironment,
+  obligation: DagStageObligation
+) -> AcceptanceRunState {
+  match obligation {
+    InferStage => infer_execution(state: state)
+    EvalStage { claim: c } => eval_execution(state: state, claim: c)
+    TranslateStage { claim: c } => translate_execution(state: state, claim: c)
+    TargetCompileStage { claim: c } => target_compile_execution(state: state, env: env, claim: c)
+    _ =>
+      state_with_row(
+        state: state,
+        row: StageNotRun {
+          obligation: obligation,
+          reason: ExecutorUnavailable { cause: "front-end obligations execute inside the staged front-end fold" }
+        }
+      )
+  }
+}
+
+fn attempt_obligation(
+  state: AcceptanceRunState,
+  contract: DagAcceptanceContract,
+  env: AcceptanceEnvironment,
+  obligation: DagStageObligation
+) -> AcceptanceRunState {
+  let required = stage_cost(contract: contract, obligation: obligation)
+  match declined_reason(
+    contract: contract,
+    state: state,
+    obligation: obligation,
+    required: required,
+    ledger: env.budget
+  ) {
+    Present { value: reason } =>
+      state_with_row(state: state, row: StageNotRun { obligation: obligation, reason: reason })
+    Absent =>
+      state_with_spent(
+        state: execute_obligation(state: state, env: env, obligation: obligation),
+        spent: millisecond_sum(a: state.spent, b: required)
+      )
+  }
+}
+
+fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
+  match obligation {
+    TokenizeStage => true
+    ParseStage => true
+    NormalizeStage => true
+    ResolveStage => true
+    _ => false
+  }
+}
+
+fn post_front_end_obligations(effective: List<DagStageObligation>) -> List<DagStageObligation> {
+  fold(effective, init: no_rows(), f: fn(acc, o) {
+    if is_front_end_obligation(obligation: o) { acc } else { list_snoc_item(xs: acc, item: o) }
+  })
+}
+
+fn rows_first_rejection(rows: List<StageExecution>) -> Optional<Symbol> {
+  fold(rows, init: optional_absent(), f: fn(acc, row) { acceptance_first_rejection(prior: acc, row: row) })
+}
+
+fn front_end_rows(
+  run: FrontEndRun,
+  effective: List<DagStageObligation>
+) -> List<StageExecution> {
+  fold(front_end_stage_order(), init: no_rows(), f: fn(acc, stage) {
+    list_snoc_item(
+      xs: acc,
+      item: front_end_row_for_stage(
+        run: run,
+        stage: stage,
+        effective: effective,
+        admitted: true,
+        budget_refusal: NotRequiredByContract
+      )
+    )
+  })
+}
+
+fn budget_refusal(
+  ledger: VerifierBudgetLedger,
+  spent: Millisecond,
+  required: Millisecond
+) -> StageNotRunReason {
+  VerifierBudgetUnavailable {
+    required: required,
+    budget_total: ledger_total(ledger: ledger),
+    already_spent: spent
+  }
+}
+
+fn budget_refused_rows(
+  contract: DagAcceptanceContract,
+  effective: List<DagStageObligation>,
+  ledger: VerifierBudgetLedger
+) -> List<StageExecution> {
+  fold(effective, init: no_rows(), f: fn(acc, o) {
+    list_snoc_item(
+      xs: acc,
+      item: StageNotRun {
+        obligation: o,
+        reason: budget_refusal(
+          ledger: ledger,
+          spent: no_cost(),
+          required: stage_cost(contract: contract, obligation: o)
+        )
+      }
+    )
+  })
+}
+
+fn unrequired_fixed_rows(effective: List<DagStageObligation>) -> List<StageExecution> {
+  fold([InferStage], init: no_rows(), f: fn(acc, o) {
+    if obligation_member(xs: effective, obligation: o) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: StageNotRun { obligation: o, reason: NotRequiredByContract })
+    }
+  })
+}
+
+fn acceptance_rows_admitted(
+  contract: DagAcceptanceContract,
+  candidate: DagCandidate,
+  env: AcceptanceEnvironment,
+  effective: List<DagStageObligation>,
+  front_end_cost: Millisecond
+) -> List<StageExecution> {
+  let run = run_front_end_to(
+    source: candidate.source,
+    file: candidate.file,
+    depth: required_front_end_depth(obligations: effective)
+  )
+  let initial_rows = concat(
+    front_end_rows(run: run, effective: effective),
+    unrequired_fixed_rows(effective: effective)
+  )
+  fold(
+    post_front_end_obligations(effective: effective),
+    init: AcceptanceRunState {
+      rows: initial_rows,
+      resolved: front_end_run_resolved(run: run),
+      inferred: optional_absent(),
+      translations: no_translations(),
+      spent: front_end_cost,
+      first_rejection: rows_first_rejection(rows: initial_rows)
+    },
+    f: fn(state, o) {
+      attempt_obligation(state: state, contract: contract, env: env, obligation: o)
+    }
+  ).rows
+}
+
+fn acceptance_rows(
+  contract: DagAcceptanceContract,
+  candidate: DagCandidate,
+  env: AcceptanceEnvironment
+) -> List<StageExecution> {
+  let effective = effective_obligations(contract: contract)
+  let front_end_cost = front_end_declared_cost(contract: contract, effective: effective)
+  if ledger_admits(ledger: env.budget, spent: no_cost(), required: front_end_cost) {
+    acceptance_rows_admitted(
+      contract: contract,
+      candidate: candidate,
+      env: env,
+      effective: effective,
+      front_end_cost: front_end_cost
+    )
+  } else {
+    budget_refused_rows(contract: contract, effective: effective, ledger: env.budget)
+  }
+}
+
+fn run_acceptance(
+  contract: DagAcceptanceContract,
+  candidate: DagCandidate,
+  env: AcceptanceEnvironment
+) -> DagAcceptanceReceipt {
+  DagAcceptanceReceipt {
+    contract_name: contract.name,
+    candidate_identity: candidate_identity(candidate: candidate),
+    rows: acceptance_rows(contract: contract, candidate: candidate, env: env)
+  }
+}
+
+fn row_rejection_label(row: StageExecution) -> Optional<Symbol> {
+  match row {
+    StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
+    _ => Absent
+  }
+}
+
+fn row_unfinished_label(row: StageExecution) -> Optional<Symbol> {
+  match row {
+    StageUndecided { obligation: o, cause: _ } => optional_present(value: obligation_label(obligation: o))
+    StageNotRun { obligation: o, reason: reason } =>
+      match reason {
+        NotRequiredByContract => optional_absent()
+        _ => optional_present(value: obligation_label(obligation: o))
+      }
+    _ => Absent
+  }
+}
+
+fn row_frontier_label(row: StageExecution) -> Optional<Symbol> {
+  match row {
+    StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } =>
+      optional_present(value: obligation_label(obligation: o))
+    _ => optional_absent()
+  }
+}
+
+fn collect_labels(
+  rows: List<StageExecution>,
+  select: fn(StageExecution) -> Optional<Symbol>
+) -> List<Symbol> {
+  fold(rows, init: no_labels(), f: fn(acc, row) {
+    match select(row) {
+      Present { value: label } => list_snoc_item(xs: acc, item: label)
+      Absent => acc
+    }
+  })
+}
+
+fn labels_verdict_rejected(labels: List<Symbol>) -> Optional<DagAcceptanceVerdict> {
+  fold(labels, init: optional_absent(), f: fn(acc, label) {
+    match acc {
+      Absent =>
+        optional_present(
+          value: AcceptanceContractRejected { first_rejection: label, further_rejections: no_labels() }
+        )
+      Present { value: v } => optional_present(value: verdict_with_further_rejection(verdict: v, label: label))
+    }
+  })
+}
+
+fn verdict_with_further_rejection(verdict: DagAcceptanceVerdict, label: Symbol) -> DagAcceptanceVerdict {
+  match verdict {
+    AcceptanceContractRejected { first_rejection: first, further_rejections: further } =>
+      AcceptanceContractRejected {
+        first_rejection: first,
+        further_rejections: list_snoc_item(xs: further, item: label)
+      }
+    _ => verdict
+  }
+}
+
+fn labels_verdict_incomplete(labels: List<Symbol>) -> Optional<DagAcceptanceVerdict> {
+  fold(labels, init: optional_absent(), f: fn(acc, label) {
+    match acc {
+      Absent =>
+        optional_present(
+          value: AcceptanceContractIncomplete { first_unfinished: label, further_unfinished: no_labels() }
+        )
+      Present { value: v } => optional_present(value: verdict_with_further_unfinished(verdict: v, label: label))
+    }
+  })
+}
+
+fn verdict_with_further_unfinished(verdict: DagAcceptanceVerdict, label: Symbol) -> DagAcceptanceVerdict {
+  match verdict {
+    AcceptanceContractIncomplete { first_unfinished: first, further_unfinished: further } =>
+      AcceptanceContractIncomplete {
+        first_unfinished: first,
+        further_unfinished: list_snoc_item(xs: further, item: label)
+      }
+    _ => verdict
+  }
+}
+
+fn acceptance_verdict(receipt: DagAcceptanceReceipt) -> DagAcceptanceVerdict {
+  match labels_verdict_rejected(labels: collect_labels(rows: receipt.rows, select: row_rejection_label)) {
+    Present { value: v } => v
+    Absent =>
+      match labels_verdict_incomplete(labels: collect_labels(rows: receipt.rows, select: row_unfinished_label)) {
+        Present { value: v } => v
+        Absent =>
+          AcceptanceContractSatisfied {
+            frontier_stages: collect_labels(rows: receipt.rows, select: row_frontier_label)
+          }
+      }
+  }
+}
