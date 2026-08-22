@@ -161,9 +161,21 @@ row previously carried, and it is upgraded in the carrier.
 **Not reproduced here:** the reported artifact — a spurious `pub use crate::v2_std_node::{Connective,
 Edge, NamedEdgeTargetLookup, Node}` in the committed `v1_compiler_infer` mirror. At this HEAD that
 mirror imports **nothing** from `v2_std_node`, and the cited line is a different statement. The
-specimen belongs to the namespace-cut envelope, where corpus-wide import deletion removes the
-discriminator that currently masks the collapse. That does not weaken the mechanism; it locates the
+specimen belongs to the namespace-cut envelope. That does not weaken the mechanism; it locates the
 artifact, and citing it as a main-tree defect would have been the wrong-subject error.
+
+**Why it fires there and not here — and an earlier revision of this paragraph mis-located it.** It is
+*not* a second branch of use-line synthesis: `reference_derived_use_lines` has exactly one call site,
+and `reference_use_lines_representation_invariant_note` records the import-gated fork as already
+deleted (when the gate went, both arms called it with byte-identical arguments and the conditional
+collapsed). Imports enter as a **suppression list** — the function drops any candidate already in
+`already_imported_names` — and `v1.compiler.infer` imports `Connective` from `v1.std.core`, so on
+main the name is suppressed and no line is synthesized. Delete the import and the suppression is
+gone, the candidate survives, and the module the synthesized line names is read from the registry the
+collapse has already pointed at `v2.std.node`. **The registry is equally wrong on main; the import
+was not making it right, it was making it silent** — the deficit's frequency zeroed by construction,
+which is this census's own framing rather than an aside. Established from the function's control flow
+and the import line, not by executing either arm.
 
 **One negative result carried from that lane, because it prevents a wrong generalisation:**
 `NamedEdgeTargetLookup` and `Edge` in that same use-line are **not** explained by this mechanism —
