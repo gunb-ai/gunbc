@@ -174,7 +174,6 @@ type ExprResult { expr: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext
 type ItemResult { item: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type TypeResult { type_expr: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type ModuleResult { module: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ImportResult { import: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type VariantResult { variant: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type PredResult { predicate: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type ParamResult { param: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
@@ -225,9 +224,7 @@ type ExpectedToken
   | ExpectQuestion
   | ExpectPipe
 
-type ImportsResult { imports: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type ItemsResult { items: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type NamesResult { names: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type FieldsResult { fields: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type FieldInitsResult { fields: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type VariantsResult { variants: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
@@ -1457,11 +1454,19 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
   let mod_name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
-  let r = parse_imports(tokens: tokens, ctx: ctx)
-  if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let imports = r.imports
-  let tokens = r.tokens
-  let ctx = r.ctx
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
+    return ModuleResult {
+      module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span),
+      tokens: tokens,
+      ctx: ctx,
+      err: Present { value: parse_error(
+        msg: "the import statement is deleted; name the container instead (a cross-module reference is written container.member, and that reference IS the dependency edge)",
+        span: token_span(tok: token_stream_first(stream: tokens))
+      ) }
+    }
+  }
+  let imports = []
 
   let r = parse_items(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1487,20 +1492,7 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
   ModuleResult { module: mod, tokens: tokens, ctx: ctx, err: none }
 }
 
-fn parse_imports(tokens: TokenStream, ctx: ParseContext) -> ImportsResult {
-  parse_imports_acc(tokens: tokens, ctx: ctx, acc: [])
-}
 
-fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<v1.std.core.Node>) -> ImportsResult {
-  let tokens = skip_newlines(tokens: tokens)
-  if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
-    let r = parse_import(tokens: tokens, ctx: ctx)
-    if has_err(err: r.err) { return ImportsResult { imports: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_imports_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.import))
-  } else {
-    ImportsResult { imports: acc, tokens: tokens, ctx: ctx, err: none }
-  }
-}
 
 fn parse_items(tokens: TokenStream, ctx: ParseContext) -> ItemsResult {
   parse_items_acc(tokens: tokens, ctx: ctx, acc: [])
@@ -1517,72 +1509,12 @@ fn parse_items_acc(tokens: TokenStream, ctx: ParseContext, acc: List<v1.std.core
   }
 }
 
-fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
-  let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let err_import = v1.std.core.import_node(module_path: "", is_all: false, specific_names: [], span: start_span, name_span: start_span)
-  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "import" })
-  if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let tokens = r.tokens
 
-  let r = parse_dotted_ident(tokens: tokens)
-  if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let mod_path = r.name
-  let mod_path_span = r.span
-  let tokens = r.tokens
-
-  match eat(tokens: tokens, expected: ExpectLBrace) {
-  EatConsumed { token: _, tokens: __ec } =>
-    let r = parse_import_names(tokens: __ec, ctx: ctx)
-    if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let names = r.names
-    let tokens = r.tokens
-    let ctx = r.ctx
-    let r = expect(tokens: tokens, expected: ExpectRBrace)
-    if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
-    let tokens = skip_newlines(tokens: r.tokens)
-    let base_imp = v1.std.core.import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span, name_span: mod_path_span)
-    let imp_ir = v1.std.core.intern(table: ctx.intern_table, s: mod_path)
-    let ctx = parse_context_with_intern_table(
-      ctx: ctx,
-      intern_table: imp_ir.table
-    )
-    let imp = parsed_node_with_ident(node: base_imp, ident: imp_ir.id)
-    ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
-  EatUnchanged { tokens: __eu } =>
-    let tokens = skip_newlines(tokens: tokens)
-    let base_imp = v1.std.core.import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
-    let imp_ir = v1.std.core.intern(table: ctx.intern_table, s: mod_path)
-    let ctx = parse_context_with_intern_table(
-      ctx: ctx,
-      intern_table: imp_ir.table
-    )
-    let imp = parsed_node_with_ident(node: base_imp, ident: imp_ir.id)
-    ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
-  }
-}
-
-fn parse_import_names(tokens: TokenStream, ctx: ParseContext) -> NamesResult {
-  parse_import_names_acc(tokens: tokens, ctx: ctx, acc: [])
-}
 
 fn parsed_name_leaf(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   v1.std.core.leaf_node_with_span(name: name, span: span)
 }
 
-fn parse_import_names_acc(tokens: TokenStream, ctx: ParseContext, acc: List<v1.std.core.Node>) -> NamesResult {
-  let tokens = skip_newlines(tokens: tokens)
-  if tok_is_rbrace(tok: token_stream_first(stream: tokens)) {
-    NamesResult { names: acc, tokens: tokens, ctx: ctx, err: none }
-  } else {
-    let r = parse_dotted_ident(tokens: tokens)
-    if has_err(err: r.err) { return NamesResult { names: [], tokens: r.tokens, ctx: ctx, err: r.err } }
-    let name_node = parsed_name_leaf(name: r.name, span: r.span)
-    let tokens = skip_newlines(tokens: r.tokens)
-    let e = eat(tokens: tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
-    parse_import_names_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, name_node))
-  }
-}
 
 fn find_item_form(forms: List<std.syntax.ItemForm>, keyword: String) -> std.syntax.ItemForm? {
   let matches = forms |> filter(f => f.keyword == keyword)
