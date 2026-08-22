@@ -2514,9 +2514,88 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
+/// A source root the stage0 self-compile closure may be built from.
+///
+/// The seed boundary is the reason this is a closed two-member vocabulary rather than a string:
+/// stage0 IS the v1 seed, so a root reaching into `src/v2` would make the seed depend on the
+/// successor it bootstraps toward. There is no `src/v2` variant to write, so that root set has no
+/// spelling — DESIGN §4b *structurally impossible*, replacing a validation that never existed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RegenSourceRoot {
+    /// The v1 seed tree — every `.dag` under it seeds the closure.
+    SeedV1,
+    /// The shared `.dag` corpus — reached only through imports from the seed.
+    DagCorpus,
+}
+
+impl RegenSourceRoot {
+    pub fn repo_relative_path(self) -> &'static str {
+        match self {
+            RegenSourceRoot::SeedV1 => "src/v1",
+            RegenSourceRoot::DagCorpus => "dag",
+        }
+    }
+}
+
+/// The stage0 self-compile root set: exactly two roots, in named roles.
+///
+/// Both invalid states the previous `Vec<String>` admitted are unwritable here. The empty set has
+/// no constructor, so `regen_input_sources`' "root list must not be empty" refusal is deleted
+/// rather than kept beside the proof (DESIGN §4b dissolution-on-climb); and the entry role is a
+/// field rather than `.first()`, so it cannot be decided by list order. Fields are private and
+/// `regen_source_roots` is the sole constructor, so a same-root or role-swapped pair is likewise
+/// unconstructable outside this module.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RegenSourceRoots {
+    entry: RegenSourceRoot,
+    imported: RegenSourceRoot,
+}
+
+impl RegenSourceRoots {
+    /// The root whose `.dag` files seed the closure whole.
+    pub fn entry(self) -> RegenSourceRoot {
+        self.entry
+    }
+
+    /// Both roots, in the order the module-path index is built over them.
+    pub fn all(self) -> [RegenSourceRoot; 2] {
+        [self.entry, self.imported]
+    }
+
+    pub fn repo_relative_paths(self) -> Vec<String> {
+        self.all()
+            .iter()
+            .map(|root| root.repo_relative_path().to_string())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod regen_source_root_tests {
+    use super::{regen_source_roots, RegenSourceRoot};
+
+    /// Positive control for the construction above. The discriminating RED is a compile error and
+    /// so cannot be enrolled as a running test: adding a third root, emptying the set, or naming
+    /// `src/v2` are all unwritable, which is the point. This asserts the surviving population and
+    /// the entry role so a silent widening of either would fail here.
+    #[test]
+    fn root_set_is_the_two_seed_admissible_roots_with_the_seed_as_entry() {
+        let roots = regen_source_roots();
+        assert_eq!(roots.entry(), RegenSourceRoot::SeedV1);
+        assert_eq!(
+            roots.all(),
+            [RegenSourceRoot::SeedV1, RegenSourceRoot::DagCorpus]
+        );
+        assert_eq!(roots.repo_relative_paths(), vec!["src/v1", "dag"]);
+    }
+}
+
 /// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
-pub fn regen_source_roots() -> Vec<String> {
-    vec!["src/v1".to_string(), "dag".to_string()]
+pub fn regen_source_roots() -> RegenSourceRoots {
+    RegenSourceRoots {
+        entry: RegenSourceRoot::SeedV1,
+        imported: RegenSourceRoot::DagCorpus,
+    }
 }
 
 /// Every `(repo-relative path, source text)` in the stage0 compile closure.
@@ -2526,15 +2605,17 @@ pub fn regen_source_roots() -> Vec<String> {
 pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
     let roots = regen_source_roots();
     let abs_roots: Vec<String> = roots
+        .all()
         .iter()
-        .map(|r| workspace.join(r).to_string_lossy().into_owned())
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     let index = build_module_path_index(&abs_roots);
-    let entry_root = workspace.join(
-        roots
-            .first()
-            .ok_or_else(|| "regen source root list must not be empty".to_string())?,
-    );
+    let entry_root = workspace.join(roots.entry().repo_relative_path());
     let mut entry_paths = Vec::new();
     collect_dag_files_result(&entry_root, &mut entry_paths)?;
 
@@ -4667,6 +4748,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
+        CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4732,6 +4814,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         // histogram feeds is a list of spellings to declare a row for, and every
         // refusal of one leaf would otherwise aggregate into a single row.
         CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
+        // The NAME is the qualified operation, not the transport kind: the burn-down this
+        // histogram feeds is the list of operations awaiting a realization handler, and keying
+        // on "file" would aggregate every one of them into a single row.
+        CompilerDiagnostic::TransportEmissionNotModeled {
+            service, operation, ..
+        } => format!("{service}.{operation}"),
     };
     (class.to_string(), name)
 }
@@ -16375,6 +16463,130 @@ fn hermetic_effect_ground_verdict(
         }
         v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
         v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+    }
+}
+
+/// The completeness reconciliation, as ONE authority.
+///
+/// It is a free function rather than inline in the fold because the test that proves it must
+/// call THE PRODUCTION CODE. An earlier draft of that test carried its own copy of this loop:
+/// it passed, and it would have kept passing while production drifted arbitrarily far from it —
+/// a control sharing nothing with its subject except a name. Extracting it costs nothing and is
+/// the difference between a test of the reconciliation and a test of a paraphrase of it.
+///
+/// Returns (planned-without-terminal, terminal-without-planned, terminal-duplicated). Three sets
+/// rather than a first-failure verdict: an omission and a duplicate arrive together and cancel
+/// in every count, so reporting only the first found would hide the half that explains it.
+pub fn reconcile_terminal_ledger<'a>(
+    planned: &'a HashSet<String>,
+    rows: &'a [ClaimTerminalRow],
+) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for row in rows {
+        *seen.entry(row.qualified.as_str()).or_insert(0) += 1;
+    }
+    let mut missing: Vec<&str> = planned
+        .iter()
+        .map(|q| q.as_str())
+        .filter(|q| !seen.contains_key(q))
+        .collect();
+    let mut foreign: Vec<&str> = seen
+        .keys()
+        .filter(|q| !planned.contains(**q))
+        .copied()
+        .collect();
+    let mut duplicated: Vec<&str> = seen
+        .iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(q, _)| *q)
+        .collect();
+    missing.sort_unstable();
+    foreign.sort_unstable();
+    duplicated.sort_unstable();
+    (missing, foreign, duplicated)
+}
+
+/// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
+/// `ClaimTerminalRow`. v2 owns the evidence schema, its completeness law and the artifact's
+/// lifecycle; this side preserves the raw terminal fact it already holds. It does NOT yet
+/// serialize the ledger to that artifact — binding, footer and atomic publish are v2's and are
+/// not in this change; the rows are consumed in-process only, by the reconciliation refusal
+/// below and by the `passed` derivation.
+///
+/// WHY THE SEAM EXISTS, and it is not that the change is small. The v2 self-host program
+/// declares a per-identity completed-evidence obligation, and this process is the ONLY producer
+/// that holds a witness identity and its terminal outcome at the same moment. It destroys the
+/// identity at accumulation — `ClaimOutcome::Pass => outcome.passed += 1` keeps the count and
+/// drops the name — so the obligation is not realizable without a bridge here. Nothing about the
+/// diff's size bears on that: a zero-cost change with no v2 consumer would stay refused, and this
+/// one is admitted because a consumer lands with it.
+///
+/// It deliberately acquires NOTHING ELSE. No candidate digest, no expectation join, no artifact
+/// verification, no general evidence API. The BINDING — which candidate this evidence is for — is
+/// v2's to compute and mean; this side hands over facts, not identity semantics.
+///
+/// THIS TYPE IS A SECOND REPRESENTATION AND NOTHING CHECKS ITS AGREEMENT WITH THE FIRST.
+/// Stated rather than left silent, because the doc line above says "mirroring" and a reader
+/// could take that to mean the `.dag` schema is an authority this Rust derives from. It is not.
+/// `cli_run.rs` is HAND_MAINTAINED, so this struct and `ClaimDisposition` are hand-written beside
+/// a hand-written `v2.workflow.floor_terminal_ledger`, and the two share ONLY NAMES. Regen does
+/// not compare them — this file is not generated. The witnesses do not compare them — they
+/// exercise each side separately, never one against the other. So an arm added, renamed or
+/// re-meaned on either side leaves the other silently stale, and the seam is exactly the shape
+/// this change repaired one grain down: `reconcile_terminal_ledger` was extracted so its test
+/// could not be a control that shares only a name with its subject. That rule condemns this seam
+/// too, and here it is declared debt rather than repaired.
+///
+/// Rung: *mitigatable* — the divergence is not prevented, not detected, and is currently held
+/// only by an author's diligence. No lens is built for it: the cheapest honest check is a v2-side
+/// reading of the seed's emitted ledger, which cannot exist before serialization does, so it
+/// belongs to that change rather than to a mechanism minted beside this one.
+///
+/// DISSOLUTION CONDITION, for this bridge and for the mirror above, one event for both: the
+/// self-emitted v2 claim executor. When the floor's execution is driven by v2 rather than by this
+/// seed, the producer that holds identity-and-outcome together IS the v2 side, so there is no
+/// seam to bridge and no second representation to keep in agreement — this struct,
+/// `claim_disposition`, `reconcile_terminal_ledger` and the refusal below are deleted whole, and
+/// `v2.workflow.floor_terminal_ledger` is left as the sole authority it already claims to be.
+pub struct ClaimTerminalRow {
+    pub qualified: String,
+    pub expected_red: bool,
+    pub outcome: ClaimOutcome,
+}
+
+/// The lossless projection. One arm per terminal shape, so every counter the floor reports stays
+/// derivable from the rows — a projection that merged two of them could derive neither, and the
+/// counters would need a second authority, which is what this bridge exists to dissolve.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ClaimDisposition {
+    Passed,
+    Failed,
+    KnownRedHeld,
+    KnownRedNowPassing,
+    BudgetRefusedBeforeVerdict,
+    HostToolUnresolvedBeforeVerdict,
+    RouteGapBeforeVerdict,
+    RuntimeErroredBeforeVerdict,
+    ObservationUnreadableBeforeVerdict,
+}
+
+pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
+    match (&row.outcome, row.expected_red) {
+        (ClaimOutcome::Pass, false) => ClaimDisposition::Passed,
+        (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
+        (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
+        (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::NotBool { .. }, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::RuntimeError { .. }, true) => ClaimDisposition::KnownRedHeld,
+        (ClaimOutcome::NotBool { .. }, false) => {
+            ClaimDisposition::ObservationUnreadableBeforeVerdict
+        }
+        (ClaimOutcome::RuntimeError { .. }, false) => ClaimDisposition::RuntimeErroredBeforeVerdict,
+        (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        (ClaimOutcome::HostToolUnresolved { .. }, _) => {
+            ClaimDisposition::HostToolUnresolvedBeforeVerdict
+        }
+        (ClaimOutcome::HostEffectRefused { .. }, _) => ClaimDisposition::RouteGapBeforeVerdict,
     }
 }
 
@@ -41740,6 +41952,7 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
@@ -41942,6 +42155,15 @@ pub fn run_required_floor(
                 );
             }
         }
+        // ONE ROW PER PLANNED IDENTITY, MINTED HERE BECAUSE THIS IS THE ONLY POINT BEFORE THE
+        // BRANCHING. Every expected-red arm below `continue`s, and the ordinary match below has
+        // its own arms; minting in either place would silently omit whichever population took
+        // the other path, and an omission is exactly what this ledger exists to make visible.
+        terminal_rows.push(ClaimTerminalRow {
+            qualified: claim.qualified.clone(),
+            expected_red,
+            outcome: result.clone(),
+        });
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red {
             // ONE DISPATCH. Every arm does its own work here rather than classifying once and
@@ -42093,7 +42315,12 @@ pub fn run_required_floor(
             }
         }
         match result {
-            ClaimOutcome::Pass => outcome.passed += 1,
+            // `outcome.passed += 1` USED TO LIVE HERE AND IS DELETED, not left beside the
+            // derivation. Two authorities over one fact is what this change removes; keeping the
+            // counter here "as a cross-check" would preserve exactly the disagreement the
+            // derivation makes unrepresentable. `passed` is now counted from the terminal rows
+            // after the fold.
+            ClaimOutcome::Pass => {}
             ClaimOutcome::Fail => outcome
                 .failures
                 .push(format!("{} returned Bool(false)", claim.qualified)),
@@ -42409,6 +42636,41 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    // THE CONSUMER. Reconciliation is an IDENTITY JOIN, and the counts above cannot replace it.
+    //
+    // The check immediately preceding this one compares three COUNTS, and it is the reason this
+    // one is not redundant: a ledger that omits one identity and duplicates another satisfies
+    // every count in the run — planned == executed == receipted, and `passed` unchanged — while
+    // the identity population is short by one. `ClaimIdentityCountsDisagree` is green over that.
+    // Completeness is an identity join, not a count equality.
+    //
+    // Three sets, computed independently and reported together rather than as a coproduct: the
+    // omission-plus-duplicate case fails in TWO of them at once, and an arm that reported only
+    // the first would hide the second — which is precisely the pair that cancels in the totals.
+    {
+        let (planned_without_terminal, terminal_without_planned, terminal_duplicated) =
+            reconcile_terminal_ledger(&planned_identities, &terminal_rows);
+        if !planned_without_terminal.is_empty()
+            || !terminal_without_planned.is_empty()
+            || !terminal_duplicated.is_empty()
+        {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerIncomplete \
+                 planned_without_terminal={:?} terminal_without_planned={:?} \
+                 terminal_duplicated={:?} — every planned identity must appear exactly once in \
+                 the terminal population; counts agreeing does not establish this, because an \
+                 omission and a duplicate cancel in every total",
+                planned_without_terminal, terminal_without_planned, terminal_duplicated
+            ));
+        }
+    }
+    // `passed` IS DERIVED FROM THE ROWS, and the branch that used to increment it is deleted
+    // rather than kept as a cross-check. A cross-check would preserve the disagreement this
+    // derivation makes unrepresentable.
+    outcome.passed = terminal_rows
+        .iter()
+        .filter(|row| claim_disposition(row) == ClaimDisposition::Passed)
+        .count();
     if let Some(join) = roster_join_report {
         let join = crate::v1_compiler_expected_red_roster_join::finalize_not_observed(join);
         emit_expected_red_roster_join_summary(&join);
@@ -42888,4 +43150,146 @@ pub use required_regen_host::emitted_generated_sources;
 /// answer to a question this one already answers, and the two would drift.
 pub fn extract_module_path_public(content: &str) -> Option<String> {
     extract_module_path(content)
+}
+
+#[cfg(test)]
+mod terminal_ledger_completeness_law {
+    //! THE ONE TEST THAT DECIDES WHETHER THIS BRIDGE IS WORTH ANYTHING.
+    //!
+    //! A ledger that OMITS one identity and DUPLICATES another has the same row count as a
+    //! correct one, the same `passed`, and the same planned/executed/receipted triple. Every
+    //! aggregate in the run is byte-identical to a healthy run. If completeness is checked by
+    //! counting, that ledger is green and the missing witness — possibly the one the author just
+    //! added — reports as covered.
+    //!
+    //! These tests exercise the reconciliation as a pure function of the row population, and the
+    //! calibration pair is the point: the swap must be caught while every count stays equal.
+
+    use super::*;
+
+    fn row(qualified: &str, expected_red: bool, outcome: ClaimOutcome) -> ClaimTerminalRow {
+        ClaimTerminalRow {
+            qualified: qualified.to_string(),
+            expected_red,
+            outcome,
+        }
+    }
+
+    /// Calls THE PRODUCTION reconciliation. Not a paraphrase of it: a control that shares only
+    /// a name with its subject cannot see the subject drift.
+    fn reconcile<'a>(
+        planned: &[&str],
+        rows: &'a [ClaimTerminalRow],
+    ) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
+        let owned: HashSet<String> = planned.iter().map(|q| q.to_string()).collect();
+        let (m, f, d) = reconcile_terminal_ledger(&owned, rows);
+        (
+            m.into_iter().map(|s| leak(s)).collect(),
+            f.into_iter().map(|s| leak(s)).collect(),
+            d.into_iter().map(|s| leak(s)).collect(),
+        )
+    }
+
+    fn leak(s: &str) -> &'static str {
+        Box::leak(s.to_string().into_boxed_str())
+    }
+
+    #[test]
+    fn a_duplicate_replacing_an_omission_is_caught_while_every_count_stays_equal() {
+        let planned = ["m.a", "m.b", "m.c"];
+        let healthy = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.b", false, ClaimOutcome::Pass),
+            row("m.c", false, ClaimOutcome::Pass),
+        ];
+        // `m.c` never reached the ledger; `m.a` was written twice.
+        let swapped = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.b", false, ClaimOutcome::Pass),
+            row("m.a", false, ClaimOutcome::Pass),
+        ];
+
+        // EVERY COUNT IS EQUAL. This is the whole point of the test: the numbers cannot tell
+        // these apart, so anything that only counts is green over the broken one.
+        assert_eq!(healthy.len(), swapped.len());
+        let passed_of = |rows: &[ClaimTerminalRow]| {
+            rows.iter()
+                .filter(|r| claim_disposition(r) == ClaimDisposition::Passed)
+                .count()
+        };
+        assert_eq!(passed_of(&healthy), passed_of(&swapped));
+        assert_eq!(passed_of(&swapped), planned.len());
+
+        let (missing, foreign, duplicated) = reconcile(&planned, &healthy);
+        assert!(missing.is_empty() && foreign.is_empty() && duplicated.is_empty());
+
+        let (missing, foreign, duplicated) = reconcile(&planned, &swapped);
+        assert_eq!(missing, vec!["m.c"], "the omitted identity must be named");
+        assert!(foreign.is_empty());
+        assert_eq!(
+            duplicated,
+            vec!["m.a"],
+            "the duplicated identity must be named"
+        );
+    }
+
+    #[test]
+    fn a_terminal_row_for_an_unplanned_identity_is_foreign_execution() {
+        let planned = ["m.a"];
+        let rows = vec![
+            row("m.a", false, ClaimOutcome::Pass),
+            row("m.stray", false, ClaimOutcome::Pass),
+        ];
+        let (missing, foreign, duplicated) = reconcile(&planned, &rows);
+        assert!(missing.is_empty());
+        assert_eq!(foreign, vec!["m.stray"]);
+        assert!(duplicated.is_empty());
+    }
+
+    /// The projection must not merge arms the floor reports as separate counters. A collapsed
+    /// projection could not derive `host_tool_unresolved` or the route-gap counters at all.
+    #[test]
+    fn every_terminal_shape_projects_to_its_own_disposition() {
+        use ClaimDisposition::*;
+        let cases = [
+            (ClaimOutcome::Pass, false, Passed),
+            (ClaimOutcome::Pass, true, KnownRedNowPassing),
+            (ClaimOutcome::Fail, false, Failed),
+            (ClaimOutcome::Fail, true, KnownRedHeld),
+            (
+                ClaimOutcome::RuntimeError {
+                    message: "boom".into(),
+                },
+                false,
+                RuntimeErroredBeforeVerdict,
+            ),
+            (
+                ClaimOutcome::NotBool { got: "unit".into() },
+                false,
+                ObservationUnreadableBeforeVerdict,
+            ),
+            (
+                ClaimOutcome::HostToolUnresolved {
+                    name: "rustfmt".into(),
+                    probed: vec![],
+                },
+                false,
+                HostToolUnresolvedBeforeVerdict,
+            ),
+        ];
+        let mut produced: Vec<ClaimDisposition> = Vec::new();
+        for (outcome, red, want) in cases {
+            let got = claim_disposition(&row("m.x", red, outcome));
+            assert_eq!(got, want);
+            produced.push(got);
+        }
+        // A projection that merged two of these would show up here as a repeat.
+        let mut deduped = produced.clone();
+        deduped.dedup();
+        assert_eq!(
+            deduped.len(),
+            produced.len(),
+            "two terminal shapes projected onto the same disposition"
+        );
+    }
 }

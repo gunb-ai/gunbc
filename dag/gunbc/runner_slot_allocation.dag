@@ -1,10 +1,12 @@
 module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
+import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -448,4 +450,119 @@ fn gunbc_floor_minimum_viable_armed_budget_wall_holds() -> Bool {
     && witness_floor_armed_budget_doomed_outcomes_are_failures()
     && witness_floor_armed_budget_success_outcome_is_no_failure()
     && byte_size_count(b: gunbc_floor_minimum_viable_armed_budget) == byte_size_count(b: byte_size(12884901888))
+}
+
+type RunnerSlotPurpose
+  = SlotServesGitHubActions
+  | SlotServesFabricExecution
+
+// THE VARIANT IS NOT NAMED RunnerSlotMember BECAUSE THAT NAME IS TAKEN, AND THE COLLISION IS
+// SILENT AT THE SITE. gunbc.runner_slot_provision already declares a plain record type
+// RunnerSlotMember { instance_name, slot_dir } -- a different concept entirely, a materialized
+// install tree rather than a committed allocation. Names resolve against one flat whole-tree
+// namespace, so a coproduct variant spelled the same way resolved to THAT product, and the floor
+// refused: "if branches resolve to incompatible types: Coproduct(RunnerSlotMembership) vs
+// Product(RunnerSlotMember)" -- one arm the coproduct, the other someone else's record, in a
+// function whose arms are all variants of one type.
+//
+// RECORDED BECAUSE NOTHING LOCAL SHOWS IT. The source reads as an ordinary coproduct, every witness
+// ran green under the interpreter, and `gunbc compile` typechecks clean; only the floor sees it. A
+// future rename back to RunnerSlotMember would silently rebind to the provision record again.
+//
+// An earlier revision of this comment blamed a longest-common-prefix effect between the variant and
+// RunnerSlotMembership. That was a guess that fit the symptom, and it was wrong -- the cause is an
+// ordinary duplicate declaration, found by grepping the tree rather than by reasoning about the
+// resolver. The wrong explanation is kept here because it is the plausible one and the next reader
+// will reach for it too.
+type RunnerSlotMembership
+  = CommittedSlotMember { identity: RunnerSlotIdentity, purpose: RunnerSlotPurpose }
+  | SlotOutsideCommittedPopulation { identity: RunnerSlotIdentity, committed_width: Int }
+
+// THE CARVE IS AN EXACT IDENTITY, NOT AN INDEX ARITHMETIC RULE, AND THE FIRST VERSION OF THIS
+// MODULE GOT THAT WRONG IN THE EXACT WAY IT WAS WRITTEN TO PREVENT. It derived purpose by comparing
+// the index against a count -- fabric if slot_index > committed - fabric_count -- which reproduces
+// count-as-authority one level below the enumeration where it was just removed. Two measured
+// consequences: the fabric slot MOVED with the width (srv3 at width 7 would have made srv3-07 the
+// fabric slot and handed srv3-06 back to Actions, silently relabelling a slot that may be running),
+// and it answered SlotServesComputeFabric for identities that are not slots at all -- executed:
+// runner_slot_purpose(srv1, 6) and (srv3, 99) both returned fabric, though srv1 is five wide and
+// neither index is a committed member.
+//
+// So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
+// stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
+// committed population and says so, rather than the fabric role sliding onto srv3-05.
+data srv3_fabric_canary_slot_index: Nat = 6
+
+fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: srv3_fabric_canary_slot_index }
+}
+
+// srv3 CARRIES THE ONE FABRIC EXECUTION SLOT AND srv1 DELIBERATELY DOES NOT (operator, 2026-08-21).
+// The control plane is taking a temporary srv1 slice, so the executor is placed on a DIFFERENT host:
+// a control plane and the capacity it schedules failing together is the common-mode failure the
+// placement exists to avoid. srv3 over srv4 because both admit 6 at memory and srv4 additionally
+// carries the apply-time disk preflight, so srv3 has fewer axes able to refuse it.
+//
+// THIS IS THE EXECUTION MEMBER ONLY. The srv1 control-plane slice is NOT a member of this list and
+// must not become one: an allocatable executor and a statically pinned bootstrap have opposite
+// liveness properties -- the executor is selected by Demand and appears in an Offer, the control
+// plane is placed by host convergence, never appears in an Offer, and must not need a Grant to
+// start. Overloading one variant across both would erase exactly that distinction, which is why
+// the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
+fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
+  [srv3_fabric_canary_slot()]
+}
+
+fn identity_is_fabric_execution_member(identity: RunnerSlotIdentity) -> Bool {
+  identity_in_list(identity: identity, members: fabric_execution_slot_identities())
+}
+
+fn identity_in_list(identity: RunnerSlotIdentity, members: List<RunnerSlotIdentity>) -> Bool {
+  fold(
+    members,
+    init: false,
+    f: (found, m) => found || runner_slot_identity_equal(a: m, b: identity)
+  )
+}
+
+// MEMBERSHIP PRECEDES PURPOSE. Asking what a slot is FOR only means something once it is a slot,
+// and the committed width is what decides that. An identity outside the range is refused with the
+// width it was measured against rather than being classified, so "is this a committed member" and
+// "what is its purpose" stay two questions with two answers.
+fn committed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  map(
+    nat_range_inclusive(lo: 1, hi: gunbc_runner_slots_per_host(host: host)),
+    i => RunnerSlotIdentity { host: host, slot_index: i }
+  )
+}
+
+fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMembership {
+  let identity = RunnerSlotIdentity { host: host, slot_index: slot_index }
+  let committed = gunbc_runner_slots_per_host(host: host)
+  if slot_index > committed || slot_index < 1 {
+    SlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
+  } else if identity_is_fabric_execution_member(identity: identity) {
+    CommittedSlotMember { identity: identity, purpose: SlotServesFabricExecution }
+  } else {
+    CommittedSlotMember { identity: identity, purpose: SlotServesGitHubActions }
+  }
+}
+
+fn count_fabric_members(identities: List<RunnerSlotIdentity>) -> Int {
+  fold(
+    identities,
+    init: 0,
+    f: (n, id) => n + (if identity_is_fabric_execution_member(identity: id) { 1 } else { 0 })
+  )
+}
+
+// THE COUNTS ARE PROJECTIONS OF THE POPULATION, NEVER THE AUTHORITY FOR IT. That direction is the
+// whole point: a width can say six slots exist, but it cannot say the sixth belongs to the fabric
+// while the first five are GitHub runners. Read the members, then count them.
+fn host_fabric_slot_count(host: HostIdentity) -> Int {
+  count_fabric_members(identities: committed_slot_identities(host: host))
+}
+
+fn host_github_slot_count(host: HostIdentity) -> Int {
+  gunbc_runner_slots_per_host(host: host) - host_fabric_slot_count(host: host)
 }
