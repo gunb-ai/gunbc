@@ -15,13 +15,20 @@ that carries a declared type's field types into the candidate population closed 
 (105 → 32 occurrences; four-bucket receipt in the commit that landed it, with zero newly exposed).
 The 14 remaining identities then split three ways, and the third bucket is this document's subject.
 
-| bucket | rows | mechanism |
+**Every measured E0425 identity is causally dispositioned. The supporting counts below use
+different denominators and are not additive** — an identity can surface as several consumer rows,
+and a row can satisfy more than one bucket, so the column does not sum to the identity count and
+no figure here may be subtracted from another.
+
+| bucket | consumer-identity rows | mechanism |
 |---|---|---|
 | dropped at the `StructRepr` filter | 1 | `AnnotationAttachmentRefusal`, discarded for being an enum |
 | qualified field declarations | 5 | consistent with the access-peel reading |
-| **no source occurrence at all** | **11** | **emitter-synthesized — this document** |
+| **no source occurrence at all** | **11 consumer-identity rows** | **emitter-synthesized — this document** |
 
-For the 11, the consuming `.dag` contains **zero occurrences of the name**, with string literals and
+For those **11 consumer-identity rows** — not to be confused with the *11 mirrors* whose use-line
+count moved under the repair below; unrelated populations, unrelated denominators, the same
+number — the consuming `.dag` contains **zero occurrences of the name**, with string literals and
 `//` annotations stripped: not qualified, not bare, nowhere. Verified on `TypeBinding` in
 `v1.compiler.emit`, `FilePath` in `v1.compiler.emit_rust`, `Nat` in `v1.compiler.complexity`, and
 `SubValueRelation` in `v1.compiler.infer_lookup`.
@@ -37,12 +44,33 @@ Option<Rc<Measure<(), (), Nat>>>                // emitter-produced generic inst
 
 ## Why this is a ceiling and not a defect count
 
-Three independent source-side treatments were built and measured against this class, and all three
-changed **0 of 166** mirrors: a type-declaration field-surface collector, seeding each item's own
+Three independent source-side treatments were built and measured against this class, and none of
+them moved use-line counts — **0 of 166** mirrors changed. The bounded claim is exactly that: *the
+earlier interventions did not move use-line counts.* It does not establish that they changed no
+other output, and the measurement does not support the stronger sentence. The three were: a type-declaration field-surface collector, seeding each item's own
 name into the existing field expansion, and the access-peel reading. The repair that did move the
-product (11 of 166) did so by reading the emitter's **own type summary**, not by walking source
+product (**11 of 166 mirrors** — the other eleven) did so by reading the emitter's **own type summary**, not by walking source
 harder. The 0-of-166 results are retroactively explained: a source walk cannot reach a name that is
-not in source, so no amount of widening one gets there.
+not in source, so no amount of widening one gets there. That the same instrument later reported
+11 of 166 is what makes the three nulls credible **causal** nulls rather than instrument blindness.
+
+## The local ceiling on the repair that did land
+
+The field identities inside `field_type_map` may be fully qualified, but the patch selects the
+**parent summary through the bare-keyed `type_summaries` map first** — so the local defect is
+repaired on the measured specimen, *and* the operator-held summary-map replacement remains an
+architectural prerequisite for this path being identity-safe: correct parent selected means exact
+field identities are carried, while homonymous parents collapsed means a wrong or incomplete field
+map is read.
+
+## What is not measured
+
+Listed rather than omitted, because an omitted unknown reads as a closed one:
+
+- whether all 105 prior E0425 occurrences belong to this mechanism — only the residue was dispositioned
+- committed-mirror adoption
+- full product compilation (the branch does not yet compile; the receipts above are per-class
+  diagnostic counts and a self-vintage regen, not a built product)
 
 ## The terminal shape already exists in the tree
 
