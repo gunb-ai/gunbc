@@ -352,3 +352,65 @@ site. The 462/463/464 run at ascending columns 57/58/62 is a third: one multi-li
 So whatever removed them either was one change reaching several construct families, or was several
 changes inside the six-PR window. A single narrow repair is the least likely of the three. The
 attribution remains open and currently has **no dependent**, so it is recorded rather than pursued.
+
+---
+
+# FINAL: the intervention at `2a2bd0ad` — mechanism REFUTED
+
+`SUBJECT_REF=2a2bd0ad`, both arms one dispatch, `target/release/gunbc` and its stamp deleted before
+each arm so the rebuild depends on no staleness key.
+
+## Controls — pass, and the precondition is satisfied
+
+| # | control | arm A | arm B | verdict |
+|---|---|---|---|---|
+| P4 | `sha256(gunbc)` | `9307f206819fb339` | `bef529b08e674aab` | **differ — PASS** |
+| P5 | fallback line on runner | `_ => decl_identity_file(n.clone()),` | `_ => { let _ = &n; String::new() }` | **differ — PASS** |
+| — | P1's precondition (`arm A > 0`) | **4** | — | **satisfied** |
+
+## Result
+
+| quantity | arm A | arm B | prediction | verdict |
+|---|---:|---:|---|---|
+| E0308 | 199 | **278** | — | — |
+| `TOTAL_MISMATCH_SITES` | 215 | 240 | — | — |
+| `T2_POSITIONS_BOTH_DIRECTIONS` | 4 | **4** | P1: exactly 0 | **REFUTED** |
+| T2 sites expecting host `String` | 25 | **23** | P3: exactly 0 | **REFUTED** |
+| `T3_LIKE_SITES` | 21 | **21** | P2: delta exactly 0 | **CONFIRMED** |
+
+## What this refutes
+
+The mechanism proposed in the addendum above — that T2's host-`String` side is produced by
+`type_reference_decl_file`'s fallback arm answering with the *referencing* module's file, which
+misses the roster that `text.dag` hits — **predicts that making the fallback answer absent collapses
+that side to zero.** It does not. The both-direction positions stay at exactly 4 and the
+host-`String` expectations stay at 23.
+
+The prediction was not vacuous and the instrument was not blind: the change is emphatically not
+inert (E0308 199 → 278, +79) and it *does* reach T2 — `expected String, found Rc<Vector<i64>>`
+disappears entirely (4 → 0) while `expected String, found Rc<Vector<_>>` gains two (7 → 9). So the
+fallback arm touches these sites without being what selects between the two renderings.
+
+**P2 confirming is what makes the refutation trustworthy.** T3 is unmoved at 21 while the board
+moves by 79, so the run discriminates rather than perturbing everything at once. A control that
+stayed still while the subject moved is the difference between a refutation and a broken probe.
+
+## What survives
+
+- The **direction census** (T2 four within-position reversals vs T3 zero) stands: measured, twice
+  reproduced, and independent of any mechanism.
+- **T2 and T3 are separate classes** — reinforced here, since the intervention moves one and not the
+  other.
+- `type_reference_decl_file`'s fallback arm is still a genuine state-space conflation (it answers a
+  *location* where identity is unknown), and the `integer.dag` precedent stands. It is simply **not
+  the selector** for this signature.
+- The repair-design conclusion is untouched: `type_realization_decision` takes `decl_file` as a
+  parameter and cannot be the fix. That was derived independently of the refuted mechanism.
+
+## Standing
+
+**Refuted, on a calibrated instrument, against a registered prediction.** What selects between the
+two renderings at one emitted column is *not established* and this lane does not pursue it — the
+population is zero on current main, the signature having been repaired (not relocated) between
+`2a2bd0ad` and `90986d19` by an unattributed change in a six-PR window. Recorded so the next reader
+inherits a closed question rather than a plausible story.
