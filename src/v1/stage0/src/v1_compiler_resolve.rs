@@ -184,9 +184,9 @@ pub fn resolve_modules(
                 __result.push(module_occurrence_input(
                     module.clone(),
                     Rc::new(OccurrenceTransport {
-                        index: OccurrenceIndex {
+                        index: Rc::new(OccurrenceIndex {
                             entries: Rc::new(vec![]),
-                        },
+                        }),
                         declarations: Rc::new(vec![]),
                         references: Rc::new(vec![]),
                     }),
@@ -196,9 +196,9 @@ pub fn resolve_modules(
         }),
         source_indices.clone(),
         Rc::new(OccurrenceTransport {
-            index: OccurrenceIndex {
+            index: Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
-            },
+            }),
             declarations: Rc::new(vec![]),
             references: Rc::new(vec![]),
         }),

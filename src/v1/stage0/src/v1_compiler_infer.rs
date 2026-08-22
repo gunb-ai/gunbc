@@ -14515,7 +14515,7 @@ pub fn populate_output_provenance(
     {
         let updated_local = typed_items.clone().iter().cloned().fold(
             func_env.local.clone(),
-            |acc: HashMap<String, Rc<ResolvedFuncSig>>, item: Rc<Node>| {
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, item: Rc<Node>| {
                 if ((item.params.clone().len() as i64) > 0) {
                     {
                         let fn_name = crate::v1_std_core::authored_name_at(
@@ -14951,7 +14951,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
             && (item.transport.clone() == None))
         {
             Rc::new(TypedItemResult {
-                item: Node {
+                item: Rc::new(Node {
                     name: item.name.clone(),
                     span: item.span.clone(),
                     ident_span: item.ident_span.clone(),
@@ -14978,7 +14978,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                },
+                }),
                 diagnostics: v1_rt::concat(transport_diags.clone(), props_diags.clone()),
             })
         } else {
@@ -15073,7 +15073,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         body_typed.clone()
                     };
                     Rc::new(TypedItemResult {
-                        item: Node {
+                        item: Rc::new(Node {
                             name: item.name.clone(),
                             span: item.span.clone(),
                             ident_span: item.ident_span.clone(),
@@ -15107,7 +15107,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
-                        },
+                        }),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(transport_diags.clone(), props_diags.clone()),
                             v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
@@ -15160,7 +15160,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                         );
                         Rc::new(TypedItemResult {
-                            item: Node {
+                            item: Rc::new(Node {
                                 name: item.name.clone(),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
@@ -15179,7 +15179,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
-                            },
+                            }),
                             diagnostics: v1_rt::concat(
                                 v1_rt::concat(transport_diags.clone(), props_diags.clone()),
                                 body_diags.clone(),
@@ -15223,7 +15223,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 val_typed.inferred.clone()
                             };
                             Rc::new(TypedItemResult {
-                                item: Node {
+                                item: Rc::new(Node {
                                     name: item.name.clone(),
                                     span: item.span.clone(),
                                     ident_span: item.ident_span.clone(),
@@ -15242,7 +15242,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
-                                },
+                                }),
                                 diagnostics: v1_rt::concat(
                                     v1_rt::concat(transport_diags.clone(), props_diags.clone()),
                                     val_diags.clone(),
@@ -15253,7 +15253,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         if (((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
                         {
                             Rc::new(TypedItemResult {
-                                item: Node {
+                                item: Rc::new(Node {
                                     name: item.name.clone(),
                                     span: item.span.clone(),
                                     ident_span: item.ident_span.clone(),
@@ -15286,7 +15286,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
-                                },
+                                }),
                                 diagnostics: v1_rt::concat(
                                     transport_diags.clone(),
                                     props_diags.clone(),
@@ -15294,7 +15294,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             })
                         } else {
                             Rc::new(TypedItemResult {
-                                item: Node {
+                                item: Rc::new(Node {
                                     name: item.name.clone(),
                                     span: item.span.clone(),
                                     ident_span: item.ident_span.clone(),
@@ -15327,7 +15327,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
-                                },
+                                }),
                                 diagnostics: v1_rt::concat(
                                     transport_diags.clone(),
                                     props_diags.clone(),
@@ -16314,13 +16314,13 @@ pub fn build_module_interface(
         let exports =
             export_entries_from_module(module.clone(), env.clone(), source_indices.clone());
         Rc::new(ModuleInterface {
-            summary: InterfaceSummary {
+            summary: Rc::new(InterfaceSummary {
                 module_path: module_path.clone(),
                 exports: exports.clone(),
                 interface_hash: crate::std_interface_summary::interface_summary_rollup(
                     exports.clone(),
                 ),
-            },
+            }),
             env: interface_env_surface(env.clone()),
             cache: interface_cache_from_module(cache.clone()),
         })
@@ -16798,7 +16798,7 @@ pub fn census_fn_sig_env(
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: crate::v1_std_core::empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
@@ -17259,7 +17259,7 @@ pub fn census_with_resolved_fn_sigs(
         let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
         let entries2 = entry_keys.clone().iter().cloned().fold(
             index.entries.clone(),
-            |acc: HashMap<String, Rc<Node>>, k: String| match v1_rt::map_get(
+            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
                 &index.entries.clone(),
                 k.clone(),
             ) {
@@ -17286,7 +17286,7 @@ pub fn census_with_resolved_fn_sigs(
         let bare_keys = Rc::new(v1_rt::sorted_map_keys(&index.global_bare.clone()));
         let global2 = bare_keys.clone().iter().cloned().fold(
             index.global_bare.clone(),
-            |acc: HashMap<String, Rc<GlobalBareLookupState>>, k: String| match v1_rt::map_get(
+            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
                 &index.global_bare.clone(),
                 k.clone(),
             )
@@ -17350,7 +17350,7 @@ pub fn census_with_resolved_fn_sigs(
         let service_keys = Rc::new(v1_rt::sorted_map_keys(&index.services.clone()));
         let services2 = service_keys.clone().iter().cloned().fold(
             index.services.clone(),
-            |acc: HashMap<String, Rc<ServiceCensusEntry>>, k: String| match v1_rt::map_get(
+            |acc: Rc<HashMap<String, Rc<ServiceCensusEntry>>>, k: String| match v1_rt::map_get(
                 &index.services.clone(),
                 k.clone(),
             ) {
@@ -17611,7 +17611,7 @@ pub fn build_type_env(
                             .clone(),
                         Rc::new(TypeBinding {
                             name: name.clone(),
-                            resolved: Node {
+                            resolved: Rc::new(Node {
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
                                 ident_span: Some(kernel_span(name.clone())),
@@ -17630,7 +17630,7 @@ pub fn build_type_env(
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
-                            },
+                            }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     )
@@ -17644,7 +17644,7 @@ pub fn build_type_env(
                 .clone(),
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
-                resolved: Node {
+                resolved: Rc::new(Node {
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
                     ident_span: Some(unit_span.clone()),
@@ -17663,7 +17663,7 @@ pub fn build_type_env(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                },
+                }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
@@ -18075,14 +18075,14 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 head_parent.inductive_fields.clone(),
-                |acc: HashMap<String, Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
                     crate::v1_compiler_infer_env::merge_inductive_fields(
                         acc,
                         parent.inductive_fields.clone(),
                     )
                 },
             ),
-            None => v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
+            None => v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         };
         let merged_inductive_fields = crate::v1_compiler_infer_env::merge_inductive_fields(
             parent_inductive_fields.clone(),
@@ -18202,7 +18202,7 @@ pub fn build_type_env_unresolved(
                             .clone(),
                         Rc::new(TypeBinding {
                             name: name.clone(),
-                            resolved: Node {
+                            resolved: Rc::new(Node {
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
                                 ident_span: Some(kernel_span(name.clone())),
@@ -18221,7 +18221,7 @@ pub fn build_type_env_unresolved(
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
-                            },
+                            }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     )
@@ -18330,7 +18330,7 @@ pub fn build_type_env_unresolved(
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
@@ -18603,14 +18603,14 @@ pub fn build_type_env_unresolved(
             .cloned()
             .fold(
                 head_parent.inductive_fields.clone(),
-                |acc: HashMap<String, Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
                     crate::v1_compiler_infer_env::merge_inductive_fields(
                         acc,
                         parent.inductive_fields.clone(),
                     )
                 },
             ),
-            None => v1_rt::rc_empty_map::<String, Vec<Rc<InductiveField>>>(),
+            None => v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         };
         let merged_inductive_fields = crate::v1_compiler_infer_env::merge_inductive_fields(
             parent_inductive_fields.clone(),
@@ -18763,7 +18763,7 @@ pub fn analyze_item(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc
                     output_provenance: Rc::new(vec![]),
                     variant_provenance: v1_rt::rc_empty_map::<
                         String,
-                        HashMap<String, HashMap<String, Rc<SubValueRelation>>>,
+                        Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
                     >(),
                 }))
             }
@@ -19467,7 +19467,7 @@ pub fn typecheck_module(
         let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
         if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
-                typed: TypedModule {
+                typed: Rc::new(TypedModule {
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
@@ -19482,17 +19482,17 @@ pub fn typecheck_module(
                         env_cache.clone(),
                         source_indices.clone(),
                     ),
-                    func_env: ResolvedFuncEnv {
+                    func_env: Rc::new(ResolvedFuncEnv {
                         name: crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
                             resolved.module.clone(),
                         ),
                         local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
                         parents: Rc::new(vec![]),
-                    },
+                    }),
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                     occurrence_transport: Some(resolved.occurrence_transport.clone()),
-                },
+                }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
                 binding_forks: env_result.binding_forks.clone(),
             });
@@ -19637,7 +19637,7 @@ pub fn typecheck_module(
             ..(*typed_base.clone()).clone()
         });
         Rc::new(TypecheckModuleResult {
-            typed: TypedModule {
+            typed: Rc::new(TypedModule {
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
                 type_env: env.clone(),
@@ -19652,7 +19652,7 @@ pub fn typecheck_module(
                 func_env: updated_func_env.clone(),
                 item_registry: ctx.item_registry.clone(),
                 occurrence_transport: Some(resolved.occurrence_transport.clone()),
-            },
+            }),
             diagnostics: frontier_occurrence_budget_checked(
                 resolved_module_name.clone(),
                 resolved.module.clone().span.clone(),
@@ -19827,7 +19827,7 @@ Rc::new(BindingsAccum {
 }
 });
                 return Rc::new(EnvResolveResult {
-                    env: TypeEnv {
+                    env: Rc::new(TypeEnv {
                         module_path: env.module_path.clone(),
                         bindings: stuck_accum.bindings.clone(),
                         str_bindings: stuck_accum.str_bindings.clone(),
@@ -19840,7 +19840,7 @@ Rc::new(BindingsAccum {
                         intern_table: env.intern_table.clone(),
                         source_visible_names: env.source_visible_names.clone(),
                         symbol_index: env.symbol_index.clone(),
-                    },
+                    }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
                         stuck_accum.diagnostics.clone(),
@@ -20665,7 +20665,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        type_env: TypeEnv {
+                        type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
                             str_bindings: rewired.str_bindings.clone(),
@@ -20678,7 +20678,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
-                        },
+                        }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
@@ -20710,7 +20710,7 @@ pub fn compiler_kernel_type_env(
                             .clone(),
                         Rc::new(TypeBinding {
                             name: name.clone(),
-                            resolved: Node {
+                            resolved: Rc::new(Node {
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
                                 ident_span: Some(kernel_span(name.clone())),
@@ -20729,7 +20729,7 @@ pub fn compiler_kernel_type_env(
                                 match_pattern: None,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
-                            },
+                            }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     )
@@ -20743,7 +20743,7 @@ pub fn compiler_kernel_type_env(
                 .clone(),
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
-                resolved: Node {
+                resolved: Rc::new(Node {
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
                     ident_span: Some(unit_span.clone()),
@@ -20762,7 +20762,7 @@ pub fn compiler_kernel_type_env(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                },
+                }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
@@ -20992,7 +20992,7 @@ pub fn rewire_type_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        type_env: TypeEnv {
+                        type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
                             str_bindings: m.type_env.clone().str_bindings.clone(),
@@ -21008,7 +21008,7 @@ pub fn rewire_type_env_parent_links(
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
-                        },
+                        }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
@@ -21068,13 +21068,13 @@ pub fn rewire_func_env_parent_links(
                         type_env: m.type_env.clone(),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
-                        func_env: ResolvedFuncEnv {
+                        func_env: Rc::new(ResolvedFuncEnv {
                             name: m.func_env.clone().name.clone(),
                             local: m.func_env.clone().local.clone(),
                             parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(
                                 parents.clone(),
                             ),
-                        },
+                        }),
                         item_registry: m.item_registry.clone(),
                         occurrence_transport: m.occurrence_transport.clone(),
                     })

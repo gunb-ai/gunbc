@@ -163,7 +163,7 @@ pub fn merge_occurrence_transports(
     transports: Rc<Vec<Rc<OccurrenceTransport>>>,
 ) -> Rc<OccurrenceTransport> {
     Rc::new(OccurrenceTransport {
-        index: OccurrenceIndex {
+        index: Rc::new(OccurrenceIndex {
             entries: Rc::new({
                 let mut __result = Vec::new();
                 for transport in transports.clone().iter().cloned() {
@@ -171,7 +171,7 @@ pub fn merge_occurrence_transports(
                 }
                 __result
             }),
-        },
+        }),
         declarations: Rc::new({
             let mut __result = Vec::new();
             for transport in transports.clone().iter().cloned() {
@@ -891,7 +891,7 @@ pub fn serialize_field_binding(
 
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {

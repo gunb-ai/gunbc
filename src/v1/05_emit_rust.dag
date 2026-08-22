@@ -368,7 +368,7 @@ fn rust_render_checkpoint_scalar_bare(n: v1.std.core.Node, source_indices: std.t
       Absent =>
         match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
           Present { value: scalar } =>
-            if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
+            if set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf)) && !rust_type_is_rc_wrapped(type_name: scalar) {
               Present { value: v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: scalar) }
             } else {
               Present { value: scalar }
@@ -798,7 +798,7 @@ fn render_rust_applied_type(n: v1.std.core.Node, generic_param_names: std.types.
 }
 
 fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: std.types.Set<String>) -> String {
-  if set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
+  if set_contains(shared_types, v1.std.core.qualified_last_segment(name: type_name)) && !rust_type_is_rc_wrapped(type_name: rendered) {
     v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: rendered)
   } else { rendered }
 }
@@ -852,7 +852,7 @@ fn rust_carrier_realizes_as_machine_scalar(n: v1.std.core.Node, type_name: Strin
 // Four call sites below used to answer "is this carrier at the shared reference layer?" and each
 // answered it differently:
 //
-//   the struct-FIELD type position keyed set_contains(shared_types, authored_name_at(..)) -- the
+//   the struct-FIELD type position keyed set_contains(shared_types, v1.std.core.qualified_last_segment(name: authored_name_at(..))) -- the
 //     name AS AUTHORED, which post-#6848 resolution delivers namespace-QUALIFIED, while
 //     shared_types is keyed on the BARE declared name (the same mismatch
 //     alias_rhs_qualified_name_routing_note records for every other lookup on that path). So a
@@ -906,7 +906,7 @@ fn rust_carrier_is_at_shared_layer(n: v1.std.core.Node, source_indices: std.type
   leaf != ""
     && !rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf)
     && n.return_cardinality != v1.std.core.CardOptional
-    && set_contains(shared_types, leaf)
+    && set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf))
 }
 
 fn render_rust_shared_type_with_optional(n: v1.std.core.Node, type_name: String, rendered: String, shared_types: std.types.Set<String>) -> String {
@@ -959,7 +959,7 @@ fn render_rust_decl_type(n: v1.std.core.Node, generic_param_names: std.types.Lis
         v1.compiler.emit_core_support.to_pascal(name: name)
       } else if n.connective == v1.std.core.NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-      } else if n.connective == v1.std.core.NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
+      } else if n.connective == v1.std.core.NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, v1.std.core.qualified_last_segment(name: name)) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == v1.std.core.NoConnective && n.children |> count > 0 {
@@ -1192,11 +1192,11 @@ fn render_rust_alias_rhs_type(n: v1.std.core.Node, generic_param_names: std.type
     }
     match closed_alias_peel_verdict(env: scope.type_env, n: n) {
       ClosedAliasPeelZeroParam =>
-        if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: base) } else { base }
+        if set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf)) && !rust_type_is_rc_wrapped(type_name: base) { v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: base) } else { base }
       ClosedAliasBindingAbsent =>
         match alias_decl_arity_verdict(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, env: scope.type_env) {
           AliasDeclArityZeroParam =>
-            if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: base) } else { base }
+            if set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf)) && !rust_type_is_rc_wrapped(type_name: base) { v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: base) } else { base }
           AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
@@ -1207,7 +1207,7 @@ fn render_rust_alias_rhs_type(n: v1.std.core.Node, generic_param_names: std.type
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf)) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: applied_ty)
     } else {
       applied_ty
@@ -1225,7 +1225,7 @@ fn render_rust_alias_rhs_type(n: v1.std.core.Node, generic_param_names: std.type
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if set_contains(shared_types, v1.std.core.qualified_last_segment(name: leaf)) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: applied_ty)
     } else {
       applied_ty
@@ -5099,7 +5099,7 @@ fn emit_typed_item(item: v1.std.core.Node, module_name: String, registry: std.ty
 
 fn needs_box_wrapping(n: v1.std.core.Node, recursive_types: std.types.Set<String>, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let name = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
-  if set_contains(shared_types, name) { false }
+  if set_contains(shared_types, v1.std.core.qualified_last_segment(name: name)) { false }
   else if set_contains(recursive_types, name) { true }
   else if n.children |> count == 0 {
     if v1.compiler.coercion.coerce_primitive_type(target: v1.compiler.artifact.Rust, dag_name: name, decl_file: v1.compiler.coercion.type_reference_decl_file(n: n)) != name { false }
@@ -7008,7 +7008,7 @@ fn analyze_rc_pattern(pattern: v1.std.core.MatchPattern, scrut_type: String, sha
       } else {
         let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
-          Present { value: enum_name } => set_contains(shared_types, enum_name)
+          Present { value: enum_name } => set_contains(shared_types, v1.std.core.qualified_last_segment(name: enum_name))
           Absent => false
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
@@ -7430,7 +7430,7 @@ fn effective_variant_parent(name: String, binding_kind: v1.std.core.VarBindingKi
 }
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: std.types.Set<String>) -> Bool {
-  freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) || set_contains(shared_types, enum_name)
+  freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) || set_contains(shared_types, v1.std.core.qualified_last_segment(name: enum_name))
 }
 
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
@@ -7557,7 +7557,7 @@ fn emit_typed_expr_base(texpr: v1.std.core.Node, registry: std.types.Map<String,
             } else {
               rust_variant_path(parent: enum_name, rust_name: leaf_name)
             }
-            if set_contains(shared_types, enum_name) {
+            if set_contains(shared_types, v1.std.core.qualified_last_segment(name: enum_name)) {
               rust_shared_wrap_ctor(inner_expr: qualified)
             } else { qualified }
             }
@@ -7906,12 +7906,12 @@ fn emit_rust_expr_record_lit(expr: v1.std.core.Node, registry: std.types.Map<Str
             Absent =>
 
               let expanded_name = v1.std.core.authored_name_at(source_indices: si, node: expanded_rt)
-              if expanded_rt.ident_span != none && expanded_name != "" && expanded_name != variant_name && set_contains(shared_types, expanded_name) {
+              if expanded_rt.ident_span != none && expanded_name != "" && expanded_name != variant_name && set_contains(shared_types, v1.std.core.qualified_last_segment(name: expanded_name)) {
                 expanded_name
               } else { variant_name }
           }
       }
-      if rc_name != "" && set_contains(shared_types, rc_name) {
+      if rc_name != "" && set_contains(shared_types, v1.std.core.qualified_last_segment(name: rc_name)) {
         rust_shared_wrap_ctor(inner_expr: raw)
       } else { raw }
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: v1.compiler.artifact.Rust)
@@ -8094,7 +8094,7 @@ fn emit_discriminant_call_lowering(value_arg: v1.std.core.Node, registry: std.ty
         concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()")), ",")
         )
 
-        let scrut_ref = if set_contains(shared_types, ty_leaf) {
+        let scrut_ref = if set_contains(shared_types, v1.std.core.qualified_last_segment(name: ty_leaf)) {
           concat("&*(", scrutinee, ")")
         } else {
           concat("&(", scrutinee, ")")
@@ -8301,7 +8301,7 @@ fn emit_typed_call(func: String, args: std.types.List<v1.std.core.Node>, callee_
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
     }
     let fields_str = field_strs |> join(separator: ", ")
-    let needs_rc = set_contains(shared_types, type_name)
+    let needs_rc = set_contains(shared_types, v1.std.core.qualified_last_segment(name: type_name))
     let sharing = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Rust).sharing
     let spread = if needs_rc { v1.compiler.emit_core_support.apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: base_str) }
     let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
@@ -8657,7 +8657,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
   let fold_proof = v1.compiler.ownership.analyze_single_fold(method_call: method_call_node, si: scope.type_env.source_indices)
   let structural_unwrap = fold_proof.eligible && fold_proof.body_constructs_acc && fold_proof.safe_field_moves
   let structural_move = fold_proof.eligible && fold_proof.whole_acc_single_use
-  let acc_unwrap = structural_unwrap && set_contains(shared_types, acc_type_name)
+  let acc_unwrap = structural_unwrap && set_contains(shared_types, v1.std.core.qualified_last_segment(name: acc_type_name))
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
       ExprLambda =>
@@ -8924,7 +8924,7 @@ fn emit_rust_with_method_call(receiver: v1.std.core.Node, args: std.types.List<v
     _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
   }
   let fields_str = field_strs |> join(separator: ", ")
-  let needs_rc = set_contains(shared_types, type_name)
+  let needs_rc = set_contains(shared_types, v1.std.core.qualified_last_segment(name: type_name))
   let sharing = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Rust).sharing
   let spread = if needs_rc { v1.compiler.emit_core_support.apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: base_str) }
   let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
@@ -9789,7 +9789,7 @@ fn emit_field_value_with_context(field_value: v1.std.core.Node, struct_node: v1.
             Present { value: en } => en
             Absent => variant_name
           }
-          if rc_name != "" && set_contains(shared_types, rc_name) {
+          if rc_name != "" && set_contains(shared_types, v1.std.core.qualified_last_segment(name: rc_name)) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
@@ -9896,7 +9896,7 @@ fn emit_typed_record_lit(type_name: String?, fields: std.types.List<v1.std.core.
                   if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
                     let wrapped_val = wrap_rust_record_field_value(raw: fval0, value_node: Present { value: field_init_node_value(n: f) }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
-                    if set_contains(shared_types, r_sn) {
+                    if set_contains(shared_types, v1.std.core.qualified_last_segment(name: r_sn)) {
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
@@ -9924,7 +9924,7 @@ fn emit_typed_record_lit(type_name: String?, fields: std.types.List<v1.std.core.
               )
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
-              if set_contains(shared_types, resolved_sn) {
+              if set_contains(shared_types, v1.std.core.qualified_last_segment(name: resolved_sn)) {
                 rust_shared_wrap_ctor(inner_expr: struct_lit)
               } else { struct_lit }
             Absent =>
@@ -10084,7 +10084,7 @@ fn emit_typed_record_lit(type_name: String?, fields: std.types.List<v1.std.core.
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        if ctor_alias_resolved && set_contains(shared_types, ctor_name) {
+        if ctor_alias_resolved && set_contains(shared_types, v1.std.core.qualified_last_segment(name: ctor_name)) {
           rust_shared_wrap_ctor(inner_expr: raw)
         } else { raw }
         }
@@ -11470,7 +11470,7 @@ fn emit_data_def(name: String, type_node: v1.std.core.Node, value: v1.std.core.N
     }
   } else { raw_ty_str }
   let fn_name = v1.compiler.emit_core_support.to_snake(name: name)
-  let needs_rc = set_contains(shared_types, v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+  let needs_rc = set_contains(shared_types, v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)))
 
   let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
     v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: ty_str)

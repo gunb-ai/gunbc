@@ -640,7 +640,7 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
-            ty: Node {
+            ty: Rc::new(Node {
                 name: kind_name.clone(),
                 span: crate::v1_std_core::kernel_span(kind_name.clone()),
                 ident_span: Some(crate::v1_std_core::kernel_span(kind_name.clone())),
@@ -680,7 +680,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
-            },
+            }),
             diagnostics: Rc::new(vec![]),
         }),
         None => Rc::new(KernelTypeBuild {
@@ -696,7 +696,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
     match crate::std_types::container_param_name("Map".to_string(), 0) {
         Some(key_name) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
-                ty: Node {
+                ty: Rc::new(Node {
                     name: "Map".to_string(),
                     span: crate::v1_std_core::kernel_span("Map".to_string()),
                     ident_span: Some(crate::v1_std_core::kernel_span("Map".to_string())),
@@ -758,7 +758,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                },
+                }),
                 diagnostics: Rc::new(vec![]),
             }),
             None => Rc::new(KernelTypeBuild {

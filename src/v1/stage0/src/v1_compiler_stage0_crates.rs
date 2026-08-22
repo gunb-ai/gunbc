@@ -954,10 +954,10 @@ pub fn render_stage0_emit_core_lib_outcome(
     cause: cause.clone(),
 }),
     Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk { lines: lines, .. } => Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-    file: TextFile {
+    file: Rc::new(TextFile {
     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
     content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), lines.clone().join(&"\n\n".to_string())), "\n\n".to_string()), "#[rustfmt::skip]\n#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string()),
-},
+}),
 }),
 }
 }
@@ -973,18 +973,18 @@ pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0Crat
     match spec.kind.clone() {
         Stage0CrateKind::FoundationCrate => {
             Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: TextFile {
+                file: Rc::new(TextFile {
                     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
                     content: render_stage0_foundation_lib(spec.clone()),
-                },
+                }),
             })
         }
         Stage0CrateKind::LayeredCoreCrate => {
             Rc::new(Stage0CrateLibEmitOutcome::Stage0CrateLibEmitOk {
-                file: TextFile {
+                file: Rc::new(TextFile {
                     path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
                     content: render_stage0_layered_core_lib(spec.clone()),
-                },
+                }),
             })
         }
         Stage0CrateKind::EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec.clone()),

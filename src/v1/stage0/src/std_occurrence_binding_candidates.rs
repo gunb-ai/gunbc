@@ -340,7 +340,7 @@ pub enum DeclarationExposureGrounding {
 pub fn occurrence_containment_parent_scope(
     ancestors: Rc<Vec<OccurrenceId>>,
 ) -> Option<Rc<OccurrenceContainmentPath>> {
-    match v1_rt::reverse(ancestors.clone()) {
+    match (*v1_rt::reverse(ancestors.clone())).clone() {
         FreeMonoid::Empty => None,
         FreeMonoid::Cons {
             head: parent_terminal,
@@ -2269,10 +2269,10 @@ pub fn remap_containment_path(
         let terminal_remapped =
             remap_occurrence_id(path.terminal.clone(), ancestors_build.state.clone());
         Rc::new(OccurrenceContainmentRemapResult {
-            path: OccurrenceContainmentPath {
+            path: Rc::new(OccurrenceContainmentPath {
                 ancestors: v1_rt::reverse(ancestors_build.ancestors.clone()),
                 terminal: terminal_remapped.id.clone(),
-            },
+            }),
             state: terminal_remapped.state.clone(),
         })
     }
@@ -2333,7 +2333,7 @@ pub fn rekey_occurrence_transport(
                         Rc::new(OccurrenceIndexRekeyBuild {
                             entries_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(OccurrenceIndexEntry {
-                                    projection: OccurrenceProjection {
+                                    projection: Rc::new(OccurrenceProjection {
                                         occurrence: remapped_occ.id.clone(),
                                         authored_name: entry
                                             .projection
@@ -2345,7 +2345,7 @@ pub fn rekey_occurrence_transport(
                                             .clone()
                                             .diagnostic_span
                                             .clone(),
-                                    },
+                                    }),
                                     containment: remapped_containment.path.clone(),
                                 })]),
                                 acc.entries_reversed,
@@ -2413,13 +2413,13 @@ pub fn rekey_occurrence_transport(
             },
         );
         Rc::new(OccurrenceTransportRekeyResult {
-            transport: OccurrenceTransport {
-                index: OccurrenceIndex {
+            transport: Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
                     entries: v1_rt::reverse(index_build.entries_reversed.clone()),
-                },
+                }),
                 declarations: v1_rt::reverse(declarations_build.declarations_reversed.clone()),
                 references: v1_rt::reverse(references_build.references_reversed.clone()),
-            },
+            }),
             state: references_build.state.clone(),
         })
     }
@@ -2570,12 +2570,12 @@ pub fn merge_occurrence_transports(
     right: Rc<OccurrenceTransport>,
 ) -> Rc<OccurrenceTransport> {
     Rc::new(OccurrenceTransport {
-        index: OccurrenceIndex {
+        index: Rc::new(OccurrenceIndex {
             entries: v1_rt::concat(
                 left.index.clone().entries.clone(),
                 right.index.clone().entries.clone(),
             ),
-        },
+        }),
         declarations: v1_rt::concat(left.declarations.clone(), right.declarations.clone()),
         references: v1_rt::concat(left.references.clone(), right.references.clone()),
     })
@@ -2799,13 +2799,13 @@ pub fn assemble_cross_file_binding_closure(
 }),
 }),
     ModulePathFileIndex::ModulePathFileIndexReady { entries: _, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
-    transport: OccurrenceTransport {
-    index: OccurrenceIndex {
+    transport: Rc::new(OccurrenceTransport {
+    index: Rc::new(OccurrenceIndex {
     entries: v1_rt::reverse(assembled.entries_reversed.clone()),
-},
+}),
     declarations: v1_rt::reverse(assembled.declarations_reversed.clone()),
     references: v1_rt::reverse(assembled.references_reversed.clone()),
-},
+}),
     inputs: Rc::new(OccurrenceBindingCandidateInputs {
     module_paths: v1_rt::reverse(assembled.module_paths_reversed.clone()),
     exposure_rows: v1_rt::reverse(assembled.exposure_rows_reversed.clone()),

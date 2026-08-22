@@ -153,11 +153,11 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
             }
             OccurrenceBindingFoldState::OccurrenceBindingFoldOne { first: first, .. } => {
                 Rc::new(OccurrenceBindingResult::OccurrenceBound {
-                    binding: OccurrenceBinding {
+                    binding: Rc::new(OccurrenceBinding {
                         occurrence: occurrence.clone(),
                         candidate: first.clone(),
                         _phantom: std::marker::PhantomData,
-                    },
+                    }),
                 })
             }
             OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
@@ -167,12 +167,12 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
                 ..
             } => Rc::new(OccurrenceBindingResult::OccurrenceAmbiguous {
                 occurrence: occurrence.clone(),
-                candidates: AmbiguousBindingCandidates {
+                candidates: Rc::new(AmbiguousBindingCandidates {
                     first: first.clone(),
                     second: second.clone(),
                     rest: v1_rt::reverse(rest_reversed.clone()),
                     _phantom: std::marker::PhantomData,
-                },
+                }),
             }),
         }
     }

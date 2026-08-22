@@ -464,11 +464,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: ResolvedFuncEnv {
+                    func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    },
+                    }),
                     diagnostics: diagnostics.clone(),
                 });
             }
@@ -568,7 +568,8 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -581,11 +582,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: ResolvedFuncEnv {
+                    func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    },
+                    }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
                         cycle_accum.diagnostics.clone(),

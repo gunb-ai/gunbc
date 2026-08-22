@@ -337,7 +337,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
                                     Rc::new(FuncSigLookup::FuncSigResolved {
-                                        sig: ResolvedFuncSig {
+                                        sig: Rc::new(ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
                                             inferred: raw_return.clone(),
@@ -345,13 +345,15 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
-                                                HashMap<
-                                                    String,
-                                                    HashMap<String, Rc<SubValueRelation>>,
+                                                Rc<
+                                                    HashMap<
+                                                        String,
+                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                                    >,
                                                 >,
                                             >(
                                             ),
-                                        },
+                                        }),
                                     })
                                 } else {
                                     {
@@ -362,7 +364,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             excluded.clone(),
                                         );
                                         Rc::new(FuncSigLookup::FuncSigResolved {
-                                            sig: ResolvedFuncSig {
+                                            sig: Rc::new(ResolvedFuncSig {
                                                 name: name.clone(),
                                                 params: node.params.clone(),
                                                 inferred: qualified_return.clone(),
@@ -370,13 +372,20 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,
-                                                    HashMap<
-                                                        String,
-                                                        HashMap<String, Rc<SubValueRelation>>,
+                                                    Rc<
+                                                        HashMap<
+                                                            String,
+                                                            Rc<
+                                                                HashMap<
+                                                                    String,
+                                                                    Rc<SubValueRelation>,
+                                                                >,
+                                                            >,
+                                                        >,
                                                     >,
                                                 >(
                                                 ),
-                                            },
+                                            }),
                                         })
                                     }
                                 }

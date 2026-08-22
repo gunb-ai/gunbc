@@ -390,11 +390,11 @@ pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: DeclarationRef {
+        bind: Rc::new(DeclarationRef {
         module_path: "std.algebra".to_string(),
         decl_name: "Ring".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
+    }),
     })
             };
         }

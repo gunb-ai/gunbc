@@ -17,10 +17,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html".to_string(),
-    },
+    }),
     })
             };
         }

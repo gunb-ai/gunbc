@@ -75,11 +75,11 @@ pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: DeclarationRef {
+        bind: Rc::new(DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
+    }),
     })
             };
         }
