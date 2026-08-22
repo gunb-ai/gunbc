@@ -2827,7 +2827,15 @@ enforces end to end.
    eager-crane-282, 2026-08-22): twelve PRs sit at the merge floor green and approved, three of
    them gating another lane's close; admitting ~830 identities would red the required floor for
    every one of them and the triage would run while the fleet was blocked on it. Delete-first is
-   right when the fallout lands on the deleter, and here it lands on everyone else. OWNERSHIP,
+   right when the fallout lands on the deleter, and here it lands on everyone else. **THAT
+   SEQUENCING IS A POINT-IN-TIME FLEET CONDITION, NOT A PROPERTY OF THE DELETION, AND IT EXPIRES
+   WITHOUT ANYONE EDITING THIS ROW.** The merge queue drains; when it has, the reason recorded
+   here is gone and nothing in this paragraph will say so. So read it as: on 2026-08-22 the
+   deletion was deferred because of the queue — never as "the deletion is deferred". A reader who
+   finds this row with the queue empty should treat the sequencing clause as discharged and the
+   deletion as ready, not go looking for whose permission is still outstanding. This sentence
+   exists because a hold released to a person leaves its written artifact standing, and an
+   artifact is indistinguishable from a live constraint to whoever reads it next. OWNERSHIP,
    checked rather than inferred: the arm's staging text was authored by gunbc#8646
    (`session/nimble-wolf-645`, merged 2026-08-20); that session no longer exists — a
    `dashboard-message` to it returns `recipient session not found` — so the deletion is
