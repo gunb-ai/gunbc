@@ -108,6 +108,38 @@ not lose the wrapper; and these sites are **not** an instance of the `T?`-as-
 kernel-cardinality class — under that reading the same-module sugar cell would
 have had to refuse, and it did not.
 
+**That third clause was scoped too widely as first written, and the correction is
+load-bearing (2026-08-22, `crisp-crab-430`, with a controlled cell run against the
+reproduction above).** It is sound only *at the parameter position*. At the
+**construction** position the kernel-cardinality reading survives, measured with a
+green control in one module and no boundary crossed:
+
+```
+type Holder { d: probe.carddecl.Digest2? }
+Holder { d: Present { value: Digest2 { hex: "aa" } } }                    // CLEAN
+Holder { d: v2.std.optional.Present { value: Digest2 { hex: "bb" } } }    // REFUSES
+    type mismatch: expected 'Product(Digest2)', got 'Coproduct(Optional)'
+```
+
+**These are two relations, not one, and the discriminator is the precondition.**
+The cells in this document red only on a tree carrying the cut B deletion and are
+silent on stock main; that cell reds on a stock binary, against a subject under
+`dag/` the exemption never covered. Different gate, different position, different
+precondition. So a `T?` field expects `Product(T)` and admits the kernel's bare
+`Present` while refusing `v2.std.optional.Present` — in-module — whereas at a
+formal parameter both spellings interchange in-module and the cardinality is lost
+through an import.
+
+**And that inverts the reading of one of this document's own clean cells.** If
+`T?` is genuinely a kernel cardinality distinct from `v2.std.optional.Optional<T>`,
+then the same-module `T?` → `Optional<String>` parameter cell passing is not
+evidence of correctness — it is a candidate **false accept**, a leniency at the
+parameter position in the opposite direction from seam B's false refusal. This is
+named as a candidate and not as a finding: no cell here discriminates "the two
+types are the same at this position" from "the comparison at this position does not
+distinguish them." Closing it needs a construction-position control at a parameter
+position, which nobody has run.
+
 ---
 
 ## Method note
