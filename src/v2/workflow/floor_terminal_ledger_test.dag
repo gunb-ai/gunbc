@@ -2,6 +2,7 @@ module v2.workflow.floor_terminal_ledger_test
 
 import v2.std.logic { Bool }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import v2.workflow.required_floor { SafetyInterrupted }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
   ClaimExpectation,
@@ -15,6 +16,7 @@ import v2.workflow.floor_terminal_ledger {
   KnownRedNowPassing,
   LedgerFinalized,
   LedgerPartial,
+  LedgerPublication,
   LedgerReconciliation,
   LedgerBinding,
   TerminalLedger,
@@ -89,6 +91,25 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
     expectation: ExpectedToHold,
     terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
   }) == ObservationUnreadableBeforeVerdict
+}
+
+// A CLAIM REFUSED BEFORE ANY VERDICT EXISTED IS NOT A FAILING CLAIM EITHER, and this arm is
+// separate from the unreadable-observation one above because their remedies differ: an
+// unreadable observation is a witness to repair, a budget refusal is a cost to pay or a limit to
+// raise. Collapsing them would leave `budget_refused` underivable from the rows, which is the
+// counter dual-authority this whole change exists to remove.
+test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool {
+  claim_disposition(row: ClaimTerminalRow {
+    identity: ident(f: "f"),
+    expectation: ExpectedToHold,
+    terminal: BudgetRefused {
+      safety: SafetyInterrupted {
+        raised_by: "wall",
+        elapsed_cpu_at_least: 0,
+        elapsed_wall_at_least: 0
+      }
+    }
+  }) == BudgetRefusedBeforeVerdict
 }
 
 // THE LOAD-BEARING TEST: A DUPLICATE REPLACING AN OMISSION, WITH EVERY COUNT UNCHANGED.

@@ -16374,7 +16374,10 @@ pub fn reconcile_terminal_ledger<'a>(
 
 /// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
 /// `ClaimTerminalRow`. v2 owns the evidence schema, its completeness law and the artifact's
-/// lifecycle; this side preserves the raw terminal fact it already holds and serializes it.
+/// lifecycle; this side preserves the raw terminal fact it already holds. It does NOT yet
+/// serialize the ledger to that artifact — binding, footer and atomic publish are v2's and are
+/// not in this change; the rows are consumed in-process only, by the reconciliation refusal
+/// below and by the `passed` derivation.
 ///
 /// WHY THE SEAM EXISTS, and it is not that the change is small. The v2 self-host program
 /// declares a per-identity completed-evidence obligation, and this process is the ONLY producer
@@ -16387,6 +16390,30 @@ pub fn reconcile_terminal_ledger<'a>(
 /// It deliberately acquires NOTHING ELSE. No candidate digest, no expectation join, no artifact
 /// verification, no general evidence API. The BINDING — which candidate this evidence is for — is
 /// v2's to compute and mean; this side hands over facts, not identity semantics.
+///
+/// THIS TYPE IS A SECOND REPRESENTATION AND NOTHING CHECKS ITS AGREEMENT WITH THE FIRST.
+/// Stated rather than left silent, because the doc line above says "mirroring" and a reader
+/// could take that to mean the `.dag` schema is an authority this Rust derives from. It is not.
+/// `cli_run.rs` is HAND_MAINTAINED, so this struct and `ClaimDisposition` are hand-written beside
+/// a hand-written `v2.workflow.floor_terminal_ledger`, and the two share ONLY NAMES. Regen does
+/// not compare them — this file is not generated. The witnesses do not compare them — they
+/// exercise each side separately, never one against the other. So an arm added, renamed or
+/// re-meaned on either side leaves the other silently stale, and the seam is exactly the shape
+/// this change repaired one grain down: `reconcile_terminal_ledger` was extracted so its test
+/// could not be a control that shares only a name with its subject. That rule condemns this seam
+/// too, and here it is declared debt rather than repaired.
+///
+/// Rung: *mitigatable* — the divergence is not prevented, not detected, and is currently held
+/// only by an author's diligence. No lens is built for it: the cheapest honest check is a v2-side
+/// reading of the seed's emitted ledger, which cannot exist before serialization does, so it
+/// belongs to that change rather than to a mechanism minted beside this one.
+///
+/// DISSOLUTION CONDITION, for this bridge and for the mirror above, one event for both: the
+/// self-emitted v2 claim executor. When the floor's execution is driven by v2 rather than by this
+/// seed, the producer that holds identity-and-outcome together IS the v2 side, so there is no
+/// seam to bridge and no second representation to keep in agreement — this struct,
+/// `claim_disposition`, `reconcile_terminal_ledger` and the refusal below are deleted whole, and
+/// `v2.workflow.floor_terminal_ledger` is left as the sole authority it already claims to be.
 pub struct ClaimTerminalRow {
     pub qualified: String,
     pub expected_red: bool,

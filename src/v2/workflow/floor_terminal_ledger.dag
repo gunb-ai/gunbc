@@ -8,7 +8,7 @@ import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.required_floor { ClaimSafetyOutcome }
 
-// THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2 AND SERIALIZED BY THE SEED.
+// THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
 //
 // The v2 self-host program claims candidate-bound witnesses executed and matched their
 // expectations. The seed is the only boundary holding that per-identity fact and it discards the
@@ -23,6 +23,21 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 // -- five states behind one silence, which is the state-space conflation this repository already
 // names as a recurring failure. The ledger therefore carries ONE ROW PER PLANNED IDENTITY and
 // every row is terminal. Absence is not a value it can express.
+//
+// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA AND NOTHING CHECKS THE TWO AGREE.
+// `cli_run.rs` is HAND_MAINTAINED, so its `ClaimTerminalRow`, `ClaimDisposition` and
+// `reconcile_terminal_ledger` are authored beside these declarations rather than derived from
+// them. Regen does not compare them, because that file is not generated; the witnesses do not
+// compare them, because each side is exercised alone. The claim "one for one" below is therefore
+// an author's claim, held by diligence -- *mitigatable* -- and an arm added or re-meaned on
+// either side leaves the other silently stale. Declared here rather than left to be inferred
+// from the word "mirror", which reads as derivation and is not.
+//
+// DISSOLUTION -- one event retires the mirror and the seam together: the self-emitted v2 claim
+// executor. Once v2 drives the floor's execution, the producer holding identity-and-outcome
+// together is v2 itself, the seed's copy is deleted whole, and this module is the sole authority
+// it already claims to be. Until then the duplication is admitted debt with a named terminal,
+// not an unremarked second representation.
 
 // WHAT A CLAIM'S ATTEMPT ACTUALLY REACHED, at the grain the executor already distinguishes.
 //
