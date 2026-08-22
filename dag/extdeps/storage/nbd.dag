@@ -54,10 +54,12 @@ fn nbd_server_config_text(export: NbdExport) -> String {
   )
 }
 
-// PATH-RESOLVED, AND HERE THE REASON IS SHARPER THAN ELSEWHERE: these run on a BMC, a machine whose
-// filesystem this repository has never read. An absolute path would be a guess whose failure mode is
-// a hard spawn error on hardware nobody can watch, so the spelling stays exactly what the call sites
-// used before this conversion and the fact that we do not know the path is left visible.
+// PATH-RESOLVED, AND THE TWO PROGRAMS RUN IN DIFFERENT PLACES, which is worth stating because a
+// single "the BMC" would be wrong about half of it: nbd-server runs on the host serving the image
+// and nbd-client attaches on the BMC (gunbc.bmc_virtual_media renders both to text for an operator).
+// This repository has read neither filesystem. An absolute path for either would be a guess whose
+// failure mode is a hard spawn error on hardware nobody is watching, so the spelling stays exactly
+// what the call sites used before this conversion and the not-knowing stays visible.
 data nbd_server_program: NonEmptyStr = "nbd-server"
 data nbd_client_program: NonEmptyStr = "nbd-client"
 
