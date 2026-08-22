@@ -34,7 +34,7 @@ that no longer exists. Re-deriving also re-runs the census's controls: `v2.compi
 `gunbc.accelerator_demo_gpu` all score reachable here, and RESIDUE-EMPTY again scores 0
 consumed, so the instrument is neither finding consumption everywhere nor nowhere.
 
-**Of the 139, this change deletes 71 and holds 68.** The deleted 71 are the rows that carry
+**Of the corrected 133, this change deletes 69 and holds the rest.** The deleted 71 are the rows that carry
 no obligation to anything outside themselves, on every surface the instrument decodes *and*
 every surface it does not:
 
@@ -158,7 +158,65 @@ generated transport into discovery.
 Recorded because the wrong reading is the natural one, and the next person to grep these
 filenames will reach it.
 
-## 5. The 71 deleted
+## 4e. One row restored on disposition, not on measurement
+
+`gunbc.generic_binder_field_projection_deficit` scores STILL-UNCONSUMED correctly and is
+restored anyway. It is dispositioned KEEP-WITH-REASON in #8851 as a DESIGN 4b **deficit
+filing** -- a declared rung, a ceiling, a next-rung trigger.
+
+**An unconsumed deficit filing is 4b(2) working, not residue.** A class below its ceiling is
+*required* to name its trigger, and nothing consumes that filing by design; being unreferenced
+is its normal state, not evidence against it. Deleting it would have removed a safety-ledger
+row and lowered a rung with none of the reason, bounded population and restoration trigger
+4b(3) demands. Its sibling `gunbc.empty_decl_file_checkpoint_bypass` carries the same
+disposition and was never in this batch.
+
+The general point, which the census stated and this lane had to learn twice: **unreachability
+is the wrong predicate for a row whose purpose is to be read by a human ledger.** Both this
+row and section 3's `commit_closure_store` are that shape, and neither was caught by a
+mechanical rule -- both came from a per-row disposition someone had already written down.
+
+## 4d. Instrument defect 7, found by the floor: variant constructors are declared symbols
+
+**The floor refused this change, and the refusal was correct.** `required-ci` reported
+`unresolved type 'MergeReadinessVerdict'` in `gunbc.code_change_workflow` and eight
+`undefined variable 'Ready'` in its witness. `gunbc.pr_digests` was deleted and should not
+have been.
+
+**Root cause, in the instrument rather than in the tree.** The re-score's declared-symbol
+extraction matched `fn`, `data`, `type` and `const` declarations. It did not match
+**coproduct variant constructors** -- the `= Ready | NotReady { ... }` continuation lines
+under `type MergeReadinessVerdict`. So `pr_digests` was credited with owning
+`MergeReadinessVerdict` but not `Ready` or `NotReady`, and `code_change_workflow` names
+`Ready` **bare, with no import** -- precisely the whole-pool resolution the defect-6 re-score
+exists to detect. The instrument was decoding declarations and not their variants, which is
+the census's own defect 6 one level down.
+
+**Corrected numbers at this branch's base**, replacing those in section 1 rather than sitting
+beside them:
+
+| bucket | as first measured | with variants counted |
+| --- | --- | --- |
+| CONSUMED-DECISIVE | 89 | **94** |
+| STILL-UNCONSUMED | 107 | 102 |
+| DEAD-CONSUMER-ONLY | 32 | 31 |
+| AMBIGUOUS-SHARED-ONLY | 74 | 75 |
+| **residue** | 139 | **133** |
+
+Five modules move from residue to consumed. Only one of them was in the deleted batch, and
+it is the one the floor named.
+
+**What this says about the evidence in section 2, which was real but not sufficient.**
+`reachable` and `CONSUMED-DECISIVE` were unchanged across the cut, and I read that as
+"nothing consumed was touched". Both counters were computed by the *same instrument that had
+the defect*, so they could not see the case they were blind to -- a control derived from the
+measurement it is controlling cannot discriminate the measurement's own blind spot. **The
+floor could, and did.** That is the delete-first doctrine working exactly as DESIGN 3
+describes it: the deletion is the census, the real dependent refused loudly, and the refusal
+identified a load-bearing edge that three static surfaces and two reviews had all passed
+over.
+
+## 5. The 69 deleted
 
 | module | path | lines |
 | --- | --- | --- |
