@@ -53,6 +53,16 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // diagnostics, adding the back-edge refuses with `circular dependency detected` naming
 // both modules. So this placement is enforced by the acyclicity law of §3, not advice a
 // later author weighs.
+//
+// NO WITNESS PINS THIS, AND THE REASON IS THE FIXTURE HARNESS RATHER THAN THE CORPUS. The tempting
+// statement -- the corpus cannot express a cycle, so no RED is authorable -- conflates two
+// boundaries: what an Accepted corpus may contain, and what source a fixture may hand the compiler.
+// A compiler's regression probes are invalid programs, so the second boundary is the one that
+// decides. Measured by execution: gunbc.compile_diagnostic_census takes a SINGLE source string, and
+// a two-module string returns BLOCKING: ParseError -- for the ACYCLIC control as well as the cyclic
+// one, which is what proves the harness refuses the shape rather than catching the cycle. So the
+// missing multi-module compile fixture is this class's next-rung trigger, not a ceiling: when one
+// exists, the acyclic/cyclic pair above becomes an ordinary enrolled regression control.
 data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
 
 // Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
