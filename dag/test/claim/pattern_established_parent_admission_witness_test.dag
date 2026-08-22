@@ -1,0 +1,104 @@
+module test.claim.pattern_established_parent_admission_witness_test
+
+// Discriminating control for the ORDERED admission decision in v1.compiler.emit_rust
+// reference_derived_use_line_dispositions: a parent enum established by a match pattern's own
+// parent_enum field is admitted FIRST, and reference_derived_candidate_authored remains the
+// fallback for names no pattern established.
+//
+// A mirrored oracle is legitimate here and was NOT legitimate for the sibling traversal witness,
+// and the distinction is the point. A mirror re-implements a LAW. Where the defect lives in input
+// SELECTION -- as it did for collect_value_ref_names, which never walked match-pattern heads at all
+// -- the mirror re-implements the same walk, inherits the same blind spot, and agrees with the
+// production code for the same wrong reason. Here the class lives in the law itself: given a
+// homonymous variant, WHICH enum may be admitted. Two implementations can genuinely disagree about
+// that, so the mirror can fail.
+//
+// The two arms below are the specification, and neither alone is it. A single implementation cannot
+// satisfy both by accident: admitting on a spelled variant name alone passes the first and fails the
+// second; refusing everything the bare map cannot resolve passes the second and fails the first.
+//
+// THE MEASURED CASE THIS ENCODES: `Resolved` is declared as a variant by 12 enums in the corpus, so
+// variant_to_enum answers the empty string and the bare rule correctly refuses. v1.compiler.coercion
+// authors `v1.std.core.Resolved` in a pattern whose parent_enum field already carries InferredNode,
+// so the fact the bare map could not supply was authored twenty characters away. Before the ordered
+// decision, InferredNode was admitted in 11 modules and refused in coercion -- measured at the gate,
+// not inferred.
+//
+// NOTED IN PASSING, NOT A DEFECT TODAY (deep-ant-102): the empty string carries two meanings in
+// variant_to_enum -- "no such variant" and "ambiguous among twelve". Both must refuse under the bare
+// rule, so the guard is correct as it stands. But now that the pattern-established path SUCCEEDS
+// where the bare path refuses, the difference between those two states is observable to a caller for
+// the first time, and a carrier that cannot express it is the next thing that bites.
+//
+// Dissolve-on: use-lines derived from the emitted reference set, at which point admission by
+// spelling disappears and both oracles with it.
+
+fn spelled_in_module_oracle(module_source: String, name: String) -> Bool {
+  module_source != "" && string_contains(s: module_source, pattern: name)
+}
+
+fn variant_induced_parent_oracle(module_source: String, enum_name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
+  variants |> any(vn =>
+    match map_get(variant_to_enum, vn) {
+      Present { value: parent } => parent == enum_name && test.claim.pattern_established_parent_admission_witness_test.spelled_in_module_oracle(module_source: module_source, name: vn)
+      Absent => false
+    }
+  )
+}
+
+fn ordered_admission_oracle(pattern_established_parents: List<String>, module_source: String, name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
+  if pattern_established_parents |> any(p => p == name) {
+    true
+  } else {
+    test.claim.pattern_established_parent_admission_witness_test.spelled_in_module_oracle(module_source: module_source, name: name)
+      || variant_induced_parent_oracle(module_source: module_source, enum_name: name, variants: variants, variant_to_enum: variant_to_enum)
+  }
+}
+
+data coercion_like_source: String = "match n.inferred case Present binds value v1.std.core.Resolved binds node rt arrow decl_identity_file rt"
+
+data homonym_resolved_to_enum: Map<String, String> = {
+  "Resolved": ""
+}
+
+data resolved_variants: List<String> = ["Resolved"]
+
+test fn pattern_established_parent_admitted_despite_homonym_map_holds() -> Bool {
+  ordered_admission_oracle(
+    pattern_established_parents: ["InferredNode"],
+    module_source: coercion_like_source,
+    name: "InferredNode",
+    variants: resolved_variants,
+    variant_to_enum: homonym_resolved_to_enum,
+  )
+}
+
+test fn bare_homonym_without_pattern_evidence_still_refused_holds() -> Bool {
+  !ordered_admission_oracle(
+    pattern_established_parents: [],
+    module_source: coercion_like_source,
+    name: "InferredNode",
+    variants: resolved_variants,
+    variant_to_enum: homonym_resolved_to_enum,
+  )
+}
+
+test fn pattern_evidence_does_not_admit_an_unrelated_enum_holds() -> Bool {
+  !ordered_admission_oracle(
+    pattern_established_parents: ["InferredNode"],
+    module_source: coercion_like_source,
+    name: "TypeRealizationDecision",
+    variants: resolved_variants,
+    variant_to_enum: homonym_resolved_to_enum,
+  )
+}
+
+test fn unambiguous_variant_still_admits_through_the_fallback_holds() -> Bool {
+  ordered_admission_oracle(
+    pattern_established_parents: [],
+    module_source: "match k case ComputationNode payload arrow true",
+    name: "NodeKind",
+    variants: ["ComputationNode"],
+    variant_to_enum: {"ComputationNode": "NodeKind"},
+  )
+}
