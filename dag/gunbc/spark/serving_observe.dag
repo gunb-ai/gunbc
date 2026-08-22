@@ -24,7 +24,12 @@ import gunbc.spark.serving_terminal_health {
   spark_serving_health_from_captures,
   spark_serving_health_version_probe_argv,
   spark_serving_health_generate_probe_argv,
+  spark_serving_health_ps_probe_argv,
   spark_serving_health_request_body,
+  SparkServingResidency,
+  ResidencyUnobserved,
+  spark_serving_served_proof,
+  spark_serving_residency_from_capture,
 }
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
@@ -1958,6 +1963,36 @@ fn spark_serving_observe_terminal_health(
 // `spark_serving_probe_stdout_or_empty` mapped the first two onto the third's empty case, which is
 // the empty-observation narrow: a non-zero exit is a REAL observation from the far side, and
 // recording it as silence loses the one fact that says whose problem it is.
+// RESIDENCY IS OBSERVED ONLY THROUGH A CONVERGED VERDICT, and the signature is what enforces it:
+// spark_serving_residency_from_capture takes a SparkServingServedProof, whose sole constructor is
+// the converged arm of spark_serving_served_proof. So an unhealthy or unobserved host has nothing
+// to pass and this function cannot ask the question at all -- it answers ResidencyUnobserved with
+// the reason being the HEALTH verdict, not a failed probe.
+//
+// That ordering is a data dependency rather than a convention: /api/ps reports what is resident
+// NOW, so it answers "where did the generation run" only within keep_alive of a generation we
+// actually issued. Asking it of a host that never generated returns a true fact about an
+// unrelated moment.
+fn spark_serving_observe_residency(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  health: SparkServingTerminalHealth,
+) -> SparkServingResidency {
+  match spark_serving_served_proof(health: health) {
+    Absent =>
+      ResidencyUnobserved {
+        cause: "no generation was proven on this host, so nothing anchors a residency read to a moment we caused" as NonEmptyStr,
+      }
+    Present { value: proof } =>
+      spark_serving_residency_from_capture(
+        proof: proof,
+        capture: spark_serving_probe_capture(
+          context: context, host: host, raw_words: spark_serving_health_ps_probe_argv(),
+        ),
+      )
+  }
+}
+
 fn spark_serving_probe_capture(
   context: FleetSshExecutionContext,
   host: HostIdentity,

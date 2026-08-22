@@ -13,7 +13,7 @@ import gunbc.spark.serving_readback_parse {
   spark_serving_parse_generate_done,
   spark_serving_parse_ps_vram_for_model,
 }
-import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ApiGenerate }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ApiGenerate, ApiPs }
 import extdeps.ollama.binary_release {
   ollama_required_release,
   ollama_reported_version_matches_release,
@@ -21,6 +21,7 @@ import extdeps.ollama.binary_release {
 import gunbc.spark.serving_desired {
   spark_serving_desired_model_ref,
   spark_serving_local_api_version_url,
+  spark_serving_local_endpoint_url,
   spark_serving_local_endpoint_url,
 }
 import gunbc.spark.serving_install_paths { spark_serving_health_request_body_path }
@@ -143,6 +144,17 @@ fn spark_serving_health_version_probe_argv() -> List<String> {
     "curl", "-fsS",
     "--max-time", spark_serving_health_version_timeout_word(),
     spark_serving_local_api_version_url(),
+  ]
+}
+
+// The residency probe reuses the VERSION timeout, not the generate one. It is a plain GET that
+// reads already-resident state -- it never loads a model -- so pricing it like a generation would
+// give a slow answer a longer rope than a fast question deserves.
+fn spark_serving_health_ps_probe_argv() -> List<String> {
+  [
+    "curl", "-fsS",
+    "--max-time", spark_serving_health_version_timeout_word(),
+    spark_serving_local_endpoint_url(endpoint: ApiPs),
   ]
 }
 
