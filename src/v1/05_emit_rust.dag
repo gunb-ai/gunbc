@@ -8064,6 +8064,32 @@ fn is_collection_typed_expr(texpr: v1.std.core.Node, source_indices: std.types.M
   }
 }
 
+// A zero-field literal of a coproduct VARIANT is a TAG REFERENCE, not a construction --
+// the frontend already sanctions exactly this shape (04_infer.dag
+// zero_field_variant_tag_reference_frontier_note, operator Ruling 1a). The variant is named
+// statically, so its discriminant is a compile-time constant and the lowering folds to that
+// name. Constructing an instance in order to read a name it already has is the redundant
+// second representation DESIGN section 2 forbids -- and for a variant carrying required
+// fields the construction is not merely wasteful, it is unwritable in Rust (E0063).
+fn discriminant_zero_field_variant_tag(arg: v1.std.core.Node, scope: v1.compiler.infer.InferScope, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String? {
+  match arg.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      if (arg.children |> count) != 0 {
+        none
+      } else {
+        match v1.std.core.record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
+          Present { value: tn } =>
+            let last = v1.std.core.qualified_last_segment(name: tn)
+            if last != "" && v1.compiler.infer_emit_info.is_known_variant(type_summaries: emit_info.type_summaries, name: last) {
+              Present { value: last }
+            } else { none }
+          Absent => none
+        }
+      }
+    _ => none
+  }
+}
+
 // Dotted-render class, VARIANT-PATH position -- the sibling of variant_pattern_qualified_path,
 // which already reduces the parent for AUTHORED match arms but is not on this path: the arms below
 // are SYNTHESIZED by the discriminant lowering, so they take the enum path from ty_name directly.
@@ -8075,6 +8101,15 @@ fn is_collection_typed_expr(texpr: v1.std.core.Node, source_indices: std.types.M
 // the one consumer here that is not keyed on the bare name.
 fn emit_discriminant_call_lowering(value_arg: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let arg = v1.std.core.arg_value(n: value_arg)
+  match discriminant_zero_field_variant_tag(arg: arg, scope: scope, emit_info: emit_info) {
+    Present { value: tag } =>
+      emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", tag, "\".to_string()"))
+    Absent =>
+      emit_discriminant_call_scrutinee_lowering(arg: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
+}
+
+fn emit_discriminant_call_scrutinee_lowering(arg: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let scrutinee = emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ty_name = v1.compiler.infer.resolved_type_name(n: arg, source_indices: scope.type_env.source_indices)
   let ty_leaf = v1.std.core.qualified_last_segment(name: ty_name)

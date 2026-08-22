@@ -7329,6 +7329,12 @@ macro_rules! v1_algebra_method_arms {
                 Ok(list_value((keys)))
             },
 
+            arm "method_call.sorted_map_keys" { "sorted_map_keys" } => {
+                let m = expect_map(&$receiver, "sorted_map_keys")?;
+                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                Ok(list_value((sorted_map_keys_in_emitted_order(keys, "sorted_map_keys")?)))
+            },
+
             arm "method_call.map_values" { "map_values" } => {
                 let m = expect_map(&$receiver, "map_values")?;
                 let vals: Vec<Value> = m.values().cloned().collect();
@@ -12870,6 +12876,14 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
+            arm "free_call.sorted_map_keys" { "sorted_map_keys" } => match $positional.first() {
+                Some(Value::Map(m)) => {
+                    let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                    Ok(Some(list_value((sorted_map_keys_in_emitted_order(keys, "sorted_map_keys")?))))
+                }
+                _ => Ok(None),
+            },
+
             arm "free_call.map_values" { "map_values" } => match $positional.first() {
                 Some(Value::Map(m)) => {
                     let vals: Vec<Value> = m.values().cloned().collect();
@@ -15017,6 +15031,96 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
     }
 }
 
+/// Order map keys exactly as the EMITTED Rust realization orders them.
+///
+/// The emitted realization is `v1_rt::sorted_map_keys<K: Ord + Clone, V>` --
+/// `map_keys(m)` followed by `Vec::sort()`, i.e. `K`'s own `Ord`. This arm is the
+/// interpreter's side of that one primitive, so "exists" is not the bar: the ORDER
+/// has to be the same order, or the two realizations of one `.dag` program disagree.
+///
+/// So the key kinds admitted here are exactly the ones whose interpreter carrier has a
+/// proven-identical `Ord` in the emitted realization: `Value::Str(Rc<str>)` against
+/// `String` (both byte-lexicographic over the same UTF-8), `Value::Int(i64)` against
+/// `i64`, `Value::Bool` against `bool` (`false < true`). Everything else REFUSES with a
+/// typed diagnostic rather than falling back to some other order:
+///
+/// * `Value::Float` -- `f64` is not `Ord`, so the emitted call does not compile at all.
+///   Answering here would be an order the other realization cannot even express.
+/// * records, variants, lists, sets, maps, null -- the emitted order would come from a
+///   `derive(Ord)` this arm cannot observe (declaration order of variants, field order),
+///   so any order chosen here is a guess.
+/// * a heterogeneous key set -- `HashMap<K, V>` has one `K`, so there is no emitted
+///   ordering to agree with.
+///
+/// A fabricated order would be the worst shape of wrong: `sorted_map_keys` exists to make
+/// a fold deterministic, so a silently-different permutation produces a plausible,
+/// stable, WRONG artifact (DESIGN.md 5 -- no fabricated plausible output).
+///
+/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE, and that is the load-bearing choice
+/// rather than an oversight. `cmp_values` answers `Ordering::Equal` for every pair it does
+/// not recognise -- mismatched kinds, records, variants, lists -- which is exactly the
+/// silent permutation above: a total comparator that never refuses produces *an* order for
+/// key sets the emitted realization cannot even represent, and `sort_by` with a
+/// non-total-order comparator leaves those keys in whatever relative position the map
+/// iteration handed them, so the answer is not merely different from Rust's, it is not
+/// stable across runs either. Refusing is the only honest arm for those kinds. (`sort_by`'s
+/// own use of `cmp_values` is a separate question with a separate caller contract and is
+/// not touched here.)
+fn sorted_map_keys_in_emitted_order(
+    keys: Vec<Value>,
+    what: &str,
+) -> Result<Vec<Value>, InterpError> {
+    #[derive(PartialEq, Eq)]
+    enum KeyKind {
+        Str,
+        Int,
+        Bool,
+    }
+    fn kind_of(v: &Value) -> Option<KeyKind> {
+        match v {
+            Value::Str(_) => Some(KeyKind::Str),
+            Value::Int(_) => Some(KeyKind::Int),
+            Value::Bool(_) => Some(KeyKind::Bool),
+            _ => None,
+        }
+    }
+
+    let mut kind: Option<KeyKind> = None;
+    for k in &keys {
+        let this = kind_of(k).ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "{what}: map key of type '{}' has no emitted-Rust ordering to agree with \
+                 (emitted `sorted_map_keys<K: Ord>` orders by K's own Ord; only Str, Int and \
+                 Bool keys are proven to order identically in both realizations)",
+                k.type_label()
+            ),
+        })?;
+        match &kind {
+            None => kind = Some(this),
+            Some(seen) if *seen == this => {}
+            Some(_) => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{what}: map has keys of more than one type, so there is no emitted \
+                         `HashMap<K, V>` key ordering to agree with"
+                    ),
+                })
+            }
+        }
+    }
+
+    let mut keys = keys;
+    keys.sort_by(|a, b| match (a, b) {
+        // `str`'s Ord is byte-lexicographic, and so is `String`'s in the emitted realization.
+        (Value::Str(x), Value::Str(y)) => x.as_ref().cmp(y.as_ref()),
+        (Value::Int(x), Value::Int(y)) => x.cmp(y),
+        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
+        // Unreachable: the loop above refused every other kind and every mixed key set.
+        _ => std::cmp::Ordering::Equal,
+    });
+    Ok(keys)
+}
+
 fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => x.cmp(y),
@@ -16434,5 +16538,160 @@ mod value_str_rc_semantic_parity_tests {
         ck1.hash(&mut h1);
         ck2.hash(&mut h2);
         assert_eq!(h1.finish(), h2.finish());
+    }
+}
+
+#[cfg(test)]
+mod sorted_map_keys_order_tests {
+    use super::{sorted_map_keys_in_emitted_order, InterpError, Value};
+    use crate::v1_rt;
+    use im::HashMap;
+
+    /// The discriminating key set. Every pair here separates Rust's byte-lexicographic
+    /// `Ord` from an order a "sorted" implementation might plausibly produce instead:
+    /// `"B" < "a"` fails under case-insensitive collation, `"Z10" < "Z9"` fails under
+    /// natural/numeric sorting, and `"z"` before `"\u{e9}"` fails under a Unicode
+    /// collation that files `é` next to `e`. So an arm that merely *returns something
+    /// sorted* goes red here; only the emitted realization's own order passes.
+    const KEYS: [&str; 7] = ["b", "B", "Z9", "Z10", "\u{e9}", "z", "a"];
+
+    fn interpreted() -> std::vec::Vec<String> {
+        let keys: std::vec::Vec<Value> = KEYS.iter().map(|s| Value::Str((*s).into())).collect();
+        sorted_map_keys_in_emitted_order(keys, "sorted_map_keys")
+            .expect("String keys are admitted")
+            .into_iter()
+            .map(|v| match v {
+                Value::Str(s) => s.to_string(),
+                other => panic!("expected Str, got {other:?}"),
+            })
+            .collect()
+    }
+
+    /// The oracle is the EMITTED realization itself -- `v1_rt::sorted_map_keys`, the very
+    /// function `.dag` `sorted_map_keys` compiles into -- not a golden literal transcribed
+    /// from a run. Comparing to a literal would only pin whatever this arm happens to do.
+    #[test]
+    fn interpreter_order_equals_emitted_rust_order() {
+        let mut m: HashMap<String, i64> = HashMap::new();
+        for (i, k) in KEYS.iter().enumerate() {
+            m.insert((*k).to_string(), i as i64);
+        }
+        let emitted: std::vec::Vec<String> = v1_rt::sorted_map_keys(&m).into_iter().collect();
+        assert_eq!(interpreted(), emitted);
+    }
+
+    /// The order the two realizations agree ON, spelled out once. This is the RED control
+    /// for the oracle above: if `v1_rt::sorted_map_keys` and this arm ever drifted TOGETHER
+    /// (say both to a case-insensitive order), the equality test would still pass while the
+    /// answer had changed. Byte order is a fact about UTF-8, so it can be stated
+    /// independently of either implementation.
+    #[test]
+    fn agreed_order_is_utf8_byte_lexicographic() {
+        let expected: std::vec::Vec<String> = ["B", "Z10", "Z9", "a", "b", "z", "\u{e9}"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(interpreted(), expected);
+    }
+
+    /// `sorted_map_keys` exists to make a fold deterministic, so the output must be a
+    /// function of the key SET alone. `HashMap` iteration order is unspecified in both
+    /// realizations, so this is the control that the sort -- not the map's incidental
+    /// traversal -- is what produces the answer.
+    #[test]
+    fn order_is_independent_of_insertion_order_in_both_realizations() {
+        let mut forward: HashMap<String, i64> = HashMap::new();
+        for (i, k) in KEYS.iter().enumerate() {
+            forward.insert((*k).to_string(), i as i64);
+        }
+        let mut reverse: HashMap<String, i64> = HashMap::new();
+        for (i, k) in KEYS.iter().rev().enumerate() {
+            reverse.insert((*k).to_string(), i as i64);
+        }
+        let forward_keys: std::vec::Vec<String> =
+            v1_rt::sorted_map_keys(&forward).into_iter().collect();
+        let reverse_keys: std::vec::Vec<String> =
+            v1_rt::sorted_map_keys(&reverse).into_iter().collect();
+        assert_eq!(forward_keys, reverse_keys);
+
+        let mut reversed_input: std::vec::Vec<Value> =
+            KEYS.iter().map(|s| Value::Str((*s).into())).collect();
+        reversed_input.reverse();
+        let interpreted_reversed: std::vec::Vec<String> =
+            sorted_map_keys_in_emitted_order(reversed_input, "sorted_map_keys")
+                .expect("String keys are admitted")
+                .into_iter()
+                .map(|v| match v {
+                    Value::Str(s) => s.to_string(),
+                    other => panic!("expected Str, got {other:?}"),
+                })
+                .collect();
+        assert_eq!(interpreted_reversed, interpreted());
+        assert_eq!(interpreted_reversed, forward_keys);
+    }
+
+    #[test]
+    fn float_keys_refuse_because_emitted_rust_has_no_ord_for_them() {
+        let err = sorted_map_keys_in_emitted_order(
+            vec![Value::Float(2.0), Value::Float(1.0)],
+            "sorted_map_keys",
+        )
+        .expect_err("f64 is not Ord, so the emitted call does not compile");
+        match err {
+            InterpError::TypeError { msg } => assert!(msg.contains("Float"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn heterogeneous_keys_refuse_because_there_is_no_single_emitted_k() {
+        let err = sorted_map_keys_in_emitted_order(
+            vec![Value::Int(1), Value::Str("a".into())],
+            "sorted_map_keys",
+        )
+        .expect_err("HashMap<K, V> has exactly one K");
+        match err {
+            InterpError::TypeError { msg } => assert!(msg.contains("more than one type"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn int_and_bool_keys_order_as_their_emitted_carriers_do() {
+        let mut ints: HashMap<i64, ()> = HashMap::new();
+        for k in [3i64, -1, 10, 0] {
+            ints.insert(k, ());
+        }
+        let interpreted_ints = sorted_map_keys_in_emitted_order(
+            [3i64, -1, 10, 0].iter().map(|i| Value::Int(*i)).collect(),
+            "sorted_map_keys",
+        )
+        .expect("Int keys are admitted");
+        let emitted_ints: std::vec::Vec<Value> = v1_rt::sorted_map_keys(&ints)
+            .into_iter()
+            .map(Value::Int)
+            .collect();
+        assert_eq!(
+            format!("{interpreted_ints:?}"),
+            format!("{emitted_ints:?}"),
+            "-1 < 0 < 3 < 10 -- numeric, not the lexicographic order a string key would give"
+        );
+
+        let mut bools: HashMap<bool, ()> = HashMap::new();
+        bools.insert(true, ());
+        bools.insert(false, ());
+        let interpreted_bools = sorted_map_keys_in_emitted_order(
+            vec![Value::Bool(true), Value::Bool(false)],
+            "sorted_map_keys",
+        )
+        .expect("Bool keys are admitted");
+        let emitted_bools: std::vec::Vec<Value> = v1_rt::sorted_map_keys(&bools)
+            .into_iter()
+            .map(Value::Bool)
+            .collect();
+        assert_eq!(
+            format!("{interpreted_bools:?}"),
+            format!("{emitted_bools:?}")
+        );
     }
 }
