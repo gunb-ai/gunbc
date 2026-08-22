@@ -1,6 +1,7 @@
 module test.claim.inference_endpoint_binding_witness_test
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import gunbc.inference_endpoint_binding {
   InferenceWireProtocol,
   OpenAiResponses,
@@ -11,15 +12,26 @@ import gunbc.inference_endpoint_binding {
   JoinAssertedBy,
   JoinObservedFromResponse,
   inference_wire_protocol_wire,
-  endpoint_host_join_is_observed,
   endpoint_host_join_wire,
+  TurnPrecondition,
+  PreconditionObserved,
+  PreconditionUnobserved,
+  WireSubsetExercised,
+  WireSubsetNonStatefulOnly,
+  WireSubsetIncludesConversationState,
+  CodingTurnReceipt,
+  TurnReceiptStanding,
+  TurnReceiptQualified,
+  TurnReceiptUnqualified,
+  coding_turn_receipt_standing,
+  coding_turn_receipt_wire,
 }
 
 fn tunnel_join() -> EndpointHostJoin {
   JoinAssertedBy {
     asserter: "operator workstation ssh tunnel" as NonEmptyStr,
     basis: "ssh -N -L 11435:127.0.0.1:11434 to spark-a3ee" as NonEmptyStr,
-    asserted_at: "2026-08-22T19:00:00Z" as NonEmptyStr,
+    asserted_at: "2026-08-22T19:00:00Z" as Rfc3339Timestamp,
   }
 }
 
@@ -27,13 +39,17 @@ fn tunnel_join() -> EndpointHostJoin {
 // receipt claims the response identified its server -- which on an identically-converged fleet no
 // response can do.
 fn a_asserted_join_is_not_observed() -> Bool {
-  endpoint_host_join_is_observed(j: tunnel_join()) == false
+  match tunnel_join() {
+    JoinAssertedBy { asserter: _, basis: _, asserted_at: _ } => true
+    JoinObservedFromResponse { per_host_marker: _ } => false
+  }
 }
 
 fn b_observed_join_is_observed() -> Bool {
-  endpoint_host_join_is_observed(
-    j: JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr },
-  )
+  match JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr } {
+    JoinAssertedBy { asserter: _, basis: _, asserted_at: _ } => false
+    JoinObservedFromResponse { per_host_marker: _ } => true
+  }
 }
 
 // The two arms must not render alike: a reader of the receipt has to be able to tell an assertion
@@ -69,4 +85,69 @@ fn f_dialled_endpoint_carries_its_url() -> Bool {
     wire: OpenAiResponses,
   }
   d.url as String == "http://127.0.0.1:11435"
+}
+
+// ── The receipt refuses rather than producing an unqualified opinion ─────────────────────────────
+fn qualified_receipt() -> CodingTurnReceipt {
+  CodingTurnReceipt {
+    harness: "codex" as NonEmptyStr,
+    harness_version: "0.148.0" as NonEmptyStr,
+    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
+    join: tunnel_join(),
+    context_window_tokens: PreconditionObserved { value: 65536 },
+    wire_subset: PreconditionObserved { value: WireSubsetNonStatefulOnly },
+  }
+}
+
+fn receipt_missing_context() -> CodingTurnReceipt {
+  CodingTurnReceipt {
+    harness: "codex" as NonEmptyStr,
+    harness_version: "0.148.0" as NonEmptyStr,
+    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
+    join: tunnel_join(),
+    context_window_tokens: PreconditionUnobserved { what: "model context window" as NonEmptyStr },
+    wire_subset: PreconditionObserved { value: WireSubsetNonStatefulOnly },
+  }
+}
+
+fn receipt_missing_wire_subset() -> CodingTurnReceipt {
+  CodingTurnReceipt {
+    harness: "codex" as NonEmptyStr,
+    harness_version: "0.148.0" as NonEmptyStr,
+    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
+    join: tunnel_join(),
+    context_window_tokens: PreconditionObserved { value: 65536 },
+    wire_subset: PreconditionUnobserved { what: "wire subset exercised" as NonEmptyStr },
+  }
+}
+
+fn standing_tag(r: CodingTurnReceipt) -> String {
+  match coding_turn_receipt_standing(r: r) {
+    TurnReceiptQualified => "qualified"
+    TurnReceiptUnqualified { missing: _ } => "unqualified"
+  }
+}
+
+fn g_all_preconditions_observed_qualifies() -> Bool {
+  standing_tag(r: qualified_receipt()) == "qualified"
+}
+
+// EITHER precondition missing must refuse. These are separate witnesses because a check that
+// happened to test only the first would pass while the second silently qualified.
+fn h_missing_context_refuses() -> Bool {
+  standing_tag(r: receipt_missing_context()) == "unqualified"
+}
+
+fn i_missing_wire_subset_refuses() -> Bool {
+  standing_tag(r: receipt_missing_wire_subset()) == "unqualified"
+}
+
+// The refusal must NAME what is missing, or a reader learns only that something was wrong.
+fn j_refusal_names_the_missing_precondition() -> Bool {
+  string_contains(s: coding_turn_receipt_wire(r: receipt_missing_wire_subset()), pattern: "wire subset exercised")
+}
+
+// An asserted join must not render as an observed one in the receipt's own wire.
+fn k_receipt_wire_reports_join_as_asserted() -> Bool {
+  string_contains(s: coding_turn_receipt_wire(r: qualified_receipt()), pattern: "join=ASSERTED")
 }
