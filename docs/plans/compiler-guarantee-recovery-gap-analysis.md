@@ -2740,9 +2740,25 @@ enforces end to end.
    point of resolution; the fix is to REFUSE the ambiguity with a typed, located diagnostic naming
    both candidates, rather than to let the answer depend on what else the consumer happens to reach.
 
-   NEXT-RUNG TRIGGER: refuse a name that resolves to more than one authority within a consumer's
-   closure, naming the candidates. Until then **every added import edge is an untracked
-   perturbation of every reachable file's typechecking**, and the 43 are unguarded.
+   NEXT-RUNG TRIGGER: resolution must return a TYPED THREE-STATE OUTCOME — `Unique`, `Unbound`,
+   `Ambiguous { candidates }` — rather than a name and a silent choice. Stating it as "refuse
+   ambiguity" is not enough and would repeat this document's most-recorded failure: *unbound* and
+   *ambiguous* are different states with different repairs (one says no authority answers, the
+   other says two do), and collapsing them into a single failure arm is the state-space conflation
+   §5 names. `Ambiguous` must carry BOTH candidates, because the diagnostic's whole value is
+   telling the author which two authorities collided — a refusal that says only "ambiguous" leaves
+   them to rediscover the closure by hand, which is the work this row exists to eliminate.
+
+   Until that lands, **every added import edge is an untracked perturbation of every reachable
+   file's typechecking**, and the 42 are unguarded.
+
+   THIS ROW AND THE TRANSPORT-ARGV ROW (29) MUST LAND AS ONE CUT, NOT TWO. Row 29's fix is to run
+   the existing expression-resolution authority over the transport argv expression tree. If that
+   authority still answers with a silently-chosen name, row 29's repair INHERITS this defect at
+   the exact position it was meant to make safe: `env_path_resolved_program` and
+   `chmod_binary_path` — declarations authored specifically to be cited there — would resolve to
+   whichever authority the consumer's closure happens to reach. Reusing an authority is only sound
+   when the authority is itself sound; the reuse is right and its precondition is this row.
 
    THE SPECIMEN'S REPAIR IS SEPARATE AND DOES NOT CLOSE THE CLASS. `v2.std.collection`'s own note
    prescribes it: `map_lookup` is the total primitive and `map_get` is a projection
