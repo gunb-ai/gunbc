@@ -751,7 +751,9 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
         .map(|(path, content)| Rc::new(SourceFile { path, content }))
         .collect();
     let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
-    if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
+    if let Some(message) =
+        stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
+    {
         return Err(message);
     }
     let mut out = HashMap::new();
