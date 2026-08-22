@@ -1,6 +1,6 @@
 module test.claim.spark_serving_observe_witness_test
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int, Bool }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
@@ -35,6 +35,11 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
+  ManagedAccountAbsent,
+  ManagedAccountKeyFileUnread,
+  ManagedAccountObserved,
+  ManagedAccountProbeRefused,
+  spark_serving_account_observation_from_probes,
   spark_serving_nvidia_driver_probe_words,
   spark_serving_unit_outcome_from_probe_results,
   spark_serving_runtime_materialization_receipt_probe_argv,
@@ -481,7 +486,11 @@ test fn observation_report_refused_is_not_success() -> Bool {
 // The report carries readback + observation together; these fixtures only vary the observation, so
 // the readback is a fixed bare one and the wrapping stays out of every assertion below.
 fn ho(observation: SparkServingObservation) -> SparkServingHostObservation {
-  SparkServingHostObservation { readback: readback_absent(), observation: observation }
+  SparkServingHostObservation {
+    readback: readback_absent(),
+    observation: observation,
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+  }
 }
 
 test fn per_host_refusal_report_is_not_success() -> Bool {
@@ -755,4 +764,159 @@ test fn the_emitted_report_text_carries_the_grant_standing() -> Bool {
   string_contains(text, "grant-standing host=srv5")
     && string_contains(text, "converged=false")
     && string_contains(text, "standing=unobserved")
+}
+
+// ── the managed-account observation ─────────────────────────────────────────────────────────────
+//
+// These decode real command output shapes rather than a shape invented for the test: `getent passwd`
+// emits the seven-field colon record, and `stat -c '%a %U %G'` emits three space-separated fields.
+// The arms are asserted apart, because the whole point of the coproduct is that an account that does
+// not exist and an account whose key file could not be read are different states with different
+// remedies.
+
+fn account_probe(exit_code: Int, success: Bool, stdout: String) -> SshSessionExecResult? {
+  Present {
+    value: SshSessionExecResult { exit_code: exit_code, success: success, stdout: stdout, stderr: "" },
+  }
+}
+
+data fixture_passwd_row: String = "gunbc-automation:x:1002:1002::/home/gunbc-automation:/bin/bash"
+
+test fn a_passwd_row_and_a_stat_line_decode_to_an_observed_account() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: fixture_passwd_row),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw-------  1 gunbc-automation gunbc-automation 96 Aug 10 19:51 /home/gunbc-automation/.ssh/authorized_keys"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      (l as String) == "gunbc-automation"
+        && (u as String) == "1002"
+        && (g as String) == "1002"
+        && (sh as String) == "/bin/bash"
+        && (m as String) == "-rw-------"
+        && (o as String) == "gunbc-automation"
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED for the field positions. A passwd record's shell is field SEVEN and its uid
+// is field THREE; an off-by-one in either would still produce a well-formed ManagedAccountObserved
+// carrying plausible strings, which is exactly the failure a shape-only assertion cannot see. So this
+// asserts the VALUES land in the right fields, on a row whose fields are all distinguishable.
+test fn the_passwd_fields_are_read_at_their_real_positions() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "LOGIN:x:UIDFIELD:GIDFIELD:GECOS:/home/dir:SHELLFIELD",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "drwx------ 2 owner group 4096 Aug 10 19:51 /home/x/.ssh"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: _, authorized_keys_owner: _ } =>
+      (l as String) == "LOGIN"
+        && (u as String) == "UIDFIELD"
+        && (g as String) == "GIDFIELD"
+        && (sh as String) == "SHELLFIELD"
+    _ => false
+  }
+}
+
+test fn a_missing_account_is_absent_and_not_a_refusal() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 2, success: false, stdout: ""),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountAbsent { detail: _ } => true
+    _ => false
+  }
+}
+
+// PARTIAL IS HONEST. The account exists and was read; only the key file could not be stat'd, so the
+// arm carries what was measured and names what was not, rather than discarding the account fields or
+// filling the key fields with a default.
+test fn an_unreadable_key_file_keeps_the_account_fields_it_did_measure() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: fixture_passwd_row),
+    key_probe: account_probe(exit_code: 1, success: false, stdout: ""),
+  ) {
+    ManagedAccountKeyFileUnread { login: l, uid: _, gid: _, shell: sh, cause: _ } =>
+      (l as String) == "gunbc-automation" && (sh as String) == "/bin/bash"
+    _ => false
+  }
+}
+
+test fn a_leg_that_never_ran_is_a_refusal_and_not_an_absent_account() -> Bool {
+  match spark_serving_account_observation_from_probes(passwd_probe: none, key_probe: none) {
+    ManagedAccountProbeRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// TOTALITY on a malformed row: a truncated passwd record must not crash the observation, because a
+// probe that returns garbage is an observation too. Short fields read empty rather than throwing.
+// THIS TEST USED TO ASSERT THE DEFECT. Its earlier form matched a truncated row into
+// ManagedAccountObserved and checked that uid and shell came back as the EMPTY STRING out of
+// NonEmptyStr fields -- so a test written to prove the decoder was robust was in fact the thing
+// pinning a laundered carrier in place, and it is what let the defect reach review. Review 54471
+// caught it. The test now asserts the distinction the decoder is supposed to make.
+test fn a_truncated_passwd_row_is_refused_not_observed() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: "onlylogin"),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "onlylogin")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING HALF. A truncated row must NOT be distinguishable-in-principle-only: the pair
+// below differ by exactly one thing -- whether the passwd row has its seven fields -- and they must
+// land in different variants. Asserting only the malformed case would pass on a decoder that
+// refused everything.
+test fn a_well_formed_passwd_row_still_observes() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && (g as String) == "1001" && (sh as String) == "/bin/bash"
+        && (m as String) == "-rw-------" && (o as String) == "x"
+    _ => false
+  }
+}
+
+// AN EMPTY COLUMN IS AS UNUSABLE AS A MISSING ONE, and this is the test that says so. The row below
+// has all seven fields; the shell is simply blank. It must refuse, or the empty string reaches a
+// NonEmptyStr again by a different route than the one just closed.
+test fn an_empty_passwd_column_is_refused_like_a_missing_one() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "gunbc-automation")
+    _ => false
+  }
+}
+
+// UNDECODABLE `ls -ld` OUTPUT IS A KEY FILE WE COULD NOT READ, not a malformed account. The passwd
+// facts survive; only the mode and owner are missing. This asserts the decoder routes it to the arm
+// whose remedy actually matches.
+test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw-------"),
+  ) {
+    ManagedAccountKeyFileUnread { login: l, uid: u, gid: _, shell: _, cause: c } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && string_contains(s: c as String, pattern: "does not decode")
+    _ => false
+  }
 }

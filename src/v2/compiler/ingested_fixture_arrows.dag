@@ -1,10 +1,6 @@
 module v2.compiler.ingested_fixture_arrows
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.staged_front_end { front_end_run_outcome, run_front_end }
 import v2.std.optional {
   Absent,
   Optional,
@@ -79,24 +75,10 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
+data ingested_resolved_module_projection_note: String = "THIS IS NOW A PROJECTION, NOT AN IMPLEMENTATION. The tokenize -> parse -> normalize -> resolve order it used to spell as a nest of bind_outcome lives in v2.compiler.staged_front_end, which mints per-stage evidence; this arrow folds that staged run back to the single Outcome<Node> its callers have always received. It does not re-run a stage, does not re-derive the answer by a second route, and has no order of its own to drift from the one it projects — which is the whole reason the front end moved rather than being copied (DESIGN section 3)."
+
 fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<Node> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: source, file: file, rules: lm.lex),
-    f: fn(tokens) {
-      bind_outcome(
-        o: parse_module(tokens: tokens, grammar: lm.grammar),
-        f: fn(artifact) {
-          bind_outcome(
-            o: normalize(parse_tree: artifact.tree),
-            f: fn(normalized) {
-              resolve(tree: normalized, lm: lm)
-            }
-          )
-        }
-      )
-    }
-  )
+  front_end_run_outcome(run: run_front_end(source: source, file: file))
 }
 
 fn ingested_arrow_from_source(source: String, file: Symbol) -> Outcome<Node> {

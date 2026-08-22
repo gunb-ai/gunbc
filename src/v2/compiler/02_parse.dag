@@ -2038,7 +2038,7 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
 
 fn parse_expr_terminal(
   token_class: Symbol,
-  stamp: StampClass,
+  stamp: TerminalStampMode,
   tokens: List<Token>,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2059,7 +2059,7 @@ fn parse_expr_terminal(
                 )
                 match dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: node_occurrence_minted(id: minted.id)
+                  occurrence_id: minted.id
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
@@ -2070,7 +2070,10 @@ fn parse_expr_terminal(
                       table: table
                     }
                   Rejected { diagnostics: d } =>
-                    ParseExprRejected { diagnostics: d, table: table }
+                    ParseExprRejected {
+                      diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+                      table: table
+                    }
                 }
               } else {
                 let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)

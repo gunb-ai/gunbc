@@ -167,9 +167,10 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
       ]))
     WorkflowCall { inputs: _ } =>
       kv(key: "workflow_call", value: YamlNull)
-    WorkflowRunCompleted { workflows: ws } =>
+    WorkflowRunCompleted { workflows: ws, branches: bs } =>
       kv(key: "workflow_run", value: yaml_mapping(entries: [
         kv(key: "workflows", value: string_list_flow(items: ws)),
+        kv(key: "branches", value: string_list_flow(items: bs)),
         kv(key: "types", value: string_list_flow(items: [workflow_run_activity_completed]))
       ]))
     MergeGroup =>
@@ -194,6 +195,8 @@ fn cancel_in_progress_when_queue_max_yaml(spec: CancelInProgressWhenQueueMax) ->
     QueueMaxCancelInProgressExpression { expression: e } => yaml_string(s: e)
   }
 }
+
+data workflow_run_branches_emission_note: String = "GitHub filters workflow_run by the branch of the TRIGGERING run, documented as `You can use the branches or branches-ignore filter to specify what branches the triggering workflow must run on in order to trigger your workflow` (docs.github.com Events that trigger workflows, workflow_run, read 2026-08-21). That is the same fact a job-level `head_branch ==` condition tests, one grain earlier: the condition skips the job AFTER the run has been created and has entered its concurrency group, while the filter stops the event creating a run at all. The distinction is load-bearing rather than cosmetic -- a created-then-skipped run still occupies a concurrency slot, and in the default group an arriving entry evicts the pending one, so an irrelevant branch could cancel a real pending admission and then do nothing. The member is REQUIRED and emitted unconditionally, matching the Push and PullRequest siblings: a caller declaring this trigger must decide which branches it answers to, and an omitted filter meaning `every branch` is exactly the state that produced the eviction."
 
 data concurrency_queue_max_emission_note: String = "ConcurrencyMappingQueueMax exists to express GitHub's `queue: max`, and until this row it emitted NO queue key — so it serialized byte-identically to ConcurrencyMappingQueueNotMax and the modeled distinction had no realization difference at all (srv1-deploy-serialization-and-false-greens.md §4, second drop). That matters because the two variants mean DIFFERENT THINGS on the platform: the default (QueueNotMax) holds at most one running and one pending entry, and a newly-arriving entry CANCELS the existing pending one, whereas `queue: max` permits multiple pending up to a documented cap of 100 with cancel-in-progress forced false. A caller reaching for QueueMax is asking for the no-cancel queue and was silently getting pending-replacement. `queue` is emitted FIRST so the mapping reads queue-then-group-then-cancel; CancelInProgressWhenQueueMax already models the platform's constraint that cancel-in-progress cannot be true here, so that arm needs no extra guard. Witness: gha_job_projection_witness_test asserts the emitted mapping CONTAINS the queue key and that the two variants no longer serialize identically."
 
