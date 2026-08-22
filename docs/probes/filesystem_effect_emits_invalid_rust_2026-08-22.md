@@ -61,6 +61,34 @@ say the surface is partitioned rather than uniform:
 So the honest statement is that the service-level operation, reached from this position, emits invalid
 Rust — and which positions are emittable is exactly what nobody has written down.
 
+## A second, independent defect in the same mirror: the emitted method ignores its argument
+
+Reading the full emitted `Filesystem` impl (recovered from the deleted mirror in git) shows the
+service methods do not do what they are named. Every one of them — `read`, `write`, `write_owner_only`,
+`delete`, `list` — has the same body shape:
+
+```rust
+/// Modifiers: readonly
+pub async fn read(&self, path: String) -> Result<(String, bool, String), Box<dyn Error>> {
+    if self.dry_run.is_dry_run() { ... panic!("no mock data available ...") }
+    else {
+        let path = format!("{}/{}", self.base_path, "read");   // <- shadows the argument
+        let content = std::fs::read_to_string(&path)?;
+        let parsed: serde_json::Value = serde_json::from_str(&content)?;
+        Ok(serde_json::from_value(parsed)?)
+    }
+}
+```
+
+The caller's `path` is **shadowed by a path built from the operation's own name**, so `Filesystem.Read`
+would read a file literally called `./read` and parse it as JSON, whatever the caller asked for. The
+same substitution appears in all five operations. This is independent of the call-site defect above:
+even if the emitter bound a receiver and marked the caller `async`, the operation would not perform the
+read its contract describes.
+
+Both defects are silent at the `.dag` layer. The first fails at `rustc`; **the second would compile**
+and fail at runtime with a wrong or missing file — which is the more dangerous of the two.
+
 ## Why it matters beyond the lane that found it
 
 Nothing reports this until `rustc`. It is invisible at the `.dag` layer, so it is a standing trap for

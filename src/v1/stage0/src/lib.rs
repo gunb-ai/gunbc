@@ -15,12 +15,10 @@
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
-pub mod dry_run;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_container_oci_digest;
 pub mod extdeps_external_authority;
-pub mod extdeps_filesystem_filesystem_io;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;
@@ -34,8 +32,6 @@ pub mod extdeps_languages_rust_derive_contracts;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
-pub mod extdeps_process_gnu_bash_exit;
-pub mod extdeps_process_posix_exit;
 pub mod extdeps_units_dimensionless;
 pub mod extdeps_units_iec_80000_13;
 pub mod extdeps_units_iso8601;
@@ -79,7 +75,6 @@ pub mod std_occurrence_binding_candidates;
 pub mod std_occurrence_binding_resolve;
 pub mod std_occurrence_identity;
 pub mod std_pareto;
-pub mod std_process;
 pub mod std_process_termination;
 pub mod std_realization_schedule;
 pub mod std_reference_binding_observation;
@@ -143,7 +138,6 @@ pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
-pub mod v1_tests_claim_carrier_realization_census;
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
 pub mod wt_a;
 pub mod wt_b;
