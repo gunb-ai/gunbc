@@ -278,12 +278,32 @@ denominator for the question they answer — and are **not** map collisions. `In
 there as specimens and both are now known to be alias-excluded. `Bool`, `RankingDimension` and
 `TerminationProof` are the three live ones.
 
-**Five-point validation of this document's classifier**, worth recording since the *roughly 80* bound
-rests on it: on every name where ground truth now exists it agrees — `Int` alias/alias (neither),
-`Nat` alias/coproduct (exactly one), and `Bool`, `RankingDimension`, `TerminationProof` all
-both-sides-producing, which is exactly the live three. So the four-name disagreement lies **outside**
-the five names the connective has been read for, and the bound stays *roughly 80* until it is read
-for all of them.
+**The five names ground truth covers validate both classifiers and discriminate neither.** An earlier
+revision of this section called them a five-point validation *of this document's* classifier — the
+sentence that would have travelled, and would have been read as support for 79. The other lane ran
+its own classifier on the same five and also scored 5/5. **The validation set is drawn entirely from
+the region where the two instruments already agree**, and a set assembled from agreement measures
+neither: evidence that both are broadly right, and *zero* evidence about whose four names are wrong.
+
+What the five *do* establish: both classifiers agree with the connective on `Int` (neither side),
+`Nat` (exactly one), and `Bool`, `RankingDimension`, `TerminationProof` (both sides — exactly the live
+three). So the four-name disagreement lies **outside** every name ground truth has been read for — a
+constraint on *where* the gap is, carrying nothing about *whose* side it falls on.
+
+**The general form, which outlives this count:** a validation set assembled from cases two
+instruments agree on measures neither. To discriminate, it must be drawn from the **disagreement** —
+here, the connective for the four names the partitions assign differently. Four rows decide it.
+
+So the diff can be taken without a round trip, this document's two smaller buckets (which with the
+116-name set determine the partition completely):
+
+- **exactly one side produces a summary (13):** `AdmissionState`, `Byte`, `FilePath`,
+  `FixedPointCheck`, `Float32`, `Float64`, `Json`, `Nat`, `NonNegativeInt`, `ObjectId`,
+  `PositiveInt`, `ReservedWordStrategy`, `SourceSpan`
+- **neither side (24):** `Compose`, `CoreNode`, `Float`, `Int`, `Int128`, `Int16`, `Int32`, `Int64`,
+  `Int8`, `IntPlatform`, `List`, `MachineWidth`, `PointerWidth`, `RustPrimitive`,
+  `ShapeFromCatalogInput`, `String`, `UInt`, `UInt128`, `UInt16`, `UInt32`, `UInt64`, `UInt8`,
+  `UIntPlatform`, `Unit`
 
 ### The `Connective` specimen: pool named, and it is a third root
 
