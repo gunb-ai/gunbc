@@ -56,3 +56,77 @@ be the fabricated-plausible-output failure this lane has already corrected itsel
 
 Nor does it establish anything about the *other* 174 E0308 sites, or about T2/T3 under the
 refreshed board.
+
+---
+
+# Addendum: the T2 mechanism, read from in-tree source
+
+The section above declined to name the mechanism behind the four within-position reversals,
+because the emitted Rust is a probe artifact. It turns out the emitted Rust is not needed: the
+chain is readable from committed source, and it is named here with each link's evidence.
+
+## The links
+
+1. `src/v2/std/text.dag` declares **`type String = FreeMonoid<Char>`**. In v2, `String` *is* a
+   sequence of `Char` — an alias, not a distinct carrier.
+2. `src/v2/compiler/01_tokenize.dag` declares `lexeme: String` (on `LexMatchAccepted`,
+   `LexRuleToken`, `LexRuleTrivia`, `LexRuleAnnotation`, `RepeatState`, `DelimitedState`) and
+   constructs those fields with free-monoid operations — `Cons`, `std.algebra.Empty`,
+   `list_append` — at eight sites. **This is correct**, not a source defect: those are exactly
+   `FreeMonoid`'s operations. An earlier reading of mine treated it as a wrong-overload call
+   against `std.source_annotation`'s `advance_line_prefix_indent_only(code_points: List<Int>)` /
+   `..._text(lexeme: String)` pair; link 1 refutes that, and the pair is not implicated.
+3. `src/v1/coercion.dag` `structural_declaration_modules_for` maps
+   `"String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]`, and
+   `decl_file_declares_structurally` matches by `contains(decl_file, m)`.
+4. `src/v1/coercion.dag` `type_reference_decl_file` answers a reference's declaring file from
+   `n.inferred` when it is `Present { Resolved }`, and **otherwise falls back to the reference
+   node's own `ident_span` file**.
+
+## The consequence
+
+Link 4's two arms give one `String` reference two different declaring files depending on whether
+inference resolved *at that reference*:
+
+| arm taken | decl_file answered | roster match (link 3) | rendered as |
+|---|---|---|---|
+| `Present { Resolved }` | `src/v2/std/text.dag` | yes | structural — `Rc<Vector<_>>` |
+| fallback | the referencing module, e.g. `src/v2/compiler/01_tokenize.dag` | no | host `String` |
+
+So the arbitration is not position-in-the-file dependent; it is **resolution dependent**, and two
+sub-expressions of one construct can take different arms. That is precisely the observed
+signature: `tokenize.rs` 228/251/272/340 each carry both directions **at one column**, which a
+file-position rule cannot produce and a per-reference resolution rule produces naturally. The
+`Rc<Vector<i64>>` variants are the same split with `Char` resolved to its code-point width rather
+than left inferred.
+
+`coercion.dag`'s own `type_reference_identity_note` states the governing rule in the repository's
+words — *"the empty string means identity is unknown, which yields NO realization, so a reference
+site that omits identity silently renders structurally"* — and records that this exact class
+already caused one regression (`dag/std/integer.dag` aliases rendering as `crate::std_nat::Nat`
+at eight reference sites). T2 is that class recurring at a different alias.
+
+## Why the designed repair does not reach it
+
+This lane's earlier repair design routed `TypeRealizationDecision`. That does not touch link 4:
+`type_realization_decision` takes `decl_file` as a **parameter**, so it renders faithfully whatever
+identity it is handed. The wrong answer is produced upstream, by the fallback arm, before the
+arbiter is consulted. Routing changes the path and not the answer — which is the horn the parent
+lane raised, now confirmed from the emission side.
+
+## The discriminating RED this predicts
+
+If link 4's fallback arm is the cause, then making it answer *absent* rather than the reference's
+own file must collapse T2's host-`String` side specifically, and must not move T3 at all (T3 has
+zero within-position reversals and a uniform modeled→host direction). Both halves are falsifiable
+against the same board producer.
+
+## Evidentiary boundary
+
+Links 1–4 are read from committed source at branch head; the site population is the 2026-08-21
+board artifact at sha `2a2bd0ad`. The chain from link 4 to the emitted bytes is **not executed
+end-to-end here** — no run in this document ties a specific `tokenize.rs` column to a specific arm
+of `type_reference_decl_file`. It is a mechanism consistent with every measurement taken, and it
+makes the falsifiable prediction above; it is not yet a receipt. The board count it is stated
+against is 339 coded / 135 E0308 at `629252b6df` (measured by the parent lane with provenance
+attached, cited rather than re-measured).
