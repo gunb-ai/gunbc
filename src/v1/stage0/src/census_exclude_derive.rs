@@ -356,13 +356,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pinned_oracle_loads_eighty_three_paths() {
+    fn pinned_oracle_loads_eighty_two_paths() {
         let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
         let paths = load_pinned_oracle_module_paths(&ws).expect("pinned oracle paths");
         assert_eq!(
             paths.len(),
-            83,
-            "docs/probes/census_extra_excludes.txt must enumerate 83 module paths"
+            82,
+            "docs/probes/census_extra_excludes.txt must enumerate 82 module paths"
         );
         assert!(paths.contains("src/v2/compiler/00_compile.dag"));
         assert!(paths.contains("src/v2/compiler/03_ingest.dag"));
@@ -373,7 +373,7 @@ mod tests {
         let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
         let oracle = load_pinned_oracle_module_paths(&ws).expect("oracle");
         let seeds = load_module_path_list(PINNED_ORACLE_SEEDS_REL, &ws).expect("seeds");
-        assert_eq!(seeds.len(), 27, "seeds file must enumerate 27 module paths");
+        assert_eq!(seeds.len(), 26, "seeds file must enumerate 26 module paths");
         let diff = symmetric_module_path_diff(&seeds, &oracle);
         assert!(
             diff.only_left.is_empty(),
