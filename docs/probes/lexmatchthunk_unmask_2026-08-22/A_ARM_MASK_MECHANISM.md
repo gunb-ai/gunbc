@@ -99,16 +99,36 @@ the registered population, the prediction, or the join rule; it adds a control t
 
 **The emitter is nondeterministic.** `royal-dove-436` observed two consecutive emits of the same
 tree, same binary, same environment differing on `v2_lens_enforcement_vocab.rs` and
-`v2_std_cross_tree_resolution.rs`. This is a known class rather than a new regression — the raw
-corpus emit churns 36–40 files run-to-run, and the seed's `--emit-fresh` twice-zero result is
-`rustfmt`-normalized rather than native determinism — but the consequence for this A/B is direct:
-**a single run per arm cannot distinguish a real A→B difference from emitter churn.**
+`v2_std_cross_tree_resolution.rs`, then characterised the class on request:
 
-The A arm published here is one run. So the B arm, when the repair lands, must take **at least two
-emits per arm** and report the within-arm variation beside the across-arm difference; any newly
-visible site that also appears when A is re-run against itself is churn, not exposure. Without that
-control an `unexplained > 0` result — the outcome the pre-registration calls the interesting one —
-could not be told apart from noise, which would waste exactly the arm the experiment exists for.
+- **Shape: pure line reordering.** Across three emits of one unchanged tree, all three pairwise
+  different, the entire difference is one `pub use` line moving one position; line counts identical
+  (336) and the sorted-line test identical. So it is import-emission order — a set or map iteration
+  — not a value nondeterminism.
+- **The churn SET itself varies.** The second run churned only one of the two files. So a single
+  run cannot even establish the churn population, which means **an exclusion list derived from one
+  run is not sound** — a stronger objection than the one this amendment first recorded.
+- **`rustfmt` normalizes it away**, verified by execution with a discriminating control (two files
+  differing only in the order of two `pub use` lines converge byte-identically after formatting).
+
+**What the B arm does with that, and why it is now cheaper than the first version of this
+amendment:** compare **`rustfmt`-normalized** output, which makes this class *unrepresentable in the
+oracle* rather than something measured and subtracted — strictly better than reporting a variation
+number someone then has to interpret. The **≥ 2 emits per arm** control stays, run over normalized
+output: it is now a *detector for any class that survives normalization*, not a subtraction. If it
+returns zero variation the variation report is unnecessary; if it does not, it has found a class
+that matters more than this one and earns its place.
+
+**The caveat, unclosed and stated as such:** this shows the *reordering* class does not survive
+normalization, not that *no* nondeterminism does. The known raw-corpus churn is 36–40 files on the
+full corpus against two files on this closure, and nobody has shown that population is all
+reordering.
+
+**One property of this lane's instrument makes the risk smaller than it looks:** the A/B compares
+**diagnostic boards**, not emitted bytes, and the join rule registered for it already excludes
+generated line numbers — which is the only thing a pure `pub use` reordering can move. The control
+is still required, because that argument covers the characterised class and not the uncharacterised
+remainder.
 
 ## Status: PARKED at the B arm
 
