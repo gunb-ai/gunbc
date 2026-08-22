@@ -2901,11 +2901,38 @@ enforces end to end.
    refused right now. The `v2.*` exemption is the only reason the corpus does not
    show it — the exemption is *masking* seam A, not merely coexisting with it.
 
-   This matters for the seam's disposition rather than for this row's: the decline
-   was reasoned as scope, on a residue surfaced by deleting the exemption. That
-   framing puts seam A inside cut B's blast radius. It is not — cut B only removes
-   the mask. The blast radius is every non-`v2` author who writes an alias of a
-   generic instantiation, and nothing in the repository currently counts them.
+   **This is recorded as a CORRECTED PREMISE, not a reversal, and the decline
+   STANDS.** The repair of seam A was declined at the owning layer (`deep-ant-102`)
+   partly on the ground that the residue was *surfaced by deleting the exemption*,
+   which placed seam A inside cut B's blast radius. **That reading was theirs and
+   they have WITHDRAWN it** on the measurement above: the exemption masks seam A
+   rather than coexisting with it, so cut B removes the mask and does not create
+   the population.
+
+   **The surviving ground is now the only ground, and it never depended on who
+   surfaced the population:** the fix is a resolve-layer change carrying applied
+   forms at the formal position, and row 163's exhaustive case split shows no
+   comparison-seam representative exists — either it retains arguments and admits
+   nothing, or it is the bare constructor and erases the distinction between
+   `ConfigPatchRecord<X>` and `ConfigPatchRecord<Y>`. It is a real, uncosted
+   type-system change. *A design outlives its refuted justification only if
+   someone restates it on true grounds* — leaving a decline standing on a premise
+   known to be false is the same defect as a stale hold, because nothing announces
+   it and the next reader inherits the dead reason as live.
+
+   **What changed in substance, which is not nothing: the affected population is
+   no longer the 9 formatter declarations.** It is every non-`v2` author writing
+   `type Alias = Generic<Arg>` passed at a `Generic<T>` formal, and nothing in the
+   repository counts them. **Strictly larger class, unchanged ceiling.**
+
+   REOPENING CONDITIONS for the declined repair, current as of the re-ruling:
+   (1) someone costs the resolve change on its merits as a type-system change; or
+   (2) a **deliberately dispatched** non-`v2` census returns a count. Explicitly
+   NOT a reopening condition: a third reproduction, or a further demonstration
+   that the class is real — that is established twice over. The census in (2) has
+   deliberately not been run from this row; "not bounded" is not a count, and an
+   unbidden corpus census over a shape is the scope creep the decline exists to
+   prevent.
 
    **Disposition: the deletion REVEALS these seams and the refusal is CORRECT.** Neither is a rung drop
    caused by this change, and neither is repairable in `extdeps` — coercing the 19 sites would be
