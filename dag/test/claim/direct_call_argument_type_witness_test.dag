@@ -1,17 +1,5 @@
 module test.claim.direct_call_argument_type_witness_test
 
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus {
-  active_probe_row,
-  census_blocking_count_for_class,
-  direct_call_arg_type_ordinary_module_red_probe,
-  direct_call_arg_type_v2_green_control_probe,
-  direct_call_arg_type_v2_module_red_probe,
-  probe_row_expectation_holds,
-}
-import std.types { Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Absent, Present }
 
 // THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DOES
 // NOT. The three probes below belong to the guarantee probe corpus and were first authored inside
@@ -30,9 +18,9 @@ import v2.std.optional { Absent, Present }
 // WHAT THIS DOES NOT CLAIM. It does not fix the siblings, and the fact that a whole probe corpus
 // does not execute in the required floor is a finding about the guarantee-recovery evidence base
 // that is larger than this class and is reported separately rather than quietly repaired here.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn direct_call_arg_type_census_of(source: String) -> CompileDiagnosticCensus {
+fn direct_call_arg_type_census_of(source: std.types.String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
@@ -41,23 +29,23 @@ fn direct_call_arg_type_census_of(source: String) -> CompileDiagnosticCensus {
 // same formal, same actual, same call form. The v2 GREEN differs from the v2 RED only in the
 // actual's type. Any wider difference would let a reader attribute a verdict to something other
 // than the axis being tested.
-data direct_call_arg_type_v2_red_source: String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+data direct_call_arg_type_v2_red_source: std.types.String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
 
-data direct_call_arg_type_ordinary_red_source: String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+data direct_call_arg_type_ordinary_red_source: std.types.String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
 
-data direct_call_arg_type_v2_green_source: String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
+data direct_call_arg_type_v2_green_source: std.types.String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
 
 // THE DISCRIMINATING RED for the v2.* direct-call argument-type exemption, and it is EXPECTED-RED
 // today: the exemption is still standing, so the census carries zero blocking diagnostics for this
 // source and this assertion cannot hold. It is rostered in v2.workflow.floor_expected_red with its
 // trigger. Measured on a tree with the exemption deleted (gunbc#8886) it PASSES -- so it is a
 // satisfiable assertion held open by a named cause, not an aspiration.
-test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool {
+test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> std.types.Bool {
   let census = direct_call_arg_type_census_of(source: direct_call_arg_type_v2_red_source)
-  match active_probe_row(probe: direct_call_arg_type_v2_module_red_probe) {
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.direct_call_arg_type_v2_module_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+      gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
+        && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
           Present { value: n } => n >= 1
           Absent => false
         }
@@ -70,12 +58,12 @@ test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> B
 // on the v2 row alone cannot distinguish "the judgment is switched off for v2 callers" from "the
 // harness reds on anything". When the exemption goes, both are green and both are ordinary
 // regression controls.
-test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> Bool {
+test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> std.types.Bool {
   let census = direct_call_arg_type_census_of(source: direct_call_arg_type_ordinary_red_source)
-  match active_probe_row(probe: direct_call_arg_type_ordinary_module_red_probe) {
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.direct_call_arg_type_ordinary_module_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+      gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
+        && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
           Present { value: n } => n >= 1
           Absent => false
         }
@@ -84,10 +72,10 @@ test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch(
 }
 
 // Without this, a seam refusing EVERY argument in a v2.* module would satisfy both reds.
-test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
-  match active_probe_row(probe: direct_call_arg_type_v2_green_control_probe) {
+test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> std.types.Bool {
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.direct_call_arg_type_v2_green_control_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: direct_call_arg_type_census_of(source: direct_call_arg_type_v2_green_source), row: row)
+      gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: direct_call_arg_type_census_of(source: direct_call_arg_type_v2_green_source), row: row)
     Absent => false
   }
 }

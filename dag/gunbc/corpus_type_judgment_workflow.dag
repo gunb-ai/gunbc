@@ -1,29 +1,5 @@
 module gunbc.corpus_type_judgment_workflow
 
-import extdeps.languages.yaml.types { yaml_bool, yaml_int, kv }
-import gunbc.roadmap_execution_contract { CargoCapability }
-import gunbc.workflow_capability_closure {
-  CapabilityAnnotatedStep,
-  StepCapabilityRole,
-  capability_neutral,
-  provides_only,
-  consumes_only,
-  workflow_job_capability_closure,
-  capability_closure_is_closed,
-}
-import v2.std.algebra { list_map }
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowDispatch,
-  WorkflowPermissions, PermRead,
-  checkout_action, setup_rust_action
-}
-import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import std.types { List, String, Int }
 
 // THE CORPUS TYPE-JUDGMENT MEASUREMENT, ON A BUTTON.
 //
@@ -51,9 +27,9 @@ import std.types { List, String, Int }
 // no subject argument, so there is nothing an input could usefully carry, and an input that COULD
 // narrow the corpus is exactly the mechanism by which every previous instrument in this lane
 // reported a closure as the corpus.
-data corpus_type_judgment_workflow_name: String = "Corpus type judgment"
+data corpus_type_judgment_workflow_name: std.types.String = "Corpus type judgment"
 
-data corpus_type_judgment_workflow_job_id: String = "corpus_type_judgment"
+data corpus_type_judgment_workflow_job_id: std.types.String = "corpus_type_judgment"
 
 // A NULLARY ARGV, AND THAT IS THE POINT RATHER THAN AN OMISSION.
 //
@@ -62,19 +38,19 @@ data corpus_type_judgment_workflow_job_id: String = "corpus_type_judgment"
 // `gunbc.ci_layer_roots` authority internally and REFUSES supplied roots, so there is no
 // `--source-root` to render here. The workflow therefore has no spelling for "measure part of it",
 // which is the constraint held as construction rather than as a flag a future editor must not add.
-fn corpus_type_judgment_run_command() -> ArgvCommand {
-  ArgvCommand {
+fn corpus_type_judgment_run_command() -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: ["target/release/claim_executor", "--corpus-type-judgment"],
   }
 }
 
-fn corpus_type_judgment_checkout_step() -> Step {
-  UsesStep {
+fn corpus_type_judgment_checkout_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
-    uses: checkout_action,
+    uses: extdeps.github.actions.checkout_action,
     with: Present {
-      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+      value: [extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 0))]
     },
     env: none,
     if_condition: none,
@@ -88,13 +64,13 @@ fn corpus_type_judgment_checkout_step() -> Step {
 // /home/ghrunner/.cargo that every slot on the host shares, so a cleanup correct for a
 // single-tenant runner removes files other jobs are building against. Same fleet, same home,
 // same consequence -- this is one fact with one home, not a setting copied because it was nearby.
-fn corpus_type_judgment_toolchain_step() -> Step {
-  UsesStep {
+fn corpus_type_judgment_toolchain_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
-    uses: setup_rust_action,
+    uses: extdeps.github.actions.setup_rust_action,
     with: Present {
-      value: [kv(key: "cache", value: yaml_bool(b: false))]
+      value: [extdeps.languages.yaml.types.kv(key: "cache", value: extdeps.languages.yaml.types.yaml_bool(b: false))]
     },
     env: none,
     if_condition: none,
@@ -103,8 +79,8 @@ fn corpus_type_judgment_toolchain_step() -> Step {
   }
 }
 
-fn corpus_type_judgment_build_step() -> Step {
-  RunStep {
+fn corpus_type_judgment_build_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Build the measurement" },
     id: Present { value: "build_corpus_type_judgment" },
     run: "cargo build --release -p v1-compiler --bin claim_executor\n",
@@ -126,16 +102,16 @@ fn corpus_type_judgment_build_step() -> Step {
 // else. There is no typed transport to reach for at this seam — the executor is the constraint.
 //
 // What this file does NOT do is mint a second way of building that payload: the two words of argv
-// come from `corpus_type_judgment_run_command` as an ArgvCommand and are rendered by the shared
-// `shell_command_render`, exactly as gunbc.witness_floor_workflow does. So the string is a
+// come from `corpus_type_judgment_run_command` as an extdeps.exec.command.ArgvCommand and are rendered by the shared
+// `extdeps.exec.command.shell_command_render`, exactly as gunbc.witness_floor_workflow does. So the string is a
 // rendering of a modeled command, not a hand-authored script, and this is one more instance of an
 // existing class rather than a new one.
-fn corpus_type_judgment_run_script() -> String {
+fn corpus_type_judgment_run_script() -> std.types.String {
   concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(gunbc.merge_admission_produce.ci_repo_root_shell(), "\n")),
     concat(
       "cd \"$ROOT\"\n",
-      concat(shell_command_render(command: corpus_type_judgment_run_command()), "\n")
+      concat(extdeps.exec.command.shell_command_render(command: corpus_type_judgment_run_command()), "\n")
     )
   )
 }
@@ -149,12 +125,12 @@ fn corpus_type_judgment_run_script() -> String {
 // a status function is CONJOINED with the default rather than replacing it (the defect
 // gunbc.witness_floor_workflow measured on its own floor step, where a step skipped while its
 // stated condition was true), and a cancelled run should stop rather than proceed.
-fn corpus_type_judgment_precondition() -> String {
+fn corpus_type_judgment_precondition() -> std.types.String {
   "!cancelled() && steps.build_corpus_type_judgment.outcome == 'success'"
 }
 
-fn corpus_type_judgment_run_step() -> Step {
-  RunStep {
+fn corpus_type_judgment_run_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Corpus type judgment (preparation only, no witness executes)" },
     id: none,
     run: corpus_type_judgment_run_script(),
@@ -172,50 +148,50 @@ fn corpus_type_judgment_run_step() -> Step {
 // gunbc.witness_floor_workflow uses, and for the same reason: a second hand-maintained role list
 // beside the step list is the fork the closure exists to close).
 type CorpusTypeJudgmentBoundStep {
-  step: Step
-  role: StepCapabilityRole
-  step_name: String
+  step: extdeps.github.actions.Step
+  role: gunbc.workflow_capability_closure.StepCapabilityRole
+  step_name: std.types.String
 }
 
-fn corpus_type_judgment_bound_steps() -> List<CorpusTypeJudgmentBoundStep> {
+fn corpus_type_judgment_bound_steps() -> std.types.List<CorpusTypeJudgmentBoundStep> {
   [
     CorpusTypeJudgmentBoundStep {
       step: corpus_type_judgment_checkout_step(),
-      role: capability_neutral,
+      role: gunbc.workflow_capability_closure.capability_neutral,
       step_name: "Checkout",
     },
     CorpusTypeJudgmentBoundStep {
       step: corpus_type_judgment_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability]),
+      role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
       step_name: "Install Rust toolchain",
     },
     CorpusTypeJudgmentBoundStep {
       step: corpus_type_judgment_build_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
+      role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
       step_name: "Build the measurement",
     },
     CorpusTypeJudgmentBoundStep {
       step: corpus_type_judgment_run_step(),
-      role: capability_neutral,
+      role: gunbc.workflow_capability_closure.capability_neutral,
       step_name: "Corpus type judgment (preparation only, no witness executes)",
     },
   ]
 }
 
-fn corpus_type_judgment_steps() -> List<Step> {
-  list_map(xs: corpus_type_judgment_bound_steps(), f: fn(b) { b.step })
+fn corpus_type_judgment_steps() -> std.types.List<extdeps.github.actions.Step> {
+  v2.std.algebra.list_map(xs: corpus_type_judgment_bound_steps(), f: fn(b) { b.step })
 }
 
-fn corpus_type_judgment_step_annotations() -> List<CapabilityAnnotatedStep> {
-  list_map(
+fn corpus_type_judgment_step_annotations() -> std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
+  v2.std.algebra.list_map(
     xs: corpus_type_judgment_bound_steps(),
-    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+    f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
   )
 }
 
 fn corpus_type_judgment_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: corpus_type_judgment_step_annotations()),
+  gunbc.workflow_capability_closure.capability_closure_is_closed(
+    v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: corpus_type_judgment_step_annotations()),
   )
 }
 
@@ -229,15 +205,15 @@ fn corpus_type_judgment_capability_closure_holds() -> Bool {
 //
 // RESTORATION TRIGGER: the first completed run replaces it with a real wall time, at which point
 // this note dissolves with the provisional number it explains.
-fn corpus_type_judgment_job_timeout_minutes() -> Int {
+fn corpus_type_judgment_job_timeout_minutes() -> std.types.Int {
   60
 }
 
-fn corpus_type_judgment_job() -> Job {
-  Job {
+fn corpus_type_judgment_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: corpus_type_judgment_workflow_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: gunbc.ci_runner_target.gunbc_ci_selected_runner_spec(),
     steps: corpus_type_judgment_steps(),
     needs: [],
     env: none,
@@ -250,14 +226,14 @@ fn corpus_type_judgment_job() -> Job {
   }
 }
 
-data corpus_type_judgment_workflow: Workflow = {
+data corpus_type_judgment_workflow: extdeps.github.actions.Workflow = {
   name: corpus_type_judgment_workflow_name,
-  on: [WorkflowDispatch { inputs: [] }],
+  on: [extdeps.github.actions.WorkflowDispatch { inputs: [] }],
   concurrency: none,
   env: none,
   permissions: Present {
-    value: WorkflowPermissions {
-      contents: Present { value: PermRead },
+    value: extdeps.github.actions.WorkflowPermissions {
+      contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
       actions: none,
@@ -271,15 +247,15 @@ data corpus_type_judgment_workflow: Workflow = {
 // capability check whose only consumer is a test is specification-without-execution, green forever
 // while the emitter produces the broken workflow beside it. A refusal marker cannot be mistaken for
 // a workflow by the drift gate, which compares bytes.
-data corpus_type_judgment_capability_closure_refusal: String = "REFUSED gunbc.corpus_type_judgment_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in corpus_type_judgment_bound_steps or the order of the steps themselves."
+data corpus_type_judgment_capability_closure_refusal: std.types.String = "REFUSED gunbc.corpus_type_judgment_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in corpus_type_judgment_bound_steps or the order of the steps themselves."
 
 type CorpusTypeJudgmentGenerationOutcome
-  = CorpusTypeJudgmentGenerated { content: String }
+  = CorpusTypeJudgmentGenerated { content: std.types.String }
   | CorpusTypeJudgmentGenerationRefused
 
 fn expected_corpus_type_judgment_yml() -> CorpusTypeJudgmentGenerationOutcome {
   if corpus_type_judgment_capability_closure_holds() {
-    CorpusTypeJudgmentGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: corpus_type_judgment_workflow)) }
+    CorpusTypeJudgmentGenerated { content: extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: corpus_type_judgment_workflow)) }
   } else {
     CorpusTypeJudgmentGenerationRefused
   }

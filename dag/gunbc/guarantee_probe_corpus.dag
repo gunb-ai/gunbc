@@ -533,7 +533,7 @@ fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
 
 fn active_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> GuaranteeProbeRow? {
   match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: probe) {
-    ProbeRowResolved { row: row } => v2.std.optional.Present { value: row }
+    ProbeRowResolved { row: row } => Present { value: row }
     ProbeRowUnknown { wanted: _ } => none
     ProbeRowDuplicate { wanted: _, matches: _ } => none
   }
@@ -541,7 +541,7 @@ fn active_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> Guar
 
 fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeRow? {
   if (row.path as String) == (v1_compile_rust_path_id as String) {
-    v2.std.optional.Present {
+    Present {
       value: V1CompileProbeRow {
         probe: row.probe,
         class: row.class,
@@ -555,7 +555,7 @@ fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeR
 
 fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalProbeRow? {
   if (row.path as String) == (v2_infer_eval_path_id as String) {
-    v2.std.optional.Present {
+    Present {
       value: V2InferEvalProbeRow {
         probe: row.probe,
         class: row.class,
@@ -605,12 +605,12 @@ fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_m
       acc
     } else {
       match acc.prev {
-        Absent => ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+        Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
         Present { value: prev } =>
           if std.string_type.string_is_lexicographically_before(left: prev, right: current) {
-            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+            ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
-            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: false }
+            ProbeLexWalk { prev: Present { value: current }, ok: false }
           }
       }
     }
@@ -647,7 +647,7 @@ fn census_row_count(rows: std.types.List<gunbc.compile_diagnostic_census.Compile
 fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      v2.std.optional.Present {
+      Present {
         value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows), wanted: wanted))
       }
     CensusNotRunnable { cause: _ } => none
@@ -657,7 +657,7 @@ fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.Compi
 fn census_any_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      v2.std.optional.Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
+      Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
     CensusNotRunnable { cause: _ } => none
   }
 }

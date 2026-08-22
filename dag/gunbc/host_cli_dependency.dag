@@ -36,7 +36,7 @@ fn observe_host_cli_dependency(tool: extdeps.tools.CliTool) -> HostCliDependency
 
 fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> extdeps.tools.CliTool? {
   if requirement.tool == npm_cli_tool.name {
-    v2.std.optional.Present { value: extdeps.tools.npm.npm_cli_tool }
+    Present { value: extdeps.tools.npm.npm_cli_tool }
   } else {
     none
   }
@@ -48,17 +48,17 @@ fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDepend
     empty: none,
     cons: fn(acc, requirement) {
       match acc {
-        Present { value: found } => v2.std.optional.Present { value: found }
+        Present { value: found } => Present { value: found }
         Absent =>
           match cli_tool_for_enrollment_requirement(requirement: requirement) {
             Present { value: tool } =>
               match observe_host_cli_dependency(tool: tool) {
                 HostCliDependencyAbsent { tool: t, hint: h } =>
-                  v2.std.optional.Present { value: HostCliDependencyAbsent { tool: t, hint: h } }
+                  Present { value: HostCliDependencyAbsent { tool: t, hint: h } }
                 HostCliDependencyPresent => none
               }
             Absent =>
-              v2.std.optional.Present {
+              Present {
                 value: HostCliDependencyAbsent {
                   tool: requirement.tool,
                   hint: requirement.provision as String,

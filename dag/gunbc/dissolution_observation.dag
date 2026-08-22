@@ -1,28 +1,5 @@
 module gunbc.dissolution_observation
 
-import std.roster_frontier {
-  FrontierRow,
-  FrontierExpiryReport,
-  fold_frontier_expiry,
-}
-import std.dissolution {
-  DissolutionCondition,
-  BoundDissolution,
-  UnboundDissolution,
-  dissolution_is_bound,
-  dissolution_trigger_ref,
-}
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.decl_ref_resolution {
-  resolve_declaration_ref,
-  DeclarationRefResolved,
-  DeclarationRefModuleAbsent,
-  DeclarationRefDeclarationAbsent,
-  DeclarationRefFieldAbsent,
-  DeclarationRefAmbiguous,
-}
 
 // THE POPULATION THE FOLD IS ANSWERED AGAINST, AND WHY IT USED TO BE EMPTY.
 //
@@ -40,58 +17,58 @@ import v2.std.decl_ref_resolution {
 // mass-silencing the other — so nothing here answers a ref it could not resolve.
 data dissolution_census_pool_roots: List<String> = ["dag", "src/v2"]
 
-fn dissolution_census_facts() -> List<DeclFact> {
-  decl_facts(pool_roots: dissolution_census_pool_roots)
+fn dissolution_census_facts() -> List<v2.std.decl_index.DeclFact> {
+  v2.std.decl_index.decl_facts(pool_roots: dissolution_census_pool_roots)
 }
 
-fn dissolution_census_modules() -> List<ModuleDeclarationFact> {
-  module_declaration_facts_live(pool_roots: dissolution_census_pool_roots)
+fn dissolution_census_modules() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
+  v2.lens.module_graph.module_declaration_facts_live(pool_roots: dissolution_census_pool_roots)
 }
 
-fn frontier_row_trigger_refs(row: FrontierRow) -> List<DeclarationRef> {
+fn frontier_row_trigger_refs(row: std.roster_frontier.FrontierRow) -> List<std.decl_ref.DeclarationRef> {
   match row.dissolution {
-    BoundDissolution { trigger: t } => [dissolution_trigger_ref(trigger: t)]
-    UnboundDissolution { description: _ } => []
+    std.dissolution.BoundDissolution { trigger: t } => [std.dissolution.dissolution_trigger_ref(trigger: t)]
+    std.dissolution.UnboundDissolution { description: _ } => []
   }
 }
 
-fn census_trigger_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+fn census_trigger_refs(rows: List<std.roster_frontier.FrontierRow>) -> List<std.decl_ref.DeclarationRef> {
   flat_map(rows, row => frontier_row_trigger_refs(row: row))
 }
 
 // A MODULE THE DECLARATION INDEX DOES NOT COVER IS NOT A MODULE WHOSE DECLARATIONS ARE
-// GONE, and conflating the two is the whole hazard. `decl_facts` deliberately skips test
+// GONE, and conflating the two is the whole hazard. `v2.std.decl_index.decl_facts` deliberately skips test
 // `.dag` files while `module_declaration_facts` still reports their modules, so a ref
 // into a witness module resolves as DeclarationAbsent for a reason that has nothing to
 // do with the tree. `std.decl_ref` already names this state
 // (`OutsideDeclIndexTestWitnessModule`); here it is DERIVED rather than pattern-matched
 // on a path convention — a module is outside the index exactly when the index carries no
 // declaration from its file at all.
-fn module_rel_path(module_path: String, modules: List<ModuleDeclarationFact>) -> String {
+fn module_rel_path(module_path: String, modules: List<v2.lens.module_graph.ModuleDeclarationFact>) -> String {
   fold(modules, init: "", f: fn(acc, m) { if m.module == module_path { m.path } else { acc } })
 }
 
-fn index_covers_rel_path(rel_path: String, facts: List<DeclFact>) -> Bool {
+fn index_covers_rel_path(rel_path: String, facts: List<v2.std.decl_index.DeclFact>) -> Bool {
   fold(facts, init: false, f: fn(acc, f) { acc || f.rel_path == rel_path })
 }
 
 type CensusRefVerdict
-  = CensusRefPresent { ref: DeclarationRef }
-  | CensusRefAbsent { ref: DeclarationRef }
-  | CensusRefOutsideIndex { ref: DeclarationRef }
-  | CensusRefAmbiguous { ref: DeclarationRef }
+  = CensusRefPresent { ref: std.decl_ref.DeclarationRef }
+  | CensusRefAbsent { ref: std.decl_ref.DeclarationRef }
+  | CensusRefOutsideIndex { ref: std.decl_ref.DeclarationRef }
+  | CensusRefAmbiguous { ref: std.decl_ref.DeclarationRef }
 
 fn census_ref_verdict(
-  ref: DeclarationRef,
-  facts: List<DeclFact>,
-  modules: List<ModuleDeclarationFact>,
+  ref: std.decl_ref.DeclarationRef,
+  facts: List<v2.std.decl_index.DeclFact>,
+  modules: List<v2.lens.module_graph.ModuleDeclarationFact>,
 ) -> CensusRefVerdict {
-  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
-    DeclarationRefResolved { declaration_identity: _ } => CensusRefPresent { ref: ref }
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => CensusRefAmbiguous { ref: ref }
-    DeclarationRefFieldAbsent { reference: _ } => CensusRefAbsent { ref: ref }
-    DeclarationRefModuleAbsent { reference: _ } => CensusRefAbsent { ref: ref }
-    DeclarationRefDeclarationAbsent { reference: _ } =>
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => CensusRefPresent { ref: ref }
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => CensusRefAmbiguous { ref: ref }
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => CensusRefAbsent { ref: ref }
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => CensusRefAbsent { ref: ref }
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } =>
       if index_covers_rel_path(
         rel_path: module_rel_path(module_path: ref.module_path as String, modules: modules),
         facts: facts,
@@ -121,7 +98,7 @@ fn census_ref_is_undecided(verdict: CensusRefVerdict) -> Bool {
   }
 }
 
-fn census_ref_verdict_ref(verdict: CensusRefVerdict) -> DeclarationRef {
+fn census_ref_verdict_ref(verdict: CensusRefVerdict) -> std.decl_ref.DeclarationRef {
   match verdict {
     CensusRefPresent { ref: r } => r
     CensusRefAbsent { ref: r } => r
@@ -131,9 +108,9 @@ fn census_ref_verdict_ref(verdict: CensusRefVerdict) -> DeclarationRef {
 }
 
 fn census_ref_verdicts(
-  rows: List<FrontierRow>,
-  facts: List<DeclFact>,
-  modules: List<ModuleDeclarationFact>,
+  rows: List<std.roster_frontier.FrontierRow>,
+  facts: List<v2.std.decl_index.DeclFact>,
+  modules: List<v2.lens.module_graph.ModuleDeclarationFact>,
 ) -> List<CensusRefVerdict> {
   census_trigger_refs(rows: rows)
     |> map(ref => census_ref_verdict(ref: ref, facts: facts, modules: modules))
@@ -143,13 +120,13 @@ fn census_ref_verdicts(
 // no qualified-name reprojection stands between the resolver's answer and the fold's
 // `declaration_ref_eq`, and field grain is preserved because the resolver already
 // decided it.
-fn census_present_decls(verdicts: List<CensusRefVerdict>) -> List<DeclarationRef> {
+fn census_present_decls(verdicts: List<CensusRefVerdict>) -> List<std.decl_ref.DeclarationRef> {
   verdicts
     |> filter(v => census_ref_is_present(verdict: v))
     |> map(v => census_ref_verdict_ref(verdict: v))
 }
 
-fn census_undecided_refs(verdicts: List<CensusRefVerdict>) -> List<DeclarationRef> {
+fn census_undecided_refs(verdicts: List<CensusRefVerdict>) -> List<std.decl_ref.DeclarationRef> {
   verdicts
     |> filter(v => census_ref_is_undecided(verdict: v))
     |> map(v => census_ref_verdict_ref(verdict: v))
@@ -160,13 +137,13 @@ fn census_undecided_refs(verdicts: List<CensusRefVerdict>) -> List<DeclarationRe
 // silently fire one trigger direction. The verdict carries the located refs so the
 // deficit is countable and prioritizable rather than absorbed.
 type DissolutionCensusVerdict
-  = DissolutionCensusAnswered { report: FrontierExpiryReport }
-  | DissolutionCensusRefused { undecided: List<DeclarationRef> }
+  = DissolutionCensusAnswered { report: std.roster_frontier.FrontierExpiryReport }
+  | DissolutionCensusRefused { undecided: List<std.decl_ref.DeclarationRef> }
 
 fn dissolution_census_verdict_for(
-  rows: List<FrontierRow>,
-  facts: List<DeclFact>,
-  modules: List<ModuleDeclarationFact>,
+  rows: List<std.roster_frontier.FrontierRow>,
+  facts: List<v2.std.decl_index.DeclFact>,
+  modules: List<v2.lens.module_graph.ModuleDeclarationFact>,
 ) -> DissolutionCensusVerdict {
   let verdicts = census_ref_verdicts(rows: rows, facts: facts, modules: modules)
   let undecided = census_undecided_refs(verdicts: verdicts)
@@ -174,7 +151,7 @@ fn dissolution_census_verdict_for(
     DissolutionCensusRefused { undecided: undecided }
   } else {
     DissolutionCensusAnswered {
-      report: fold_frontier_expiry(
+      report: std.roster_frontier.fold_frontier_expiry(
         rows: rows,
         present_decls: census_present_decls(verdicts: verdicts),
       ),

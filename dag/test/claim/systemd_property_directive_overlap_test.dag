@@ -1,16 +1,5 @@
 module test.claim.systemd_property_directive_overlap
 
-import gunbc.systemd_property_directive_overlap {
-  systemd_property_writability,
-  systemd_property_is_settable,
-  systemd_unit_property_mixes_writability,
-  settable_property_wires,
-  observation_only_property_wires,
-  systemd_property_consumers,
-  systemd_property_directive_overlap_dissolution,
-}
-import extdeps.systemd { MemoryMax, MemoryCurrent, ActiveState, TasksMax, systemd_unit_property_wire }
-import std.dissolution { dissolution_trigger_ref, DissolutionCondition, BoundDissolution, UnboundDissolution }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,10 +11,10 @@ data overlap_witness_doc: String = "WHAT THESE WITNESSES ARE FOR, given the carr
 // two directions are pinned separately rather than through one aggregate that a single mistake
 // could leave green.
 test fn a_settable_knob_and_a_read_only_observation_classify_apart() -> Bool {
-  systemd_property_is_settable(property: MemoryMax)
-    && systemd_property_is_settable(property: TasksMax)
-    && !systemd_property_is_settable(property: MemoryCurrent)
-    && !systemd_property_is_settable(property: ActiveState)
+  gunbc.systemd_property_directive_overlap.systemd_property_is_settable(property: extdeps.systemd.MemoryMax)
+    && gunbc.systemd_property_directive_overlap.systemd_property_is_settable(property: extdeps.systemd.TasksMax)
+    && !gunbc.systemd_property_directive_overlap.systemd_property_is_settable(property: extdeps.systemd.MemoryCurrent)
+    && !gunbc.systemd_property_directive_overlap.systemd_property_is_settable(property: extdeps.systemd.ActiveState)
 }
 
 // THE CONFLATION IS PRESENT TODAY. This is the carrier's central factual claim and the thing a
@@ -33,9 +22,9 @@ test fn a_settable_knob_and_a_read_only_observation_classify_apart() -> Bool {
 // rather than as a population size, so it survives upstream adding a member and goes false only on
 // the split that is this row's dissolution.
 test fn the_show_surface_currently_mixes_writability() -> Bool {
-  systemd_unit_property_mixes_writability()
-    && (settable_property_wires().count() > 0)
-    && (observation_only_property_wires().count() > 0)
+  gunbc.systemd_property_directive_overlap.systemd_unit_property_mixes_writability()
+    && (gunbc.systemd_property_directive_overlap.settable_property_wires().count() > 0)
+    && (gunbc.systemd_property_directive_overlap.observation_only_property_wires().count() > 0)
 }
 
 // THE DISCRIMINATING CONTROL: the two projections are DISJOINT. A classification that quietly
@@ -44,22 +33,22 @@ test fn the_show_surface_currently_mixes_writability() -> Bool {
 // the requirement that no wire name appears on both sides -- which is also the property the future
 // unification must preserve when it derives the directive vocabulary from the knob authority.
 test fn no_property_is_both_settable_and_observation_only() -> Bool {
-  let settable = settable_property_wires()
+  let settable = gunbc.systemd_property_directive_overlap.settable_property_wires()
   fold(
-    observation_only_property_wires(),
+    gunbc.systemd_property_directive_overlap.observation_only_property_wires(),
     init: true,
     f: (acc, w) => acc && !(settable |> any(s => s == w)),
   )
 }
 
 // THE MEMBER THAT MAKES THE REUSE UNSAFE, named explicitly rather than left implicit in the
-// classification. `MemoryCurrent` is the specimen: it is what systemctl reports and what no unit
+// classification. `extdeps.systemd.MemoryCurrent` is the specimen: it is what systemctl reports and what no unit
 // file may assign, so a directive type admitting it can spell a unit systemd rejects. If this ever
 // classifies settable, the argument in the carrier's header has silently inverted.
 test fn memory_current_is_the_specimen_that_forbids_reusing_the_show_surface() -> Bool {
-  !systemd_property_is_settable(property: MemoryCurrent)
-    && (systemd_unit_property_wire(property: MemoryCurrent) as String == "MemoryCurrent")
-    && (observation_only_property_wires() |> any(w => w == "MemoryCurrent"))
+  !gunbc.systemd_property_directive_overlap.systemd_property_is_settable(property: extdeps.systemd.MemoryCurrent)
+    && (extdeps.systemd.systemd_unit_property_wire(property: extdeps.systemd.MemoryCurrent) as String == "MemoryCurrent")
+    && (gunbc.systemd_property_directive_overlap.observation_only_property_wires() |> any(w => w == "MemoryCurrent"))
 }
 
 // THE DISSOLUTION NAMES A DECLARATION THAT EXISTS NOW. That is the property DeclarationRetires has
@@ -67,13 +56,13 @@ test fn memory_current_is_the_specimen_that_forbids_reusing_the_show_surface() -
 // a forward trigger naming an undeclared symbol is unverifiable at authoring time, and this one is
 // checkable against the corpus today.
 test fn the_dissolution_retires_the_mixed_coproduct_by_name() -> Bool {
-  match systemd_property_directive_overlap_dissolution {
-    BoundDissolution { trigger: t } => {
-      let r = dissolution_trigger_ref(trigger: t)
+  match gunbc.systemd_property_directive_overlap.systemd_property_directive_overlap_dissolution {
+    std.dissolution.BoundDissolution { trigger: t } => {
+      let r = std.dissolution.dissolution_trigger_ref(trigger: t)
       (r.module_path as String == "extdeps.systemd")
         && (r.decl_name as String == "SystemdUnitProperty")
     }
-    UnboundDissolution { description: _ } => false
+    std.dissolution.UnboundDissolution { description: _ } => false
   }
 }
 
@@ -81,7 +70,7 @@ test fn the_dissolution_retires_the_mixed_coproduct_by_name() -> Bool {
 // travels typed to a few consumers and stringified to the rest; a roster that had collapsed to one
 // role would mean the finding had been mis-measured, not that the tree had improved.
 test fn the_consumer_roster_records_more_than_one_role() -> Bool {
-  let typed = filter(systemd_property_consumers, c => match c.role { ShowArgvTyped => true, _ => false })
-  let stringified = filter(systemd_property_consumers, c => match c.role { ShowArgvTyped => false, _ => true })
+  let typed = filter(gunbc.systemd_property_directive_overlap.systemd_property_consumers, c => match c.role { ShowArgvTyped => true, _ => false })
+  let stringified = filter(gunbc.systemd_property_directive_overlap.systemd_property_consumers, c => match c.role { ShowArgvTyped => false, _ => true })
   (typed.count() > 0) && (stringified.count() > 0)
 }

@@ -1,53 +1,36 @@
 module gunbc.dissolution_census
 
-import std.roster_frontier {
-  FrontierRow,
-  frontier_expiry_clean,
-  frontier_rows_well_formed,
-}
-import std.dissolution { DissolutionCondition, dissolution_is_bound }
-import std.decl_ref { declaration_ref_display_key }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import gunbc.dissolution_observation {
-  DissolutionCensusVerdict,
-  DissolutionCensusAnswered,
-  DissolutionCensusRefused,
-  dissolution_census_pool_roots,
-  dissolution_census_facts,
-  dissolution_census_modules,
-  dissolution_census_verdict_for,
-}
 
 // THE CENSUS IS THE ROSTER-BEARING HALF. The mechanism — resolving a trigger ref against
 // the live declaration index and refusing what it cannot decide — lives in
 // gunbc.dissolution_observation, which imports no roster, so a consumer that wants the
 // mechanism does not acquire this module's ~20-module extdeps fan-in to get it.
-fn dissolution_census_verdict() -> DissolutionCensusVerdict {
-  dissolution_census_verdict_for(
-    rows: census_closure_frontier_rows(),
-    facts: dissolution_census_facts(),
-    modules: dissolution_census_modules(),
+fn dissolution_census_verdict() -> gunbc.dissolution_observation.DissolutionCensusVerdict {
+  gunbc.dissolution_observation.dissolution_census_verdict_for(
+    rows: gunbc.census_closure_frontier.census_closure_frontier_rows(),
+    facts: gunbc.dissolution_observation.dissolution_census_facts(),
+    modules: gunbc.dissolution_observation.dissolution_census_modules(),
   )
 }
 
-fn dissolution_census_refused_keys(verdict: DissolutionCensusVerdict) -> List<String> {
+fn dissolution_census_refused_keys(verdict: gunbc.dissolution_observation.DissolutionCensusVerdict) -> List<String> {
   match verdict {
-    DissolutionCensusAnswered { report: _ } => []
-    DissolutionCensusRefused { undecided: u } =>
-      u |> map(r => declaration_ref_display_key(ref: r))
+    gunbc.dissolution_observation.DissolutionCensusAnswered { report: _ } => []
+    gunbc.dissolution_observation.DissolutionCensusRefused { undecided: u } =>
+      u |> map(r => std.decl_ref.declaration_ref_display_key(ref: r))
   }
 }
 
 fn dissolution_census_holds() -> Bool {
-  std.roster_frontier.frontier_rows_well_formed(rows: census_closure_frontier_rows())
+  std.roster_frontier.frontier_rows_well_formed(rows: gunbc.census_closure_frontier.census_closure_frontier_rows())
     && match dissolution_census_verdict() {
-      DissolutionCensusRefused { undecided: _ } => false
-      DissolutionCensusAnswered { report: r } => std.roster_frontier.frontier_expiry_clean(report: r)
+      gunbc.dissolution_observation.DissolutionCensusRefused { undecided: _ } => false
+      gunbc.dissolution_observation.DissolutionCensusAnswered { report: r } => std.roster_frontier.frontier_expiry_clean(report: r)
     }
 }
 
 fn frontier_rows_bound_count(rows: List<std.roster_frontier.FrontierRow>) -> Int {
   fold(rows, init: 0, f: fn(acc, row) {
-    if dissolution_is_bound(condition: row.dissolution) { acc + 1 } else { acc }
+    if std.dissolution.dissolution_is_bound(condition: row.dissolution) { acc + 1 } else { acc }
   })
 }

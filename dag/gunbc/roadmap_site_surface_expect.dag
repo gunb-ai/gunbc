@@ -35,7 +35,7 @@ fn healthz_projected_members(doc: extdeps.languages.json.emit.JsonValue) -> List
 fn healthz_projection_of_doc(doc: extdeps.languages.json.emit.JsonValue) -> String? {
   let members = healthz_projected_members(doc: doc)
   if length(members) == healthz_surface_projection_member_count {
-    v2.std.optional.Present { value: extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: members)) }
+    Present { value: extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: members)) }
   } else {
     none
   }

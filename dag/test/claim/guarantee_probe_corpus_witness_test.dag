@@ -1,120 +1,29 @@
 module test.claim.guarantee_probe_corpus_witness_test
 
-import extdeps.filesystem.filesystem_io
-import std.materialization_ladder { string_list_contains }
-import gunbc.guarantee_probe_corpus {
-  guarantee_probe_corpus_charter_note,
-  v1_compile_rust_path_id,
-  v2_infer_eval_path_id,
-  guarantee_probe_paths,
-  guarantee_probe_rows,
-  guarantee_probe_class_ids,
-  guarantee_probe_ids,
-  bare_none_field_admission_class,
-  bare_none_scalar_red_probe,
-  bare_none_collection_red_probe,
-  bare_none_green_probe,
-  call_label_surplus_class,
-  method_established_surface_class,
-  declared_conformance_ground_class,
-  v2_self_grounding_frontier_class,
-  call_mislabel_red_probe,
-  call_surplus_red_probe,
-  call_deficit_red_probe,
-  call_shape_green_probe,
-  call_duplicate_red_probe,
-  call_duplicate_green_probe,
-  method_missing_red_probe,
-  method_green_probe,
-  conformance_scalar_red_probe,
-  conformance_green_probe,
-  direct_call_arg_type_v2_module_red_probe,
-  direct_call_arg_type_ordinary_module_red_probe,
-  direct_call_arg_type_v2_green_control_probe,
-  sole_constructor_cross_module_class,
-  sole_ctor_forged_red_probe,
-  sole_ctor_green_probe,
-  sole_ctor_mint_fn_hole_probe,
-  sole_ctor_cast_red_probe,
-  sole_ctor_unadmitted_caller_red_probe,
-  sole_ctor_admitted_caller_green_probe,
-  v2_frontier_red_probe,
-  v2_frontier_green_probe,
-  ProbeExpectation,
-  ExpectBlockingRefusal,
-  ExpectZeroDiagnostics,
-  probe_expectation_holds,
-  probe_row_expectation_holds,
-  probe_observation_from_census,
-  observation_is_blocking_refusal,
-  observation_is_clean,
-  observation_refused_count,
-  build_v1_compile_receipt,
-  receipt_joins_v1_compile_path,
-  receipt_matches_probe_row,
-  receipt_matches_v1_compile_probe_row,
-  active_probe_row,
-  active_v1_compile_probe_row,
-  executed_probe_ids_for_probe,
-  resolve_canonical_probe_row,
-  canonical_probe_row_resolution_refuses_duplicate_population,
-  ProbeRowResolved,
-  ProbeRowUnknown,
-  ProbeRowDuplicate,
-  census_blocking_count_for_class,
-  census_any_count_for_class,
-  guarantee_probe_id_strings,
-  probe_ids_are_lexicographically_ordered,
-  synthetic_program_subject_revision,
-  v1_compile_harness_revision,
-  v1_compile_harness_source_paths,
-  v2_infer_eval_harness_source_paths,
-  guarantee_probe_dark_suite_dispositions,
-  DarkSuiteWitnessDisposition,
-  MigratedToEnrolledDagProbe,
-}
-import gunbc.guarantee_measurement {
-  observed_is_verdict,
-  MeasurementRevision, ContentFingerprint, GitRevision,
-  guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
-  probe_set_digest,
-}
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_rows_of_class,
-  census_total_count,
-}
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import v2.std.algebra { fold_list }
-import v2.std.live_tree { v2.std.live_tree.LiveTreeDisposition, v2.std.live_tree.ReadsLiveTree }
-import v2.std.optional { Present, Absent }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.v2.std.live_tree.ReadsLiveTree
 
-data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) execute through gunbc.guarantee_measurement identities. gunbc#7555 (InferToTranslate) is OPEN and introduces no identities in this slice — that lane lands its own registry rows when it merges. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag."
+data guarantee_probe_corpus_witness_scope_note: std.types.String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) execute through gunbc.guarantee_measurement identities. gunbc#7555 (InferToTranslate) is OPEN and introduces no identities in this slice — that lane lands its own registry rows when it merges. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag."
 
-fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
+fn census_of(source: std.types.String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn measured_harness_source_material(paths: std.types.List<String>) -> std.types.NonEmptyStr {
-  v2.std.algebra.fold_list(
+fn measured_harness_source_material(paths: v2.std.live_tree.std.types.List<std.types.String>) -> v2.std.live_tree.std.types.NonEmptyStr {
+  v2.std.live_tree.v2.std.algebra.fold_list(
     xs: paths,
-    empty: "guarantee-probe-harness-source" as std.types.NonEmptyStr,
+    empty: "guarantee-probe-harness-source" as v2.std.live_tree.std.types.NonEmptyStr,
     cons: fn(acc, path) {
       let read = filesystem_read(path: path)
       concat(
-        concat(concat(acc as String, "\n=== "), path as String),
-        concat(" ===\n", read.content as String),
-      ) as std.types.NonEmptyStr
+        concat(concat(acc as std.types.String, "\n=== "), path as std.types.String),
+        concat(" ===\n", read.content as std.types.String),
+      ) as v2.std.live_tree.std.types.NonEmptyStr
     },
   )
 }
 
-fn measured_v1_compile_harness_source() -> std.types.NonEmptyStr {
+fn measured_v1_compile_harness_source() -> v2.std.live_tree.std.types.NonEmptyStr {
   measured_harness_source_material(paths: gunbc.guarantee_probe_corpus.v1_compile_harness_source_paths())
 }
 
@@ -130,80 +39,80 @@ fn witness_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId)
     Absent =>
       gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: probe,
-        expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as std.types.NonEmptyStr },
+        expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as v2.std.live_tree.std.types.NonEmptyStr },
         harness_source: harness_source,
       )
   }
 }
 
-data bare_none_scalar_red_source: String = "module probe_bare_none_scalar\ntype Diags = None | Some { n: Int }\ntype Holder { n: Int }\nfn f() -> Holder { Holder { n: None } }\n"
+data bare_none_scalar_red_source: std.types.String = "module probe_bare_none_scalar\ntype Diags = None | Some { n: Int }\ntype Holder { n: Int }\nfn f() -> Holder { Holder { n: None } }\n"
 
-data bare_none_collection_red_source: String = "module probe_bare_none_collection\ntype Diags = None | Some { n: Int }\ntype ListHolder { xs: List<Int> }\ntype StrHolder { s: String }\nfn f() -> ListHolder { ListHolder { xs: None } }\nfn g() -> StrHolder { StrHolder { s: None } }\n"
+data bare_none_collection_red_source: std.types.String = "module probe_bare_none_collection\ntype Diags = None | Some { n: Int }\ntype ListHolder { xs: List<Int> }\ntype StrHolder { s: String }\nfn f() -> ListHolder { ListHolder { xs: None } }\nfn g() -> StrHolder { StrHolder { s: None } }\n"
 
-data bare_none_green_source: String = "module probe_bare_none_green\ntype Diags = None | Some { n: Int }\ntype OptHolder { n: Int? }\ntype DiagHolder { d: Diags }\nfn optional_field() -> OptHolder { OptHolder { n: None } }\nfn none_variant_field() -> DiagHolder { DiagHolder { d: None } }\nfn some_variant_field() -> DiagHolder { DiagHolder { d: Some { n: 1 } } }\n"
+data bare_none_green_source: std.types.String = "module probe_bare_none_green\ntype Diags = None | Some { n: Int }\ntype OptHolder { n: Int? }\ntype DiagHolder { d: Diags }\nfn optional_field() -> OptHolder { OptHolder { n: None } }\nfn none_variant_field() -> DiagHolder { DiagHolder { d: None } }\nfn some_variant_field() -> DiagHolder { DiagHolder { d: Some { n: 1 } } }\n"
 
-data bare_none_generic_parameter_boundary_source: String = "module probe_bare_none_generic\ntype Maybe = None | Some { n: Int }\ntype Box<T> { v: T }\nfn red_generic() -> Box<Int> { Box { v: None } }\nfn green_generic() -> Box<Maybe> { Box { v: None } }\n"
+data bare_none_generic_parameter_boundary_source: std.types.String = "module probe_bare_none_generic\ntype Maybe = None | Some { n: Int }\ntype Box<T> { v: T }\nfn red_generic() -> Box<Int> { Box { v: None } }\nfn green_generic() -> Box<Maybe> { Box { v: None } }\n"
 
-data bare_none_generic_parameter_boundary_note: String = "THIS TEST ASSERTS A MISS, DELIBERATELY, AND IT IS SUPPOSED TO FLIP. The wall decides admissibility from the DECLARED side, so it can only fire where the declared field type resolves at the construction site. Where the field is declared as a type PARAMETER, generic substitution has not happened at the node the check reads, so `Box<Int> \{ v: None }` — a bare `None` in a field that cannot carry absence — is ACCEPTED. That is a genuine miss, and this is its specimen. WHY IT IS ENROLLED RATHER THAN DESCRIBED: a boundary written only in prose is invisible to every gate — nothing reds if the miss widens, and nothing announces the day it closes. This witness does both. It goes RED if a future change makes the wall refuse the generic position, which is the moment the boundary DISSOLVES and this test must be inverted to an ordinary refusal assertion beside the other REDs. It is therefore a dissolution trigger with a mechanism, not a contract blessing the gap. WHY THE OBVIOUS FIX DOES NOT REACH IT, tested rather than reasoned: infer_record_lit_structural already prefers record_lit_instantiated_fields, but that helper requires `expected` Present with children, and a `data d: Box<Int> = ...` annotation does not flow through as `expected`, so the fallback yields the uninstantiated template fields. Swapping the wall's identity guard from authored-name-nonempty to type-shape-not-Primitive() was built and run: the generic site was STILL missed, which is the discriminating evidence that no substituted node arrives here at all. NEXT-RUNG TRIGGER, named as the mechanism rather than the symptom: the declaration annotation reaching the record-literal position as `expected`, which is what would let the existing instantiation helper answer."
+data bare_none_generic_parameter_boundary_note: std.types.String = "THIS TEST ASSERTS A MISS, DELIBERATELY, AND IT IS SUPPOSED TO FLIP. The wall decides admissibility from the DECLARED side, so it can only fire where the declared field type resolves at the construction site. Where the field is declared as a type PARAMETER, generic substitution has not happened at the node the check reads, so `Box<Int> \{ v: None }` — a bare `None` in a field that cannot carry absence — is ACCEPTED. That is a genuine miss, and this is its specimen. WHY IT IS ENROLLED RATHER THAN DESCRIBED: a boundary written only in prose is invisible to every gate — nothing reds if the miss widens, and nothing announces the day it closes. This witness does both. It goes RED if a future change makes the wall refuse the generic position, which is the moment the boundary DISSOLVES and this test must be inverted to an ordinary refusal assertion beside the other REDs. It is therefore a dissolution trigger with a mechanism, not a contract blessing the gap. WHY THE OBVIOUS FIX DOES NOT REACH IT, tested rather than reasoned: infer_record_lit_structural already prefers record_lit_instantiated_fields, but that helper requires `expected` Present with children, and a `data d: Box<Int> = ...` annotation does not flow through as `expected`, so the fallback yields the uninstantiated template fields. Swapping the wall's identity guard from authored-name-nonempty to type-shape-not-Primitive() was built and run: the generic site was STILL missed, which is the discriminating evidence that no substituted node arrives here at all. NEXT-RUNG TRIGGER, named as the mechanism rather than the symptom: the declaration annotation reaching the record-literal position as `expected`, which is what would let the existing instantiation helper answer."
 
-data bare_none_field_admission_scope_note: String = "THE CLASS: a bare `None` reference carries absence and nothing else, so a construction position whose declared field type cannot carry absence must refuse it. MEASURED ON THE PRE-WALL BINARY (the discriminating fact, not a prediction): bare_none_scalar_red_source and bare_none_collection_red_source both compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` for `n: Int` — a Rust program the declared type refutes, produced silently, which is the below-floor class DESIGN 4b names (values inhabit declared types). THE GREEN CONTROL IS TWO-ARMED ON PURPOSE, because a wall that refuses every bare `None` would be indistinguishable from this one on the REDs alone: optional_field is the `T?` carrier and none_variant_field is a coproduct declaring its own `None` variant at its own level (the shape std.cache_interface AuthScope and v2.std.diagnostic Diagnostics both have, and the reason ~561 corpus sites are legitimate). some_variant_field holds the sibling arm green so the control cannot pass by the field type being unresolved. WHY A SYNTACTIC SLICE RATHER THAN THE GENERAL CONFORMANCE RULE: v1.compiler.infer conformance_unjudged_live_hole_note records five attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity; a bare `None` needs none, since admissibility is decided entirely from the declared side."
+data bare_none_field_admission_scope_note: std.types.String = "THE CLASS: a bare `None` reference carries absence and nothing else, so a construction position whose declared field type cannot carry absence must refuse it. MEASURED ON THE PRE-WALL BINARY (the discriminating fact, not a prediction): bare_none_scalar_red_source and bare_none_collection_red_source both compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` for `n: Int` — a Rust program the declared type refutes, produced silently, which is the below-floor class DESIGN 4b names (values inhabit declared types). THE GREEN CONTROL IS TWO-ARMED ON PURPOSE, because a wall that refuses every bare `None` would be indistinguishable from this one on the REDs alone: optional_field is the `T?` carrier and none_variant_field is a coproduct declaring its own `None` variant at its own level (the shape std.cache_interface AuthScope and v2.std.diagnostic Diagnostics both have, and the reason ~561 corpus sites are legitimate). some_variant_field holds the sibling arm green so the control cannot pass by the field type being unresolved. WHY A SYNTACTIC SLICE RATHER THAN THE GENERAL CONFORMANCE RULE: v1.compiler.infer conformance_unjudged_live_hole_note records five attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity; a bare `None` needs none, since admissibility is decided entirely from the declared side."
 
-data call_mislabel_source: String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
+data call_mislabel_source: std.types.String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
 
-data call_surplus_source: String = "module probe_call_surplus\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1, 2, 3) }\n"
+data call_surplus_source: std.types.String = "module probe_call_surplus\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1, 2, 3) }\n"
 
-data call_deficit_source: String = "module probe_call_deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n"
+data call_deficit_source: std.types.String = "module probe_call_deficit\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1) }\n"
 
-data call_shape_green_source: String = "module probe_call_green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
+data call_shape_green_source: std.types.String = "module probe_call_green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
 
-data call_duplicate_red_source: String = "module probe_call_duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n"
+data call_duplicate_red_source: std.types.String = "module probe_call_duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n"
 
-data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
+data call_duplicate_mixed_red_source: std.types.String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
 
-data call_duplicate_named_then_positional_red_source: String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
+data call_duplicate_named_then_positional_red_source: std.types.String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
 
-data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn two_unused(keep: Int, _: Int, _: Int) -> Int { keep }\nfn two_anon_positional_direct() -> Int { two_unused(7, 8, 9) }\ntype Claimer { claim: fn(Int, Int, Int) -> Int }\nfn two_anon_positional_via_field(p: Claimer) -> Int { p.claim(7, 8, 9) }\n"
+data call_duplicate_green_source: std.types.String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn two_unused(keep: Int, _: Int, _: Int) -> Int { keep }\nfn two_anon_positional_direct() -> Int { two_unused(7, 8, 9) }\ntype Claimer { claim: fn(Int, Int, Int) -> Int }\nfn two_anon_positional_via_field(p: Claimer) -> Int { p.claim(7, 8, 9) }\n"
 
-data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
+data method_missing_source: std.types.String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
 
-data method_green_source: String = "module probe_method_green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n"
+data method_green_source: std.types.String = "module probe_method_green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n"
 
-data conformance_scalar_red_source: String = "module probe_conformance_red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n"
+data conformance_scalar_red_source: std.types.String = "module probe_conformance_red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n"
 
-data conformance_green_source: String = "module probe_conformance_green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n"
+data conformance_green_source: std.types.String = "module probe_conformance_green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n"
 
-data sole_ctor_forged_source: String = "module probe_uri_sole_ctor_forged\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n}\nfn bypass() -> String {\n  match uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar { admitted_cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n"
+data sole_ctor_forged_source: std.types.String = "module probe_uri_sole_ctor_forged\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n}\nfn bypass() -> String {\n  match uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar { admitted_cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n"
 
-data sole_ctor_green_source: String = "module probe_sealed_green\nimport test.fixture.sole_constructor_sealed.definer { mint_local, LocalValidated }\nfn legal() -> LocalValidated { mint_local(n: 65) }\n"
+data sole_ctor_green_source: std.types.String = "module probe_sealed_green\nimport test.fixture.sole_constructor_sealed.definer { mint_local, LocalValidated }\nfn legal() -> LocalValidated { mint_local(n: 65) }\n"
 
-data sole_ctor_mint_fn_hole_source: String = "module probe_uri_sole_ctor_mint_hole\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n}\nfn bypass_via_mint() -> String {\n  match uri_validated_scalar_construction(cp: 55296) {\n    UriValidatedScalarConstructed(_) => \"constructed\"\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
+data sole_ctor_mint_fn_hole_source: std.types.String = "module probe_uri_sole_ctor_mint_hole\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n}\nfn bypass_via_mint() -> String {\n  match uri_validated_scalar_construction(cp: 55296) {\n    UriValidatedScalarConstructed(_) => \"constructed\"\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
 
-data sole_ctor_cast_source: String = "module probe_sealed_cast\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { 7 as LocalValidated }\n"
+data sole_ctor_cast_source: std.types.String = "module probe_sealed_cast\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { 7 as LocalValidated }\n"
 
-data sole_ctor_unadmitted_caller_source: String = "module probe_sealed_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }\nfn unadmitted_mint_call(n: Int) -> LocalValidated { mint_sealed_local(n: n) }\n"
+data sole_ctor_unadmitted_caller_source: std.types.String = "module probe_sealed_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }\nfn unadmitted_mint_call(n: Int) -> LocalValidated { mint_sealed_local(n: n) }\n"
 
-data sole_ctor_admitted_caller_source: String = "module probe_sealed_admitted_caller\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn through_the_admitted_caller() -> LocalValidated { admitted_mint_call(n: 65) }\n"
+data sole_ctor_admitted_caller_source: std.types.String = "module probe_sealed_admitted_caller\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn through_the_admitted_caller() -> LocalValidated { admitted_mint_call(n: 65) }\n"
 
-data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. RED: cross-module record literal UriValidatedScalar { admitted_cp: 55296 } must refuse SoleConstructorViolation. Green control: cross-module mint-via-exported-fn through test.fixture.sole_constructor_sealed.definer — the sanctioned construction form that must stay zero-diagnostics; UriValidatedScalar's runtime witnesses carry the domain-specific legal paths. Known hole, expecting-red: cross-module uri_validated_scalar_construction(55296) still compile-accepts without blocking SoleConstructorViolation; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
+data sole_constructor_probe_scope_note: std.types.String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. RED: cross-module record literal UriValidatedScalar { admitted_cp: 55296 } must refuse SoleConstructorViolation. Green control: cross-module mint-via-exported-fn through test.fixture.sole_constructor_sealed.definer — the sanctioned construction form that must stay zero-diagnostics; UriValidatedScalar's runtime witnesses carry the domain-specific legal paths. Known hole, expecting-red: cross-module uri_validated_scalar_construction(55296) still compile-accepts without blocking SoleConstructorViolation; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
 
-test fn identity_registry_is_unique() -> Bool {
+test fn identity_registry_is_unique() -> std.types.Bool {
   gunbc.guarantee_measurement.guarantee_class_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_class_ids())
     && gunbc.guarantee_measurement.guarantee_path_ids_unique(paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths())
     && gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
 }
 
-test fn duplicate_probe_id_reds_registry() -> Bool {
+test fn duplicate_probe_id_reds_registry() -> std.types.Bool {
   gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && !gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: [gunbc.guarantee_probe_corpus.call_mislabel_red_probe, gunbc.guarantee_probe_corpus.call_mislabel_red_probe])
 }
 
-test fn probe_set_digest_is_stable() -> Bool {
-  let a = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String
-  let b = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String
+test fn probe_set_digest_is_stable() -> std.types.Bool {
+  let a = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as std.types.String
+  let b = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as std.types.String
   a == b && a != ""
 }
 
-test fn bare_none_scalar_red_refuses_blocking_field_admission() -> Bool {
+test fn bare_none_scalar_red_refuses_blocking_field_admission() -> std.types.Bool {
   let census = census_of(source: bare_none_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe) {
     Present { value: row } =>
@@ -216,7 +125,7 @@ test fn bare_none_scalar_red_refuses_blocking_field_admission() -> Bool {
   }
 }
 
-test fn bare_none_collection_red_refuses_blocking_field_admission() -> Bool {
+test fn bare_none_collection_red_refuses_blocking_field_admission() -> std.types.Bool {
   let census = census_of(source: bare_none_collection_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_collection_red_probe) {
     Present { value: row } =>
@@ -229,7 +138,7 @@ test fn bare_none_collection_red_refuses_blocking_field_admission() -> Bool {
   }
 }
 
-test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
+test fn bare_none_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: bare_none_green_source), row: row)
@@ -237,7 +146,7 @@ test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> Bool {
+test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> std.types.Bool {
   let census = census_of(source: bare_none_generic_parameter_boundary_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
     Present { value: n } => n == 0
@@ -245,7 +154,7 @@ test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> Bool
   }
 }
 
-test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
+test fn bare_none_red_does_not_satisfy_green_expectation() -> std.types.Bool {
   let census = census_of(source: bare_none_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe) {
     Present { value: red_row } =>
@@ -259,7 +168,7 @@ test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
   }
 }
 
-test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
+test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> std.types.Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: row } =>
@@ -272,7 +181,7 @@ test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool 
   }
 }
 
-test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
+test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> std.types.Bool {
   let census = census_of(source: call_surplus_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
     Present { value: row } => gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
@@ -280,7 +189,7 @@ test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
   }
 }
 
-test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
+test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> std.types.Bool {
   let census = census_of(source: call_deficit_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_deficit_red_probe) {
     Present { value: row } =>
@@ -293,7 +202,7 @@ test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
   }
 }
 
-test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
+test fn call_shape_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
@@ -301,7 +210,7 @@ test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
+test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
   let census = census_of(source: call_duplicate_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_red_probe) {
     Present { value: row } =>
@@ -314,7 +223,7 @@ test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
   }
 }
 
-test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
+test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
   let census = census_of(source: call_duplicate_mixed_red_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n >= 1
@@ -322,7 +231,7 @@ test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument
   }
 }
 
-test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> Bool {
+test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
   let census = census_of(source: call_duplicate_named_then_positional_red_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n >= 1
@@ -330,7 +239,7 @@ test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_
   }
 }
 
-test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
+test fn call_duplicate_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: call_duplicate_green_source), row: row)
@@ -338,7 +247,7 @@ test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
+test fn call_duplicate_two_anonymous_positional_params_never_collide() -> std.types.Bool {
   let census = census_of(source: call_duplicate_green_source)
   match gunbc.guarantee_probe_corpus.census_any_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n == 0
@@ -346,7 +255,7 @@ test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
   }
 }
 
-test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> Bool {
+test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> std.types.Bool {
   let census = census_of(source: call_duplicate_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_red_probe) {
     Present { value: dup_row } =>
@@ -365,7 +274,7 @@ test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() ->
   }
 }
 
-test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
+test fn method_missing_red_refuses_blocking_method_not_found() -> std.types.Bool {
   let census = census_of(source: method_missing_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.method_missing_red_probe) {
     Present { value: row } =>
@@ -378,7 +287,7 @@ test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
   }
 }
 
-test fn method_green_control_has_zero_diagnostics() -> Bool {
+test fn method_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.method_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: method_green_source), row: row)
@@ -386,7 +295,7 @@ test fn method_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
+test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> std.types.Bool {
   let census = census_of(source: conformance_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.conformance_scalar_red_probe) {
     Present { value: row } =>
@@ -399,7 +308,7 @@ test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
   }
 }
 
-test fn conformance_green_control_has_zero_diagnostics() -> Bool {
+test fn conformance_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.conformance_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
@@ -407,7 +316,7 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn sole_constructor_forged_literal_red_refuses() -> Bool {
+test fn sole_constructor_forged_literal_red_refuses() -> std.types.Bool {
   let census = census_of(source: sole_ctor_forged_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_forged_red_probe) {
     Present { value: row } =>
@@ -420,7 +329,7 @@ test fn sole_constructor_forged_literal_red_refuses() -> Bool {
   }
 }
 
-test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> Bool {
+test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: sole_ctor_green_source), row: row)
@@ -428,7 +337,7 @@ test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() ->
   }
 }
 
-test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
+test fn sole_constructor_cross_module_cast_red_refuses() -> std.types.Bool {
   let census = census_of(source: sole_ctor_cast_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_cast_red_probe) {
     Present { value: row } =>
@@ -441,7 +350,7 @@ test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
   }
 }
 
-test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
+test fn sole_constructor_unadmitted_caller_red_refuses() -> std.types.Bool {
   let census = census_of(source: sole_ctor_unadmitted_caller_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_unadmitted_caller_red_probe) {
     Present { value: row } =>
@@ -454,7 +363,7 @@ test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
   }
 }
 
-test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> Bool {
+test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_admitted_caller_green_probe) {
     Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: sole_ctor_admitted_caller_source), row: row)
@@ -462,13 +371,13 @@ test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() ->
   }
 }
 
-test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
+test fn sole_constructor_mint_fn_hole_still_compile_clean() -> std.types.Bool {
   let census = census_of(source: sole_ctor_mint_fn_hole_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_mint_fn_hole_probe) {
     Present { value: row } =>
       match census {
-        CensusNotRunnable { cause: _ } => false
-        CensusObserved { rows: rows } =>
+        gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
+        gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
           gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)) == 0
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
       }
@@ -476,7 +385,7 @@ test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
   }
 }
 
-test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> Bool {
+test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> std.types.Bool {
   let census = census_of(source: sole_ctor_forged_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_forged_red_probe) {
     Present { value: red_row } =>
@@ -490,7 +399,7 @@ test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> Bool
   }
 }
 
-test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
+test fn migrated_receipt_joins_its_v1_compile_path() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: row } =>
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
@@ -501,12 +410,12 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
       )
       gunbc.guarantee_probe_corpus.receipt_joins_v1_compile_path(receipt: receipt)
         && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-        && (receipt.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String)
+        && (receipt.path as std.types.String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as std.types.String)
     Absent => false
   }
 }
 
-test fn blocking_refusal_observation_is_a_verdict() -> Bool {
+test fn blocking_refusal_observation_is_a_verdict() -> std.types.Bool {
   let census = census_of(source: method_missing_source)
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.method_missing_red_probe) {
     Present { value: row } =>
@@ -526,7 +435,7 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
   }
 }
 
-test fn green_control_observation_is_accepted_clean() -> Bool {
+test fn green_control_observation_is_accepted_clean() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
     Present { value: row } =>
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
@@ -541,18 +450,18 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
   }
 }
 
-test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
+test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> std.types.Bool {
   let advisory_only = gunbc.compile_diagnostic_census.CensusObserved {
     rows: [{
-      diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr,
-      subject_name: "probe" as String,
+      diagnostic_class: "CallArgumentNameUnknown" as v2.std.live_tree.std.types.NonEmptyStr,
+      subject_name: "probe" as std.types.String,
       blocking: false,
       count: 1,
     }],
   }
   !gunbc.guarantee_probe_corpus.probe_expectation_holds(
     census: advisory_only,
-    expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr },
+    expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as v2.std.live_tree.std.types.NonEmptyStr },
   )
     && match gunbc.guarantee_probe_corpus.census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") {
       Present { value: n } => n >= 1
@@ -560,21 +469,21 @@ test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
     }
 }
 
-test fn not_runnable_never_satisfies_expectation() -> Bool {
-  let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "harness error" as std.types.NonEmptyStr }
+test fn not_runnable_never_satisfies_expectation() -> std.types.Bool {
+  let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "harness error" as v2.std.live_tree.std.types.NonEmptyStr }
   !gunbc.guarantee_probe_corpus.probe_expectation_holds(census: not_runnable, expectation: gunbc.guarantee_probe_corpus.ExpectZeroDiagnostics)
     && !gunbc.guarantee_probe_corpus.probe_expectation_holds(
       census: not_runnable,
-      expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as std.types.NonEmptyStr },
+      expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as v2.std.live_tree.std.types.NonEmptyStr },
     )
 }
 
-test fn probe_ids_are_canonically_ordered() -> Bool {
+test fn probe_ids_are_canonically_ordered() -> std.types.Bool {
   gunbc.guarantee_probe_corpus.probe_ids_are_lexicographically_ordered(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && count(gunbc.guarantee_probe_corpus.guarantee_probe_id_strings()) == count(gunbc.guarantee_probe_corpus.guarantee_probe_ids())
 }
 
-test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
+test fn mislabel_red_does_not_satisfy_surplus_expectation() -> std.types.Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: mislabel_row } =>
@@ -588,7 +497,7 @@ test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
   }
 }
 
-test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
+test fn surplus_red_does_not_satisfy_mislabel_expectation() -> std.types.Bool {
   let census = census_of(source: call_surplus_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
     Present { value: surplus_row } =>
@@ -602,7 +511,7 @@ test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
   }
 }
 
-test fn green_control_fails_blocking_refusal_expectation() -> Bool {
+test fn green_control_fails_blocking_refusal_expectation() -> std.types.Bool {
   let census = census_of(source: call_shape_green_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
     Present { value: green_row } =>
@@ -616,13 +525,13 @@ test fn green_control_fails_blocking_refusal_expectation() -> Bool {
   }
 }
 
-test fn observation_fold_routes_blocking_refusal() -> Bool {
+test fn observation_fold_routes_blocking_refusal() -> std.types.Bool {
   let obs = gunbc.guarantee_probe_corpus.probe_observation_from_census(census: census_of(source: call_mislabel_source))
-  gunbc.guarantee_probe_corpus.observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as std.types.NonEmptyStr)
+  gunbc.guarantee_probe_corpus.observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as v2.std.live_tree.std.types.NonEmptyStr)
     && !gunbc.guarantee_probe_corpus.observation_is_clean(o: obs)
 }
 
-test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
+test fn wrong_expectation_does_not_fabricate_clean_receipt() -> std.types.Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: registry_row } =>
@@ -634,7 +543,7 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
                 && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: wrong_row)
                 && gunbc.guarantee_probe_corpus.observation_is_blocking_refusal(
                   o: gunbc.guarantee_probe_corpus.probe_observation_from_census(census: census),
-                  wanted: "CallArgumentNameUnknown" as std.types.NonEmptyStr,
+                  wanted: "CallArgumentNameUnknown" as v2.std.live_tree.std.types.NonEmptyStr,
                 )
                 && gunbc.guarantee_probe_corpus.observation_is_clean(o: gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
                   row: row,
@@ -650,7 +559,7 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
   }
 }
 
-test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
+test fn subject_revision_is_content_derived_not_fabricated_constant() -> std.types.Bool {
   let mislabel_subject = gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source)
   let surplus_subject = gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_surplus_source)
   let mislabel_harness = witness_harness_revision(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe)
@@ -658,7 +567,7 @@ test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
   mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
-test fn harness_revision_tracks_expectation_not_probe_id_alone() -> Bool {
+test fn harness_revision_tracks_expectation_not_probe_id_alone() -> std.types.Bool {
   let harness_source = measured_v1_compile_harness_source()
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: mislabel } =>
@@ -681,7 +590,7 @@ test fn harness_revision_tracks_expectation_not_probe_id_alone() -> Bool {
   }
 }
 
-test fn harness_revision_tracks_measured_source_not_symbol_spine() -> Bool {
+test fn harness_revision_tracks_measured_source_not_symbol_spine() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: row } =>
       let measured = measured_v1_compile_harness_source()
@@ -693,21 +602,21 @@ test fn harness_revision_tracks_measured_source_not_symbol_spine() -> Bool {
       let from_symbol_spine = gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe,
         expectation: row.expectation,
-        harness_source: "compile_dag_diagnostic_census|probe_observation_from_census|probe_row_expectation_holds|probe_expectation_fold" as std.types.NonEmptyStr,
+        harness_source: "compile_dag_diagnostic_census|probe_observation_from_census|probe_row_expectation_holds|probe_expectation_fold" as v2.std.live_tree.std.types.NonEmptyStr,
       )
       from_measured != from_symbol_spine
     Absent => false
   }
 }
 
-test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> Bool {
+test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source) {
-    ContentFingerprint { digest: _ } => true
-    GitRevision { commit: _ } => false
+    gunbc.guarantee_measurement.ContentFingerprint { digest: _ } => true
+    gunbc.guarantee_measurement.GitRevision { commit: _ } => false
   }
 }
 
-test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
+test fn receipt_probe_set_digest_matches_executed_probe_set() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: row } =>
       let executed = gunbc.guarantee_probe_corpus.executed_probe_ids_for_probe(probe: row.probe)
@@ -717,13 +626,13 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         subject_revision: gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      (receipt.probe_set_digest as String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: executed) as String)
-        && !((receipt.probe_set_digest as String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String))
+      (receipt.probe_set_digest as std.types.String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: executed) as std.types.String)
+        && !((receipt.probe_set_digest as std.types.String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as std.types.String))
     Absent => false
   }
 }
 
-test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> Bool {
+test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> std.types.Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
     Present { value: row } =>
       let full = measured_v1_compile_harness_source()
@@ -749,26 +658,26 @@ test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> Bool {
   }
 }
 
-test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
+test fn canonical_probe_rows_bind_class_path_and_probe() -> std.types.Bool {
   count(gunbc.guarantee_probe_corpus.guarantee_probe_rows()) == count(gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && match gunbc.guarantee_probe_corpus.resolve_canonical_probe_row(wanted: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
-      ProbeRowResolved { row: row } =>
-        (row.class as String) == (gunbc.guarantee_probe_corpus.v2_self_grounding_frontier_class as String)
-          && (row.path as String) == (gunbc.guarantee_probe_corpus.v2_infer_eval_path_id as String)
-          && (row.probe as String) == (gunbc.guarantee_probe_corpus.v2_frontier_red_probe as String)
-      ProbeRowUnknown { wanted: _ } => false
-      ProbeRowDuplicate { wanted: _, matches: _ } => false
+      gunbc.guarantee_probe_corpus.ProbeRowResolved { row: row } =>
+        (row.class as std.types.String) == (gunbc.guarantee_probe_corpus.v2_self_grounding_frontier_class as std.types.String)
+          && (row.path as std.types.String) == (gunbc.guarantee_probe_corpus.v2_infer_eval_path_id as std.types.String)
+          && (row.probe as std.types.String) == (gunbc.guarantee_probe_corpus.v2_frontier_red_probe as std.types.String)
+      gunbc.guarantee_probe_corpus.ProbeRowUnknown { wanted: _ } => false
+      gunbc.guarantee_probe_corpus.ProbeRowDuplicate { wanted: _, matches: _ } => false
     }
     && match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
       Present { value: row } =>
-        (row.class as String) == (gunbc.guarantee_probe_corpus.call_label_surplus_class as String)
-          && (row.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String)
+        (row.class as std.types.String) == (gunbc.guarantee_probe_corpus.call_label_surplus_class as std.types.String)
+          && (row.path as std.types.String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as std.types.String)
       Absent => false
     }
 }
 
-test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
+test fn canonical_probe_resolution_refuses_duplicate_population() -> std.types.Bool {
   gunbc.guarantee_probe_corpus.canonical_probe_row_resolution_refuses_duplicate_population()
 }
 
@@ -791,51 +700,51 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 // arm. Membership here is not an exemption from evidence: each row still carries a discriminating
 // RED or a positive control executed by a test in this file.
 // The three arms must partition, or a row could claim two contradictory standings at once.
-test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
+test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
   let dispositions = gunbc.guarantee_probe_corpus.guarantee_probe_dark_suite_dispositions()
-  let disposition_probes: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> = dispositions
+  let disposition_probes: v2.std.live_tree.std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> = dispositions
     |> flat_map(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
+      gunbc.guarantee_probe_corpus.MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
     })
-  let disposition_probe_ids: std.types.List<String> = disposition_probes |> map(p => p as String)
+  let disposition_probe_ids: v2.std.live_tree.std.types.List<std.types.String> = disposition_probes |> map(p => p as std.types.String)
   let dispositions_name_the_finite_classification_gate = dispositions
     |> all(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
-        (gate as String) == "gap-analysis-sec-11-item-9-finite-classification"
+      gunbc.guarantee_probe_corpus.MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
+        (gate as std.types.String) == "gap-analysis-sec-11-item-9-finite-classification"
     })
   let disposed_ids_are_sound = disposition_probes
     |> all(p => match gunbc.guarantee_probe_corpus.resolve_canonical_probe_row(wanted: p) {
-      ProbeRowResolved { row: _ } => true
-      ProbeRowUnknown { wanted: _ } => false
-      ProbeRowDuplicate { wanted: _, matches: _ } => false
+      gunbc.guarantee_probe_corpus.ProbeRowResolved { row: _ } => true
+      gunbc.guarantee_probe_corpus.ProbeRowUnknown { wanted: _ } => false
+      gunbc.guarantee_probe_corpus.ProbeRowDuplicate { wanted: _, matches: _ } => false
     })
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
-  let known_v1_migration_gap_ids: std.types.List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let dag_native_v1_compile_probe_ids: std.types.List<String> = [
-    bare_none_collection_red_probe as String,
-    bare_none_green_probe as String,
-    bare_none_scalar_red_probe as String,
-    direct_call_arg_type_ordinary_module_red_probe as String,
-    direct_call_arg_type_v2_green_control_probe as String,
-    direct_call_arg_type_v2_module_red_probe as String,
-    sole_ctor_admitted_caller_green_probe as String,
-    sole_ctor_cast_red_probe as String,
-    sole_ctor_unadmitted_caller_red_probe as String,
+  let known_v1_migration_gap_ids: v2.std.live_tree.std.types.List<std.types.String> = [gunbc.guarantee_probe_corpus.sole_ctor_mint_fn_hole_probe as std.types.String]
+  let dag_native_v1_compile_probe_ids: v2.std.live_tree.std.types.List<std.types.String> = [
+    gunbc.guarantee_probe_corpus.bare_none_collection_red_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.bare_none_green_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.direct_call_arg_type_ordinary_module_red_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.direct_call_arg_type_v2_green_control_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.direct_call_arg_type_v2_module_red_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.sole_ctor_admitted_caller_green_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.sole_ctor_cast_red_probe as std.types.String,
+    gunbc.guarantee_probe_corpus.sole_ctor_unadmitted_caller_red_probe as std.types.String,
   ]
   let known_gaps_are_not_disposed = known_v1_migration_gap_ids
-    |> all(gap => !std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: gap))
+    |> all(gap => !v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: gap))
   let every_v1_compile_probe_is_disposed_or_a_named_gap = gunbc.guarantee_probe_corpus.guarantee_probe_rows()
-    |> filter(row => (row.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String))
+    |> filter(row => (row.path as std.types.String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as std.types.String))
     |> all(row => {
-      let id = row.probe as String
-      std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
-        || std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-        || std.materialization_ladder.string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
+      let id = row.probe as std.types.String
+      v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
+        || v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
+        || v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
     })
   let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
-    |> all(id => !std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
-      && !std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
+    |> all(id => !v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
+      && !v2.std.live_tree.std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
   disposed_ids_are_sound
     && disposed_ids_have_no_internal_duplicates
     && dispositions_name_the_finite_classification_gate
@@ -844,9 +753,9 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     && every_v1_compile_probe_is_disposed_or_a_named_gap
 }
 
-test fn v2_frontier_identities_are_declared() -> Bool {
-  (gunbc.guarantee_probe_corpus.v2_infer_eval_path_id as String) == "v2-infer-eval"
-    && (gunbc.guarantee_probe_corpus.v2_self_grounding_frontier_class as String) == "v2-self-grounding-frontier"
-    && (gunbc.guarantee_probe_corpus.v2_frontier_red_probe as String) == "v2-self-grounding-frontier-value-red"
-    && (gunbc.guarantee_probe_corpus.v2_frontier_green_probe as String) == "v2-self-grounding-frontier-derived-green"
+test fn v2_frontier_identities_are_declared() -> std.types.Bool {
+  (gunbc.guarantee_probe_corpus.v2_infer_eval_path_id as std.types.String) == "v2-infer-eval"
+    && (gunbc.guarantee_probe_corpus.v2_self_grounding_frontier_class as std.types.String) == "v2-self-grounding-frontier"
+    && (gunbc.guarantee_probe_corpus.v2_frontier_red_probe as std.types.String) == "v2-self-grounding-frontier-value-red"
+    && (gunbc.guarantee_probe_corpus.v2_frontier_green_probe as std.types.String) == "v2-self-grounding-frontier-derived-green"
 }

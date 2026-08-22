@@ -66,8 +66,8 @@ fn room_identity_eq(a: product.placement_supply.RoomIdentity, b: product.placeme
 fn find_room(rooms: List<product.spatial_world.PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
-      Present { value: found } => v2.std.optional.Present { value: found }
-      Absent => if product.spatial_edit.room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
+      Present { value: found } => Present { value: found }
+      Absent => if product.spatial_edit.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
     })
 }
 
@@ -81,11 +81,11 @@ type VertexAcc {
 // be a second arithmetic authority, and the one that skips the checks.
 fn move_vertex(acc: VertexAcc, by: std.affine_space.Vector2, v: std.affine_space.Point2) -> VertexAcc {
   match acc.refusal {
-    Present { value: c } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: c } }
+    Present { value: c } => VertexAcc { moved: acc.moved, refusal: Present { value: c } }
     Absent =>
       match translate_point2(point: v, by: by) {
-        SpatialArithmeticRefused { cause: c } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: EditArithmeticRefused { cause: c } } }
-        SpatialFrameRefused { refusal: r } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: EditFrameRefused { refusal: r } } }
+        SpatialArithmeticRefused { cause: c } => VertexAcc { moved: acc.moved, refusal: Present { value: EditArithmeticRefused { cause: c } } }
+        SpatialFrameRefused { refusal: r } => VertexAcc { moved: acc.moved, refusal: Present { value: EditFrameRefused { refusal: r } } }
         SpatialReady { value: p } => VertexAcc { moved: concat(acc.moved, [p]), refusal: none }
       }
   }
@@ -185,10 +185,10 @@ fn count_edits_for(edits: List<RoomEdit>, wanted: product.placement_supply.RoomI
 fn first_double_edit(edits: List<RoomEdit>) -> product.placement_supply.RoomIdentity? {
   fold(edits, init: none, f: (found, e) =>
     match found {
-      Present { value: i } => v2.std.optional.Present { value: i }
+      Present { value: i } => Present { value: i }
       Absent =>
         if count_edits_for(edits: edits, wanted: edit_subject(e: e)) > 1 {
-          v2.std.optional.Present { value: edit_subject(e: e) }
+          Present { value: edit_subject(e: e) }
         } else {
           none
         }
@@ -206,10 +206,10 @@ fn edits_to_patch(base: product.spatial_world.World, edits: List<RoomEdit>) -> E
     Absent =>
       let acc = fold(edits, init: HunkAcc { hunks: [], refusal: none }, f: (a, e) =>
         match a.refusal {
-          Present { value: c } => HunkAcc { hunks: a.hunks, refusal: v2.std.optional.Present { value: c } }
+          Present { value: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
           Absent =>
             match edit_to_hunk(base: base, e: e) {
-              EditRefused { cause: c } => HunkAcc { hunks: a.hunks, refusal: v2.std.optional.Present { value: c } }
+              EditRefused { cause: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
               EditReady { value: h } => HunkAcc { hunks: concat(a.hunks, [h]), refusal: none }
             }
         })

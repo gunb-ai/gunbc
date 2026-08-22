@@ -89,7 +89,7 @@ fn dispatch_actuator_selection_for_provider(
 fn dispatch_cli_provider() -> DispatchCliProvider? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      v2.std.optional.Present { value: provider }
+      Present { value: provider }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -243,7 +243,7 @@ fn dispatch_provider_instance_for(
 fn dispatch_provider_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      v2.std.optional.Present { value: dispatch_provider_instance_for(provider: provider) }
+      Present { value: dispatch_provider_instance_for(provider: provider) }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -253,7 +253,7 @@ fn dispatch_worker_observation_for_process(
 ) -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
     Present { value: instance } =>
-      v2.std.optional.Present {
+      Present {
         value: worker_observation_without_provider_probe_for_process(
           instance: instance,
           process: process,
@@ -266,7 +266,7 @@ fn dispatch_worker_observation_for_process(
 fn dispatch_worker_observation() -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
     Present { value: instance } =>
-      v2.std.optional.Present { value: worker_observation_without_provider_probe(instance: instance) }
+      Present { value: worker_observation_without_provider_probe(instance: instance) }
     none => none
   }
 }
@@ -274,7 +274,7 @@ fn dispatch_worker_observation() -> gunbc.worker_lifecycle.WorkerObservation? {
 fn dispatch_applied_effort() -> extdeps.llm.cli.ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
-      v2.std.optional.Present { value: effort }
+      Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -285,7 +285,7 @@ fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> std.t
     node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
-      v2.std.optional.Present { value: process_fingerprint }
+      Present { value: process_fingerprint }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -773,7 +773,7 @@ fn dispatch_tmux_session_scope_for_process_fingerprint(
 fn dispatch_tmux_session_scope(node_id: gunbc.roadmap_model.RoadmapNodeId) -> TmuxSessionScope? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
-      v2.std.optional.Present {
+      Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: node_id,
           process_fingerprint: process_fingerprint,
@@ -1790,7 +1790,7 @@ fn live_session_row(entry: extdeps.tmux.TmuxLsEntry, scope: TmuxSessionScope) ->
         session_name: entry.session_name as std.types.NonEmptyStr,
         windows: entry.windows,
       }
-      v2.std.optional.Present {
+      Present {
         value: DispatchLiveSession {
           session_name: entry.session_name,
           node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
@@ -1810,14 +1810,14 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
     CodexCliProvider =>
       match sess.worker.process {
         WorkerProcessRunning { command } =>
-          v2.std.optional.Present {
+          Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
               process_fingerprint: command as std.types.NonEmptyStr,
             ),
           }
         WorkerProcessExited { exit_code: _, last_command } =>
-          v2.std.optional.Present {
+          Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
               process_fingerprint: if last_command == "" {
@@ -1830,14 +1830,14 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
         _ => none
       }
     ClaudeCliProvider =>
-      v2.std.optional.Present {
+      Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_claude_process_fingerprint,
         ),
       }
     CursorCliProvider =>
-      v2.std.optional.Present {
+      Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_cursor_process_fingerprint,
@@ -1928,14 +1928,14 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
         if node_id == "" {
           none
         } else {
-          v2.std.optional.Present { value: DispatchAttemptRef {
+          Present { value: DispatchAttemptRef {
             node_id: node_id as std.types.NonEmptyStr,
             branch: line as std.types.NonEmptyStr,
             attempt_key: last,
           } }
         }
       } else {
-        v2.std.optional.Present { value: DispatchAttemptRef {
+        Present { value: DispatchAttemptRef {
           node_id: rest as std.types.NonEmptyStr,
           branch: line as std.types.NonEmptyStr,
           attempt_key: "",
@@ -1987,7 +1987,7 @@ fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
   let segs = split(s: line, delimiter: " ")
   if count(segs) >= 2 && segs.first() != "" {
     let name = segs.first()
-    v2.std.optional.Present { value: TmuxPaneEntry {
+    Present { value: TmuxPaneEntry {
       session_name: name,
       command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
     } }
@@ -2134,7 +2134,7 @@ fn live_session_row_with_process(
             windows: entry.windows,
           }
       }
-      v2.std.optional.Present {
+      Present {
         value: DispatchLiveSession {
           session_name: entry.session_name,
           node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),

@@ -133,26 +133,26 @@ fn scan_loads_against_rack(r: product.rack_mount.RackInstance, loads: List<Asset
   let assets = mounted_assets(r: r)
   let orphaned = fold(loads, init: none, f: (found, l) =>
     match found {
-      Present { value: c } => v2.std.optional.Present { value: c }
+      Present { value: c } => Present { value: c }
       Absent =>
         if !contains_asset(assets: assets, wanted: asset_load_subject(l: l)) {
-          v2.std.optional.Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
+          Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
         } else {
           none
         }
     })
   match orphaned {
-    Present { value: c } => v2.std.optional.Present { value: c }
+    Present { value: c } => Present { value: c }
     Absent =>
       fold(assets, init: none, f: (found, a) =>
         match found {
-          Present { value: c } => v2.std.optional.Present { value: c }
+          Present { value: c } => Present { value: c }
           Absent =>
             let n = count_loads_for(loads: loads, wanted: a)
             if n == 0 {
-              v2.std.optional.Present { value: MountedAssetHasNoLoad { asset: a } }
+              Present { value: MountedAssetHasNoLoad { asset: a } }
             } else {
-              if n > 1 { v2.std.optional.Present { value: LoadDeclaredTwice { asset: a } } } else { none }
+              if n > 1 { Present { value: LoadDeclaredTwice { asset: a } } } else { none }
             }
         })
   }
@@ -173,11 +173,11 @@ type LoadTotals {
 
 fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
   match acc.refusal {
-    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: c } }
+    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: c } }
     Absent =>
       match l {
         LoadUnobserved { asset: a } =>
-          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: LoadNotObserved { asset: a } } }
+          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: LoadNotObserved { asset: a } } }
         ObservedRealPower { asset: _, draw: w } =>
           LoadTotals { real_load: measure_add(acc.real_load, w), apparent_load: acc.apparent_load, refusal: none }
         DeclaredApparentPower { asset: _, draw: va } =>

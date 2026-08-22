@@ -67,7 +67,7 @@ fn gcloud_auth_deficit_for_pattern(
   row: GcloudAuthDeficitPatternRow,
 ) -> GcloudAuthDeficit? {
   if stderr.contains(row.stderr_substring) {
-    v2.std.optional.Present { value: row.deficit }
+    Present { value: row.deficit }
   } else {
     none
   }

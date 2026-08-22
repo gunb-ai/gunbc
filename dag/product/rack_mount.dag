@@ -114,24 +114,24 @@ type MountAdmission {
 
 fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: ChassisMount) -> MountAdmission {
   match acc.refusal {
-    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
     Absent =>
       if m.lowest_unit < 1 {
-        MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
+        MountAdmission { admitted: acc.admitted, refusal: Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
       } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
         MountAdmission {
           admitted: acc.admitted,
-          refusal: v2.std.optional.Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
+          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
         }
       } else {
         let conflict = fold(acc.admitted, init: none, f: (found, other) =>
           match found {
-            Present { value: r } => v2.std.optional.Present { value: r }
+            Present { value: r } => Present { value: r }
             Absent =>
               if product.rack_mount.asset_eq(a: other.asset, b: m.asset) {
-                v2.std.optional.Present { value: AssetMountedTwice { asset: m.asset } }
+                Present { value: AssetMountedTwice { asset: m.asset } }
               } else if mounts_collide(a: other, b: m) {
-                v2.std.optional.Present {
+                Present {
                   value: if other.lowest_unit <= m.lowest_unit {
                     MountsCollide { lower: other.asset, upper: m.asset }
                   } else {
@@ -143,7 +143,7 @@ fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: 
               }
           })
         match conflict {
-          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
           Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
         }
       }
