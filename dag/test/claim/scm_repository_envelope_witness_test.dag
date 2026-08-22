@@ -32,6 +32,8 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryRefusal, RepositoryImageRefusal, RepositoryCommitRootUnresolved,
   RepositoryCheckedOutUnresolved, RepositoryIdentityRuleUnrecognized,
+  RepositoryUnexpectedMember, RepositoryMemberContext,
+  RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
 }
 
@@ -424,6 +426,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
         RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
+        RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
       }
   }
 }
@@ -465,4 +468,86 @@ test fn scm_env_a_complete_repository_encodes() -> Bool {
     RepositoryEncoded { value: v } => serialize_json(v: v) == serialize_json(v: encode_repository(repo: repo))
     RepositoryEncodeRefused { cause: _ } => false
   }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CLOSED MEMBER SET AT THE ENVELOPE LAYER. Same rule, this layer's vocabulary.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_wire_of(repo: RepositoryEnvelope) -> List<JsonKeyValue> {
+  scm_env_members(v: encode_repository(repo: repo))
+}
+
+fn scm_env_decode_members(members: List<JsonKeyValue>) -> RepositoryDecodeOutcome {
+  decode_repository(v: json_object(members: members))
+}
+
+// The claims below assert the CAUSE, not merely that something refused: a document that refused for
+// an unrelated reason would satisfy a bare refusal claim and prove nothing about the member set.
+fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
+  match outcome {
+    RepositoryDecoded { envelope: _ } => "decoded"
+    RepositoryDecodeRefused { cause: cause } =>
+      match cause {
+        RepositoryImageRefusal { cause: _ } => "image"
+        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
+        RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
+        RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
+        RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+      }
+  }
+}
+
+// An extra member is added to the ENCODER'S OWN OUTPUT, so the document is otherwise exactly what
+// this decoder emits -- the refusal can only be the extra member, not some unrelated defect in a
+// hand-authored envelope.
+test fn scm_env_an_unknown_envelope_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        [json_kv(key: "future_field", value: json_string(s: "x"))]
+      )
+    )
+  ) == "unexpected_member"
+}
+
+// THE DENOMINATOR CONTROL. The same wire without the extra member must load, or the claim above is
+// satisfied by a decoder that refuses its own output.
+test fn scm_env_the_unmodified_wire_still_loads() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(members: scm_env_wire_of(repo: scm_env_two_commit_repository()))
+  ) == "decoded"
+}
+
+fn scm_env_commit_with_extra(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } =>
+        json_kv(key: "commits", value: json_array(elements: map(es, e => scm_env_widen_commit(v: e))))
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_widen_commit(v: JsonValue) -> JsonValue {
+  match v {
+    JsonObject { members: ms } =>
+      json_object(members: concat(ms, [json_kv(key: "author", value: json_string(s: "unmodeled"))]))
+    _ => v
+  }
+}
+
+test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: map(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        m => scm_env_commit_with_extra(m: m)
+      )
+    )
+  ) == "unexpected_member"
 }

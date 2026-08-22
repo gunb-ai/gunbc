@@ -61,6 +61,7 @@ import gunbc.scm.image {
   decode_object_table,
   position_reference,
   unresolved_edge_reference,
+  unexpected_member_key,
   resolve_reference,
   read_string_member,
   MemberString,
@@ -125,6 +126,29 @@ type RepositoryRefusal
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootUnresolved { reference: String }
   | RepositoryCheckedOutUnresolved { reference: String }
+  | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
+
+// THE CONTEXT VOCABULARY IS THIS LAYER'S, THE MEMBERSHIP MECHANISM IS SHARED. image.dag owns
+// `unexpected_member_key`, which answers a context-free question -- which key is not in this set --
+// and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to image.dag's context
+// coproduct would have made the lower carrier enumerate the shapes of a layer above it, which is the
+// inversion DESIGN section 3 names; duplicating the fold here instead would have been a second
+// authority for one rule. Neither is necessary: the mechanism generalizes, the vocabulary does not.
+type RepositoryMemberContext
+  = RepositoryEnvelopeMembers
+  | RepositoryCommitMembers
+
+fn repository_member_set_refusal(
+  v: JsonValue,
+  allowed: List<String>,
+  context: RepositoryMemberContext
+) -> RepositoryRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } =>
+      Present { value: RepositoryUnexpectedMember { context: context, key: key } }
+  }
+}
 
 type RepositoryDecodeOutcome
   = RepositoryDecoded { envelope: RepositoryEnvelope }
@@ -341,7 +365,26 @@ type CommitDecodeAcc {
   refusal: RepositoryRefusal?
 }
 
+// A commit record's member set is closed for the same reason the envelope's is: a writer that states
+// a fact this reader discards, and then has it deleted on the next re-encode, has lost information
+// while every operation reported success.
 fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match repository_member_set_refusal(
+        v: value,
+        allowed: ["root", "message"],
+        context: RepositoryCommitMembers
+      ) {
+        Present { value: c } =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
+        Absent => decode_commit_members(positions: positions, acc: acc, value: value)
+      }
+  }
+}
+
+fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -391,7 +434,14 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
             if rule != repository_node_identity_rule_tag {
               RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
             } else {
-              decode_repository_body(v: v)
+              match repository_member_set_refusal(
+                v: v,
+                allowed: ["format", "identity_rule", "objects", "commits", "checked_out"],
+                context: RepositoryEnvelopeMembers
+              ) {
+                Present { value: c } => RepositoryDecodeRefused { cause: c }
+                Absent => decode_repository_body(v: v)
+              }
             }
           _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "identity_rule" } } }
         }
