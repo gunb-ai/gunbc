@@ -181,11 +181,17 @@ surface, realized `PointwisePower`/`PartialFunction`). `dag/std/types.dag`'s
 - **Row count against expectation.** 14 emitted sites were expected to correspond to 14 authored
   literals and do. The two instruments are independent (rustc spans vs a `.dag` grep), so the
   agreement is a check, not a restatement.
-- **No attribution for 23 → 14.** The nine sites that left are 3 in `v2_extdeps_languages_dag.rs`
-  and 6 in `v2_std_compilers_target_model.rs`. `src/v2/extdeps/languages/dag.dag` still carries
-  its three `Set { … }` literals today, so those three sites left the *board* without the
-  authored construction changing — masking by an earlier refusal, or a closure change, are both
-  live explanations and neither is established here. Do not read the delta as nine repairs.
+- **No attribution for 23 → 14, and one explanation is refuted at file grain.** The nine sites
+  that left are 3 in `v2_extdeps_languages_dag.rs` and 6 in `v2_std_compilers_target_model.rs`.
+  `src/v2/extdeps/languages/dag.dag` still carries its three `Set { … }` literals today, so those
+  three sites left the *board* without the authored construction changing. A second dispatch at
+  the same ref counted diagnostic spans per emitted file: both files are still in the closure and
+  still report — `v2_extdeps_languages_dag.rs` 10 spans (3 of them E0308, all
+  `Option<Rc<TargetEmitHostRuntimeRow>>` vs `Rc<…>`), `v2_std_compilers_target_model.rs` 13 spans
+  (4 E0308, including the single reference-layer site above), against 76 files carrying spans in
+  total. So "the file dropped out of the closure" is **not** the explanation. What remains live is
+  a per-declaration change or masking by an earlier refusal inside the same file, and neither is
+  established here. Do not read the delta as nine repairs.
 - **M = 1.** These are 03_ingest's closure. The corpus-grain table above is a separate instrument
   (a grep over authored source) and is not a superset claim about any other module's board.
 - **No repair is proposed.** The producers in columns 4 and 5 are named from the emitter source
