@@ -1,17 +1,17 @@
 module v1.tests.claim.carrier_realization_census
 
-import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
+import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources, ResolvedPipelineResult, compile_to_resolved }
 import v1.compiler.emit_rust { is_host_text_carrier_type }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
-import v1.compiler.coercion { type_realization_decision, type_reference_decl_file }
+import v1.compiler.coercion { type_realization_decision, type_reference_decl_file, decl_identity_file }
 import v1.compiler.artifact { Rust }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer_env { TypeEnv, lookup_type_for }
 import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr, Resolved }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // The step-1 shadow census: for every type-reference occurrence the v1 emitter would
 // render, compute BOTH the legacy short-circuit answer and the strict identity
@@ -224,27 +224,8 @@ fn census_rows(sources: List<SourceFile>) -> List<CarrierDecisionRow> {
 // arm refuses and names the path rather than widening or narrowing.
 // ---------------------------------------------------------------------------
 
-type CensusSources
-  = SourcesRead { sources: List<SourceFile> }
-  | SourceReadRefused { path: String }
 
-fn census_sources_step(acc: CensusSources, path: String) -> CensusSources {
-  match acc {
-    SourceReadRefused { path: p } => SourceReadRefused { path: p }
-    SourcesRead { sources: so_far } => {
-      let read_out = Filesystem.Read(path: path)
-      if !read_out.success {
-        SourceReadRefused { path: path }
-      } else {
-        SourcesRead { sources: concat(so_far, [SourceFile { path: path, content: read_out.content }]) }
-      }
-    }
-  }
-}
 
-fn census_sources_from_paths(paths: List<String>) -> CensusSources {
-  paths |> fold(init: SourcesRead { sources: [] }, f: (acc, p) => census_sources_step(acc: acc, path: p))
-}
 
 // ---------------------------------------------------------------------------
 // Receipt. The cross-tab is the artifact, so the row carries the raw fields the
@@ -297,12 +278,6 @@ fn census_tsv(rows: List<CarrierDecisionRow>) -> String {
   rows |> fold(init: census_tsv_header(), f: (acc, r) => concat(concat(acc, "\n"), census_row_tsv(r: r)))
 }
 
-fn census_receipt_for_paths(paths: List<String>) -> String {
-  match census_sources_from_paths(paths: paths) {
-    SourceReadRefused { path: p } => concat("REFUSED\tsource_read_failed\t", p)
-    SourcesRead { sources: srcs } => census_tsv(rows: census_rows(sources: srcs))
-  }
-}
 
 // First end-to-end subject: a small, self-contained closure that genuinely exercises the
 // carrier -- dag/std/string_type.dag declares `type String = FreeMonoid<Char>`, which is the
@@ -316,9 +291,6 @@ data census_smoke_subject_paths: List<String> = [
   "dag/std/string_type.dag"
 ]
 
-fn census_smoke_receipt() -> String {
-  census_receipt_for_paths(paths: census_smoke_subject_paths)
-}
 
 // SIDECAR RECEIPT AS A FILE, which is what the design specified and what the first
 // readings did not do. Returning the TSV as the entry's value put it inside the run
@@ -326,14 +298,7 @@ fn census_smoke_receipt() -> String {
 // LAST row of every receipt carried a harness suffix, and a line-anchored histogram over
 // that output silently dropped it. The receipt was always correct; the reading of it was
 // short by exactly one row, and short in the direction that reports FEWER findings.
-data census_smoke_receipt_path: String = "target/carrier_realization_smoke.tsv"
 
-fn census_write_smoke_receipt() -> Bool {
-  Filesystem.Write(
-    path: census_smoke_receipt_path,
-    content: census_receipt_for_paths(paths: census_smoke_subject_paths)
-  ).success
-}
 
 // THE CALIBRATION CONTROL (smart-ram-730's ruling: mandatory, and the census is
 // unreportable until it passes). The subject is the import closure of
@@ -380,14 +345,7 @@ data census_calibration_subject_paths: List<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data census_calibration_receipt_path: String = "target/carrier_realization_calibration.tsv"
 
-fn census_write_calibration_receipt() -> Bool {
-  Filesystem.Write(
-    path: census_calibration_receipt_path,
-    content: census_receipt_for_paths(paths: census_calibration_subject_paths)
-  ).success
-}
 
 // THE ENTRY RETURNS ProcessExit, NOT Bool, AND THE REFUSAL THAT FORCED THIS IS CORRECT.
 // A Bool-returning entry is refused by the host: "printing the value and exiting 0 would
@@ -396,21 +354,7 @@ fn census_write_calibration_receipt() -> Bool {
 // host then DISCARDED the effect rather than let a run whose verdict it could not map
 // leave an artifact behind. A census that reported a divergence count out of a refused
 // run would be reading a receipt the substrate declined to stand behind.
-fn census_run_calibration() -> ProcessExit {
-  if census_write_calibration_receipt() {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "calibration receipt write failed")
-  }
-}
 
-fn census_run_smoke() -> ProcessExit {
-  if census_write_smoke_receipt() {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "smoke receipt write failed")
-  }
-}
 
 // THE CROSS-MODULE DISCRIMINATOR (smart-ram-730's parent traced this; the test is theirs).
 // String is a POOR probe for the roster, because is_host_text_carrier_type short-circuits
@@ -487,15 +431,184 @@ data census_cross_module_subject_paths: List<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data census_cross_module_receipt_path: String = "target/carrier_realization_cross_module.tsv"
 
-fn census_run_cross_module() -> ProcessExit {
-  if Filesystem.Write(
-    path: census_cross_module_receipt_path,
-    content: census_receipt_for_paths(paths: census_cross_module_subject_paths)
-  ).success {
-    ExitSuccess
+
+// ============================================================================
+// THE TYPED-GRAIN CENSUS. Everything above walks front_end_sources, which is the INPUT
+// to normalization and inference -- NOT the tree emit_artifact consumes. That census
+// asked whether inference had happened before the phase responsible for it had run, so
+// its 0-of-111 is close to a tautology at that grain. This one walks the tree the
+// emitter is actually handed.
+//
+//   compile_to_resolved -> ResolvedPipelineResult.graph -> ResolvedGraph.modules
+//                       -> TypedModule.items + TypedModule.type_env
+//
+// THREE ANSWERS, RECORDED INDEPENDENTLY, none allowed to stand in for another before
+// comparison. That independence is the whole design: the defect under measurement is one
+// arm serving two states, so an instrument that lets a missing answer be filled in by a
+// present one reproduces the very conflation it exists to detect.
+type DeclarationIdentityObservation
+  = IdentityFromInference { decl_file: String }
+  | IdentityFromEnvironment { decl_file: String }
+  | IdentitiesAgree { decl_file: String }
+  | IdentitiesDisagree { inferred: String, environment: String }
+  | IdentityUnavailableBoth
+
+// The raw reference-file value is an OBSERVATION OF CURRENT BEHAVIOUR and never an
+// identity. It is carried in its own field under its own name so that no reader, and no
+// later fold over these rows, can mistake it for one.
+type LegacyKeyObservation = LegacyFallbackUsed { reference_file: String }
+                          | LegacyKeyResolved { decl_file: String }
+
+type TypedCarrierRow {
+  module_file: String
+  enclosing_decl: String
+  position_kind: String
+  authored_name: String
+  identity: DeclarationIdentityObservation
+  legacy: LegacyKeyObservation
+}
+
+fn identity_observation(inferred: String, environment: String) -> DeclarationIdentityObservation {
+  if inferred == "" && environment == "" {
+    IdentityUnavailableBoth
+  } else if inferred == "" {
+    IdentityFromEnvironment { decl_file: environment }
+  } else if environment == "" {
+    IdentityFromInference { decl_file: inferred }
+  } else if inferred == environment {
+    IdentitiesAgree { decl_file: inferred }
   } else {
-    exit_failure(reason: "cross-module receipt write failed")
+    IdentitiesDisagree { inferred: inferred, environment: environment }
   }
 }
+
+// NOTE the asymmetry with type_reference_decl_file, and it is deliberate: this reads the
+// resolved node ONLY, with no fallback to the reference's own span. An absent answer is
+// reported as absent. That is the refusal the production helper does not make.
+fn inferred_identity_file(n: Node) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
+    _ => ""
+  }
+}
+
+fn environment_identity_file(env: TypeEnv, n: Node) -> String {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: d } => decl_identity_file(item: d)
+    Absent => ""
+  }
+}
+
+// The legacy key is LegacyFallbackUsed exactly when the production helper had no resolved
+// node to read -- the arm that returns the reference's own file.
+fn legacy_observation(had_inference: Bool, key: String) -> LegacyKeyObservation {
+  if had_inference { LegacyKeyResolved { decl_file: key } } else { LegacyFallbackUsed { reference_file: key } }
+}
+
+fn typed_decision_row(
+  module_file: String,
+  enclosing: String,
+  position_kind: String,
+  n: Node,
+  env: TypeEnv,
+  si: Map<String, NewlineIndex>
+) -> TypedCarrierRow {
+  let inferred = inferred_identity_file(n: n)
+  let environment = environment_identity_file(env: env, n: n)
+  let legacy_key = type_reference_decl_file(n: n)
+  TypedCarrierRow {
+    module_file: module_file,
+    enclosing_decl: enclosing,
+    position_kind: position_kind,
+    authored_name: authored_name_at(source_indices: si, node: n),
+    identity: identity_observation(inferred: inferred, environment: environment),
+    legacy: legacy_observation(had_inference: inferred != "", key: legacy_key)
+  }
+}
+
+fn no_typed_rows() -> List<TypedCarrierRow> {
+  []
+}
+
+fn typed_field_rows(
+  module_file: String, enclosing: String, fields: List<Node>, env: TypeEnv, si: Map<String, NewlineIndex>
+) -> List<TypedCarrierRow> {
+  fields |> fold(init: no_typed_rows(), f: (acc, fld) => concat(acc, [typed_decision_row(
+    module_file: module_file, enclosing: enclosing, position_kind: "declaration_field",
+    n: child_type_node(ch: fld), env: env, si: si)]))
+}
+
+fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
+  let enclosing = authored_name_at(source_indices: si, node: item)
+  let decl_rows = if !is_type_def_item(item: item) {
+    no_typed_rows()
+  } else if is_coproduct_type(n: item) {
+    item.children |> fold(init: no_typed_rows(), f: (acc, variant) =>
+      concat(acc, typed_field_rows(module_file: module_file, enclosing: enclosing, fields: variant.children, env: env, si: si)))
+  } else {
+    typed_field_rows(module_file: module_file, enclosing: enclosing, fields: item.children, env: env, si: si)
+  }
+  let param_rows_t = if item.body == none {
+    no_typed_rows()
+  } else {
+    item.params |> fold(init: no_typed_rows(), f: (acc, prm) => concat(acc, [typed_decision_row(
+      module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_param",
+      n: param_node_type_expr(n: prm), env: env, si: si)]))
+  }
+  concat(decl_rows, param_rows_t)
+}
+
+fn typed_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
+  let module_file = authored_name_at(source_indices: si, node: m.module)
+  m.items |> fold(init: no_typed_rows(), f: (acc, item) =>
+    concat(acc, typed_item_rows(module_file: module_file, item: item, env: m.type_env, si: si)))
+}
+
+fn identity_label(o: DeclarationIdentityObservation) -> String {
+  match o {
+    IdentityFromInference { decl_file: _ } => "FromInference"
+    IdentityFromEnvironment { decl_file: _ } => "FromEnvironment"
+    IdentitiesAgree { decl_file: _ } => "Agree"
+    IdentitiesDisagree { inferred: _, environment: _ } => "DISAGREE"
+    IdentityUnavailableBoth => "UnavailableBoth"
+  }
+}
+
+fn identity_file_label(o: DeclarationIdentityObservation) -> String {
+  match o {
+    IdentityFromInference { decl_file: d } => d
+    IdentityFromEnvironment { decl_file: d } => d
+    IdentitiesAgree { decl_file: d } => d
+    IdentitiesDisagree { inferred: i, environment: e } => concat(concat(i, " != "), e)
+    IdentityUnavailableBoth => ""
+  }
+}
+
+fn legacy_label(l: LegacyKeyObservation) -> String {
+  match l {
+    LegacyFallbackUsed { reference_file: f } => concat("FALLBACK:", f)
+    LegacyKeyResolved { decl_file: d } => concat("resolved:", d)
+  }
+}
+
+fn typed_row_tsv(r: TypedCarrierRow) -> String {
+  [
+    tsv_escape(v: r.module_file),
+    tsv_escape(v: r.enclosing_decl),
+    tsv_escape(v: r.position_kind),
+    tsv_escape(v: r.authored_name),
+    identity_label(o: r.identity),
+    tsv_escape(v: identity_file_label(o: r.identity)),
+    tsv_escape(v: legacy_label(l: r.legacy))
+  ] |> join(separator: "\t")
+}
+
+fn typed_census_tsv(rows: List<TypedCarrierRow>) -> String {
+  rows |> fold(
+    init: "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key",
+    f: (acc, r) => concat(concat(acc, "\n"), typed_row_tsv(r: r)))
+}
+
+
+
