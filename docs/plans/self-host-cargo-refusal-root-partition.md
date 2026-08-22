@@ -2568,7 +2568,7 @@ of the categories do not exist in §19 or §11.3**.
    declaration). 47 files hold the rest.
 
 Full receipt, with the board reproduced beside its denominator, the block-vs-site instrument split,
-and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md).
+and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md). Re-derived on `967b5bc1b92` with a committed classifier, and joined row-by-row against that board, in [`docs/probes/e0308_partition_2026-08-22.md`](../probes/e0308_partition_2026-08-22.md).
 Per-site TSV:
 [`docs/probes/e0308_partition_2026-08-21/sites_classified.tsv`](../probes/e0308_partition_2026-08-21/sites_classified.tsv).
 
