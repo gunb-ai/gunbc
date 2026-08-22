@@ -470,6 +470,47 @@ about the original defect's status: that was root-caused separately at the decla
 caller passed `SyntheticOccurrence`, repaired with a 17-site caller census), and main is green
 on that repair. Two greens, two different causes; this branch has the luck, main has the fix.
 
+## 4k. What the static instrument was actually worth, measured
+
+Across **seven instrument defects**, four extractor corrections, and a population that moved
+298 → 131 → 117 → 114, **the static census never once identified a live module.** It
+identified *unknowns*, correctly, and it stopped this lane from acting on them. The one true
+positive in the entire exercise — `gunbc.pr_digests` — was found by **one execution**, the
+required floor, and no static bucket caught it.
+
+That is DESIGN §3 as a measurement rather than a doctrine: *in a fail-closed substrate the
+deletion is the census*, demonstrated against a static alternative that got four rounds of
+sharpening and still could not do the job.
+
+**The "zero near-misses" reading, stated so a later reader does not relax at it.** Of the 14
+rows that left the deletion set, **none became CONSUMED**. That reads as reassurance and it is
+not. Thirteen went to AMBIGUOUS, which means **unresolved** — not proven consumed *and* not
+proven unconsumed — and **a live module among them would present exactly as they do; the
+bucket cannot distinguish it.** So the honest statement is *thirteen rows of unknown status
+that I would have deleted*, and the near-miss count is **1, found by execution**.
+
+**The same standard applied to the 56 being deleted, because it follows and should not go
+unstated.** They are STILL-UNCONSUMED or island-closed DEAD-CONSUMER-ONLY: zero on three
+*decoded* surfaces whose declared standing is `LowerBoundOnly`. That is the best-evidenced set
+this instrument can produce. **It is not proof.** Which is the argument *for* landing it and
+reading the refusals, not a risk being run in spite of them.
+
+## 4l. Editing this set means re-running the fixed point, not adjusting the count
+
+`69 − 13 + 1 = 56` reconciles arithmetically **by the wrong route**: the 13 left on
+*evidential* grounds (the corrected extractor moved them to AMBIGUOUS) and the 14th,
+`v2.std.rust_leaf_model_claim`, left on a *structural* one — restoring
+`v2.test.language_model.rust` re-created its in-population consumer, so deleting it would have
+split an island the restore had just re-formed. It is still residue. Two unrelated mechanisms
+that happen to sum correctly, which is coincidence in the totals wearing the appearance of
+reconciliation — the same class as a control derived from the measurement it controls, one
+level up.
+
+**So: anyone who later adds or removes a row from this set must RE-RUN THE FIXED POINT, not
+adjust the count.** Eligibility is a property of the set (§4g), a restore can create a
+violation as readily as a deletion can, and the failure mode is silent — the arithmetic will
+keep agreeing.
+
 ## 5. The 56 deleted
 
 | module | path | bucket |
