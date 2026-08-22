@@ -285,8 +285,18 @@ fn read_render(ctx: &InterpContext, value: &Value) -> Result<Render, String> {
         return Ok(Render::Text(text));
     }
     if ctx.sym_eq(*variant_name, "LedgerUnrenderable") {
-        let reason = variant_field(fields, ctx, "reason").unwrap_or_default();
-        let offending = variant_field(fields, ctx, "offending").unwrap_or_default();
+        let reason = variant_field(fields, ctx, "reason").ok_or_else(|| {
+            "TERMINAL-LEDGER REFUSAL cause=RenderMissingReason — LedgerUnrenderable carried no \
+             `reason`. The seed and the grammar disagree about the refusal's own shape, which is \
+             the disagreement this reader exists to catch; defaulting it would publish a blank \
+             where the cause belongs."
+                .to_string()
+        })?;
+        let offending = variant_field(fields, ctx, "offending").ok_or_else(|| {
+            "TERMINAL-LEDGER REFUSAL cause=RenderMissingOffending — LedgerUnrenderable carried no \
+             `offending`."
+                .to_string()
+        })?;
         let diagnosis = variant_field(fields, ctx, "diagnosis").ok_or_else(|| {
             "TERMINAL-LEDGER REFUSAL cause=RefusalMissingDiagnosis — LedgerUnrenderable carried no \
              `diagnosis`, so the refusal would have destroyed the rows it refused."
