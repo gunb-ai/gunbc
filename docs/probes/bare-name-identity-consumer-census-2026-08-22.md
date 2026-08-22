@@ -142,3 +142,37 @@ afterwards.
 
 The six derived counts in the histogram above were read off the same binary
 (`12 / 55 / 11 / 8 / 9 / 6`), so the table is a transcription of an execution, not of a reading.
+
+## A production specimen for the `derive_variant_to_enum` row, and what it does and does not show
+
+`crisp-crab-430` (namespace-cut lane) supplied one. Recorded with its subjects separated, because
+the mechanism and the artifact were observed on **different trees** and only the first is on main.
+
+**Verified here, at this HEAD:** `Connective` is declared twice — `v1.compiler.core`
+(`Conj | Disj | NoConnective | Arrow`) and `v2.std.node`
+(`Atom | Conj | Disj | Arrow | Cardinality | Instantiation`) — and **both declare `Conj` and
+`Disj`**. So the two summaries collapse to one entry in the bare-keyed map *before*
+`derive_variant_to_enum` runs; the fold sees a single `Connective`, maps `Conj`/`Disj` to it
+unambiguously, and **the sentinel it exists to write for exactly this case is never written**. The
+ambiguity wall cannot fire because the collision was destroyed one layer up — in the
+`add_emit_item_summary` row. This is a strictly stronger reach claim than the collision count the
+row previously carried, and it is upgraded in the carrier.
+
+**Not reproduced here:** the reported artifact — a spurious `pub use crate::v2_std_node::{Connective,
+Edge, NamedEdgeTargetLookup, Node}` in the committed `v1_compiler_infer` mirror. At this HEAD that
+mirror imports **nothing** from `v2_std_node`, and the cited line is a different statement. The
+specimen belongs to the namespace-cut envelope, where corpus-wide import deletion removes the
+discriminator that currently masks the collapse. That does not weaken the mechanism; it locates the
+artifact, and citing it as a main-tree defect would have been the wrong-subject error.
+
+**One negative result carried from that lane, because it prevents a wrong generalisation:**
+`NamedEdgeTargetLookup` and `Edge` in that same use-line are **not** explained by this mechanism —
+`Absent` is declared by six modules so the wall genuinely fires for it, and `Edge` is a record that
+cannot reach the variant arm at all. One emitted use-line, at least two distinct causes. The census
+claims this row for `Connective` only.
+
+**And a refinement to the row's repair note, from the same lane:** re-keying the map does not by
+itself deliver the refusal, because `derive_variant_to_enum` **scans** the whole map rather than
+looking one entry up. A better key hands it two entries where it had one; it still has to be taught
+that two entries sharing a spelling is the refusing case. A scan is not repaired by a key.
+
