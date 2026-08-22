@@ -23,6 +23,7 @@ import extdeps.git {
   shape_git_reset_hard_argv,
   shape_git_rev_parse_argv,
 }
+import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.tmux {
   shape_tmux_has_session_argv_for,
   shape_tmux_kill_session_argv_for,
@@ -497,7 +498,7 @@ fn dashboard_ensure_serve_binary(
         } else {
           dashboard_target_exec(
             instance: instance,
-            program: "/usr/bin/chmod" as FilePath,
+            program: chmod_binary_path as String as FilePath,
             args: ["0755", path as String],
           )
         }
@@ -1331,7 +1332,7 @@ fn dashboard_required_target_executables(
           "/usr/bin/mv" as FilePath,
           "/usr/bin/nc" as FilePath,
           "/usr/bin/dirname" as FilePath,
-          "/usr/bin/chmod" as FilePath,
+          chmod_binary_path as String as FilePath,
         ],
         provider_paths,
       ),

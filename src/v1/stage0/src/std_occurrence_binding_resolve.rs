@@ -237,7 +237,7 @@ pub fn binding_candidates_from_supplied_declarations(
     reference: Rc<ReferenceOccurrence>,
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceCandidatePopulationBuild> {
-    supplied_candidates.clone().iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
+    supplied_candidates.iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
     seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     refusal: None,

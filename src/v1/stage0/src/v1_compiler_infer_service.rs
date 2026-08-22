@@ -246,7 +246,7 @@ pub fn item_callees_for(m: Rc<TypedModule>, item: Rc<Node>) -> Rc<ItemCallees> {
 pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<ModuleCallees>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for m in modules.clone().iter().cloned() {
+        for m in modules.iter().cloned() {
             __result.push(Rc::new(ModuleCallees {
                 items: Rc::new({
                     let mut __result = Vec::new();
@@ -265,7 +265,7 @@ pub fn expand_transitive_services_once(
     module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    module_callees.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
+    module_callees.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
         let item_name = entry.item_name.clone();
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -275,11 +275,11 @@ if has_no_body.clone() {
             } else {
                 {
                     let called = entry.called.clone();
-let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
+let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -398,7 +398,7 @@ pub fn check_service_method_call_node(
             Some(ops) => {
                 let matching = Rc::new({
                     let mut __result = Vec::new();
-                    for op in ops.clone().iter().cloned() {
+                    for op in ops.iter().cloned() {
                         if (op.name.clone() == method.clone()) {
                             __result.push(op);
                         }

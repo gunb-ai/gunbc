@@ -90,7 +90,7 @@ pub fn make_indent(level: i64) -> String {
 
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let result = items.clone().iter().cloned().fold(
+        let result = items.iter().cloned().fold(
             Rc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
@@ -290,7 +290,7 @@ pub fn sanitize_service_name(name: String) -> String {
         );
         let pascal_parts = Rc::new({
             let mut __result = Vec::new();
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 __result.push(capitalize_first(p.clone()));
             }
             __result
@@ -348,7 +348,7 @@ pub fn to_pascal(name: String) -> String {
         );
         let pascal_parts = Rc::new({
             let mut __result = Vec::new();
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 __result.push(capitalize_first(p.clone()));
             }
             __result
@@ -399,7 +399,7 @@ pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> Str
         );
         let replaced = Rc::new({
             let mut __result = Vec::new();
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 __result.push(
                     Rc::new(
                         p.clone()
@@ -427,7 +427,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
         );
         let replaced = Rc::new({
             let mut __result = Vec::new();
-            for p0 in parts0.clone().iter().cloned() {
+            for p0 in parts0.iter().cloned() {
                 __result.push({
                     let parts1 = Rc::new(
                         p0.clone()
@@ -437,7 +437,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
                     );
                     let inner = Rc::new({
                         let mut __result = Vec::new();
-                        for p1 in parts1.clone().iter().cloned() {
+                        for p1 in parts1.iter().cloned() {
                             __result.push(
                                 Rc::new(
                                     p1.clone()
@@ -495,7 +495,7 @@ pub fn apply_named_template_nested(
                         );
                         let processed = Rc::new({
                             let mut __result = Vec::new();
-                            for part in parts.clone().iter().cloned() {
+                            for part in parts.iter().cloned() {
                                 __result.push(apply_named_template_nested(
                                     part.clone(),
                                     bindings.clone(),

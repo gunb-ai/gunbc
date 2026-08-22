@@ -66,7 +66,7 @@ pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc
             ..
         } => Rc::new({
             let mut __result = Vec::new();
-            for owner in ambiguous_owners.clone().iter().cloned() {
+            for owner in ambiguous_owners.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(owner.clone(), ".".to_string()),
                     name.clone(),

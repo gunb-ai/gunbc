@@ -50,6 +50,14 @@ import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
 }
 import extdeps.exec.command { shell_quote }
+import extdeps.apt { apt_install_argv }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.live_deploy.operations {
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_restart_command,
+}
 import gunbc.live_deploy.emit {
   RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
@@ -223,10 +231,10 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tmux = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
-  string_contains(s: tailscale, pattern: "dpkg -s tailscale")
-    && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
-    && string_contains(s: tmux, pattern: "dpkg -s tmux")
-    && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
+  string_contains(s: tailscale, pattern: dpkg_status_command(package: package_tailscale))
+    && string_contains(s: tailscale, pattern: apt_install_command(package: package_tailscale, privileged: false))
+    && string_contains(s: tmux, pattern: dpkg_status_command(package: package_tmux))
+    && string_contains(s: tmux, pattern: apt_install_command(package: package_tmux, privileged: false))
 }
 
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
@@ -256,14 +264,14 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\"")
     && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" /etc/gunbc-tree-sync.env")
     && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" /etc/systemd/system/gunbc-tree-sync.service")
-    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
     && string_contains(s: sh, pattern: "sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "[Service]")
-    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
+    && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg --https=443 8080")
-    && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
-    && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
+    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
@@ -310,7 +318,13 @@ data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for 
 
 test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   let sh = witness_apply_script()
-  string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
+  string_contains(
+    s: sh,
+    pattern: concat(
+      systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true),
+      " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }",
+    ),
+  )
 }
 
 data owned_only_removes_exactly_its_own_endpoint_note: String = "THIS CONJUNCT HAS NOW BEEN WRONG IN BOTH DIRECTIONS, which is what makes the third version worth stating carefully. It first REQUIRED `sudo -n tailscale serve reset` — a claim named owned_only demanding the one command on the host that is definitionally not owned-only (review 45207). It was then inverted to forbid every privileged tailscale invocation and require a refusal marker, which was honest about the emission but rested on the emission being right, and it was not: the refusal existed because the model asserted, without citation, that the CLI has no scoped removal.\\n\\nSo the pattern to watch is that a witness cannot be more correct than the claim it transcribes. Both earlier versions were faithful readings of the artifact in front of them; neither could have found that the artifact was answering the wrong question, and no strengthening of a string match over the retract would have surfaced it.\\n\\nThe assertion is now positive and specific: the retract issues the scoped `off` for the endpoint this deployment configured, and never the node-global reset. Requiring the exact off spelling is what ties it to the apply — the upstream demands every original flag on an off command, so a retract whose flags drift from its apply removes nothing while exiting zero, and that is the failure this conjunct exists to catch."
