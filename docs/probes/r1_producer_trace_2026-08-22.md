@@ -487,3 +487,98 @@ second is better by §5:
 
 Option 2 depends on a claim I have **not** closed: that no *other* nondeterminism survives
 normalization. Establishing that is the same N≥2 control, run over normalized rather than raw output.
+
+---
+
+# R1's ROOT — a key collision, and the confluence result reinterpreted
+
+## Two declarations spell `Nat`
+
+Verified on `origin/main`:
+
+| declaration | shape | realization |
+|---|---|---|
+| `dag/std/nat.dag:6` | `type Nat = CommutativeSemiring<Magnitude>` | **natively realizing** — emits `i64` |
+| `src/v2/std/nat.dag:13` | `type Nat = Zero \| Succ { prev: Nat }` | **Peano coproduct** — genuinely shared |
+
+And the set that decides wrapping **cannot represent the distinction**:
+
+| | key |
+|---|---|
+| `maybe_mark_shared_type` | `set_insert(acc, summary.name)` — the **bare name** |
+| `TypeSummary` | `name`, `repr`, `field_summaries`, `field_type_map`, `field_import_surface_names`, `variant_name_set`, `generic_param_names`, `has_fn_fields` — **no declaring file** |
+| every wrap site | `set_contains(shared_types, leaf)` — bare leaf |
+
+Both declarations collide on one key. One membership bit is returned for two carriers that need
+opposite answers.
+
+The one guard that could have separated them **cannot, structurally**:
+`fn is_grounded_coproduct_native_alias(name: String) -> Bool` takes a *name*, so it can exclude a
+spelling entirely or not at all; excluding one of two declarations that share a spelling is not
+expressible in its signature. It covers only the Vec/Optional/Diagnostics aliases in any case.
+
+## The confluence result was read backwards
+
+This document reported `Nat` true at all 8 producers, `Int` never true, and called the wrap verdict
+**confluent** — presented as a clean negative result retiring the one-vs-three question. The
+confluence is real, but it is **not a healthy signal: it is the defect's signature.** The producers
+agree because the set they consult *has no way to disagree* — one key, one bit, two carriers. A
+perfectly confluent policy over a key that conflates its subjects is exactly what you measure when
+the fork lives in the **key** rather than the consumers.
+
+So the brief's question does not have the answer "neither one producer nor three." It has the answer
+**the divergence is not in the producers at all — it is in what they are asked to look up.**
+
+## Both declarations are in the traced closure — Finding 3 was the proof
+
+`rust_seed_host_numeric_alias(name, decl_file)` returns `i64` iff `name ∈ {Nat, Int}` **and**
+`decl_file_realizes_natively(decl_file)`. Finding 3 records that R1's `Nat` sites split by exactly
+this arm — alias **fired** (emitting `i64`) vs alias **declined** (`v2_lens_cost.rs:312`, `:315`,
+emitting `Nat`). The two subsets therefore differ precisely in **declaring file** while sharing the
+name `Nat`, in one closure, in one run. Both declarations are present and both are reached.
+
+That makes the collision sharper than the collision alone: two arms of the same emitter sit in the
+**same expression** and disagree about what they may know —
+
+| arm | key | can separate the two `Nat`s? |
+|---|---|---|
+| numeric alias | `(name, decl_file)` | **yes**, and does |
+| sharing membership | `(name)` | **no** — one bit for both |
+
+The identity is available at the call site, threaded there, and consulted one line above. The
+emitter does not lack the discriminator; **the `shared_types` lookup discards it.**
+
+## The ceiling is already declared in-tree — with a next-rung trigger
+
+The header of `rust_carrier_is_at_shared_layer` (`src/v1/05_emit_rust.dag`) records a **prior
+consolidation** — four call sites that each answered "is this carrier at the shared layer?"
+differently, collapsed into one predicate — and states its own rung honestly:
+
+> **RUNG: MITIGATABLE, and no higher.** The invalid state is still writable … the scalar arm keys on
+> a NAME plus a declaring file, and sharing membership keys on a bare leaf name, so **two
+> declarations sharing a spelling and differing in sharing are still conflated.**
+
+That sentence *is* R1. The note even measured the same both-directions signature (18 `expected Nat,
+found Rc<Nat>` against 20 the reverse in one board) and explicitly identifies its `Nat` as the **v2
+Peano coproduct, not** the natively-realizing `dag/std/nat.dag` declaration.
+
+Its next-rung trigger: the modeled layer transition `v2.compiler.wrap_decision` names, whose
+`TargetReferenceLayer` and `target_layer_transition` carriers already exist in
+`src/v2/std/compilers/target_model.dag` — not reachable because the v1 seed's source roots do not
+include `src/v2`, and lifting the layer model to a root both compilers import is **a carrier move
+that belongs ahead of this pipeline edit rather than inside it.**
+
+## Therefore: the consolidation proposal is NOT written, and that is the finding
+
+Consolidating the 24 `set_contains(shared_types, …)` sites onto one authority is real work that
+would **change nothing about R1**: every site would consult one predicate, which consults one set,
+which is keyed on a name that conflates the two `Nat` declarations. It is DESIGN §6's local
+subsystem patch where the root is a carrier move — it would make the tree *look* consolidated while
+the defect sat exactly where it sits, buying a rung of apparent progress with no change in the rung
+that matters. The prior consolidation already demonstrated this: it collapsed four authorities into
+one and landed at **mitigatable**, because collapsing consumers cannot raise a ceiling set by the key.
+
+**What R1 is:** not a repair lane, but a **population on an already-declared ceiling** whose trigger
+is the carrier move. What this lane adds to that declared row is a better-characterised population —
+the per-site depth split, `Int` having zero sites *because `Int` is not a shared type at all*, and
+the alias-collapse subset that is a different defect wearing the same delta.
