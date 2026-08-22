@@ -47,7 +47,12 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 
 // The fleet reach roster — every identity a reach-layer consumer (probe, collector,
 // key scan) walks. Homed HERE (moved from host_reach_identity_probe) so enrollment and
-// probe can both consume it without an import cycle: enrollment -> endpoint <- probe.
+// probe can both consume it: enrollment -> endpoint <- probe. Re-homing it under either
+// consumer closes that fork into a cycle, and the compiler REFUSES one — measured on a
+// minimal two-module pair (2026-08-22): the acyclic direction compiles with 0
+// diagnostics, adding the back-edge refuses with `circular dependency detected` naming
+// both modules. So this placement is enforced by the acyclicity law of §3, not advice a
+// later author weighs.
 data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
 
 // Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
