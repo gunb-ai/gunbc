@@ -582,3 +582,82 @@ one and landed at **mitigatable**, because collapsing consumers cannot raise a c
 is the carrier move. What this lane adds to that declared row is a better-characterised population —
 the per-site depth split, `Int` having zero sites *because `Int` is not a shared type at all*, and
 the alias-collapse subset that is a different defect wearing the same delta.
+
+---
+
+# The root, closed — membership earned by one declaration and spent by another
+
+The key-collision reading above is **superseded**, by measurement rather than argument. Two probes —
+one from the producer end (`smart-ram-730`), one from the insert end (this lane) — agree, and neither
+closes the chain alone.
+
+## The measurements
+
+**Connective probe** (`smart-ram-730`, both `nat` modules confirmed co-resident in the closure):
+
+| declaration | connective | summary produced? |
+|---|---|---|
+| `dag/std/nat.dag` | `NoConnective` (alias) | **false** |
+| `src/v2/std/nat.dag` | `Disj` (real coproduct) | **true**, name `Nat` |
+| `dag/std/integer.dag` | `NoConnective` | **false** |
+| `src/v2/std/integer.dag` | `NoConnective` | **false** |
+
+`build_type_summary` returns `none` for `NoConnective`/`Arrow`/transport-carrying items, so **an
+alias declaration never enters `type_summaries` at all.**
+
+**Insert probe** (this lane, instrumenting the `rc_map_insert` in `build_emit_graph_info`; subject
+`a8888afd4c6`):
+
+```
+2 SUMTRACE  insert  Nat  present_before=false  mapsize=882
+inserts named Nat: 2      overwrites (present_before=true): 0
+```
+
+**Zero overwrites** — nothing named `Nat` is ever destroyed. `Int`: **zero inserts**.
+
+*Not overclaimed:* the two lines are identical (same `present_before`, same `mapsize`), so the
+natural reading is that the fold runs twice, each run inserting `Nat` once. That is a reading — I did
+not instrument invocation identity. What is *measured* either way is that no `Nat` insert ever found
+one already present.
+
+## The chain
+
+1. `dag/std/nat.dag` `Nat` is an **alias** → no summary.
+2. `src/v2/std/nat.dag` `Nat` is a **coproduct** → produces the only summary named `Nat`.
+3. Nothing is overwritten — there is no second entry.
+4. `build_shared_types` folds summaries and `set_insert`s the **bare name**, so `shared_types` gains
+   `"Nat"` purely on the v2 coproduct's account.
+5. Every wrap site asks `set_contains(shared_types, leaf)` with a bare leaf — measured `true` at all
+   8 producers, never `false`.
+6. A reference to the **seed's** `Nat` — which realizes as `i64` and has *no summary at all* — spells
+   `"Nat"`, so it collects a membership bit **earned by a different declaration**.
+
+**So R1 is not two entries conflated, and not producers disagreeing. Membership is earned by one
+declaration and spent by another**, because the set is keyed on a spelling and the losing declaration
+is not merely outvoted — it is *structurally absent* from the population that built the set.
+
+This is why a composite summary key repairs nothing here: there is no second entry to preserve. And
+it is why the confluence result was **vacuous** — disagreement was not reachable: one entry, one bit,
+one carrier never in the room. An agreement measurement is informative only if the mechanism could
+have produced disagreement.
+
+`Int` is corroborated from a third direction: *both* `integer.dag` declarations are aliases, so `Int`
+cannot reach `type_summaries`, so it cannot reach `shared_types` — which is why `Int` has zero R1
+sites.
+
+## Normalized-oracle control — clean at N=3
+
+| | |
+|---|---|
+| population | 176 files |
+| `1v2` / `1v3` / `2v3` | **SAME** / **SAME** / **SAME** |
+| rustfmt pass1 vs pass2 on this output | **SAME** |
+
+**Zero variation at N=3 — not "none".** The population has already proven it varies run to run, so
+three samples is a floor. Raw (unnormalized) emission on this same closure churned reliably at N=3,
+so the normalized oracle is doing real work rather than being checked against a quiet tree.
+
+The idempotence row does **not** contradict DESIGN's record that rustfmt is not idempotent —
+non-idempotence is a property of particular inputs, and this measures only this emitted population.
+It licenses a **symmetric single pass over two fresh emits**; it does **not** license comparing
+against a stored-normalized artifact, which is the recorded failure and which was not tested.
