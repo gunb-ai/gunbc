@@ -124,3 +124,34 @@ unparseable .dag source(s)` — a parse refusal, not a type judgment — while
 `{ nosuchname_zzz: 1 }` is ACCEPTED, the undefined name silently read as a string key. So the
 position reads as walled from its refusal column and is not: the two refusals come from the
 grammar's key form, and the one specimen that reaches typing passes.
+
+## The pass-coverage axis, measured second
+
+The grammar axis is not the only cut. ' `ExprVar` arm returns the node
+unchanged with an empty diagnostic list, so RESOLVE can refuse an undefined name at no position
+at all; inference is what refuses one. That makes "reached by resolve, not by inference" a second
+axis, and it is NOT a subset of the fourteen grammar sites.
+
+Measured, same binary:
+
+```
+BEGIN-TABLE
+fielddefault_nega      ACCEPTED  exit=0
+fielddefault_pos       ACCEPTED  exit=0
+fielddefault_reach     ACCEPTED  exit=0
+letbody_nega           ACCEPTED  exit=0
+letbody_pos            ACCEPTED  exit=0
+letbody_reach          REFUSED   exit=1 compile of /root/workspace/repo-root/probe_arms2/letbody_reach/probe.dag produced 1 hard diagno
+paramdefault_nega      ACCEPTED  exit=0
+paramdefault_pos       ACCEPTED  exit=0
+paramdefault_reach     ACCEPTED  exit=0
+END-TABLE
+```
+
+Two members: a PARAMETER default (`parse_param`) and a FIELD default (`parse_field`) — two uses
+of two different grammar sites sharing one pass-coverage fate. The in-body `let x =
+nosuchname_zzz` control REFUSES in the same run, which is what makes the two zeroes readable.
+
+A third candidate is named and NOT counted: `resolve_transport_binding` walks a transport's
+property values and children through `resolve_expr_types`, and inference touches `transport` only
+to test presence. Same shape, unmeasured here — it needs a service fixture.

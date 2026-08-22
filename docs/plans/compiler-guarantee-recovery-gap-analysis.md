@@ -2745,13 +2745,31 @@ enforces end to end.
    the compiler judges, not what the corpus contains, and gunbc#8876's eight live sites are the
    standing evidence that the two numbers are not each other.
 
-29. **A parameter's DEFAULT-VALUE expression is RESOLVED but never INFERRED, so an undefined name
-   at that position is accepted** (opened 2026-08-22, session quiet-boar-696, split out of item 28
-   because severity does not follow position-count: at item 28's seven positions a judgment runs
-   and reaches the wrong verdict, and here the judgment that would refuse never runs).
+29. **DECLARATION-SITE DEFAULT-VALUE EXPRESSIONS are RESOLVED but never INFERRED, so an undefined
+   name at one is accepted — and this is a SECOND AXIS, cut by pass coverage rather than by
+   grammar position** (opened 2026-08-22, session quiet-boar-696, split out of item 28 because
+   severity does not follow position-count: at item 28's seven positions a judgment runs and
+   reaches the wrong verdict, and here the judgment that would refuse never runs).
 
-   INVALID STATE. `fn a_pd(r: Rel = 7)` compiles clean at a declared coproduct — and so does
-   `fn a_pd(r: Rel = nosuchname_zzz)`.
+   INVALID STATE, MEASURED AT TWO POSITIONS AND NOT ONE. Both of these compile clean:
+
+       fn a_pd(r: Rel = 7)                  fn a_pd(r: Rel = nosuchname_zzz)
+       type H { rel: Rel = 7 }              type H { rel: Rel = nosuchname_zzz }
+
+   THE SECOND AXIS IS NON-EMPTY, WHICH IS WHY THIS IS NOT A CELL OF ITEM 28. Item 28 enumerates
+   positions by GRAMMAR — the call sites of `parse_type_expr`. This class is cut by PASS COVERAGE:
+   expressions `v1.compiler.resolve` walks and `v1.compiler.infer` never does. The two are
+   different axes and the second is not a subset of the first — a parameter default and a field
+   default are two USES of two different grammar sites (`parse_param`, `parse_field`) that share a
+   pass-coverage fate, and a matrix complete on the grammar axis reads as complete full stop unless
+   this is said. The control that makes both zeroes readable: an unannotated `let x =
+   nosuchname_zzz` in a function body REFUSES in the same run, so undefined names are refused in
+   general and these two positions are the exception.
+
+   A THIRD CANDIDATE, NAMED AS UNMEASURED RATHER THAN COUNTED. `resolve_transport_binding` passes a
+   transport's property values and children through `resolve_expr_types`, and `v1.compiler.infer`
+   touches `transport` only to test presence (`titem.transport != none`). That is the same shape and
+   it is NOT measured here — it needs a service fixture — so it is a candidate, not a member.
 
    WHY THE SECOND ARM IS THE FINDING AND THE FIRST IS NOT. At item 28's positions the reachability
    control REFUSES, which is what establishes the position is analysed and makes a passing kernel
@@ -2779,9 +2797,11 @@ enforces end to end.
    *unanalysed* and *analysed by a pass that does not judge this* are different defects with
    different repairs, and only the second is supported by the structure.
 
-   DISTINGUISHING FACTS. Measured on a binary built from `abf7194e2b2`: four specimens at the
-   position (declared member / plain kernel / arm payload at parent / undefined name), all four
-   ACCEPTED, against eleven sibling positions whose undefined-name arm refuses in the same run.
+   DISTINGUISHING FACTS. Measured on a binary built from `abf7194e2b2`: at the parameter default,
+   four specimens (declared member / plain kernel / arm payload at parent / undefined name), all
+   four ACCEPTED, against eleven sibling grammar positions whose undefined-name arm refuses in the
+   same run; at the field default, three specimens (member / kernel / undefined name), all three
+   ACCEPTED, against the in-body `let` control refusing in the same run.
    Structure read at `v1.compiler.parse` `parse_param`, `v1.compiler.resolve` `resolve_param`,
    `v1.compiler.resolve` `resolve_expr_types` and `v1.compiler.infer`'s single
    `param_node_default_value` use. Receipts:
@@ -2792,10 +2812,12 @@ enforces end to end.
    at a position whose declared type is in hand, so routing it through inference is the same
    judgment every other position already receives.
 
-   NEXT TRIGGER: (1) a discriminating RED — the undefined-name arm at a parameter default,
-   asserting a located refusal, with the accepted-default positive control beside it; (2) route
-   the default expression through inference against the parameter's declared type, which makes it
-   an ordinary consumer of item 28's obligation rather than a check of its own.
+   NEXT TRIGGER: (1) measure the transport candidate, so the class's membership is enumerated
+   rather than sampled; (2) a discriminating RED per member — the undefined-name arm at a parameter
+   default and at a field default, each asserting a located refusal, with the accepted-default
+   positive control beside it; (3) route the default expression through inference against the
+   declared type, which makes both members ordinary consumers of item 28's obligation rather than
+   checks of their own.
 
 30. **WITHDRAWN BEFORE IT WAS ACTED ON: `gunbc compile` does NOT report a budget refusal as
    success — the exit status was measured through a pipe, and the pipe was the defect** (opened
