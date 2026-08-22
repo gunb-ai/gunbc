@@ -1,0 +1,285 @@
+module v2.extdeps.formatters.rustfmt
+
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.patch { ConfigPatchRecord, config_patch_layer }
+import v2.std.refinement {
+  NonNegativeInt,
+  PositiveInt,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
+}
+
+type RustfmtIndentStyle
+  = RustfmtIndentBlock
+  | RustfmtIndentVisual
+
+type RustfmtBraceStyle
+  = RustfmtBraceAlwaysNextLine
+  | RustfmtBracePreferSameLine
+  | RustfmtBraceSameLineWhere
+
+type RustfmtControlBraceStyle
+  = RustfmtControlBraceAlwaysSameLine
+  | RustfmtControlBraceAlwaysNextLine
+  | RustfmtControlBraceClosingNextLine
+
+type RustfmtTrailingComma
+  = RustfmtTrailingCommaAlways
+  | RustfmtTrailingCommaNever
+  | RustfmtTrailingCommaVertical
+
+type RustfmtMatchArmLeadingPipes
+  = RustfmtMatchPipesAlways
+  | RustfmtMatchPipesNever
+  | RustfmtMatchPipesPreserve
+
+type RustfmtImportsGranularity
+  = RustfmtImportsGranularityPreserve
+  | RustfmtImportsGranularityCrate
+  | RustfmtImportsGranularityModule
+  | RustfmtImportsGranularityItem
+  | RustfmtImportsGranularityOne
+
+type RustfmtGroupImports
+  = RustfmtGroupImportsPreserve
+  | RustfmtGroupImportsStdExternalCrate
+  | RustfmtGroupImportsOne
+
+type RustfmtImportsLayout
+  = RustfmtImportsMixed
+  | RustfmtImportsHorizontal
+  | RustfmtImportsVertical
+  | RustfmtImportsHorizontalVertical
+
+type RustfmtFnParamsLayout
+  = RustfmtFnParamsCompressed
+  | RustfmtFnParamsTall
+  | RustfmtFnParamsVertical
+
+type RustfmtNewlineStyle
+  = RustfmtNewlineAuto
+  | RustfmtNewlineUnix
+  | RustfmtNewlineWindows
+  | RustfmtNewlineNative
+
+type RustfmtEdition
+  = RustfmtEdition2015
+  | RustfmtEdition2018
+  | RustfmtEdition2021
+  | RustfmtEdition2024
+
+type RustfmtSmallHeuristics
+  = RustfmtHeuristicsDefault
+  | RustfmtHeuristicsOff
+  | RustfmtHeuristicsMax
+
+type RustfmtHexLiteralCase
+  = RustfmtHexPreserve
+  | RustfmtHexUpper
+  | RustfmtHexLower
+
+type RustfmtVersion
+  = RustfmtVersionOne
+  | RustfmtVersionTwo
+
+type RustfmtBinopSeparator
+  = RustfmtBinopFront
+  | RustfmtBinopBack
+
+type RustfmtColor
+  = RustfmtColorAuto
+  | RustfmtColorAlways
+  | RustfmtColorNever
+
+type RustfmtTypePunctuationDensity
+  = RustfmtTypePunctuationWide
+  | RustfmtTypePunctuationCompressed
+
+type RustfmtMacroSelector
+  = RustfmtMacroAll
+  | RustfmtMacroNamed { name: String }
+
+type RustfmtRequiredVersion
+  = RustfmtVersionInstalled
+  | RustfmtVersionPinned { version: String }
+
+type RustfmtConfig {
+  indent_style: RustfmtIndentStyle
+  tab_spaces: Outcome<PositiveInt>
+  hard_tabs: Bool
+  max_width: Outcome<PositiveInt>
+  comment_width: Outcome<NonNegativeInt>
+  chain_width: Outcome<PositiveInt>
+  single_line_if_else_max_width: Outcome<NonNegativeInt>
+  single_line_let_else_max_width: Outcome<NonNegativeInt>
+  fn_call_width: Outcome<PositiveInt>
+  attr_fn_like_width: Outcome<PositiveInt>
+  struct_lit_width: Outcome<NonNegativeInt>
+  struct_variant_width: Outcome<NonNegativeInt>
+  array_width: Outcome<PositiveInt>
+  short_array_element_width_threshold: Outcome<PositiveInt>
+  brace_style: RustfmtBraceStyle
+  control_brace_style: RustfmtControlBraceStyle
+  where_single_line: Bool
+  trailing_comma: RustfmtTrailingComma
+  trailing_semicolon: Bool
+  match_arm_leading_pipes: RustfmtMatchArmLeadingPipes
+  match_arm_blocks: Bool
+  match_block_trailing_comma: Bool
+  imports_granularity: RustfmtImportsGranularity
+  group_imports: RustfmtGroupImports
+  imports_layout: RustfmtImportsLayout
+  imports_indent: RustfmtIndentStyle
+  reorder_imports: Bool
+  merge_imports: Bool
+  fn_params_layout: RustfmtFnParamsLayout
+  fn_args_layout: RustfmtFnParamsLayout
+  fn_single_line: Bool
+  inline_attribute_width: Outcome<NonNegativeInt>
+  reorder_modules: Bool
+  reorder_impl_items: Bool
+  newline_style: RustfmtNewlineStyle
+  blank_lines_upper_bound: Outcome<NonNegativeInt>
+  blank_lines_lower_bound: Outcome<NonNegativeInt>
+  wrap_comments: Bool
+  normalize_comments: Bool
+  normalize_doc_attributes: Bool
+  format_strings: Bool
+  format_code_in_doc_comments: Bool
+  doc_comment_code_block_width: Outcome<PositiveInt>
+  format_generated_files: Bool
+  hide_parse_errors: Bool
+  merge_derives: Bool
+  use_field_init_shorthand: Bool
+  use_try_shorthand: Bool
+  force_explicit_abi: Bool
+  format_macro_matchers: Bool
+  format_macro_bodies: Bool
+  binop_separator: RustfmtBinopSeparator
+  use_small_heuristics: RustfmtSmallHeuristics
+  overflow_delimited_expr: Bool
+  remove_nested_parens: Bool
+  combine_control_expr: Bool
+  hex_literal_case: RustfmtHexLiteralCase
+  enum_discrim_align_threshold: Outcome<NonNegativeInt>
+  struct_field_align_threshold: Outcome<NonNegativeInt>
+  spaces_around_ranges: Bool
+  space_after_colon: Bool
+  space_before_colon: Bool
+  empty_item_single_line: Bool
+  struct_lit_single_line: Bool
+  condense_wildcard_suffixes: Bool
+  force_multiline_blocks: Bool
+  error_on_line_overflow: Bool
+  error_on_unformatted: Bool
+  skip_children: Bool
+  skip_macro_invocations: List<RustfmtMacroSelector>
+  type_punctuation_density: RustfmtTypePunctuationDensity
+  disable_all_formatting: Bool
+  color: RustfmtColor
+  edition: RustfmtEdition
+  version: RustfmtVersion
+  unstable_features: Bool
+  required_version: RustfmtRequiredVersion
+  ignore: List<String>
+}
+
+data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
+  indent_style: RustfmtIndentBlock,
+  tab_spaces: positive_int_authoritative_literal(value: 4),
+  hard_tabs: false,
+
+  max_width: positive_int_authoritative_literal(value: 100),
+  comment_width: non_negative_int_authoritative_literal(value: 80),
+  chain_width: positive_int_authoritative_literal(value: 60),
+  single_line_if_else_max_width: non_negative_int_authoritative_literal(value: 50),
+  single_line_let_else_max_width: non_negative_int_authoritative_literal(value: 50),
+  fn_call_width: positive_int_authoritative_literal(value: 60),
+  attr_fn_like_width: positive_int_authoritative_literal(value: 70),
+  struct_lit_width: non_negative_int_authoritative_literal(value: 18),
+  struct_variant_width: non_negative_int_authoritative_literal(value: 35),
+  array_width: positive_int_authoritative_literal(value: 60),
+  short_array_element_width_threshold: positive_int_authoritative_literal(value: 10),
+
+  brace_style: RustfmtBraceSameLineWhere,
+  control_brace_style: RustfmtControlBraceAlwaysSameLine,
+  where_single_line: false,
+
+  trailing_comma: RustfmtTrailingCommaVertical,
+  trailing_semicolon: true,
+  match_arm_leading_pipes: RustfmtMatchPipesNever,
+  match_arm_blocks: true,
+  match_block_trailing_comma: false,
+
+  imports_granularity: RustfmtImportsGranularityPreserve,
+  group_imports: RustfmtGroupImportsPreserve,
+  imports_layout: RustfmtImportsMixed,
+  imports_indent: RustfmtIndentBlock,
+  reorder_imports: true,
+  merge_imports: false,
+
+  fn_params_layout: RustfmtFnParamsTall,
+  fn_args_layout: RustfmtFnParamsTall,
+  fn_single_line: false,
+  inline_attribute_width: non_negative_int_authoritative_literal(value: 0),
+
+  reorder_modules: true,
+  reorder_impl_items: false,
+
+  newline_style: RustfmtNewlineAuto,
+  blank_lines_upper_bound: non_negative_int_authoritative_literal(value: 1),
+  blank_lines_lower_bound: non_negative_int_authoritative_literal(value: 0),
+
+  wrap_comments: false,
+  normalize_comments: false,
+  normalize_doc_attributes: false,
+  format_strings: false,
+  format_code_in_doc_comments: false,
+  doc_comment_code_block_width: positive_int_authoritative_literal(value: 100),
+  format_generated_files: true,
+  hide_parse_errors: false,
+
+  merge_derives: true,
+  use_field_init_shorthand: false,
+  use_try_shorthand: false,
+  force_explicit_abi: true,
+
+  format_macro_matchers: false,
+  format_macro_bodies: true,
+
+  binop_separator: RustfmtBinopFront,
+
+  use_small_heuristics: RustfmtHeuristicsDefault,
+  overflow_delimited_expr: false,
+  remove_nested_parens: true,
+  combine_control_expr: true,
+  hex_literal_case: RustfmtHexPreserve,
+  enum_discrim_align_threshold: non_negative_int_authoritative_literal(value: 0),
+  struct_field_align_threshold: non_negative_int_authoritative_literal(value: 0),
+  spaces_around_ranges: false,
+  space_after_colon: true,
+  space_before_colon: false,
+  empty_item_single_line: true,
+  struct_lit_single_line: true,
+  condense_wildcard_suffixes: false,
+  force_multiline_blocks: false,
+  error_on_line_overflow: false,
+  error_on_unformatted: false,
+  skip_children: false,
+  skip_macro_invocations: [],
+  type_punctuation_density: RustfmtTypePunctuationWide,
+  disable_all_formatting: false,
+  color: RustfmtColorAuto,
+  edition: RustfmtEdition2015,
+  version: RustfmtVersionOne,
+  unstable_features: false,
+  required_version: RustfmtVersionInstalled,
+  ignore: [],
+}
+
+type RustfmtConfigPatch = ConfigPatchRecord<RustfmtConfig>
+
+fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
+  config_patch_layer(base: base, patch: patch)
+}

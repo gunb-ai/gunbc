@@ -1,0 +1,190 @@
+module v2.extdeps.formatters.prettier
+
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.patch { ConfigPatchRecord, FieldPatch, apply_field_patch, config_patch_layer }
+import v2.std.refinement {
+  NonNegativeInt,
+  non_negative_int_authoritative_literal,
+}
+
+type PrettierTrailingComma
+  = PrettierTrailingCommaAll
+  | PrettierTrailingCommaEs5
+  | PrettierTrailingCommaNone
+
+type PrettierQuoteProps
+  = PrettierQuotePropsAsNeeded
+  | PrettierQuotePropsConsistent
+  | PrettierQuotePropsPreserve
+
+type PrettierArrowParens
+  = PrettierArrowParensAlways
+  | PrettierArrowParensAvoid
+
+type PrettierProseWrap
+  = PrettierProseWrapAlways
+  | PrettierProseWrapNever
+  | PrettierProseWrapPreserve
+
+type PrettierHtmlWhitespaceSensitivity
+  = PrettierHtmlWhitespaceCss
+  | PrettierHtmlWhitespaceStrict
+  | PrettierHtmlWhitespaceIgnore
+
+type PrettierEndOfLine
+  = PrettierEndOfLineLf
+  | PrettierEndOfLineCrlf
+  | PrettierEndOfLineCr
+  | PrettierEndOfLineAuto
+
+type PrettierEmbeddedLanguageFormatting
+  = PrettierEmbeddedLanguageAuto
+  | PrettierEmbeddedLanguageOff
+
+type PrettierObjectWrap
+  = PrettierObjectWrapPreserve
+  | PrettierObjectWrapCollapse
+
+type PrettierExperimentalOperatorPosition
+  = PrettierOperatorPositionStart
+  | PrettierOperatorPositionEnd
+
+type PrettierParser
+  = PrettierParserBabel
+  | PrettierParserBabelFlow
+  | PrettierParserBabelTs
+  | PrettierParserFlow
+  | PrettierParserTypescript
+  | PrettierParserEspree
+  | PrettierParserMeriyah
+  | PrettierParserAcorn
+  | PrettierParserCss
+  | PrettierParserScss
+  | PrettierParserLess
+  | PrettierParserJson
+  | PrettierParserJson5
+  | PrettierParserJsonc
+  | PrettierParserJsonStringify
+  | PrettierParserGraphql
+  | PrettierParserMarkdown
+  | PrettierParserMdx
+  | PrettierParserHtml
+  | PrettierParserVue
+  | PrettierParserAngular
+  | PrettierParserLwc
+  | PrettierParserMjml
+  | PrettierParserYaml
+
+type PrettierFormattingOptions {
+  print_width: Outcome<NonNegativeInt>
+  tab_width: Outcome<NonNegativeInt>
+  use_tabs: Bool
+  semi: Bool
+  single_quote: Bool
+  quote_props: PrettierQuoteProps
+  jsx_single_quote: Bool
+  trailing_comma: PrettierTrailingComma
+  bracket_spacing: Bool
+  object_wrap: PrettierObjectWrap
+  bracket_same_line: Bool
+  arrow_parens: PrettierArrowParens
+  require_pragma: Bool
+  insert_pragma: Bool
+  check_ignore_pragma: Bool
+  prose_wrap: PrettierProseWrap
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivity
+  vue_indent_script_and_style: Bool
+  single_attribute_per_line: Bool
+  end_of_line: PrettierEndOfLine
+  embedded_language_formatting: PrettierEmbeddedLanguageFormatting
+  experimental_ternaries: Bool
+  experimental_operator_position: PrettierExperimentalOperatorPosition
+}
+
+type PrettierOverrideOptions {
+  parser: FieldPatch<PrettierParser>
+  print_width: FieldPatch<Outcome<NonNegativeInt>>
+  tab_width: FieldPatch<Outcome<NonNegativeInt>>
+  use_tabs: FieldPatch<Bool>
+  semi: FieldPatch<Bool>
+  single_quote: FieldPatch<Bool>
+  quote_props: FieldPatch<PrettierQuoteProps>
+  jsx_single_quote: FieldPatch<Bool>
+  trailing_comma: FieldPatch<PrettierTrailingComma>
+  bracket_spacing: FieldPatch<Bool>
+  object_wrap: FieldPatch<PrettierObjectWrap>
+  bracket_same_line: FieldPatch<Bool>
+  arrow_parens: FieldPatch<PrettierArrowParens>
+  require_pragma: FieldPatch<Bool>
+  insert_pragma: FieldPatch<Bool>
+  check_ignore_pragma: FieldPatch<Bool>
+  prose_wrap: FieldPatch<PrettierProseWrap>
+  html_whitespace_sensitivity: FieldPatch<PrettierHtmlWhitespaceSensitivity>
+  vue_indent_script_and_style: FieldPatch<Bool>
+  single_attribute_per_line: FieldPatch<Bool>
+  end_of_line: FieldPatch<PrettierEndOfLine>
+  embedded_language_formatting: FieldPatch<PrettierEmbeddedLanguageFormatting>
+  experimental_ternaries: FieldPatch<Bool>
+  experimental_operator_position: FieldPatch<PrettierExperimentalOperatorPosition>
+}
+
+type PrettierOverrideEntry {
+  files: List<String>
+  exclude_files: List<String>
+  options: PrettierOverrideOptions
+}
+
+type PrettierConfig {
+  options: PrettierFormattingOptions
+  overrides: List<PrettierOverrideEntry>
+}
+
+data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
+  print_width: non_negative_int_authoritative_literal(value: 80),
+  tab_width: non_negative_int_authoritative_literal(value: 2),
+  use_tabs: false,
+  semi: true,
+  single_quote: false,
+  quote_props: PrettierQuotePropsAsNeeded,
+  jsx_single_quote: false,
+  trailing_comma: PrettierTrailingCommaAll,
+  bracket_spacing: true,
+  object_wrap: PrettierObjectWrapPreserve,
+  bracket_same_line: false,
+  arrow_parens: PrettierArrowParensAlways,
+  require_pragma: false,
+  insert_pragma: false,
+  check_ignore_pragma: false,
+  prose_wrap: PrettierProseWrapPreserve,
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceCss,
+  vue_indent_script_and_style: false,
+  single_attribute_per_line: false,
+  end_of_line: PrettierEndOfLineLf,
+  embedded_language_formatting: PrettierEmbeddedLanguageAuto,
+  experimental_ternaries: false,
+  experimental_operator_position: PrettierOperatorPositionEnd,
+}
+
+data prettier_defaults: PrettierConfig = PrettierConfig {
+  options: prettier_default_formatting,
+  overrides: [],
+}
+
+type PrettierFormattingOptionsPatch = ConfigPatchRecord<PrettierFormattingOptions>
+
+fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: PrettierFormattingOptionsPatch) -> PrettierFormattingOptions {
+  config_patch_layer(base: base, patch: patch)
+}
+
+type PrettierConfigPatch {
+  options: PrettierFormattingOptionsPatch
+  overrides: FieldPatch<List<PrettierOverrideEntry>>
+}
+
+fn prettier_layer(base: PrettierConfig, patch: PrettierConfigPatch) -> PrettierConfig {
+  PrettierConfig {
+    options: apply_prettier_formatting_options_patch(base: base.options, patch: patch.options),
+    overrides: apply_field_patch(base: base.overrides, patch: patch.overrides),
+  }
+}

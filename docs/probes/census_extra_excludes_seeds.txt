@@ -1,5 +1,6 @@
 src/v2/lens/cost/copied_port_derivation_test.dag
 src/v2/lens/vacuity_test.dag
+dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag
 dag/gunbc/accelerator_demo_eval.dag
 dag/gunbc/tailscale_acl_emit.dag
 src/v2/extdeps/languages/rust_test.dag

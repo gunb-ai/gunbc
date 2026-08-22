@@ -1,0 +1,109 @@
+module v2.extdeps.formatters.swift_format
+
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.patch { ConfigPatchRecord, config_patch_layer }
+import v2.std.refinement {
+  ExactOneInt,
+  NonNegativeInt,
+  PositiveInt,
+  exact_one_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
+}
+
+type SwiftFormatIndentation
+  = SwiftFormatSpaces { count: Outcome<PositiveInt> }
+  | SwiftFormatTabs { count: Outcome<PositiveInt> }
+
+type SwiftFormatFileScopedAccessLevel
+  = SwiftFormatPrivate
+  | SwiftFormatFileprivate
+
+type SwiftFormatFileScopedDeclarationPrivacy {
+  access_level: SwiftFormatFileScopedAccessLevel,
+}
+
+type SwiftFormatTrailingCommaBehavior
+  = SwiftFormatTrailingCommaAlwaysUsed
+  | SwiftFormatTrailingCommaNeverUsed
+  | SwiftFormatTrailingCommaKeptAsWritten
+
+type SwiftFormatMultilineStringReflow
+  = SwiftFormatReflowNever
+  | SwiftFormatReflowOnlyLinesOverLength
+  | SwiftFormatReflowAlways
+
+type SwiftFormatNoAssignmentInExpressions {
+  allowed_functions: List<String>,
+}
+
+type SwiftFormatOrderedImports {
+  include_conditional_imports: Bool,
+  should_group_imports: Bool,
+}
+
+type SwiftFormatConfig {
+  version: Outcome<ExactOneInt>
+  line_length: Outcome<PositiveInt>
+  indentation: SwiftFormatIndentation,
+  tab_width: Outcome<PositiveInt>
+  maximum_blank_lines: Outcome<NonNegativeInt>
+  spaces_before_end_of_line_comments: Outcome<NonNegativeInt>
+  respects_existing_line_breaks: Bool,
+  line_break_before_control_flow_keywords: Bool,
+  line_break_before_each_argument: Bool,
+  line_break_before_each_generic_requirement: Bool,
+  line_break_between_declaration_attributes: Bool,
+  prioritize_keeping_function_output_together: Bool,
+  indent_conditional_compilation_blocks: Bool,
+  line_break_around_multiline_expression_chain_components: Bool,
+  file_scoped_declaration_privacy: SwiftFormatFileScopedDeclarationPrivacy,
+  indent_switch_case_labels: Bool,
+  spaces_around_range_formation_operators: Bool,
+  no_assignment_in_expressions: SwiftFormatNoAssignmentInExpressions,
+  multiline_trailing_comma_behavior: SwiftFormatTrailingCommaBehavior,
+  multi_element_collection_trailing_commas: Bool,
+  reflow_multiline_string_literals: SwiftFormatMultilineStringReflow,
+  indent_blank_lines: Bool,
+  ordered_imports: SwiftFormatOrderedImports,
+}
+
+data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
+  version: exact_one_int_authoritative_literal(value: 1),
+  line_length: positive_int_authoritative_literal(value: 100),
+  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(value: 2) },
+  tab_width: positive_int_authoritative_literal(value: 8),
+  maximum_blank_lines: non_negative_int_authoritative_literal(value: 1),
+  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(value: 2),
+  respects_existing_line_breaks: true,
+  line_break_before_control_flow_keywords: false,
+  line_break_before_each_argument: false,
+  line_break_before_each_generic_requirement: false,
+  line_break_between_declaration_attributes: false,
+  prioritize_keeping_function_output_together: false,
+  indent_conditional_compilation_blocks: true,
+  line_break_around_multiline_expression_chain_components: false,
+  file_scoped_declaration_privacy: SwiftFormatFileScopedDeclarationPrivacy {
+    access_level: SwiftFormatPrivate,
+  },
+  indent_switch_case_labels: false,
+  spaces_around_range_formation_operators: false,
+  no_assignment_in_expressions: SwiftFormatNoAssignmentInExpressions {
+    allowed_functions: ["XCTAssertNoThrow"],
+  },
+  multiline_trailing_comma_behavior: SwiftFormatTrailingCommaKeptAsWritten,
+  multi_element_collection_trailing_commas: true,
+  reflow_multiline_string_literals: SwiftFormatReflowNever,
+  indent_blank_lines: false,
+  ordered_imports: SwiftFormatOrderedImports {
+    include_conditional_imports: false,
+    should_group_imports: true,
+  },
+}
+
+type SwiftFormatConfigPatch = ConfigPatchRecord<SwiftFormatConfig>
+
+fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
+  config_patch_layer(base: base, patch: patch)
+}

@@ -1,0 +1,21 @@
+module v2.extdeps.formatters.google_java_format
+
+import v2.std.patch { ConfigPatchRecord, config_patch_layer }
+
+type GoogleJavaFormatStyle
+  = GoogleJavaFormatGoogle
+  | GoogleJavaFormatAosp
+
+type GoogleJavaFormatConfig {
+  style: GoogleJavaFormatStyle,
+}
+
+data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfig {
+  style: GoogleJavaFormatGoogle,
+}
+
+type GoogleJavaFormatConfigPatch = ConfigPatchRecord<GoogleJavaFormatConfig>
+
+fn google_java_format_layer(base: GoogleJavaFormatConfig, patch: GoogleJavaFormatConfigPatch) -> GoogleJavaFormatConfig {
+  config_patch_layer(base: base, patch: patch)
+}
