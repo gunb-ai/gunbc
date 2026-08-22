@@ -82,7 +82,7 @@ pub struct UniqueStringAccum {
 
 pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let acc = items.clone().iter().cloned().fold(
+        let acc = items.iter().cloned().fold(
             Rc::new(UniqueStringAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
@@ -424,7 +424,7 @@ pub fn find_variant_parent(
 ) -> Option<String> {
     Rc::new({
         let mut __result = Vec::new();
-        for en in scope_enums.clone().iter().cloned() {
+        for en in scope_enums.iter().cloned() {
             if variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()) {
                 __result.push(en);
             }
@@ -529,7 +529,7 @@ pub fn enum_field_present_in_all_variants(
 ) -> bool {
     {
         let mut __all = true;
-        for variant in variants.clone().iter().cloned() {
+        for variant in variants.iter().cloned() {
             if !(has_child_named(variant.clone(), field_name.clone(), source_indices.clone())) {
                 __all = false;
                 break;
@@ -547,7 +547,7 @@ pub fn enum_field_type_consistent(
 ) -> bool {
     {
         let mut __all = true;
-        for variant in variants.clone().iter().cloned() {
+        for variant in variants.iter().cloned() {
             if !(match find_child_named(variant.clone(), field_name.clone(), source_indices.clone())
             {
                 Some(field_child) => node_type_equals(
@@ -582,7 +582,7 @@ pub fn build_enum_field_summaries(
         };
         let shared = Rc::new({
             let mut __result = Vec::new();
-            for field_name in first_field_names.clone().iter().cloned() {
+            for field_name in first_field_names.iter().cloned() {
                 if enum_field_present_in_all_variants(
                     variants.clone(),
                     field_name.clone(),
@@ -595,7 +595,7 @@ pub fn build_enum_field_summaries(
         });
         let consistent = Rc::new({
             let mut __result = Vec::new();
-            for field_name in shared.clone().iter().cloned() {
+            for field_name in shared.iter().cloned() {
                 if match find_first_enum_field_node(
                     variants.clone(),
                     field_name.clone(),
@@ -614,7 +614,7 @@ pub fn build_enum_field_summaries(
             }
             __result
         });
-        consistent.clone().iter().cloned().fold(
+        consistent.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| {
                 match find_first_enum_field_node(
@@ -643,7 +643,7 @@ pub fn build_field_type_map(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FieldTypeMapBuild> {
-    children.clone().iter().cloned().fold(
+    children.iter().cloned().fold(
         Rc::new(FieldTypeMapBuild {
             field_types: v1_rt::rc_empty_map::<String, String>(),
             import_surface_names: Rc::new(vec![]),
@@ -795,7 +795,7 @@ pub fn enum_variant_payload_surface_names(
 ) -> Rc<Vec<String>> {
     dedupe_nonempty_strings(Rc::new({
         let mut __result = Vec::new();
-        for v in variants.clone().iter().cloned() {
+        for v in variants.iter().cloned() {
             __result.extend(
                 (*{
                     let built = build_field_type_map(v.children.clone(), source_indices.clone());
@@ -812,7 +812,7 @@ pub fn enum_variant_payload_surface_names(
 pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let mut __found = false;
-        for v in variants.clone().iter().cloned() {
+        for v in variants.iter().cloned() {
             if {
                 let mut __found = false;
                 for child in v.children.clone().iter().cloned() {

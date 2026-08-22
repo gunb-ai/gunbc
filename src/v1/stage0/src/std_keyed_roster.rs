@@ -29,8 +29,7 @@ pub fn keyed_occurrence_count<K: Clone, V: Clone>(
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> i64 {
-    rows.clone()
-        .iter()
+    rows.iter()
         .cloned()
         .fold(0, |n: i64, row: Rc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
@@ -51,7 +50,7 @@ pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
 }
 
 pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
-    paths.clone().iter().cloned().fold(0, |n: i64, p: String| {
+    paths.iter().cloned().fold(0, |n: i64, p: String| {
         if (p.clone() == target.clone()) {
             (n.clone() + 1)
         } else {
@@ -88,7 +87,7 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Option<Rc<KeyedRow<K, V>>> {
-    match (*rows.clone().iter().cloned().fold(
+    match (*rows.iter().cloned().fold(
         Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
         |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone())
             .clone()
@@ -127,8 +126,7 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Option<Rc<KeyedRow<K, V>>> {
-    rows.clone()
-        .iter()
+    rows.iter()
         .cloned()
         .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
@@ -257,7 +255,7 @@ pub fn keyed_roster_build<K: Clone, V: Clone>(
     incomings: Rc<Vec<Rc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterBuild<K, V>> {
-    incomings.clone().iter().cloned().fold(
+    incomings.iter().cloned().fold(
         Rc::new(KeyedRosterBuild::KeyedRosterBuilt {
             rows: Rc::new(vec![]),
         }),

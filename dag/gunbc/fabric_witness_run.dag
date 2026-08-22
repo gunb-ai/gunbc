@@ -193,6 +193,29 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // argv carrier, so authoring a shell line here would have been a second
 // representation of "how a process is invoked" -- the medium-as-string tell.
 
+// THE CITED-SYMBOL CHECK'S COMMAND, BUILT HERE FOR THE SAME REASON THE FLOOR'S IS.
+//
+// One authority owns what a required invocation of our own binary IS, so a transport renders a
+// command rather than re-spelling one. The floor step learned that the expensive way: an earlier
+// revision built its invocation a second time in the workflow module and pinned the two together
+// with a witness asserting they agreed on SOURCE ROOTS, which stayed green while the binary path,
+// the flag spelling or the argument order drifted. Agreeing on the roots is not agreeing on the
+// command.
+//
+// The flag is not --required-ci. This census is a separately named required check, not a fourth
+// phase of that mode: the operator narrowed --required-ci to three phases on 2026-08-21 (#8791),
+// and that ruling governs what one composed entry point is responsible for. A distinct subject
+// gets its own check, and --required-ci is left at exactly three.
+fn cited_symbol_run_command() -> ArgvCommand {
+  ArgvCommand {
+    argv: fold(
+      witness_layer_roots,
+      init: ["target/release/claim_executor", "--required-cited-symbol"],
+      f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+    ),
+  }
+}
+
 fn floor_run_command() -> ArgvCommand {
   ArgvCommand {
     argv: fold(
