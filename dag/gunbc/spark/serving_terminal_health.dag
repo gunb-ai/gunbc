@@ -376,7 +376,7 @@ fn spark_serving_health_defect_wire(defect: SparkServingHealthDefect) -> String 
 // justifies it is therefore not expressible. The proof is not ceremonial either: it carries the
 // served model name, which is the key the residency lookup needs, so the value that orders the two
 // probes is the same value that makes the second one answerable.
-type SparkServingServedProof {
+type SparkServingServedProof sole_constructor {
   reported_version: NonEmptyStr
   served_model: NonEmptyStr
 }
