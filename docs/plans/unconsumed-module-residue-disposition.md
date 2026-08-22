@@ -328,5 +328,11 @@ in section 2 that must not move (`reachable`, `CONSUMED-DECISIVE`) beside the on
 required mode (src/v1 `.dag` parse sweep, `--required-regen`, witness floor). Its result on
 this branch is reported on the PR.
 
-The instrument is `.census/instrument.py` on this branch, kept with the change so the
-numbers above are re-derivable and disagreeable rather than asserted.
+The instrument is
+[`unconsumed-module-census-instrument.py`](unconsumed-module-census-instrument.py), kept
+beside the census so every number above is re-derivable and disagreeable rather than
+asserted. It is an audit instrument, not production and not a modeled route: it reads the
+tree and prints, it is on no execution path, and nothing in the repository consumes its
+output. It is committed because the census's own method section asks to be *"re-derived and
+disagreed with"*, and a method that ships without the thing that ran it can only be agreed
+with.
