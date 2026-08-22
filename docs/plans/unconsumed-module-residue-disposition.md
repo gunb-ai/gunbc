@@ -34,20 +34,21 @@ that no longer exists. Re-deriving also re-runs the census's controls: `v2.compi
 `gunbc.accelerator_demo_gpu` all score reachable here, and RESIDUE-EMPTY again scores 0
 consumed, so the instrument is neither finding consumption everywhere nor nowhere.
 
-**Of the corrected 133, this change deletes 69 and holds the rest.** The deleted 71 are the rows that carry
-no obligation to anything outside themselves, on every surface the instrument decodes *and*
-every surface it does not:
+**Of the corrected 114-row residue, this change deletes 56.** The deleted set is the rows
+that carry no obligation to anything outside themselves, on every surface the instrument
+decodes *and* every surface it does not:
 
 - unreachable from every root -- discovery path, entry row, or v1 seed mirror;
-- no uniquely-owned symbol named bare by any `.dag` file in the corpus (the defect-6
-  whole-pool surface);
+- no uniquely-owned symbol -- **including coproduct variant constructors and flat-namespace
+  `operation`/`service`/`resource` declarations**, see 4d -- named bare by any `.dag` file;
 - **no mention of the module name or its path in any `.dag`, `.rs`, `.yml`, `.yaml`,
-  `.toml` or `.sh` file in the tree** -- the surface the census's PROSE-NAMED class polices,
-  applied here as a deletion precondition rather than a disposition label;
+  `.toml`, `.sh` or `.txt` file** in the tree;
 - no `test fn` declared, so no assertion stops executing;
-- no `src/v1/stage0/src` mirror, so the seed population is unchanged.
+- no `src/v1/stage0/src` mirror, so the seed population is unchanged;
+- **and its whole island is in the set** -- eligibility is computed as a fixed point over the
+  deletion set, not per module (4g).
 
-6501 lines across 72 files were removed and one was restored (below), for a net 71.
+
 
 ## 2. The deletion as the census: what re-scoring after the cut showed
 
@@ -286,81 +287,67 @@ tracking a v2-side deletion: no new surface, no new capability, two literals fol
 that had to move. The coupled change is the smaller harm and it is caused by this PR rather
 than imported into it.
 
-## 5. The 69 deleted
+## 5. The 56 deleted
 
-| module | path | lines |
+| module | path | bucket |
 | --- | --- | --- |
-| `examples.gunbhub_serve_program` | `dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag` | 60 |
-| `gunbc.assimilate.bmc_wif_canary_bootstrap` | `dag/gunbc/assimilate/bmc_wif_canary_bootstrap.dag` | 126 |
-| `gunbc.cursor_sdk_secure_api_key` | `dag/gunbc/cursor_sdk_secure_api_key.dag` | 73 |
-| `gunbc.devboot.vertical_receipt` | `dag/gunbc/devboot/vertical_receipt.dag` | 68 |
-| `gunbc.floor_resolve_realization` | `dag/gunbc/floor_resolve_realization.dag` | 28 |
-| `gunbc.generic_binder_field_projection_deficit` | `dag/gunbc/generic_binder_field_projection_deficit.dag` | 109 |
-| `gunbc.language_subject_scope_scaffold` | `dag/gunbc/language_subject_scope_scaffold.dag` | 10 |
-| `gunbc.p3a1_self_fork_homonym_disposition` | `dag/gunbc/p3a1_self_fork_homonym_disposition.dag` | 10 |
-| `gunbc.parse_allowlist` | `dag/gunbc/parse_allowlist.dag` | 20 |
-| `gunbc.pr_digests` | `dag/gunbc/pr_digests.dag` | 72 |
-| `gunbc.provider_standing_live_probes` | `dag/gunbc/provider_standing_live_probes.dag` | 194 |
-| `gunbc.site.register_principles` | `dag/gunbc/site/register_principles.dag` | 12 |
-| `gunbc.srv4_seeded_install_media_artifact` | `dag/gunbc/srv4_seeded_install_media_artifact.dag` | 47 |
-| `gunbc.tools.bmc_onboard_validate` | `dag/gunbc/tools/bmc_onboard_validate.dag` | 22 |
-| `gunbc.tools.grounding_confirm` | `dag/gunbc/tools/grounding_confirm.dag` | 115 |
-| `gunbc.tools.roadmap_spawn_request` | `dag/gunbc/tools/roadmap_spawn_request.dag` | 36 |
-| `gunbc.witness_family_fanout` | `dag/gunbc/witness_family_fanout.dag` | 65 |
-| `shared.dag_util` | `dag/shared/dag_util.dag` | 44 |
-| `std.binding` | `dag/std/binding.dag` | 7 |
-| `std.containers` | `dag/std/containers.dag` | 2 |
-| `std.list` | `dag/std/list.dag` | 3 |
-| `tools.build` | `dag/tools/build.dag` | 34 |
-| `tools.codegen` | `dag/tools/codegen.dag` | 5 |
-| `tools.readme` | `dag/tools/readme.dag` | 70 |
-| `tools.roadmap_dispatch` | `dag/tools/roadmap_dispatch.dag` | 17 |
-| `v2.bin.main` | `src/v2/bin/main.dag` | 4 |
-| `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | 136 |
-| `v2.extdeps.formats.json_schema` | `src/v2/extdeps/formats/json_schema.dag` | 103 |
-| `v2.extdeps.formats.openapi` | `src/v2/extdeps/formats/openapi.dag` | 459 |
-| `v2.extdeps.formats.toml` | `src/v2/extdeps/formats/toml.dag` | 132 |
-| `v2.extdeps.formats.yaml` | `src/v2/extdeps/formats/yaml.dag` | 85 |
-| `v2.extdeps.formatters.black` | `src/v2/extdeps/formatters/black.dag` | 87 |
-| `v2.extdeps.formatters.clang_format` | `src/v2/extdeps/formatters/clang_format.dag` | 893 |
-| `v2.extdeps.formatters.gofmt` | `src/v2/extdeps/formatters/gofmt.dag` | 14 |
-| `v2.extdeps.formatters.google_java_format` | `src/v2/extdeps/formatters/google_java_format.dag` | 22 |
-| `v2.extdeps.formatters.ktfmt` | `src/v2/extdeps/formatters/ktfmt.dag` | 81 |
-| `v2.extdeps.formatters.lean4_format` | `src/v2/extdeps/formatters/lean4_format.dag` | 189 |
-| `v2.extdeps.formatters.prettier` | `src/v2/extdeps/formatters/prettier.dag` | 191 |
-| `v2.extdeps.formatters.rustfmt` | `src/v2/extdeps/formatters/rustfmt.dag` | 286 |
-| `v2.extdeps.formatters.swift_format` | `src/v2/extdeps/formatters/swift_format.dag` | 110 |
-| `v2.extdeps.typecheckers.mypy` | `src/v2/extdeps/typecheckers/mypy.dag` | 29 |
-| `v2.extdeps.typecheckers.pyright` | `src/v2/extdeps/typecheckers/pyright.dag` | 47 |
-| `v2.std.generic_instantiation` | `src/v2/std/generic_instantiation.dag` | 36 |
-| `v2.std.inhabitant_bridge` | `src/v2/std/inhabitant_bridge.dag` | 4 |
-| `v2.std.rust_leaf_model_claim` | `src/v2/std/rust_leaf_model_claim.dag` | 61 |
-| `v2.std.type_expr_projection_row_schema` | `src/v2/std/type_expr_projection_row_schema.dag` | 4 |
-| `v2.test.algebra_laws.zip_eq_list_equality` | `src/v2/std/algebra_laws/zip_eq_list_equality.dag` | 93 |
-| `v2.test.language_model.go_r1` | `src/v2/extdeps/language_model/go_r1.dag` | 59 |
-| `v2.test.language_model.go_r2a` | `src/v2/extdeps/language_model/go_r2a.dag` | 59 |
-| `v2.test.language_model.go_r2b` | `src/v2/extdeps/language_model/go_r2b.dag` | 59 |
-| `v2.test.language_model.go_r3_external` | `src/v2/extdeps/language_model/go_r3_external.dag` | 59 |
-| `v2.test.language_model.python_cross_runtime_drift` | `src/v2/extdeps/language_model/python_cross_runtime_drift.dag` | 49 |
-| `v2.test.language_model.python_l2_cross_target_parity` | `src/v2/extdeps/language_model/python_l2_cross_target_parity.dag` | 81 |
-| `v2.test.language_model.python_r2a` | `src/v2/extdeps/language_model/python_r2a.dag` | 58 |
-| `v2.test.language_model.python_r2b` | `src/v2/extdeps/language_model/python_r2b.dag` | 53 |
-| `v2.test.language_model.python_r3_external` | `src/v2/extdeps/language_model/python_r3_external.dag` | 58 |
-| `v2.test.language_model.rust` | `src/v2/extdeps/language_model/rust.dag` | 256 |
-| `v2.test.language_model.rust_r2a` | `src/v2/extdeps/language_model/rust_r2a.dag` | 57 |
-| `v2.test.language_model.rust_r2b` | `src/v2/extdeps/language_model/rust_r2b.dag` | 75 |
-| `v2.test.language_model.rust_r3_external` | `src/v2/extdeps/language_model/rust_r3_external.dag` | 57 |
-| `v2.test.language_model.typescript_r2a` | `src/v2/extdeps/language_model/typescript_r2a.dag` | 58 |
-| `v2.test.language_model.typescript_r2b` | `src/v2/extdeps/language_model/typescript_r2b.dag` | 54 |
-| `v2.test.language_model.typescript_r3_external` | `src/v2/extdeps/language_model/typescript_r3_external.dag` | 58 |
-| `v2.test.nat_semiring.rung_l1_go_compiler_slice` | `src/v2/std/nat_semiring/rung_l1_go_compiler_slice.dag` | 58 |
-| `v2.test.nat_semiring.rung_l1_python_runtime` | `src/v2/std/nat_semiring/rung_l1_python_runtime.dag` | 96 |
-| `v2.test.qualified_name.from_node` | `src/v2/std/qualified_name/from_node.dag` | 222 |
-| `v2.test.workflow.host_discovered_owned_data_manifest` | `src/v2/workflow/host_discovered_owned_data_manifest.dag` | 19 |
-| `v2.workflow.ci_stage0_partition_compile_gate_emit` | `src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag` | 103 |
-| `v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit` | `src/v2/workflow/ci_v1_compiler_test_targets_compile_gate_emit.dag` | 110 |
-| `v2.workflow.floor2_prepared_subject` | `src/v2/workflow/floor2_prepared_subject.dag` | 182 |
-| `v2.workflow.probe_selector_host_health` | `src/v2/workflow/probe_selector_host_health.dag` | 43 |
+| `gunbc.assimilate.bmc_wif_canary_bootstrap` | `dag/gunbc/assimilate/bmc_wif_canary_bootstrap.dag` | STILL-UNCONSUMED |
+| `gunbc.cursor_sdk_secure_api_key` | `dag/gunbc/cursor_sdk_secure_api_key.dag` | STILL-UNCONSUMED |
+| `gunbc.devboot.vertical_receipt` | `dag/gunbc/devboot/vertical_receipt.dag` | STILL-UNCONSUMED |
+| `gunbc.floor_resolve_realization` | `dag/gunbc/floor_resolve_realization.dag` | STILL-UNCONSUMED |
+| `gunbc.language_subject_scope_scaffold` | `dag/gunbc/language_subject_scope_scaffold.dag` | STILL-UNCONSUMED |
+| `gunbc.p3a1_self_fork_homonym_disposition` | `dag/gunbc/p3a1_self_fork_homonym_disposition.dag` | STILL-UNCONSUMED |
+| `gunbc.parse_allowlist` | `dag/gunbc/parse_allowlist.dag` | STILL-UNCONSUMED |
+| `gunbc.provider_standing_live_probes` | `dag/gunbc/provider_standing_live_probes.dag` | STILL-UNCONSUMED |
+| `gunbc.scm.commit_closure_store` | `dag/gunbc/scm/commit_closure_store.dag` | STILL-UNCONSUMED |
+| `gunbc.site.register_principles` | `dag/gunbc/site/register_principles.dag` | STILL-UNCONSUMED |
+| `gunbc.srv4_seeded_install_media_artifact` | `dag/gunbc/srv4_seeded_install_media_artifact.dag` | STILL-UNCONSUMED |
+| `gunbc.tools.bmc_onboard_validate` | `dag/gunbc/tools/bmc_onboard_validate.dag` | STILL-UNCONSUMED |
+| `gunbc.tools.grounding_confirm` | `dag/gunbc/tools/grounding_confirm.dag` | STILL-UNCONSUMED |
+| `gunbc.tools.roadmap_spawn_request` | `dag/gunbc/tools/roadmap_spawn_request.dag` | STILL-UNCONSUMED |
+| `gunbc.witness_family_fanout` | `dag/gunbc/witness_family_fanout.dag` | STILL-UNCONSUMED |
+| `shared.dag_util` | `dag/shared/dag_util.dag` | DEAD-CONSUMER-ONLY |
+| `std.binding` | `dag/std/binding.dag` | STILL-UNCONSUMED |
+| `std.containers` | `dag/std/containers.dag` | STILL-UNCONSUMED |
+| `std.list` | `dag/std/list.dag` | STILL-UNCONSUMED |
+| `tools.build` | `dag/tools/build.dag` | STILL-UNCONSUMED |
+| `tools.codegen` | `dag/tools/codegen.dag` | STILL-UNCONSUMED |
+| `tools.readme` | `dag/tools/readme.dag` | STILL-UNCONSUMED |
+| `v2.bin.main` | `src/v2/bin/main.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.formats.json_schema` | `src/v2/extdeps/formats/json_schema.dag` | DEAD-CONSUMER-ONLY |
+| `v2.extdeps.formats.openapi` | `src/v2/extdeps/formats/openapi.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.formats.toml` | `src/v2/extdeps/formats/toml.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.formats.yaml` | `src/v2/extdeps/formats/yaml.dag` | DEAD-CONSUMER-ONLY |
+| `v2.test.language_model.go_r1` | `src/v2/extdeps/language_model/go_r1.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.go_r2a` | `src/v2/extdeps/language_model/go_r2a.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.go_r2b` | `src/v2/extdeps/language_model/go_r2b.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.go_r3_external` | `src/v2/extdeps/language_model/go_r3_external.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.python_cross_runtime_drift` | `src/v2/extdeps/language_model/python_cross_runtime_drift.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.python_l2_cross_target_parity` | `src/v2/extdeps/language_model/python_l2_cross_target_parity.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.python_r2a` | `src/v2/extdeps/language_model/python_r2a.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.python_r2b` | `src/v2/extdeps/language_model/python_r2b.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.python_r3_external` | `src/v2/extdeps/language_model/python_r3_external.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.rust_r2a` | `src/v2/extdeps/language_model/rust_r2a.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.rust_r2b` | `src/v2/extdeps/language_model/rust_r2b.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.rust_r3_external` | `src/v2/extdeps/language_model/rust_r3_external.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.typescript_r2a` | `src/v2/extdeps/language_model/typescript_r2a.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.typescript_r2b` | `src/v2/extdeps/language_model/typescript_r2b.dag` | STILL-UNCONSUMED |
+| `v2.test.language_model.typescript_r3_external` | `src/v2/extdeps/language_model/typescript_r3_external.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.typecheckers.mypy` | `src/v2/extdeps/typecheckers/mypy.dag` | STILL-UNCONSUMED |
+| `v2.extdeps.typecheckers.pyright` | `src/v2/extdeps/typecheckers/pyright.dag` | STILL-UNCONSUMED |
+| `v2.test.algebra_laws.zip_eq_list_equality` | `src/v2/std/algebra_laws/zip_eq_list_equality.dag` | STILL-UNCONSUMED |
+| `v2.std.inhabitant_bridge` | `src/v2/std/inhabitant_bridge.dag` | STILL-UNCONSUMED |
+| `v2.test.nat_semiring.rung_l1_go_compiler_slice` | `src/v2/std/nat_semiring/rung_l1_go_compiler_slice.dag` | STILL-UNCONSUMED |
+| `v2.test.nat_semiring.rung_l1_python_runtime` | `src/v2/std/nat_semiring/rung_l1_python_runtime.dag` | STILL-UNCONSUMED |
+| `v2.test.qualified_name.from_node` | `src/v2/std/qualified_name/from_node.dag` | STILL-UNCONSUMED |
+| `v2.std.type_expr_projection_row_schema` | `src/v2/std/type_expr_projection_row_schema.dag` | STILL-UNCONSUMED |
+| `v2.workflow.ci_stage0_partition_compile_gate_emit` | `src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag` | STILL-UNCONSUMED |
+| `v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit` | `src/v2/workflow/ci_v1_compiler_test_targets_compile_gate_emit.dag` | STILL-UNCONSUMED |
+| `v2.workflow.floor2_prepared_subject` | `src/v2/workflow/floor2_prepared_subject.dag` | STILL-UNCONSUMED |
+| `v2.test.workflow.host_discovered_owned_data_manifest` | `src/v2/workflow/host_discovered_owned_data_manifest.dag` | STILL-UNCONSUMED |
+| `v2.workflow.probe_selector_host_health` | `src/v2/workflow/probe_selector_host_health.dag` | STILL-UNCONSUMED |
+
 ## 6. The 68 held, with the reason each survived
 
 **Held is not keep.** Every row here carries a typed reason and an owed next step; none is
