@@ -575,20 +575,20 @@ fn ledger_wire_field_or_empty(fields: List<String>, index: Int) -> String {
   }
 }
 
+// PARSING THE BODY: EACH LINE YIELDS EXACTLY ONE ROW OR NONE, so a shortfall between the lines read and the rows
+// recovered IS the count of lines that would otherwise have been dropped. This is written as a
+// length comparison rather than by searching the mapped list for an absent element because the
+// search was WRONG and shipped green: `filter(parsed, r => match r { Absent => true ... })`
+// found nothing while `flat_map` over the same list dropped a row, so the damaged file parsed
+// as a shorter well-formed ledger -- the empty-observation narrow, committed inside the very
+// function this annotation describes. Measured, not reasoned: a ledger with one damaged
+// line read back as `read:1`.
 fn parse_ledger_body(lines: List<String>, header_fields: List<String>) -> LedgerReadback {
   let body = lines.skip(n: 1)
   let footer_index = body.length() - 1
   let footer = ledger_wire_field_or_empty(fields: body, index: footer_index)
   let footer_fields = footer.split(delimiter: "\t")
   let row_lines = take(body, footer_index)
-  // EACH LINE YIELDS EXACTLY ONE ROW OR NONE, so a shortfall between the lines read and the rows
-  // recovered IS the count of lines that would otherwise have been dropped. This is written as a
-  // length comparison rather than by searching the mapped list for an absent element because the
-  // search was WRONG and shipped green: `filter(parsed, r => match r { Absent => true ... })`
-  // found nothing while `flat_map` over the same list dropped a row, so the damaged file parsed
-  // as a shorter well-formed ledger -- the empty-observation narrow, committed by the very
-  // function whose comment above forbids it. Measured, not reasoned: a ledger with one damaged
-  // line read back as `read:1`.
   let parsed_rows = flat_map(row_lines, l => match parse_readback_row(line: l) {
     Absent => []
     Present { value: v } => [v]

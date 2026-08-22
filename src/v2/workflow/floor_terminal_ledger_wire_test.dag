@@ -329,6 +329,9 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
 // the only rows that say whether the defect is isolated to one arm or spans a whole terminal
 // shape. So the rows survive under a format token `parse_ledger` refuses, which makes "a partial
 // file cited as a ledger" unspellable rather than forbidden by a convention.
+//
+// WHAT THE ASSERTION LINES CHECK, in order: every row survives: header + refusal line + three rows
+//   ... and it is not a ledger: reading it back refuses on the format, not on its contents
 test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_ledger() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
   let other = seed_row_of(row: passing_row(f: "b"))
@@ -348,13 +351,11 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
     LedgerUnrenderable { reason: r, offending: o, diagnosis: d } =>
       r == "seed-disposition-disagrees"
         && o == "test.claim.example.c"
-        // every row survives: header + refusal line + three rows
         && d.split(delimiter: "\n").length() == 5
         && d.split(delimiter: "\t3").length() == 2
         && d.split(delimiter: "test.claim.example.a").length() == 2
         && d.split(delimiter: "test.claim.example.b").length() == 2
         && d.split(delimiter: "test.claim.example.c").length() == 3
-        // and it is not a ledger: reading it back refuses on the format, not on its contents
         && match parse_ledger(text: d) {
              LedgerRead {
                repository_snapshot: _,
@@ -377,6 +378,10 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
 // follow it, so observed-lines against stated-count is a self-check written by the same fold
 // that writes the rows -- the forgery is visible without escaping the bytes a diagnostician
 // needs to see raw.
+//
+// WHAT THE ASSERTION LINES CHECK, in order: the refusal line says 2 rows follow
+//   ... but header + refusal + 2 rows would be 4 lines, and the forged newline makes 5
+//   ... so a reader comparing stated rows to observed lines sees the discrepancy
 test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
   let forger = SeedLedgerRow {
@@ -393,11 +398,8 @@ test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() ->
   ) {
     LedgerRendered { text: _ } => false
     LedgerUnrenderable { reason: _, offending: _, diagnosis: d } =>
-      // the refusal line says 2 rows follow
       d.split(delimiter: "\t2").length() == 2
-      // but header + refusal + 2 rows would be 4 lines, and the forged newline makes 5
       && d.split(delimiter: "\n").length() == 5
-      // so a reader comparing stated rows to observed lines sees the discrepancy
       && d.split(delimiter: "\n").length() != 4
   }
 }
