@@ -228,6 +228,35 @@ def innermost_difference(e, f):
         return e, f
     return innermost_difference(ea[diffs[0]], fa[diffs[0]])
 
+
+# ---- carrier flags: evidence BESIDE the root, never a category --------------
+# A cluster is keyed on what the DIFFERENCE is. Some facts that matter for costing are properties
+# of the emitted DECLARATION instead, so they are not decidable from the pair at all and must not
+# become arms -- an arm keyed on a cause the classifier cannot see is a guess wearing a category's
+# name. They are carried as their own column, joinable across clusters, exactly as the callee note
+# is: a site can then be pooled by cause without the partition being re-keyed by it.
+#
+# The live instance (reported by royal-dove-436, 2026-08-22): `std.measure`
+# `billing_month_as_hour_count_representation_note` records that stage0 alias emission collapses
+# applied-generic Measure aliases to a concrete all-unit parameter list while fn/data return sites
+# still reference the un-erased alias params. That collapse shows up in the SPELLING of both sides,
+# so the flag is mechanical; which producer emitted the declaration is not visible here.
+def carrier_flags(e, f):
+    """Mechanical properties of the SPELLINGS, keyed on generic-argument positions."""
+    flags = []
+    ea, fa = split_args(strip_rc(e)[0]), split_args(strip_rc(f)[0])
+    if ea and fa and head(e) == head(f) and len(ea) == len(fa):
+        pos = list(zip(ea, fa))
+        if any((a == "()") != (b == "()") for a, b in pos):
+            flags.append("generic_param_unit_on_one_side")
+        elif any(a == "()" and b == "()" for a, b in pos):
+            # Both sides collapsed: the erasure is real but INVISIBLE IN THE DELTA, so no arm
+            # could ever key on it. This is the flag's whole reason for existing.
+            flags.append("generic_params_unit_on_both_sides")
+        if any((a == "_") != (b == "_") for a, b in pos):
+            flags.append("generic_param_binding_differs")
+    return "+".join(flags)
+
 # ---- discriminators (prior 15-root vocabulary) ------------------------------
 def classify(s):
     e, f = s["expected"], s["found"]
@@ -329,20 +358,27 @@ def main(path, out):
             root, reason = classify(s)
             s["root"], s["reason"] = root, reason
             s["delta"] = "" if s["nopair"] else delta_vector(s["expected"], s["found"])
+            s["carrier_flags"] = "" if s["nopair"] else carrier_flags(s["expected"], s["found"])
             sites.append(s)
     cols = ["file", "line", "col", "expected", "found", "delta", "root", "reason",
-            "callee", "callee_kind", "block_msg"]
+            "carrier_flags", "callee", "callee_kind", "block_msg"]
     with open(out, "w") as fh:
         fh.write("\t".join(cols) + "\n")
         for s in sites:
             fh.write("\t".join(str(s.get(c, "")) for c in
                      ["file", "line", "col", "expected", "found", "delta", "root", "reason",
-                      "callee", "callee_kind", "msg"]) + "\n")
+                      "carrier_flags", "callee", "callee_kind", "msg"]) + "\n")
     print("raw E0308 blocks: %d" % len(blocks))
     print("canonical sites : %d" % len(sites))
     hist = collections.Counter(s["root"] for s in sites)
     for r, n in hist.most_common():
         print("  %-12s %4d  %5.1f%%" % (r, n, 100.0 * n / len(sites)))
+    flagged = collections.Counter(s["carrier_flags"] for s in sites if s.get("carrier_flags"))
+    if flagged:
+        print("\nCarrier flags (evidence beside the root, not a category):")
+        for fl, n in flagged.most_common():
+            rs = collections.Counter(s["root"] for s in sites if s.get("carrier_flags") == fl)
+            print("  %-46s %3d  across %s" % (fl, n, dict(rs)))
     print("\nRESIDUE detail:")
     for s in sites:
         if s["root"] == "RESIDUE":
