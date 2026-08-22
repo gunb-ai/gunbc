@@ -69,6 +69,14 @@ label won and 13 live-called modules went into the lead deletion slot. A sequenc
 decision that cites a class name rather than the standing is unevidenced no matter how
 reasonable the name sounds.
 
+The same disease appears one level down, in the mechanism layer rather than the prose
+layer, and it is what made finding **f** plausible: **a name that implies enrolment while
+the mechanism keys on something else.** Floor discovery keys on the **file suffix**; 200
+modules are *named* `v2.test.*` without it, and 198 of them declare no test at all (§4h).
+The name asserts a test-hood nothing grants. Both corollaries are one rule — a word doing
+work only a mechanism can do — and the second is self-demonstrating, because this census
+read those names as enrolment until the suffix was checked.
+
 Attribution matters here, because a lesson that reads as one session's mistakes gets
 discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
 that commissioned this census. **Defect 3 was in both instruments** — theirs and this
@@ -191,7 +199,7 @@ symbol declared by several does not, and is never counted as consumption here.
 | bucket | count | meaning |
 | --- | --- | --- |
 | **CONSUMED-DECISIVE** | **91** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
-| DEAD-CONSUMER-ONLY | 35 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue |
+| DEAD-CONSUMER-ONLY | 35 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue. **Deletes as a group or not at all**, see below |
 | AMBIGUOUS-SHARED-ONLY | 75 | named bare only via symbols several modules declare; no attribution possible |
 | STILL-UNCONSUMED | 96 | no bare reference on any surface |
 | MISSING-FILE | 1 | appendix row whose path no longer exists |
@@ -468,9 +476,19 @@ capture:
   that implies enrolment while the mechanism keys on something else is the more useful form
   of that finding** — the ladder metaphor invites "climb it", and the measurement says
   "nothing here was ever wired to run."
+**The 35 island rows carry a constraint that is not a preference, and it belongs on the
+row rather than in a report.** A per-module verdict over a mutually-referencing island is
+incoherent: **each member looks consumed until its neighbours go**, so scoring them one at
+a time returns "consumed" for every one of them and the island never becomes eligible.
+They delete as a group or not at all, and the group is the connected component, not the
+directory. Whoever takes the deletion lane will otherwise meet this as a surprising
+refusal partway through a batch — which is the census working, but expensively.
+
 - **`gunbc.spark.provisioning`'s appendix row no longer resolves** — the path it names does
   not exist in the tree. It was one of the two rows §5 excluded from every batch as
-  `fierce-lynx-647`'s area; it appears to have been deleted since. Recorded rather than
+  `fierce-lynx-647`'s area. The deletion was deliberate — ruled by the lane that
+  commissioned this census, on the grounds that the model predated knowledge of the real
+  procedure — so the row, not the deletion, is the defect. Recorded rather than
   silently dropped, because an appendix row pointing at nothing is the same staleness class
   this document polices elsewhere, and because it is a receipt that the population has a
   clock on it.
