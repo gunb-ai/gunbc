@@ -2791,6 +2791,24 @@ enforces end to end.
    `resolve_transport_binding` walks them). Full table:
    `docs/probes/declared_type_inhabitance_position_census_2026-08-22/pass_coverage.md`.
 
+   MEASURED SINCE, AND IT SHRINKS THE CLASS RATHER THAN GROWING IT (all controls behaving, one
+   run): a `service` DECLARATION IS RESOLVED AND NOT INFERRED. An unresolved type inside a service
+   `input` refuses, so resolve reaches inside; `takes_string(s: 1)` in a FUNCTION refuses with a
+   type mismatch, so inference refuses this shape; the same shape inside a service transport
+   (`stdin: 1`) and an undefined name in the same place (`stdin: nosuchname_zzz`) are both ACCEPTED
+   — and the undefined-name arm is the load-bearing one, because a name needs no declared type to
+   refuse. So the four service-shaped rows above — exit-entry status pattern, service-input field
+   default, transport `children` (argv, which `v1.core` `shell_transport_node` stores as children,
+   not as a property), transport `properties` — are FOUR SPELLINGS OF ONE FACT about `service`, not
+   four members. What survives as INDEPENDENT members, each measured outside any service, is two:
+   a parameter default on a plain `fn` and a field default on a plain `type`. The two remaining
+   flagged rows (item `properties` other than `svc_auth_source`, `uses` resource config args) sit on
+   FUNCTION items, so the service fact does not reach them and they stay flagged. One intermediate
+   conclusion was RETRACTED on the way here and is recorded in the probe rather than silently
+   replaced: `argv: nosuchname_zzz` refuses as `module index refused: 1 unparseable .dag source(s)`,
+   a GRAMMAR refusal, and reading it as evidence about inference is this row's own map-key lesson
+   turned on its author.
+
    THE SIGNATURE, which is what makes this a class rather than a list: a declaration node whose
    expression child is read by resolve and reached by inference only through a presence test or a
    passthrough. `param_node_default_value(n: param) != none` and `titem.transport != none` are the
