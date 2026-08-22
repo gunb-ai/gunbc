@@ -102,21 +102,31 @@ type AvailabilityStanding
 type PurchaseAvailability
   = OpenToNewCustomers { note: NonEmptyStr }
   | ClosedToNewCustomers { note: NonEmptyStr, still_served: NonEmptyStr }
+  | PurchaseAvailabilityConflicted { vendor_says_closed: NonEmptyStr, vendor_says_open: NonEmptyStr, settle_by: NonEmptyStr }
   | NoPurchaseRestrictionObserved { note: NonEmptyStr }
 
 fn purchase_label(p: PurchaseAvailability) -> NonEmptyStr {
   match p {
     OpenToNewCustomers { note } => "open to new customers",
     ClosedToNewCustomers { note, still_served } => "CLOSED to new customers",
+    PurchaseAvailabilityConflicted { vendor_says_closed, vendor_says_open, settle_by } => "vendor sources CONFLICT",
     NoPurchaseRestrictionObserved { note } => "no restriction observed",
   }
 }
 
 // A row a new customer cannot buy is not a competitive bound on our price.
+//
+// A CONFLICTED row counts as purchasable, and the direction of that conservatism is deliberate.
+// This predicate feeds one question - what could a new customer buy INSTEAD of us - and the costly
+// error there is assuming a competitor's cheap tier is unavailable when it is not, because that
+// error prices us high against a rival who is in fact underselling us. Excluding an uncertain row
+// would be fail-closed for a spill route and fail-OPEN for this question; the arm is named so the
+// asymmetry is visible rather than inferred from a Bool.
 fn offer_is_purchasable_by_new_customer(o: ComputeOfferObservation) -> Bool {
   match o.purchase {
     OpenToNewCustomers { note } => true,
     ClosedToNewCustomers { note, still_served } => false,
+    PurchaseAvailabilityConflicted { vendor_says_closed, vendor_says_open, settle_by } => true,
     NoPurchaseRestrictionObserved { note } => true,
   }
 }
@@ -438,6 +448,18 @@ data github_page_read: PriceEvidence = PriceVendorPageRead {
   read_on: "2026-08-22",
 }
 
+data ubicloud_pricing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ubicloud.com/docs/about/pricing"
+  }
+}
+
+data ubicloud_docs_read: PriceEvidence = PriceVendorPageRead {
+  authority: ubicloud_pricing_authority,
+  read_on: "2026-08-22",
+}
+
 data ubicloud_2026_relay: PriceEvidence = PriceOperatorConfirmed {
   note: "Operator relayed Ubicloud's 2026 price-adjustment table verbatim: standard runner $0.0008 to $0.0010 per minute, premium-2 unchanged, and standard x64 withdrawn from new customers.",
   observed_on: "2026-08-22",
@@ -452,9 +474,10 @@ data ubicloud_standard_x64: ComputeOfferObservation = ComputeOfferObservation {
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
   availability: AvailabilityUnread { obligation: "Runner SLA not read." },
-  purchase: ClosedToNewCustomers {
-    note: "Withdrawn from new customers in the 2026 price adjustment. A new customer cannot buy this rate at any price, so it is not a bound on ours.",
-    still_served: "Existing customers keep the standard tier, so the rate still shows what the vendor is willing to serve. The row stays rather than being deleted.",
+  purchase: PurchaseAvailabilityConflicted {
+    vendor_says_closed: "Ubicloud's 2026 price-adjustment post states standard x64 runners are no longer available for new customers.",
+    vendor_says_open: "Ubicloud's live pricing documentation, read 2026-08-22, states that all new users get premium runners BY DEFAULT and may disable premium in account settings to use standard runners instead. That is an opt-out default, not a withdrawal.",
+    settle_by: "Create a fresh account and read the offered tiers. Until then neither reading may be asserted: both are first-party, they contradict, and picking the convenient one is choosing a fact rather than observing it.",
   },
   region: region_unread_default,
   included_traffic: traffic_unread_default,
@@ -463,8 +486,8 @@ data ubicloud_standard_x64: ComputeOfferObservation = ComputeOfferObservation {
   performance: performance_unmeasured_default,
   spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
   vcpu_count: 2, memory_gib: 8,
-  rate: usd_per_minute(micros: 1000),
-  evidence: ubicloud_2026_relay,
+  rate: usd_per_minute(micros: 1250),
+  evidence: ubicloud_docs_read,
 }
 
 // The relayed table names x64 alone as withdrawn. Arm64 is therefore NOT recorded as closed, and
@@ -480,17 +503,17 @@ data ubicloud_standard_arm64: ComputeOfferObservation = ComputeOfferObservation 
   interruption: NonPreemptible { note: "Hosted runner." },
   availability: AvailabilityUnread { obligation: "Runner SLA not read." },
   purchase: NoPurchaseRestrictionObserved {
-    note: "The withdrawal notice names x64 only. Whether arm64 standard is still open to new customers has NOT been confirmed. Settle it by attempting a new-account signup and reading the offered tiers; the answer decides whether the cheap arm64 lane is contested or vacated.",
+    note: "The withdrawal notice names x64 only, and the live pricing documentation lists arm64 without restriction. No purchase restriction observed on this tier.",
   },
   region: region_unread_default,
   included_traffic: traffic_unread_default,
   tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
-  shape_provenance: ShapePublished { note: "Published runner shape; arm64 rates stated to match x64." },
+  shape_provenance: ShapePublished { note: "Published arm64 shape is 2 vCPU / 6 GB - NOT the 8 GB of the x64 tier. An earlier revision of this row carried 8 GB, which silently changed the unit count the whole table normalizes on." },
   performance: performance_unmeasured_default,
   spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
-  vcpu_count: 2, memory_gib: 8,
-  rate: usd_per_minute(micros: 1000),
-  evidence: ubicloud_2026_relay,
+  vcpu_count: 2, memory_gib: 6,
+  rate: usd_per_minute(micros: 1250),
+  evidence: ubicloud_docs_read,
 }
 
 
@@ -599,6 +622,32 @@ data circleci_medium: ComputeOfferObservation = ComputeOfferObservation {
   evidence: operator_relay,
 }
 
+// THE TIER A NEW CUSTOMER IS ACTUALLY DEFAULTED INTO, so this - not the standard rate - is the
+// price our positioning is compared against. An earlier revision of this file carried NO premium
+// row and a PriceUnread obligation, because the relayed adjustment table said "unchanged" without
+// stating the figure. The live pricing documentation states it, so the refusal is discharged by
+// reading rather than by inference.
+data ubicloud_premium_2: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "premium-2-x64" },
+  product: "premium-2 CI runner, x64",
+  market_class: HostedCiProduct,
+  architecture: ArchitectureKnown { arch: X86_64 },
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  availability: AvailabilityUnread { obligation: "Runner SLA not read." },
+  purchase: OpenToNewCustomers { note: "The default tier for new accounts per the live pricing documentation." },
+  region: region_unread_default,
+  included_traffic: traffic_unread_default,
+  tax: TaxStandingUnread { obligation: "Tax treatment of the quoted runner rate not read." },
+  shape_provenance: ShapePublished { note: "Published premium-2 shape: 2 vCPU / 8 GB." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
+  vcpu_count: 2, memory_gib: 8,
+  rate: usd_per_minute(micros: 2000),
+  evidence: ubicloud_docs_read,
+}
+
 // THE INCUMBENT, and the row the whole table was implicitly measured against without carrying it.
 // Rates and core counts read from GitHub's billing documentation on 2026-08-22. RAM is NOT on that
 // page; the figures below come from GitHub's separate runner-specification documentation, which was
@@ -654,7 +703,8 @@ data ci_compute_offers: List<ComputeOfferObservation> = [
   scaleway_amp2,
   ubicloud_standard_x64,
   ubicloud_standard_arm64,
-    github_hosted_linux_2core_x64,
+    ubicloud_premium_2,
+  github_hosted_linux_2core_x64,
   github_hosted_linux_2core_arm64,
   blacksmith_x64,
   blacksmith_arm,
@@ -665,11 +715,7 @@ data ci_compute_offers: List<ComputeOfferObservation> = [
 
 data circleci_caveat_note: NonEmptyStr = "CircleCI is priced in credits and its bill also carries per-platform-user and per-feature charges. The rate carried here is the compute class alone, at 10 credits per minute against $15 per 25,000 credits, so it understates the total a customer actually pays and is not directly comparable to a flat per-minute runner."
 
-data ubicloud_premium_unread: PriceEvidence = PriceUnread {
-  obligation: "Ubicloud premium-2 per-minute rate. Read it from ubicloud.com/docs/about/pricing.",
-}
-
-data ubicloud_premium_note: NonEmptyStr = "Ubicloud's premium-2 tier has no offer row, for the Namespace reason and with more at stake. After the 2026 adjustment withdrew standard x64 from new customers, premium is the tier a NEW customer is actually offered - so premium, not the standard rate carried above, is the price our positioning would be compared against. The relayed adjustment table states premium is UNCHANGED without stating what it is, and a secondary summary putting it at double the standard rate is not a warrant. Carrying a plausible figure here would put a fabricated number in the single most decision-relevant cell of the table, and carrying a zero would be worse: offer_unit_price reads o.rate without consulting o.evidence, so a zero rate becomes a FREE unit price and would rank first on any frontier. Hence no row. This is the same refusal route_cost already takes when it says a missing price is not a free price."
+data ubicloud_premium_note: NonEmptyStr = "Ubicloud's premium-2 tier had no row and a PriceUnread obligation for one revision of this file, because the relayed price-adjustment table said premium was UNCHANGED without saying what it was. It is now a priced row, read from the vendor's live pricing documentation. The refusal was discharged by READING the number, never by inferring it: a secondary summary had put premium at double the standard rate, which would have given 0.0025 against the documented 0.002 - so the plausible inference was wrong by 25 percent in the single most decision-relevant cell of the table, and carrying it would have looked exactly as confident as the correct figure does now."
 
 data namespace_unread: PriceEvidence = PriceUnread {
   obligation: "Namespace publishes shapes and offers custom pricing without a clean public rate for the standard profile. Obtain a quote or a published rate; do not infer one from the shapes.",
