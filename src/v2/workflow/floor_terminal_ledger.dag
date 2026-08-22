@@ -1,8 +1,9 @@
 module v2.workflow.floor_terminal_ledger
 
 import v2.std.integer { Int }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.required_floor { ClaimSafetyOutcome }
@@ -25,14 +26,27 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 
 // WHAT A CLAIM'S ATTEMPT ACTUALLY REACHED, at the grain the executor already distinguishes.
 //
-// These three arms are not a taxonomy invented here. They are the states the floor already
-// separates when it runs a claim -- the evaluation returned a value, it stopped with a typed
-// diagnostic, or a safety limit interrupted it before either -- and `Interrupted` carries the
-// existing `ClaimSafetyOutcome` rather than a second spelling of the same fact.
+// These arms are not a taxonomy invented here: they mirror the arms the seed ALREADY holds
+// typed, one for one. `ClaimOutcome` in the seed is Pass | Fail | NotBool { got } | RuntimeError
+// { message } | TimedOut { elapsed_ms, budget_ms, kind, completion } | HostToolUnresolved { name,
+// probed } | (route gap), and its own comment at that match says why: "Every non-pass arm is
+// reported with the fact that distinguishes it. A collapsed `failed` would make a budget refusal,
+// a runtime error and a witness that answered false read alike, and those three have different
+// remedies."
+//
+// AN EARLIER DRAFT COLLAPSED ALL OF THEM INTO `DiagnosedStop { reason: Symbol }`, which is the
+// same defect the seed's comment argues against, committed on the way ACROSS the seam rather than
+// at the match. A `Symbol` reason is not the raw terminal fact -- it is a rendering of one, and
+// the boundary this schema is built for is "v1 preserves the raw terminal fact it already holds".
+// Stringing it during transport would have made the ledger strictly less informative than the
+// producer, which is the opposite of the obligation. `BudgetRefused` carries the existing
+// `ClaimSafetyOutcome` rather than a second spelling of it.
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
-  | DiagnosedStop { reason: Symbol }
-  | Interrupted { safety: ClaimSafetyOutcome }
+  | RuntimeErrored { message: String }
+  | BudgetRefused { safety: ClaimSafetyOutcome }
+  | HostToolUnresolved { name: String, probed: List<String> }
+  | RouteGap { route: String }
 
 // AN ATTEMPT THAT RETURNED STILL MAY NOT HAVE OBSERVED ANYTHING. A claim whose result is not a
 // verdict the floor can read -- the wrapper refusal a run reports when a function returns a bare
@@ -51,15 +65,48 @@ type ClaimExpectation
   = ExpectedToHold
   | ExpectedRed
 
-// ONE ROW PER PLANNED IDENTITY, AND THE ORDINAL IS PART OF THE EVIDENCE. The execution ordinal is
-// dense over the planned population, so a ledger missing a row has a gap in its ordinals and a
-// truncated ledger ends below the planned count -- two independent ways for an incomplete file to
-// be visibly incomplete, neither of which depends on the footer surviving.
+// ONE ROW PER PLANNED IDENTITY, AND EXECUTION ORDER IS THE ROW'S POSITION -- there is no
+// `ordinal` field, and its absence is the point.
+//
+// An earlier draft carried `ordinal: Int` and claimed in this comment that it made a missing row
+// visible as a gap and a truncation visible as a short tail. NOTHING IN THE SCHEMA READ IT. That
+// is the rung-inflation shape at carrier grain: a field whose asserted property no code performs,
+// where the prose is the only place the guarantee exists.
+//
+// The repair is not to add a contiguity check -- it is to delete the field. Position in a list is
+// dense and unique BY CONSTRUCTION, so a duplicated or gapped ordinal has no spelling here rather
+// than being caught by a validator. Truncation is still caught, by the footer count against the
+// planned population, which is implemented and tested.
 type ClaimTerminalRow {
   identity: WitnessIdentity
-  ordinal: Int
   expectation: ClaimExpectation
   terminal: ClaimAttemptTerminal
+}
+
+// WITHOUT A BINDING THIS IS A LIST OF ROWS, NOT EVIDENCE -- and the header of this module claims
+// CANDIDATE-BOUND witnesses.
+//
+// An earlier draft had no `Ledger` type at all: only rows, reconciliation and publication. A
+// ledger produced by run A was then structurally indistinguishable from evidence for run B, and
+// the completed claim the obligation names -- "identity W appears exactly once in candidate C's
+// terminal population" -- had no C to name. That is not a missing convenience; it is the
+// difference between a ledger and evidence, and the artifact's lifecycle is v2's to own.
+//
+// The binding is a FIELD OF THE LEDGER rather than a sibling artifact, so an unbound ledger is
+// unrepresentable rather than merely unusual. Its three identities are content hashes from
+// `std.content_hash` `Fnv1a64Structural` -- the structural family member DESIGN names, not a bare
+// `String`. A `String` digest admits any text at all and cannot be compared against anything else
+// in the corpus that hashes, which is the hollow-carrier shape.
+type LedgerBinding {
+  repository_snapshot: Fnv1a64Structural
+  prepared_subject: Fnv1a64Structural
+  roster_identity: Fnv1a64Structural
+}
+
+type TerminalLedger {
+  binding: LedgerBinding
+  rows: List<ClaimTerminalRow>
+  publication: LedgerPublication
 }
 
 // `Pass` IS A PROJECTION, NOT A STORED FIELD, AND THAT IS THE WHOLE CONSTRUCTION.
@@ -80,8 +127,10 @@ type ClaimDisposition
 
 fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
   match row.terminal {
-    Interrupted { safety: _ } => InterruptedBeforeVerdict
-    DiagnosedStop { reason: _ } => RefusedBeforeVerdict
+    BudgetRefused { safety: _ } => InterruptedBeforeVerdict
+    RuntimeErrored { message: _ } => RefusedBeforeVerdict
+    HostToolUnresolved { name: _, probed: _ } => RefusedBeforeVerdict
+    RouteGap { route: _ } => RefusedBeforeVerdict
     Returned { observation: o } =>
       match o {
         ObservationUnrepresentable { reason: _ } => RefusedBeforeVerdict
@@ -155,11 +204,11 @@ type LedgerGreenAdmission
   | EvidenceFooterCountDisagrees { footer_rows: Int, planned_rows: Int }
 
 fn ledger_green_admission(
-  publication: LedgerPublication,
+  ledger: TerminalLedger,
   reconciliation: LedgerReconciliation,
   planned: List<WitnessIdentity>,
 ) -> LedgerGreenAdmission {
-  match publication {
+  match ledger.publication {
     LedgerPartial { reason: r } => EvidenceUnfinalized { reason: r }
     LedgerFinalized { row_count: n, digest: _ } =>
       if ledger_is_complete(r: reconciliation) {

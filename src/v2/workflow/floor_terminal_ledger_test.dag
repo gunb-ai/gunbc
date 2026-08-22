@@ -2,19 +2,22 @@ module v2.workflow.floor_terminal_ledger_test
 
 import v2.std.logic { Bool }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
   ClaimExpectation,
   ClaimTerminalRow,
   ExpectedRed,
   ExpectedToHold,
   Failed,
-  Interrupted,
+  BudgetRefused,
   InterruptedBeforeVerdict,
   KnownRedHeld,
   KnownRedNowPassing,
   LedgerFinalized,
   LedgerPartial,
   LedgerReconciliation,
+  LedgerBinding,
+  TerminalLedger,
   EvidenceComplete,
   EvidenceFooterCountDisagrees,
   EvidenceReconciliationFailed,
@@ -36,9 +39,24 @@ fn ident(f: String) -> WitnessIdentity {
 fn row(f: String, expectation: ClaimExpectation, holds: Bool) -> ClaimTerminalRow {
   ClaimTerminalRow {
     identity: ident(f: f),
-    ordinal: 0,
     expectation: expectation,
     terminal: Returned { observation: ObservedVerdict { holds: holds } }
+  }
+}
+
+fn hash(h: String) -> Fnv1a64Structural {
+  Fnv1a64Structural { digest: h as Fnv1a64StructuralDigestHex }
+}
+
+fn ledger_with(publication: LedgerPublication) -> TerminalLedger {
+  TerminalLedger {
+    binding: LedgerBinding {
+      repository_snapshot: hash(h: "0123456789abcdef"),
+      prepared_subject: hash(h: "fedcba9876543210"),
+      roster_identity: hash(h: "0f1e2d3c4b5a6978")
+    },
+    rows: [],
+    publication: publication
   }
 }
 
@@ -68,7 +86,6 @@ test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
 test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
   claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "e"),
-    ordinal: 0,
     expectation: ExpectedToHold,
     terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
   }) == RefusedBeforeVerdict
@@ -91,7 +108,7 @@ test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> B
   !ledger_is_complete(r: swapped)
     && ledger_is_complete(r: empty_reconciliation())
     && ledger_green_admission(
-         publication: LedgerFinalized { row_count: 2, digest: "d" },
+         ledger: ledger_with(publication: LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
          reconciliation: swapped,
          planned: [ident(f: "lost"), ident(f: "written_twice")]
        ) == EvidenceReconciliationFailed { reconciliation: swapped }
@@ -101,7 +118,7 @@ test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> B
 // is optional exactly when it fails, which is the failure arm that widens instead of refusing.
 test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool {
   ledger_green_admission(
-    publication: LedgerPartial { reason: "killed-before-finalize" },
+    ledger: ledger_with(publication: LedgerPartial { reason: "killed-before-finalize" }),
     reconciliation: empty_reconciliation(),
     planned: [ident(f: "a")]
   ) == EvidenceUnfinalized { reason: "killed-before-finalize" }
@@ -112,12 +129,12 @@ test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool {
 // the planned population the caller independently holds.
 test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
   ledger_green_admission(
-    publication: LedgerFinalized { row_count: 1, digest: "d" },
+    ledger: ledger_with(publication: LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }),
     reconciliation: empty_reconciliation(),
     planned: [ident(f: "a"), ident(f: "b")]
   ) == EvidenceFooterCountDisagrees { footer_rows: 1, planned_rows: 2 }
     && ledger_green_admission(
-         publication: LedgerFinalized { row_count: 2, digest: "d" },
+         ledger: ledger_with(publication: LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "a"), ident(f: "b")]
        ) == EvidenceComplete
