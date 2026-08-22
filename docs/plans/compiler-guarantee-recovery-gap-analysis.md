@@ -2749,6 +2749,76 @@ enforces end to end.
      RESTORATION TRIGGER gunbc#8800 merging, after which the resolver refuses and the owning lane
      repairs.
    - **Check gunbc#8800's state at land time rather than assuming this evening's answer.**
+
+29. **The `v2.*` argument-type exemption's residue is TWO COMPILER SEAMS, both reproduced minimally,
+   and ZERO source-conformance defects** (opened 2026-08-22, session `proud-ant-819`, measured as
+   cut B; this row supplies the `why` column whose absence retracted the earlier 48/11/8 split in the
+   row above, for two of the three mechanisms).
+
+   Deleting `module_skips_direct_call_arg_check` makes the witness floor refuse on its prepared
+   subject — `modules_resolved=3867 modules_excluded=4` — with **19 distinct located diagnostics
+   across 9 modules**. Not one of them is a call site that should be edited.
+
+   - **Seam A — a transparent alias whose RHS is a GENERIC INSTANTIATION is not peeled.** Population
+     8 sites, one per formatter module (`type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>` at a
+     `ConfigPatchRecord<Config>` formal). The §2-horizontal modelling is already correct: one shared
+     authority in `v2.std.patch`, instantiated eight times. **Reproduction, 12 lines, one red cell and
+     one green control:** `type Box<T>` / `type IntBox = Box<Int>` — `takes_box(b: b)` refuses for the
+     alias and accepts `Box<Int>` spelled directly. `expected 'Primitive(Box)', got 'Node(IntBox)'`:
+     the expected side has LOST ITS TYPE ARGUMENT and the got side is the alias UNRESOLVED, so neither
+     side was peeled. This is a gap in the transparent-alias relation landed by gunbc#8873, which
+     merged — a main-branch seam, not a review note.
+   - **Seam B — the `T?` cardinality is DROPPED when a variant's field type is read through an
+     IMPORT.** Population 11 sites, all `src/v2/extdeps/github/gha_fold_pilot_emit.dag`, passing
+     `String?` fields of an imported `RunStep` to `Optional<String>` formals. **Reproduction, 3
+     modules, one red cell and one green control**, and the defect needs BOTH variables at once:
+     same-module + `T?` CLEAN, same-module + `Optional<T>` CLEAN, imported + `Optional<T>` CLEAN,
+     imported + `T?` **RED**. So it is neither a sugar defect nor a match-binder defect — both were
+     cleared by the same-module cells, and clearing them is what located it.
+
+   Three readings were refuted before seam B was found, recorded so they are not re-derived: the `?`
+   sugar is not un-equated with `Optional<T>`; the match binder does not lose the wrapper; and these
+   sites are **not** an instance of the `T?`-as-kernel-cardinality class — under that reading the
+   same-module sugar cell would have had to refuse, and it did not. That last is evidence bearing on
+   another lane's class, gathered independently, and is offered as evidence rather than as a verdict
+   on it.
+
+   **Acceptance evidence, and why the clean arm is not vacuous.** Paired arms over the 42 top-level
+   `src/v2/compiler/*.dag` modules at `71d7da4e92`, arm identity carried per arm (predicate occurrence
+   count 0/0 AFTER vs 3/3 BASELINE; binary md5 `7e7da4bf` vs `fa070b6f`) show **no delta** — chunk 2 is
+   identical across both arms INCLUDING its `hard=26` and its one `emit_refused=1`, which is how those
+   26 are known to be pre-existing rather than caused by the deletion. A clean run from a judgment that
+   discriminates nothing is indistinguishable from a clean run from one that works, so the clean arm
+   carries no weight alone. What separates them is the RED CONTROL, flipped on those same two binaries:
+   two probe modules byte-identical below line 1, differing only in that one is named `v2.redcontrol`
+   and the other `redcontrol.user`, each passing a `String` to an `Int` and to a record formal —
+
+   | arm | module | rc | diagnostics |
+   |---|---|---|---|
+   | BASELINE | `v2.redcontrol` | 0 | **none** — silently admitted |
+   | BASELINE | `redcontrol.user` | 1 | 2 located type mismatches — positive control fires |
+   | AFTER | `v2.redcontrol` | 1 | 2 located type mismatches — now refuses |
+   | AFTER | `redcontrol.user` | 1 | 2 located type mismatches — unchanged |
+
+   One cell moved, and only the predicted one. The positive control is nonzero on BOTH arms, so the
+   planted mismatch is one the judgment covers and the `v2` cell's silence was the exemption rather
+   than an inert probe.
+
+   **Instrument note, because it cost three runs.** An earlier form of this control returned four
+   identical cells, which reads as "the exemption never mattered" and is false: two independent defects
+   (a missing required CLI flag, and a baseline revert naming a ref the remote does not carry) both
+   fail toward the same clean table. The fix is that a nonzero exit may not produce a cell at all —
+   the harness prints `UNMEASURED rc=N` with counters `n/a`, never `0`, because "no compile happened"
+   and "compiled, zero diagnostics" must not share a spelling. It caught the third defect on its first
+   run. `unmeasured=0` on every reported total is therefore part of the claim: no zero above is a
+   refusal wearing a zero.
+
+   Full reproductions as bytes: `docs/probes/direct_call_arg_type_relation_gaps_2026-08-22.md`.
+
+   **Disposition: the deletion REVEALS these seams and the refusal is CORRECT.** Neither is a rung drop
+   caused by this change, and neither is repairable in `extdeps` — coercing the 19 sites would be
+   editing correct source to satisfy a compiler that cannot read it, which is worse than papering over
+   a modelling error. Restoration trigger for each: the owning seam closing.
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
