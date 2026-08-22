@@ -688,7 +688,7 @@ pub fn collect_fields_inductive(
     acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.clone().iter().cloned().fold(
+    fields.iter().cloned().fold(
         acc.clone(),
         |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| {
             match classify_field_recursion(
@@ -751,7 +751,7 @@ pub fn build_item_inductive_fields(
     recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    items.clone().iter().cloned().fold(
+    items.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| {
             merge_inductive_fields(
@@ -806,7 +806,7 @@ pub fn namespace_root_from_properties(
 ) -> String {
     match Rc::new({
         let mut __result = Vec::new();
-        for p in properties.clone().iter().cloned() {
+        for p in properties.iter().cloned() {
             if (field_init_node_name_at(p.clone(), source_indices.clone())
                 == "namespace_root".to_string())
             {
@@ -1125,7 +1125,7 @@ pub fn constructor_call_admission_diags(
         match (*func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
     Some(permitted) => match caller_decl_coords(scope.clone()) {
-    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
+    Some(caller) => if { let mut __found = false; for p in permitted.iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
             Rc::new(vec![])
         } else {
             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
@@ -1133,7 +1133,7 @@ pub fn constructor_call_admission_diags(
     constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: caller.module_path.clone(),
     caller_decl_name: caller.decl_name.clone(),
-    permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
+    permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())])
         },
@@ -1142,7 +1142,7 @@ pub fn constructor_call_admission_diags(
     constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: scope.module_name.clone(),
     caller_decl_name: "<unknown>".to_string(),
-    permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
+    permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())]),
 },
@@ -1749,7 +1749,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
                                         let template_fields = decl.children.clone();
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
-                                            for sf in template_fields.clone().iter().cloned() {
+                                            for sf in template_fields.iter().cloned() {
                                                 __result.push(Rc::new(Node {
                                                     name: sf.name.clone(),
                                                     span: sf.span.clone(),
@@ -2271,10 +2271,10 @@ pub fn where_refinement_predicates_covered(
 ) -> bool {
     {
         let mut __all = true;
-        for fp in formal_preds.clone().iter().cloned() {
+        for fp in formal_preds.iter().cloned() {
             if !({
                 let mut __found = false;
-                for ap in actual_preds.clone().iter().cloned() {
+                for ap in actual_preds.iter().cloned() {
                     if where_refinement_predicate_satisfied_by(
                         fp.clone(),
                         ap.clone(),
@@ -2681,7 +2681,7 @@ pub fn where_refinement_mismatch_diags(
                         );
                         Rc::new({
                             let mut __result = Vec::new();
-                            for pred in preds.clone().iter().cloned() {
+                            for pred in preds.iter().cloned() {
                                 __result.extend(
                                     (*where_refinement_diags_for_predicate(
                                         pred.clone(),
@@ -3387,7 +3387,7 @@ pub fn build_call_application_plan(
                         ),
                         matched_arg: match Rc::new({
                             let mut __result = Vec::new();
-                            for ta in typed_args.clone().iter().cloned() {
+                            for ta in typed_args.iter().cloned() {
                                 if arg_has_name(
                                     ta.clone(),
                                     param_name.clone(),
@@ -3427,7 +3427,7 @@ pub fn direct_call_structured_application_mismatch_diags(
         let source_indices = type_env.source_indices.clone();
         Rc::new({
             let mut __result = Vec::new();
-            for app in plan.clone().iter().cloned() {
+            for app in plan.iter().cloned() {
                 __result.extend(
                     (*{
                         let formal_subst = app.formal_subst.clone();
@@ -3590,7 +3590,7 @@ pub fn borrowed_callable_call_type(
                         let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
                         let matched_arg = match Rc::new({
                             let mut __result = Vec::new();
-                            for ta in typed_args.clone().iter().cloned() {
+                            for ta in typed_args.iter().cloned() {
                                 if arg_has_name(
                                     ta.clone(),
                                     param_name.clone(),
@@ -3728,7 +3728,7 @@ pub fn scan_call_shape_arity(
     positional_args: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CallShapeArityScan> {
-    sig_params.clone().iter().cloned().fold(
+    sig_params.iter().cloned().fold(
         Rc::new(CallShapeArityScan {
             positional_slot: 0,
             required_count: 0,
@@ -3750,7 +3750,7 @@ pub fn scan_call_shape_arity(
                                 authored_name_at(source_indices.clone(), param.clone());
                             let named_supplied = {
                                 let mut __found = false;
-                                for ta in typed_args.clone().iter().cloned() {
+                                for ta in typed_args.iter().cloned() {
                                     if match arg_name_at(ta.clone(), source_indices.clone()) {
                                         Some(label) => call_arg_label_matches_param(
                                             param_name.clone(),
@@ -3820,7 +3820,7 @@ pub fn direct_call_shape_diags(
         let source_indices = type_env.source_indices.clone();
         let declared_names = Rc::new({
             let mut __result = Vec::new();
-            for p in sig_params.clone().iter().cloned() {
+            for p in sig_params.iter().cloned() {
                 __result.push(authored_name_at(source_indices.clone(), p.clone()));
             }
             __result
@@ -3829,7 +3829,7 @@ pub fn direct_call_shape_diags(
             let mut __result = Vec::new();
             for p in Rc::new({
                 let mut __result = Vec::new();
-                for p in sig_params.clone().iter().cloned() {
+                for p in sig_params.iter().cloned() {
                     if param_binds_positionally(p.clone(), source_indices.clone()) {
                         __result.push(p);
                     }
@@ -3845,13 +3845,13 @@ pub fn direct_call_shape_diags(
         });
         let unknown_label_diags = Rc::new({
             let mut __result = Vec::new();
-            for ta in typed_args.clone().iter().cloned() {
+            for ta in typed_args.iter().cloned() {
                 __result.extend(
                     (*match arg_name_at(ta.clone(), source_indices.clone()) {
                         Some(label) => {
                             if {
                                 let mut __found = false;
-                                for pn in declared_names.clone().iter().cloned() {
+                                for pn in declared_names.iter().cloned() {
                                     if call_arg_label_matches_param(pn.clone(), label.clone()) {
                                         __found = true;
                                         break;
@@ -3882,7 +3882,7 @@ pub fn direct_call_shape_diags(
         });
         let positional_capacity = (Rc::new({
             let mut __result = Vec::new();
-            for p in sig_params.clone().iter().cloned() {
+            for p in sig_params.iter().cloned() {
                 if param_binds_positionally(p.clone(), source_indices.clone()) {
                     __result.push(p);
                 }
@@ -3892,7 +3892,7 @@ pub fn direct_call_shape_diags(
         .len() as i64);
         let positional_args = Rc::new({
             let mut __result = Vec::new();
-            for ta in typed_args.clone().iter().cloned() {
+            for ta in typed_args.iter().cloned() {
                 if (arg_name_at(ta.clone(), source_indices.clone()) == None) {
                     __result.push(ta);
                 }
@@ -4039,7 +4039,7 @@ pub fn function_value_call_named_arg_diags(
         Some(_) => {
             let named_diags = Rc::new({
                 let mut __result = Vec::new();
-                for ta in typed_args.clone().iter().cloned() {
+                for ta in typed_args.iter().cloned() {
                     __result.extend(
                         (*match arg_name_at(ta.clone(), type_env.source_indices.clone()) {
                             Some(label) => Rc::new(vec![make_error_node(
@@ -4125,7 +4125,7 @@ pub fn direct_call_arg_mismatch_diags(
         let source_indices = type_env.source_indices.clone();
         Rc::new({
             let mut __result = Vec::new();
-            for app in plan.clone().iter().cloned() {
+            for app in plan.iter().cloned() {
                 __result.extend(
                     (*{
                         let formal = app.formal.clone();
@@ -4801,7 +4801,7 @@ pub fn frontier_row_observed(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for e in diagnostics.clone().iter().cloned() {
+        for e in diagnostics.iter().cloned() {
             if frontier_diag_matches_row(
                 e.diagnostic.clone(),
                 method.clone(),
@@ -5188,7 +5188,7 @@ pub fn annotate_pattern_parent_enums(
                 let variant_subject = lookup_result_subject(variant_lookup.clone());
                 let annotated_bindings = Rc::new({
                     let mut __result = Vec::new();
-                    for binding in bindings.clone().iter().cloned() {
+                    for binding in bindings.iter().cloned() {
                         __result.push({
                             let field_lookup = lookup_field_in_variant(
                                 variant_subject.clone(),
@@ -5237,7 +5237,7 @@ pub fn annotate_pattern_parent_enums(
 
 pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
     {
-        let new_locals = params.clone().iter().cloned().fold(
+        let new_locals = params.iter().cloned().fold(
             scope.locals.clone(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| {
                 v1_rt::rc_map_insert(
@@ -5254,7 +5254,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
                 )
             },
         );
-        let new_body_locals = params.clone().iter().cloned().fold(
+        let new_body_locals = params.iter().cloned().fold(
             scope.body_locals.clone(),
             |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                 v1_rt::rc_map_insert(
@@ -5341,7 +5341,7 @@ pub fn extend_scope_match_bound(
 
 pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) -> Rc<InferScope> {
     {
-        let new_locals = params.clone().iter().cloned().fold(
+        let new_locals = params.iter().cloned().fold(
             scope.locals.clone(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: String| {
                 v1_rt::rc_map_insert(
@@ -5355,7 +5355,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
                 )
             },
         );
-        let new_body_locals = params.clone().iter().cloned().fold(
+        let new_body_locals = params.iter().cloned().fold(
             scope.body_locals.clone(),
             |acc: Rc<HashMap<String, bool>>, p: String| v1_rt::rc_map_insert(acc, p.clone(), true),
         );
@@ -5430,7 +5430,7 @@ pub fn derive_field_provenance(
                         inductive_fields_for(scope.type_env.clone(), scrut_type_name.clone());
                     let matching = Rc::new({
                         let mut __result = Vec::new();
-                        for f in ind_fields.clone().iter().cloned() {
+                        for f in ind_fields.iter().cloned() {
                             if ((f.variant_name.clone() == variant_name.clone())
                                 && (f.field_name.clone() == field_name.clone()))
                             {
@@ -5497,7 +5497,7 @@ pub fn extend_scope_with_pattern_node(
                 );
                 let variant_subject = lookup_result_subject(variant_lookup.clone());
                 let variant_diags = variant_lookup.diagnostics.clone();
-                bindings.clone().iter().cloned().fold(
+                bindings.iter().cloned().fold(
                     Rc::new(PatternScopeResult {
                         scope: scope.clone(),
                         diagnostics: variant_diags.clone(),
@@ -5601,7 +5601,7 @@ pub fn extract_fold_init_info(
             {
                 let init_arg = match Rc::new({
                     let mut __result = Vec::new();
-                    for a in method_args.clone().iter().cloned() {
+                    for a in method_args.iter().cloned() {
                         if arg_has_name(
                             a.clone(),
                             "init".to_string(),
@@ -5671,7 +5671,7 @@ pub fn derive_element_provenance(
                         );
                         let list_field = Rc::new({
                             let mut __result = Vec::new();
-                            for f in ind_fields.clone().iter().cloned() {
+                            for f in ind_fields.iter().cloned() {
                                 if match f.shape.clone() {
                                     RecursionShape::ListRecursion => true,
                                     _ => false,
@@ -6447,7 +6447,7 @@ pub fn infer_expr_body(
                             );
                             let has_lambda = {
                                 let mut __found = false;
-                                for a in call_args.clone().iter().cloned() {
+                                for a in call_args.iter().cloned() {
                                     if is_lambda_expr(arg_value(a.clone())) {
                                         __found = true;
                                         break;
@@ -6653,7 +6653,7 @@ pub fn infer_expr_body(
                             let call_subst = arg_call.subst.clone();
                             let typed_args = Rc::new({
                                 let mut __result = Vec::new();
-                                for air in arg_infer_results.clone().iter().cloned() {
+                                for air in arg_infer_results.iter().cloned() {
                                     __result.push(air.typed_arg.clone());
                                 }
                                 __result
@@ -6661,7 +6661,7 @@ pub fn infer_expr_body(
                             let arg_diags = v1_rt::concat(
                                 Rc::new({
                                     let mut __result = Vec::new();
-                                    for air in arg_infer_results.clone().iter().cloned() {
+                                    for air in arg_infer_results.iter().cloned() {
                                         __result.extend((*air.diagnostics.clone()).iter().cloned());
                                     }
                                     __result
@@ -6771,7 +6771,7 @@ pub fn infer_expr_body(
                                     {
                                         match Rc::new({
                                             let mut __result = Vec::new();
-                                            for a in typed_args.clone().iter().cloned() {
+                                            for a in typed_args.iter().cloned() {
                                                 if is_lambda_expr(arg_value(a.clone())) {
                                                     __result.push(a);
                                                 }
@@ -6875,7 +6875,6 @@ pub fn infer_expr_body(
                                                                         let mut __result =
                                                                             Vec::new();
                                                                         for a in remaining
-                                                                            .clone()
                                                                             .iter()
                                                                             .cloned()
                                                                         {
@@ -6992,7 +6991,7 @@ pub fn infer_expr_body(
                                             };
                                             let remaining_arg_nodes = Rc::new({
                                                 let mut __result = Vec::new();
-                                                for ta in remaining.clone().iter().cloned() {
+                                                for ta in remaining.iter().cloned() {
                                                     __result.push(make_arg_node(
                                                         arg_name_at(
                                                             ta.clone(),
@@ -7438,14 +7437,14 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                     );
                     let typed_mc_args = Rc::new({
                         let mut __result = Vec::new();
-                        for air in mc_arg_infer_results.clone().iter().cloned() {
+                        for air in mc_arg_infer_results.iter().cloned() {
                             __result.push(air.typed_arg.clone());
                         }
                         __result
                     });
                     let mc_arg_diags = Rc::new({
                         let mut __result = Vec::new();
-                        for air in mc_arg_infer_results.clone().iter().cloned() {
+                        for air in mc_arg_infer_results.iter().cloned() {
                             __result.extend((*air.diagnostics.clone()).iter().cloned());
                         }
                         __result
@@ -7458,7 +7457,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         if ((fold_info.clone() != None) && mc_acc_is_under_resolved.clone()) {
                             match Rc::new({
                                 let mut __result = Vec::new();
-                                for a in typed_mc_args.clone().iter().cloned() {
+                                for a in typed_mc_args.iter().cloned() {
                                     if is_lambda_expr(arg_value(a.clone())) {
                                         __result.push(a);
                                     }
@@ -7520,7 +7519,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                                         {
                                             let mc_arg_types = Rc::new({
                                                 let mut __result = Vec::new();
-                                                for a in typed_mc_args.clone().iter().cloned() {
+                                                for a in typed_mc_args.iter().cloned() {
                                                     __result
                                                         .push(resolved_type(arg_value(a.clone())));
                                                 }
@@ -7611,7 +7610,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             let scrut_provenance = classify_binding_provenance(scrut.clone(), scope.clone());
             let arm_infer_results = Rc::new({
                 let mut __result = Vec::new();
-                for arm_node in arm_nodes.clone().iter().cloned() {
+                for arm_node in arm_nodes.iter().cloned() {
                     __result.push({
                         let arm_pat = arm_pattern(arm_node.clone());
                         let arm_g = arm_guard(arm_node.clone());
@@ -7673,7 +7672,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             });
             let arm_body_types = Rc::new({
                 let mut __result = Vec::new();
-                for ar in arm_infer_results.clone().iter().cloned() {
+                for ar in arm_infer_results.iter().cloned() {
                     __result.push(ar.body_type.clone());
                 }
                 __result
@@ -7835,14 +7834,14 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             };
             let typed_arms = Rc::new({
                 let mut __result = Vec::new();
-                for ar in arm_infer_results.clone().iter().cloned() {
+                for ar in arm_infer_results.iter().cloned() {
                     __result.push(ar.typed_arm.clone());
                 }
                 __result
             });
             let arm_diags = Rc::new({
                 let mut __result = Vec::new();
-                for ar in arm_infer_results.clone().iter().cloned() {
+                for ar in arm_infer_results.iter().cloned() {
                     __result.extend((*ar.diagnostics.clone()).iter().cloned());
                 }
                 __result
@@ -8124,21 +8123,21 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             };
             let elem_results = Rc::new({
                 let mut __result = Vec::new();
-                for e in elements.clone().iter().cloned() {
+                for e in elements.iter().cloned() {
                     __result.push(infer_expr(e.clone(), scope.clone(), elem_expected.clone()));
                 }
                 __result
             });
             let typed_elements = Rc::new({
                 let mut __result = Vec::new();
-                for r in elem_results.clone().iter().cloned() {
+                for r in elem_results.iter().cloned() {
                     __result.push(r.typed.clone());
                 }
                 __result
             });
             let elem_diags = Rc::new({
                 let mut __result = Vec::new();
-                for r in elem_results.clone().iter().cloned() {
+                for r in elem_results.iter().cloned() {
                     __result.extend((*r.diagnostics.clone()).iter().cloned());
                 }
                 __result
@@ -9108,7 +9107,7 @@ pub fn record_field_type_is_unresolved_param(
                         let fname = authored_name_at(env.source_indices.clone(), ft.clone());
                         let in_params = {
                             let mut __found = false;
-                            for pn in param_names.clone().iter().cloned() {
+                            for pn in param_names.iter().cloned() {
                                 if (pn.clone() == fname.clone()) {
                                     __found = true;
                                     break;
@@ -9525,7 +9524,7 @@ pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<In
                             };
                             {
                                 let mut __found = false;
-                                for f in fields.clone().iter().cloned() {
+                                for f in fields.iter().cloned() {
                                     if (authored_name_at(si.clone(), f.clone()) == field.clone()) {
                                         __found = true;
                                         break;
@@ -9652,7 +9651,7 @@ pub fn infer_map_literal(
         };
         let fi_results = Rc::new({
             let mut __result = Vec::new();
-            for fi in field_inits.clone().iter().cloned() {
+            for fi in field_inits.iter().cloned() {
                 __result.push({
                     let ar = infer_expr(
                         field_init_node_value(fi.clone()),
@@ -9681,7 +9680,7 @@ pub fn infer_map_literal(
                 Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for fir in fi_results.clone().iter().cloned() {
+                    for fir in fi_results.iter().cloned() {
                         __result.push(fir.typed_field.clone());
                     }
                     __result
@@ -9693,7 +9692,7 @@ pub fn infer_map_literal(
             ),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
-                for fir in fi_results.clone().iter().cloned() {
+                for fir in fi_results.iter().cloned() {
                     __result.extend((*fir.diagnostics.clone()).iter().cloned());
                 }
                 __result
@@ -9910,7 +9909,7 @@ pub fn infer_record_lit_structural(
                 let mut __result = Vec::new();
                 for sf in Rc::new({
                     let mut __result = Vec::new();
-                    for sf in presence_fields.clone().iter().cloned() {
+                    for sf in presence_fields.iter().cloned() {
                         if {
                             let sf_type = match sf.inferred.clone().as_deref().cloned() {
                                 Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
@@ -9920,7 +9919,7 @@ pub fn infer_record_lit_structural(
                                 && (sf.body.clone() == None))
                                 && ({
                                     let mut __found = false;
-                                    for fi in field_inits.clone().iter().cloned() {
+                                    for fi in field_inits.iter().cloned() {
                                         if (field_init_node_name_at(
                                             fi.clone(),
                                             si_presence.clone(),
@@ -9955,7 +9954,7 @@ pub fn infer_record_lit_structural(
         };
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
-            for fi in field_inits.clone().iter().cloned() {
+            for fi in field_inits.iter().cloned() {
                 __result.push({
                     let fi_name = field_init_node_name_at(
                         fi.clone(),
@@ -9965,7 +9964,7 @@ pub fn infer_record_lit_structural(
                         Some(names) => {
                             if ({
                                 let mut __found = false;
-                                for n in names.clone().iter().cloned() {
+                                for n in names.iter().cloned() {
                                     if (n.clone() == fi_name.clone()) {
                                         __found = true;
                                         break;
@@ -9993,7 +9992,7 @@ pub fn infer_record_lit_structural(
                     };
                     let field_declared_type = match Rc::new({
                         let mut __result = Vec::new();
-                        for sf in struct_fields.clone().iter().cloned() {
+                        for sf in struct_fields.iter().cloned() {
                             if (authored_name_at(
                                 scope.type_env.clone().source_indices.clone(),
                                 sf.clone(),
@@ -10194,14 +10193,14 @@ pub fn infer_record_lit_structural(
         });
         let typed_fields = Rc::new({
             let mut __result = Vec::new();
-            for fir in fi_infer_results.clone().iter().cloned() {
+            for fir in fi_infer_results.iter().cloned() {
                 __result.push(fir.typed_field.clone());
             }
             __result
         });
         let fi_diags = Rc::new({
             let mut __result = Vec::new();
-            for fir in fi_infer_results.clone().iter().cloned() {
+            for fir in fi_infer_results.iter().cloned() {
                 __result.extend((*fir.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -10210,7 +10209,7 @@ pub fn infer_record_lit_structural(
             {
                 let child_nodes = Rc::new({
                     let mut __result = Vec::new();
-                    for fir in fi_infer_results.clone().iter().cloned() {
+                    for fir in fi_infer_results.iter().cloned() {
                         __result.push(Rc::new(Node {
                             name: field_init_node_name_at(
                                 fir.typed_field.clone(),
@@ -10351,7 +10350,7 @@ pub fn infer_record_lit_structural(
                     {
                         let val_field = Rc::new({
                             let mut __result = Vec::new();
-                            for fir in fi_infer_results.clone().iter().cloned() {
+                            for fir in fi_infer_results.iter().cloned() {
                                 if (field_init_node_name_at(
                                     fir.typed_field.clone(),
                                     scope.type_env.clone().source_indices.clone(),
@@ -10842,7 +10841,7 @@ pub fn maybe_insert_match_field_relation(
                     let ind_fields = inductive_fields_for(type_env.clone(), lookup_type.clone());
                     let matching = Rc::new({
                         let mut __result = Vec::new();
-                        for f in ind_fields.clone().iter().cloned() {
+                        for f in ind_fields.iter().cloned() {
                             if ((f.field_name.clone() == field_label.clone())
                                 && ((f.variant_name.clone() == vname.clone())
                                     || (f.variant_name.clone() == "".to_string())))
@@ -11186,7 +11185,7 @@ pub fn classify_binding_provenance(val: Rc<Node>, scope: Rc<InferScope>) -> Rc<S
                             );
                             let matching = Rc::new({
                                 let mut __result = Vec::new();
-                                for f in fields.clone().iter().cloned() {
+                                for f in fields.iter().cloned() {
                                     if (f.field_name.clone() == field.clone()) {
                                         __result.push(f);
                                     }
@@ -11266,7 +11265,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                     );
                                     let matching = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             if (f.field_name.clone() == field.clone()) {
                                                 __result.push(f);
                                             }
@@ -11361,8 +11360,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                                     let cf =
                                                         Rc::new({
                                                             let mut __result = Vec::new();
-                                                            for f in fields.clone().iter().cloned()
-                                                            {
+                                                            for f in fields.iter().cloned() {
                                                                 if match f.shape.clone() {
     RecursionShape::ListRecursion => true,
     _ => false,
@@ -11423,7 +11421,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                         inductive_fields_for(ctx.type_env.clone(), elem.clone());
                                     let cf = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             if match f.shape.clone() {
                                                 RecursionShape::ListRecursion => true,
                                                 _ => false,
@@ -11704,7 +11702,7 @@ pub fn classify_call_via_provenance(
 ) -> Option<Rc<SubValueRelation>> {
     {
         let call_args = call.children.clone();
-        let arg_by_name = call_args.clone().iter().cloned().fold(
+        let arg_by_name = call_args.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, arg_node: Rc<Node>| match arg_name_at(
                 arg_node.clone(),
@@ -11845,7 +11843,7 @@ pub fn classify_argument(
                         let fields = inductive_fields_for(ctx.type_env.clone(), type_name.clone());
                         let matching = Rc::new({
                             let mut __result = Vec::new();
-                            for f in fields.clone().iter().cloned() {
+                            for f in fields.iter().cloned() {
                                 if (f.field_name.clone() == field.clone()) {
                                     __result.push(f);
                                 }
@@ -11920,7 +11918,7 @@ pub fn classify_argument(
                                                 );
                                                 let cf = Rc::new({
                                                     let mut __result = Vec::new();
-                                                    for f in fields.clone().iter().cloned() {
+                                                    for f in fields.iter().cloned() {
                                                         if match f.shape.clone() {
                                                             RecursionShape::ListRecursion => true,
                                                             _ => false,
@@ -12189,7 +12187,7 @@ pub fn read_arg_provenance(
                                 );
                                 let matching = Rc::new({
                                     let mut __result = Vec::new();
-                                    for f in fields.clone().iter().cloned() {
+                                    for f in fields.iter().cloned() {
                                         if (f.field_name.clone() == field.clone()) {
                                             __result.push(f);
                                         }
@@ -12438,11 +12436,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                                         );
                                                         let cf = Rc::new({
                                                             let mut __result = Vec::new();
-                                                            for f in source_fields
-                                                                .clone()
-                                                                .iter()
-                                                                .cloned()
-                                                            {
+                                                            for f in source_fields.iter().cloned() {
                                                                 if match f.shape.clone() {
     RecursionShape::ListRecursion => true,
     _ => false,
@@ -12605,7 +12599,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                         );
                                         Rc::new({
                                             let mut __result = Vec::new();
-                                            for f in ind_fields.clone().iter().cloned() {
+                                            for f in ind_fields.iter().cloned() {
                                                 if (f.field_name.clone() == fname.clone()) {
                                                     __result.push(f);
                                                 }
@@ -12689,7 +12683,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
                     match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
     Some(ind_field) => if (vname.clone() == "Present".to_string()) {
-                        bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
+                        bindings.iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
     MatchPattern::Bind { declaration: declaration, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
     param_names: v1_rt::rc_map_insert(c.param_names.clone(), declaration.name.clone(), ind_field.element_type.clone()),
@@ -12706,13 +12700,13 @@ let arm_ctx = match variant_arm_ctx.clone() {
 }),
     MatchPattern::VariantPattern { name: inner_vname, field_bindings: inner_bindings, .. } => {
                             let inner_ind_fields = inductive_fields_for(c.type_env.clone(), ind_field.element_type.clone());
-inner_bindings.clone().iter().cloned().fold(c.clone(), |ic: Rc<DescentContext>, inner_fb: Rc<Node>| {
+inner_bindings.iter().cloned().fold(c.clone(), |ic: Rc<DescentContext>, inner_fb: Rc<Node>| {
                                 let inner_field_name = field_binding_name_at(inner_fb.clone(), ctx.type_env.clone().source_indices.clone());
 let inner_bind_name = match (*field_binding_pattern(inner_fb.clone())).clone() {
     MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
-let inner_matching = Rc::new({ let mut __result = Vec::new(); for f in inner_ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == inner_vname.clone()) && (f.field_name.clone() == inner_field_name.clone())) { __result.push(f); } } __result }).first().cloned();
+let inner_matching = Rc::new({ let mut __result = Vec::new(); for f in inner_ind_fields.iter().cloned() { if ((f.variant_name.clone() == inner_vname.clone()) && (f.field_name.clone() == inner_field_name.clone())) { __result.push(f); } } __result }).first().cloned();
 match inner_matching.clone() {
     Some(inner_ind_field) => if (inner_bind_name.clone() != "".to_string()) {
                                     Rc::new(DescentContext {
@@ -12743,13 +12737,13 @@ match inner_matching.clone() {
                     },
     None => {
                         let ind_fields = inductive_fields_for(ctx.type_env.clone(), scrut_type.clone());
-bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
+bindings.iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
                             let field_name = field_binding_name_at(fb.clone(), ctx.type_env.clone().source_indices.clone());
 let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
     MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
-let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == vname.clone()) && (f.field_name.clone() == field_name.clone())) { __result.push(f); } } __result }).first().cloned();
+let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if ((f.variant_name.clone() == vname.clone()) && (f.field_name.clone() == field_name.clone())) { __result.push(f); } } __result }).first().cloned();
 match matching.clone() {
     Some(ind_field) => if (bind_name.clone() != "".to_string()) {
                                 Rc::new(DescentContext {
@@ -13193,7 +13187,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         let method_args = method_arg_nodes(body.clone());
                         let lambda_arg = Rc::new({
                             let mut __result = Vec::new();
-                            for a in method_args.clone().iter().cloned() {
+                            for a in method_args.iter().cloned() {
                                 if match (*arg_value(a.clone()).expr_data.clone()).clone() {
                                     ExprData::ExprLambda => true,
                                     _ => false,
@@ -13440,7 +13434,7 @@ pub fn infer_output_provenance(
     {
         let param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(param_node_name_at(
                     p.clone(),
                     type_env.source_indices.clone(),
@@ -13448,7 +13442,7 @@ pub fn infer_output_provenance(
             }
             __result
         });
-        let param_types = params.clone().iter().cloned().fold(
+        let param_types = params.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
@@ -13482,7 +13476,7 @@ pub fn infer_output_provenance(
                 );
                 if (((per_field.clone().len() as i64) > 0) && {
                     let mut __found = false;
-                    for m in per_field.clone().iter().cloned() {
+                    for m in per_field.iter().cloned() {
                         if ((Rc::new(v1_rt::map_keys(&m)).len() as i64) > 0) {
                             __found = true;
                             break;
@@ -13518,7 +13512,7 @@ pub fn classify_body_provenance(
                     None => {
                         if {
                             let mut __found = false;
-                            for pn in param_names.clone().iter().cloned() {
+                            for pn in param_names.iter().cloned() {
                                 if (pn.clone() == vname.clone()) {
                                     __found = true;
                                     break;
@@ -13576,7 +13570,7 @@ pub fn classify_body_provenance(
                                         );
                                         let matching = Rc::new({
                                             let mut __result = Vec::new();
-                                            for f in fields.clone().iter().cloned() {
+                                            for f in fields.iter().cloned() {
                                                 if (f.field_name.clone() == field.clone()) {
                                                     __result.push(f);
                                                 }
@@ -13718,10 +13712,10 @@ pub fn classify_body_provenance(
                 let arms = match_arm_nodes(expr.clone());
                 let arm_provs = Rc::new({
                     let mut __result = Vec::new();
-                    for arm in arms.clone().iter().cloned() {
+                    for arm in arms.iter().cloned() {
                         __result.push({
                 let arm_let_prov = match (*arm_pattern(arm.clone())).clone() {
-    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
+    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
                     let field_label = field_binding_name_at(binding.clone(), type_env.source_indices.clone());
 let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
     MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
@@ -13937,7 +13931,7 @@ pub fn method_call_args_by_name(
             },
             None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
         };
-        mc_args.clone().iter().cloned().fold(
+        mc_args.iter().cloned().fold(
             base.clone(),
             |acc: Rc<HashMap<String, Rc<Node>>>, arg_node: Rc<Node>| match arg_name_at(
                 arg_node.clone(),
@@ -14210,7 +14204,7 @@ pub fn meet_per_field_results(
                 {
                     let all_same_count = {
                         let mut __all = true;
-                        for r in results.clone().iter().cloned() {
+                        for r in results.iter().cloned() {
                             if !((r.clone().len() as i64) == (first_result.clone().len() as i64)) {
                                 __all = false;
                                 break;
@@ -14239,7 +14233,7 @@ pub fn meet_per_field_results(
                                     let idx = pair.0.clone();
                                     let field_provs = Rc::new({
                                         let mut __result = Vec::new();
-                                        for r in results.clone().iter().cloned() {
+                                        for r in results.iter().cloned() {
                                             __result.push(
                                                 match r
                                                     .clone()
@@ -14334,7 +14328,7 @@ pub fn arm_ctx_from_variant_provenance(
             Some(variant_field_map) => {
                 let call_args =
                     call_args_by_name(scrut.clone(), ctx.type_env.clone().source_indices.clone());
-                let extended = bindings.clone().iter().cloned().fold(
+                let extended = bindings.iter().cloned().fold(
                     ctx.clone(),
                     |c: Rc<DescentContext>, fb: Rc<Node>| {
                         let field_label = field_binding_name_at(
@@ -14492,7 +14486,7 @@ pub fn compute_variant_provenance(
                 Connective::Disj => {
                     let param_names = Rc::new({
                         let mut __result = Vec::new();
-                        for p in params.clone().iter().cloned() {
+                        for p in params.iter().cloned() {
                             __result.push(param_node_name_at(
                                 p.clone(),
                                 type_env.source_indices.clone(),
@@ -14500,7 +14494,7 @@ pub fn compute_variant_provenance(
                         }
                         __result
                     });
-                    let param_types = params.clone().iter().cloned().fold(
+                    let param_types = params.iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, String>(),
                         |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                             let pname =
@@ -14897,7 +14891,7 @@ pub fn populate_output_provenance(
     locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ResolvedFuncEnv> {
     {
-        let updated_local = typed_items.clone().iter().cloned().fold(
+        let updated_local = typed_items.iter().cloned().fold(
             func_env.local.clone(),
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, item: Rc<Node>| {
                 if ((item.params.clone().len() as i64) > 0) {
@@ -14927,7 +14921,7 @@ pub fn populate_output_provenance(
                                             );
                                             let list_field = Rc::new({
                                                 let mut __result = Vec::new();
-                                                for f in fields.clone().iter().cloned() {
+                                                for f in fields.iter().cloned() {
                                                     if match f.shape.clone() {
                                                         RecursionShape::ListRecursion => true,
                                                         _ => false,
@@ -15102,7 +15096,7 @@ pub fn annotate_descent_evidence(
     func_env: Rc<ResolvedFuncEnv>,
 ) -> Rc<Node> {
     {
-        let param_name_map = params.clone().iter().cloned().fold(
+        let param_name_map = params.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
@@ -15112,7 +15106,7 @@ pub fn annotate_descent_evidence(
         );
         let param_order_list = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(param_node_name_at(
                     p.clone(),
                     type_env.source_indices.clone(),
@@ -15155,7 +15149,7 @@ pub fn infer_property_values(
     {
         let results = Rc::new({
             let mut __result = Vec::new();
-            for p in props.clone().iter().cloned() {
+            for p in props.iter().cloned() {
                 __result.push({
                     let val = field_init_node_value(p.clone());
                     let val_result = infer_expr(val.clone(), scope.clone(), None);
@@ -15189,14 +15183,14 @@ pub fn infer_property_values(
         Rc::new(InferPropertiesResult {
             props: Rc::new({
                 let mut __result = Vec::new();
-                for r in results.clone().iter().cloned() {
+                for r in results.iter().cloned() {
                     __result.push(r.0.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
-                for r in results.clone().iter().cloned() {
+                for r in results.iter().cloned() {
                     __result.extend((*r.1.clone()).iter().cloned());
                 }
                 __result
@@ -15212,7 +15206,7 @@ pub fn infer_auth_source_properties(
     {
         let results = Rc::new({
             let mut __result = Vec::new();
-            for p in props.clone().iter().cloned() {
+            for p in props.iter().cloned() {
                 __result.push(
                     if (field_init_node_name_at(
                         p.clone(),
@@ -15256,14 +15250,14 @@ pub fn infer_auth_source_properties(
         Rc::new(InferPropertiesResult {
             props: Rc::new({
                 let mut __result = Vec::new();
-                for r in results.clone().iter().cloned() {
+                for r in results.iter().cloned() {
                     __result.push(r.0.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
-                for r in results.clone().iter().cloned() {
+                for r in results.iter().cloned() {
                     __result.extend((*r.1.clone()).iter().cloned());
                 }
                 __result
@@ -15715,7 +15709,7 @@ pub fn infer_items(
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
+        for item in items.iter().cloned() {
             __result.push(infer_item(item.clone(), scope.clone()));
         }
         __result
@@ -15776,7 +15770,7 @@ pub fn split_sig_params(
     Rc::new(SigParamSplit {
         value_params: Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 if !param_is_generic_decl(p.clone(), source_indices.clone()) {
                     __result.push(p);
                 }
@@ -15787,7 +15781,7 @@ pub fn split_sig_params(
             let mut __result = Vec::new();
             for p in Rc::new({
                 let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     if param_is_generic_decl(p.clone(), source_indices.clone()) {
                         __result.push(p);
                     }
@@ -15842,7 +15836,7 @@ pub fn unify_generics(
             })
             && {
                 let mut __found = false;
-                for g in generic_names.clone().iter().cloned() {
+                for g in generic_names.iter().cloned() {
                     if (g.clone() == bind_name.clone()) {
                         __found = true;
                         break;
@@ -15923,7 +15917,7 @@ pub fn unify_record_lit_field_walk(
     scope: Rc<InferScope>,
     acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    struct_fields.clone().iter().cloned().fold(
+    struct_fields.iter().cloned().fold(
         acc.clone(),
         |st: Rc<HashMap<String, Rc<Node>>>, sf: Rc<Node>| {
             let field_name =
@@ -15988,7 +15982,7 @@ pub fn unify_record_lit_generics(
             );
             let is_generic_slot = {
                 let mut __found = false;
-                for g in generic_names.clone().iter().cloned() {
+                for g in generic_names.iter().cloned() {
                     if (g.clone() == formal_name.clone()) {
                         __found = true;
                         break;
@@ -16194,7 +16188,7 @@ pub fn deps_excluding_leaf_self(
             && ((deps0.clone().len() as i64) == 1))
             && {
                 let mut __found = false;
-                for d in deps0.clone().iter().cloned() {
+                for d in deps0.iter().cloned() {
                     if (d.clone() == b.name.clone()) {
                         __found = true;
                         break;
@@ -16266,7 +16260,7 @@ pub fn union_parent_type_env_caches(
     {
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
-            for imp in resolved_imports.clone().iter().cloned() {
+            for imp in resolved_imports.iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
@@ -16912,7 +16906,7 @@ pub fn disj_variant_name_counts(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, i64>> {
-    items.clone().iter().cloned().fold(
+    items.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
         |counts: Rc<HashMap<String, i64>>, item: Rc<Node>| match item.connective.clone() {
             Connective::Disj => item.children.clone().iter().cloned().fold(
@@ -16941,7 +16935,7 @@ pub fn census_node_base_note() -> String {
 pub fn census_module_nodes(modules: Rc<Vec<Rc<ResolvedModule>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for rm in modules.clone().iter().cloned() {
+        for rm in modules.iter().cloned() {
             __result.push(rm.module.clone());
         }
         __result
@@ -16952,7 +16946,7 @@ pub fn corpus_disj_variant_name_counts_nodes(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, i64>> {
-    module_nodes.clone().iter().cloned().fold(
+    module_nodes.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
         |counts: Rc<HashMap<String, i64>>, module_node: Rc<Node>| {
             module_items(module_node.clone()).iter().cloned().fold(
@@ -16988,7 +16982,7 @@ pub fn corpus_item_name_counts_nodes(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, i64>> {
-    module_nodes.clone().iter().cloned().fold(
+    module_nodes.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
         |counts: Rc<HashMap<String, i64>>, module_node: Rc<Node>| {
             module_items(module_node.clone()).iter().cloned().fold(
@@ -17021,90 +17015,82 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-        items
-            .clone()
-            .iter()
-            .cloned()
-            .fold(
-                index.clone(),
-                |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
-                    Connective::Disj => {
-                        let tname = authored_name_at(source_indices.clone(), item.clone());
-                        item.children.clone().iter().cloned().fold(
-                            acc.clone(),
-                            |a2: Rc<SymbolIndex>, child: Rc<Node>| {
-                                let vname = authored_name_at(source_indices.clone(), child.clone());
-                                let a2_qualified = symbol_index_insert(
-                                    a2,
+        items.iter().cloned().fold(
+            index.clone(),
+            |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
+                Connective::Disj => {
+                    let tname = authored_name_at(source_indices.clone(), item.clone());
+                    item.children.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                            let vname = authored_name_at(source_indices.clone(), child.clone());
+                            let a2_qualified = symbol_index_insert(
+                                a2,
+                                v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            tname.clone(),
+                                        ),
+                                        ".".to_string(),
+                                    ),
+                                    vname.clone(),
+                                ),
+                                item.clone(),
+                            );
+                            match v1_rt::map_get(&counts, vname.clone()) {
+                                Some(1) => {
+                                    match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
+                                        Some(1) => {
+                                            if ((v1_rt::map_get(
+                                                &corpus_item_counts,
+                                                vname.clone(),
+                                            ) != None)
+                                                || overlay_skips_kernel_name(vname.clone()))
+                                            {
+                                                symbol_index_insert(
+                                                    a2_qualified.clone(),
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            module_path.clone(),
+                                                            ".".to_string(),
+                                                        ),
+                                                        vname.clone(),
+                                                    ),
+                                                    item.clone(),
+                                                )
+                                            } else {
+                                                symbol_index_insert_decl(
+                                                    a2_qualified.clone(),
+                                                    module_path.clone(),
+                                                    Rc::new(TypeBinding {
+                                                        name: vname.clone(),
+                                                        resolved: item.clone(),
+                                                        provenance: Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
+                                                    }),
+                                                )
+                                            }
+                                        }
+                                        _ => symbol_index_insert(
+                                            a2_qualified.clone(),
                                             v1_rt::concat(
                                                 v1_rt::concat(module_path.clone(), ".".to_string()),
-                                                tname.clone(),
+                                                vname.clone(),
                                             ),
-                                            ".".to_string(),
+                                            item.clone(),
                                         ),
-                                        vname.clone(),
-                                    ),
-                                    item.clone(),
-                                );
-                                match v1_rt::map_get(&counts, vname.clone()) {
-                                    Some(1) => {
-                                        match v1_rt::map_get(&corpus_variant_counts, vname.clone())
-                                        {
-                                            Some(1) => {
-                                                if ((v1_rt::map_get(
-                                                    &corpus_item_counts,
-                                                    vname.clone(),
-                                                ) != None)
-                                                    || overlay_skips_kernel_name(vname.clone()))
-                                                {
-                                                    symbol_index_insert(
-                                                        a2_qualified.clone(),
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                module_path.clone(),
-                                                                ".".to_string(),
-                                                            ),
-                                                            vname.clone(),
-                                                        ),
-                                                        item.clone(),
-                                                    )
-                                                } else {
-                                                    symbol_index_insert_decl(
-                                                        a2_qualified.clone(),
-                                                        module_path.clone(),
-                                                        Rc::new(TypeBinding {
-                                                            name: vname.clone(),
-                                                            resolved: item.clone(),
-                                                            provenance: Rc::new(
-                                                                SubValueRelation::SubValueUnknown,
-                                                            ),
-                                                        }),
-                                                    )
-                                                }
-                                            }
-                                            _ => symbol_index_insert(
-                                                a2_qualified.clone(),
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        module_path.clone(),
-                                                        ".".to_string(),
-                                                    ),
-                                                    vname.clone(),
-                                                ),
-                                                item.clone(),
-                                            ),
-                                        }
                                     }
-                                    _ => a2_qualified.clone(),
                                 }
-                            },
-                        )
-                    }
-                    _ => acc.clone(),
-                },
-            )
+                                _ => a2_qualified.clone(),
+                            }
+                        },
+                    )
+                }
+                _ => acc.clone(),
+            },
+        )
     }
 }
 
@@ -17160,7 +17146,7 @@ pub fn corpus_decl_module_paths(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     item_counts: Rc<HashMap<String, i64>>,
 ) -> Rc<HashMap<String, String>> {
-    module_nodes.clone().iter().cloned().fold(
+    module_nodes.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
             let module_path = authored_name_at(source_indices.clone(), module_node.clone());
@@ -17206,7 +17192,7 @@ pub fn transparent_alias_direct_edges(
     item_counts: Rc<HashMap<String, i64>>,
     decl_modules: Rc<HashMap<String, String>>,
 ) -> Rc<HashMap<String, String>> {
-    module_nodes.clone().iter().cloned().fold(
+    module_nodes.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
         |edges: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
             let module_path = authored_name_at(source_indices.clone(), module_node.clone());
@@ -17374,22 +17360,23 @@ pub fn build_symbol_index_census_raw_nodes(
             corpus_disj_variant_name_counts_nodes(module_nodes.clone(), source_indices.clone());
         let corpus_item_counts =
             corpus_item_name_counts_nodes(module_nodes.clone(), source_indices.clone());
-        let folded = module_nodes.clone().iter().cloned().fold(
+        let folded = module_nodes.iter().cloned().fold(
             empty_symbol_index(),
             |index: Rc<SymbolIndex>, module_node: Rc<Node>| {
                 let module_path = authored_name_at(source_indices.clone(), module_node.clone());
                 let items = module_items(module_node.clone());
-                let with_items = items.clone().iter().cloned().fold(
-                    index,
-                    |acc: Rc<SymbolIndex>, item: Rc<Node>| {
-                        symbol_index_insert_item(
-                            acc,
-                            module_path.clone(),
-                            item.clone(),
-                            source_indices.clone(),
-                        )
-                    },
-                );
+                let with_items =
+                    items
+                        .iter()
+                        .cloned()
+                        .fold(index, |acc: Rc<SymbolIndex>, item: Rc<Node>| {
+                            symbol_index_insert_item(
+                                acc,
+                                module_path.clone(),
+                                item.clone(),
+                                source_indices.clone(),
+                            )
+                        });
                 symbol_index_insert_unique_disj_variant_aliases(
                     with_items.clone(),
                     module_path.clone(),
@@ -17655,7 +17642,7 @@ pub fn census_upgrade_type_decl_binding(
             }
             __result
         });
-        let excluded = param_names.clone().iter().cloned().fold(
+        let excluded = param_names.iter().cloned().fold(
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, bool>(),
                 binding.name.clone(),
@@ -17876,7 +17863,7 @@ pub fn census_with_resolved_fn_sigs(
 ) -> Rc<SymbolIndex> {
     {
         let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
-        let entries2 = entry_keys.clone().iter().cloned().fold(
+        let entries2 = entry_keys.iter().cloned().fold(
             index.entries.clone(),
             |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
                 &index.entries.clone(),
@@ -17903,7 +17890,7 @@ pub fn census_with_resolved_fn_sigs(
             },
         );
         let bare_keys = Rc::new(v1_rt::sorted_map_keys(&index.global_bare.clone()));
-        let global2 = bare_keys.clone().iter().cloned().fold(
+        let global2 = bare_keys.iter().cloned().fold(
             index.global_bare.clone(),
             |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
                 &index.global_bare.clone(),
@@ -17942,7 +17929,7 @@ pub fn census_with_resolved_fn_sigs(
                 }) => {
                     let cands2 = Rc::new({
                         let mut __result = Vec::new();
-                        for c in cands.clone().iter().cloned() {
+                        for c in cands.iter().cloned() {
                             __result.push(Rc::new(GlobalBareCandidate {
                                 module_path: c.module_path.clone(),
                                 binding: census_upgrade_binding(
@@ -17967,7 +17954,7 @@ pub fn census_with_resolved_fn_sigs(
             },
         );
         let service_keys = Rc::new(v1_rt::sorted_map_keys(&index.services.clone()));
-        let services2 = service_keys.clone().iter().cloned().fold(
+        let services2 = service_keys.iter().cloned().fold(
             index.services.clone(),
             |acc: Rc<HashMap<String, Rc<ServiceCensusEntry>>>, k: String| match v1_rt::map_get(
                 &index.services.clone(),
@@ -18067,30 +18054,30 @@ pub fn build_symbol_index_qualified_fill(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
     {
-        let raw = modules.clone().iter().cloned().fold(
+        let raw = modules.iter().cloned().fold(
             empty_symbol_index(),
             |index: Rc<SymbolIndex>, module_node: Rc<Node>| {
                 let module_path = authored_name_at(source_indices.clone(), module_node.clone());
                 let items = module_items(module_node.clone());
-                let with_items = items.clone().iter().cloned().fold(
-                    index,
-                    |acc: Rc<SymbolIndex>, item: Rc<Node>| match local_binding_for_item(
-                        item.clone(),
-                        source_indices.clone(),
-                    ) {
-                        None => acc.clone(),
-                        Some(binding) => symbol_index_insert(
-                            acc.clone(),
-                            v1_rt::concat(
-                                v1_rt::concat(module_path.clone(), ".".to_string()),
-                                binding.name.clone(),
-                            ),
-                            binding.resolved.clone(),
-                        ),
-                    },
-                );
+                let with_items =
+                    items
+                        .iter()
+                        .cloned()
+                        .fold(index, |acc: Rc<SymbolIndex>, item: Rc<Node>| {
+                            match local_binding_for_item(item.clone(), source_indices.clone()) {
+                                None => acc.clone(),
+                                Some(binding) => symbol_index_insert(
+                                    acc.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(module_path.clone(), ".".to_string()),
+                                        binding.name.clone(),
+                                    ),
+                                    binding.resolved.clone(),
+                                ),
+                            }
+                        });
                 let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-                items.clone().iter().cloned().fold(
+                items.iter().cloned().fold(
                     with_items.clone(),
                     |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
                         Connective::Disj => item.children.clone().iter().cloned().fold(
@@ -18159,7 +18146,7 @@ pub fn overlay_direct_import_exports(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    resolved_imports.clone().iter().cloned().fold(
+    resolved_imports.iter().cloned().fold(
         ancestry_str_bindings.clone(),
         |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
             &parent_index,
@@ -18186,7 +18173,7 @@ pub fn overlay_direct_import_exports(
                 } else {
                     imp.specific_names.clone()
                 };
-                selected.clone().iter().cloned().fold(
+                selected.iter().cloned().fold(
                     acc.clone(),
                     |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
                         if overlay_skips_kernel_name(name.clone()) {
@@ -18682,7 +18669,7 @@ pub fn build_type_env(
             v1_rt::rc_map_merge(ancestry_cache.deps_map.clone(), local_deps_map.clone());
         let new_cycle_names =
             detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings.clone());
-        let new_cycle_set_str = new_cycle_names.clone().iter().cloned().fold(
+        let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
@@ -19246,7 +19233,7 @@ pub fn build_type_env_unresolved(
             v1_rt::rc_map_merge(ancestry_cache.deps_map.clone(), local_deps_map.clone());
         let new_cycle_names =
             detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings.clone());
-        let new_cycle_set_str = new_cycle_names.clone().iter().cloned().fold(
+        let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
@@ -19669,7 +19656,6 @@ pub fn build_local_variants(
     init: Rc<VariantFoldState>,
 ) -> Rc<VariantFoldState> {
     items
-        .clone()
         .iter()
         .cloned()
         .fold(init.clone(), |acc: Rc<VariantFoldState>, item: Rc<Node>| {
@@ -19799,7 +19785,7 @@ pub fn collect_own_variant_export_surface(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<VariantExportSurface> {
-    items.clone().iter().cloned().fold(
+    items.iter().cloned().fold(
         empty_variant_export_surface(),
         |acc: Rc<VariantExportSurface>, item: Rc<Node>| {
             let item_is_coproduct = (item.connective.clone() == Connective::Disj);
@@ -19951,7 +19937,7 @@ pub fn build_imported_variants(
     module_name: String,
     init: Rc<VariantFoldState>,
 ) -> Rc<VariantFoldState> {
-    resolved_imports.clone().iter().cloned().fold(
+    resolved_imports.iter().cloned().fold(
         init.clone(),
         |acc: Rc<VariantFoldState>, imp: Rc<ResolvedImport>| {
             let with_glob = if imp.is_all.clone() {
@@ -19961,7 +19947,7 @@ pub fn build_imported_variants(
                         Some(parent_tm) => parent_tm.items.clone(),
                         None => Rc::new(vec![]),
                     };
-                    source_items.clone().iter().cloned().fold(
+                    source_items.iter().cloned().fold(
                         acc.clone(),
                         |iacc: Rc<VariantFoldState>, item: Rc<Node>| {
                             let item_is_coproduct = (item.connective.clone() == Connective::Disj);
@@ -20111,7 +20097,7 @@ pub fn build_module_context(
         );
         let parent_envs = Rc::new({
             let mut __result = Vec::new();
-            for imp in resolved_imports.clone().iter().cloned() {
+            for imp in resolved_imports.iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![typed_parent.func_env.clone()]),
@@ -20192,7 +20178,7 @@ pub fn typecheck_module(
         let env_diags = env_result.diagnostics.clone();
         let env_errors = Rc::new({
             let mut __result = Vec::new();
-            for d in env_diags.clone().iter().cloned() {
+            for d in env_diags.iter().cloned() {
                 if is_error_diagnostic(d.diagnostic.clone()) {
                     __result.push(d);
                 }
@@ -20284,14 +20270,14 @@ pub fn typecheck_module(
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({
             let mut __result = Vec::new();
-            for tir in typed_item_results.clone().iter().cloned() {
+            for tir in typed_item_results.iter().cloned() {
                 __result.push(tir.item.clone());
             }
             __result
         });
         let infer_diags = Rc::new({
             let mut __result = Vec::new();
-            for tir in typed_item_results.clone().iter().cloned() {
+            for tir in typed_item_results.iter().cloned() {
                 __result.extend((*tir.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -20304,7 +20290,7 @@ pub fn typecheck_module(
         );
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
-            for item in typed_items.clone().iter().cloned() {
+            for item in typed_items.iter().cloned() {
                 __result.push(
                     if (item.is_self_recursive.clone() && (item.body.clone() != None)) {
                         Rc::new(Node {
@@ -20486,7 +20472,6 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining
-            .clone()
             .iter()
             .cloned()
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, name: String| {
@@ -20494,11 +20479,11 @@ pub fn topo_resolve_types(
             });
         let ready = Rc::new({
             let mut __result = Vec::new();
-            for name in remaining.clone().iter().cloned() {
+            for name in remaining.iter().cloned() {
                 if match v1_rt::map_get(&deps_map, name.clone()) {
                     Some(deps) => {
                         let mut __all = true;
-                        for dep in deps.clone().iter().cloned() {
+                        for dep in deps.iter().cloned() {
                             if !((((is_kernel_type(dep.clone())
                                 || (dep.clone() == "None".to_string()))
                                 || (dep.clone() == "".to_string()))
@@ -20520,7 +20505,7 @@ pub fn topo_resolve_types(
         });
         if ((ready.clone().len() as i64) == 0) {
             {
-                let stuck_accum = remaining.clone().iter().cloned().fold(
+                let stuck_accum = remaining.iter().cloned().fold(
                     Rc::new(BindingsAccum {
                         bindings: env.bindings.clone(),
                         str_bindings: env.str_bindings.clone(),
@@ -20587,7 +20572,7 @@ pub fn topo_resolve_types(
                 });
             }
         }
-        let ready_accum = ready.clone().iter().cloned().fold(
+        let ready_accum = ready.iter().cloned().fold(
             Rc::new(BindingsAccum {
                 bindings: env.bindings.clone(),
                 str_bindings: env.str_bindings.clone(),
@@ -20631,7 +20616,7 @@ pub fn topo_resolve_types(
                 }
             },
         );
-        let ready_set = ready.clone().iter().cloned().fold(
+        let ready_set = ready.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
@@ -20639,7 +20624,7 @@ pub fn topo_resolve_types(
         );
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
-            for name in remaining.clone().iter().cloned() {
+            for name in remaining.iter().cloned() {
                 if (emit_map_has(ready_set.clone(), name.clone()) == false) {
                     __result.push(name);
                 }
@@ -20810,7 +20795,7 @@ pub fn build_enum_variant_shape_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<EnumVariantShapeSets> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         Rc::new(EnumVariantShapeSets {
             fielded: v1_rt::rc_empty_set::<String>(),
             positional_payload: v1_rt::rc_empty_set::<String>(),
@@ -20838,7 +20823,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         });
-        let built_raw = modules.clone().iter().cloned().fold(
+        let built_raw = modules.iter().cloned().fold(
             init.clone(),
             |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
                 typed_module.items.clone().iter().cloned().fold(
@@ -20858,7 +20843,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             type_decl_items: built_raw.type_decl_items.clone(),
             fn_decl_items: built_raw.fn_decl_items.clone(),
         });
-        let all_recursive = modules.clone().iter().cloned().fold(
+        let all_recursive = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v1_rt::map_keys(
@@ -21037,7 +21022,7 @@ pub fn typecheck_with_census_extra(
             item_registry: expanded_registry.clone(),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
-                for c in diag_chunks.clone().iter().cloned() {
+                for c in diag_chunks.iter().cloned() {
                     __result.extend((*c.clone()).iter().cloned());
                 }
                 __result
@@ -21230,7 +21215,7 @@ pub fn build_export_indexes(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ExportedTypeRelationBuild> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         Rc::new(ExportedTypeRelationBuild {
             by_name: v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
             by_module: v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
@@ -21289,7 +21274,7 @@ pub fn direct_import_export_name_sets(
 pub fn direct_import_exporter_counts(
     import_export_names: Rc<Vec<Rc<HashMap<String, bool>>>>,
 ) -> Rc<HashMap<String, i64>> {
-    import_export_names.clone().iter().cloned().fold(
+    import_export_names.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
         |acc: Rc<HashMap<String, i64>>, names: Rc<HashMap<String, bool>>| {
             Rc::new(v1_rt::map_keys(&names)).iter().cloned().fold(
@@ -21324,7 +21309,7 @@ pub fn rewire_canonical_rewrites(
     local_names: Rc<HashMap<String, bool>>,
     inherited_keys: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    inherited_keys.clone().iter().cloned().fold(
+    inherited_keys.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
             &type_name_index,
@@ -21382,7 +21367,7 @@ pub fn rewire_type_env_import_str_binding_identity(
         let export_name_index = export_indexes.by_module.clone();
         Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.push({
                     let local_names = match v1_rt::map_get(
                         &export_name_index,
@@ -21662,7 +21647,7 @@ pub fn rewire_type_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
-        let index = modules.clone().iter().cloned().fold(
+        let index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
@@ -21674,7 +21659,7 @@ pub fn rewire_type_env_parent_links(
         );
         let shared_kernel = match Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.extend(
                     (*match m.type_env.clone().parents.clone().last().cloned() {
                         Some(kernel) => {
@@ -21706,7 +21691,7 @@ pub fn rewire_type_env_parent_links(
         };
         Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.push({
                     let import_parents = Rc::new({
                         let mut __result = Vec::new();
@@ -21767,7 +21752,7 @@ pub fn rewire_func_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
-        let index = modules.clone().iter().cloned().fold(
+        let index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
@@ -21779,7 +21764,7 @@ pub fn rewire_func_env_parent_links(
         );
         Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.push({
                     let parents = Rc::new({
                         let mut __result = Vec::new();

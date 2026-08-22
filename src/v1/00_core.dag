@@ -1188,6 +1188,7 @@ data transport_path_template_key: String = "path"
 data transport_query_key: String = "query"
 data transport_body_key: String = "body"
 data transport_stdin_key: String = "stdin"
+data transport_verb_key: String = "verb"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
@@ -1256,7 +1257,7 @@ fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
   let props = match verb {
     Present { value: verb_expr } =>
-      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: no_span(), name_span: no_span())]
+      [path_field, make_field_init_node(name: transport_verb_key, value: verb_expr, span: no_span(), name_span: no_span())]
     Absent => [path_field]
   }
   make_transport_node(properties: props, children: [], body: none, span: span)
@@ -1352,6 +1353,10 @@ fn record_lit_named_field_value_optional(
 
 fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
+}
+
+fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices)
 }
 
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }

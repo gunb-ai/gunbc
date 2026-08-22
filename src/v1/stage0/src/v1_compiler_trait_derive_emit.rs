@@ -152,7 +152,7 @@ pub fn v1_trait_derive_refuse(message: String) -> String {
 pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let mut __all = true;
-        for v in children.clone().iter().cloned() {
+        for v in children.iter().cloned() {
             if !((v.children.clone().len() as i64) == 0) {
                 __all = false;
                 break;
@@ -397,7 +397,7 @@ pub fn v1_map_key_propagate_round(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<MapKeyRequirementRound> {
-    declared_type_names.clone().iter().cloned().fold(
+    declared_type_names.iter().cloned().fold(
         round.clone(),
         |acc: Rc<MapKeyRequirementRound>, type_name: String| {
             if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
@@ -485,7 +485,7 @@ pub fn v1_map_key_required_type_names(
 ) -> Rc<BTreeSet<String>> {
     {
         let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
-        let scanned = seed_type_exprs.clone().iter().cloned().fold(
+        let scanned = seed_type_exprs.iter().cloned().fold(
             Rc::new(MapKeyRequirementRound {
                 names: v1_rt::rc_empty_set::<String>(),
                 added: 0,
@@ -506,7 +506,7 @@ pub fn v1_map_key_required_type_names(
                     )
             },
         );
-        let seeded = extra_seed_names.clone().iter().cloned().fold(
+        let seeded = extra_seed_names.iter().cloned().fold(
             scanned.clone(),
             |acc: Rc<MapKeyRequirementRound>, key_name: String| {
                 if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
@@ -619,7 +619,7 @@ pub fn v1_freemonoid_filter_hand_written(
 ) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
-        for t in traits.clone().iter().cloned() {
+        for t in traits.iter().cloned() {
             if !{
                 let mut __found = false;
                 for h in v1_freemonoid_hand_written_traits().iter().cloned() {
@@ -644,10 +644,10 @@ pub fn v1_freemonoid_element_params(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
+                for te in field_type_exprs.iter().cloned() {
                     if ((authored_name_at(source_indices.clone(), te.clone())
                         == "FreeMonoid".to_string())
                         && {
@@ -685,7 +685,7 @@ pub fn v1_freemonoid_param_in_fields(
 ) -> bool {
     {
         let mut __found = false;
-        for te in field_type_exprs.clone().iter().cloned() {
+        for te in field_type_exprs.iter().cloned() {
             if v1_type_expr_contains_param_name(
                 param_name.clone(),
                 te.clone(),
@@ -726,12 +726,12 @@ pub fn v1_freemonoid_impl_type_params(
         {
             let entries = Rc::new({
                 let mut __result = Vec::new();
-                for p in generic_param_names.clone().iter().cloned() {
+                for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = to_pascal(p.clone());
                         let supplemental = if {
                             let mut __found = false;
-                            for f in fm_params.clone().iter().cloned() {
+                            for f in fm_params.iter().cloned() {
                                 if (f.clone() == p.clone()) {
                                     __found = true;
                                     break;
@@ -782,7 +782,7 @@ pub fn v1_freemonoid_bare_type_args(generic_param_names: Rc<Vec<String>>) -> Str
                 "<".to_string(),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for p in generic_param_names.clone().iter().cloned() {
+                    for p in generic_param_names.iter().cloned() {
                         __result.push(to_pascal(p.clone()));
                     }
                     __result
@@ -802,12 +802,12 @@ pub fn v1_freemonoid_serde_bound_attr(
         let supplement = v1_freemonoid_supplemental_bound_spelling();
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in fm_params.clone().iter().cloned() {
+                        for f in fm_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -831,12 +831,12 @@ pub fn v1_freemonoid_serde_bound_attr(
         });
         let de_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in fm_params.clone().iter().cloned() {
+                        for f in fm_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -890,10 +890,10 @@ pub fn v1_set_element_params(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
+                for te in field_type_exprs.iter().cloned() {
                     if ((authored_name_at(source_indices.clone(), te.clone()) == "Set".to_string())
                         && {
                             let mut __found = false;
@@ -978,7 +978,7 @@ pub fn v1_set_hand_written_traits() -> Rc<Vec<RustCapability>> {
 pub fn v1_set_filter_hand_written(traits: Rc<Vec<RustCapability>>) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
-        for t in traits.clone().iter().cloned() {
+        for t in traits.iter().cloned() {
             if !{
                 let mut __found = false;
                 for h in v1_set_hand_written_traits().iter().cloned() {
@@ -1043,12 +1043,12 @@ pub fn v1_set_serde_bound_attr(
         let de_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustDeserialize);
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in set_params.clone().iter().cloned() {
+                        for f in set_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -1072,12 +1072,12 @@ pub fn v1_set_serde_bound_attr(
         });
         let de_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in set_params.clone().iter().cloned() {
+                        for f in set_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -1130,7 +1130,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
             } else {
                 if !({
                     let mut __found = false;
-                    for t in traits.clone().iter().cloned() {
+                    for t in traits.iter().cloned() {
                         if (t.clone() == RustCapability::RustSerialize) {
                             __found = true;
                             break;
@@ -1139,7 +1139,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                     __found
                 } && {
                     let mut __found = false;
-                    for t in traits.clone().iter().cloned() {
+                    for t in traits.iter().cloned() {
                         if (t.clone() == RustCapability::RustDeserialize) {
                             __found = true;
                             break;
@@ -1178,7 +1178,7 @@ pub fn v1_freemonoid_struct_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let field_calls = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -1221,7 +1221,7 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let comparisons = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -1296,7 +1296,7 @@ pub fn v1_freemonoid_enum_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1326,7 +1326,7 @@ pub fn v1_freemonoid_enum_debug_impl(
                             let bindings = fields.clone().join(&", ".to_string());
                             let field_calls = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -1395,7 +1395,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1424,7 +1424,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             });
                             let a_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": a_".to_string()),
                                         fi.clone(),
@@ -1435,7 +1435,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let b_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": b_".to_string()),
                                         fi.clone(),
@@ -1446,7 +1446,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let comparisons = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat("a_".to_string(), fi.clone()),
@@ -1558,12 +1558,12 @@ pub fn v1_set_impl_type_params(
         {
             let entries = Rc::new({
                 let mut __result = Vec::new();
-                for p in generic_param_names.clone().iter().cloned() {
+                for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = to_pascal(p.clone());
                         let supplemental = if {
                             let mut __found = false;
-                            for f in set_params.clone().iter().cloned() {
+                            for f in set_params.iter().cloned() {
                                 if (f.clone() == p.clone()) {
                                     __found = true;
                                     break;
@@ -1627,7 +1627,7 @@ pub fn v1_set_enum_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1657,7 +1657,7 @@ pub fn v1_set_enum_debug_impl(
                             let bindings = fields.clone().join(&", ".to_string());
                             let field_calls = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -1727,7 +1727,7 @@ pub fn v1_set_enum_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1756,7 +1756,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             });
                             let a_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": a_".to_string()),
                                         fi.clone(),
@@ -1767,7 +1767,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let b_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": b_".to_string()),
                                         fi.clone(),
@@ -1778,7 +1778,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let comparisons = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat("a_".to_string(), fi.clone()),
@@ -1913,7 +1913,7 @@ pub fn v1_ord_propagated_zip_loop(
                         generic_param_name_at(decl_param.clone(), source_indices.clone());
                     let here = if {
                         let mut __found = false;
-                        for n in decl_set_affected_names.clone().iter().cloned() {
+                        for n in decl_set_affected_names.iter().cloned() {
                             if (n.clone() == slot_name.clone()) {
                                 __found = true;
                                 break;
@@ -1986,10 +1986,10 @@ pub fn v1_item_ord_propagated_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
+                for te in field_type_exprs.iter().cloned() {
                     if v1_field_type_expr_ord_propagated_for_param(
                         p.clone(),
                         te.clone(),
@@ -2029,7 +2029,7 @@ pub fn v1_set_struct_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let field_calls = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -2073,7 +2073,7 @@ pub fn v1_set_struct_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let comparisons = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -2355,7 +2355,7 @@ pub fn v1_generic_param_used_as_collection_element(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
                 let te = param_node_type_expr(vp.clone());
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
@@ -2390,7 +2390,7 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
                 let te = param_node_type_expr(vp.clone());
                 (((authored_name_at(source_indices.clone(), te.clone()) == param_name.clone())
@@ -2414,7 +2414,7 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if v1_type_expr_mentions_param_non_phantom(
                 param_name.clone(),
                 param_node_type_expr(vp.clone()),
@@ -2462,7 +2462,7 @@ pub fn v1_item_phantom_only_param_names(
 pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: String) -> bool {
     {
         let mut __found = false;
-        for n in names.clone().iter().cloned() {
+        for n in names.iter().cloned() {
             if (n.clone() == param_name.clone()) {
                 __found = true;
                 break;
@@ -2638,10 +2638,10 @@ pub fn v1_fn_phantom_only_generic_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if (!{
                 let mut __found = false;
-                for vp in value_params.clone().iter().cloned() {
+                for vp in value_params.iter().cloned() {
                     if v1_type_expr_mentions_param_non_phantom(
                         p.clone(),
                         param_node_type_expr(vp.clone()),
@@ -2716,7 +2716,7 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                     });
                     if !{
                         let mut __found = false;
-                        for dg in decl_generics.clone().iter().cloned() {
+                        for dg in decl_generics.iter().cloned() {
                             if (dg.clone() == param_name.clone()) {
                                 __found = true;
                                 break;
@@ -2733,7 +2733,7 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                                 } else {
                                     {
                                         let mut __found = false;
-                                        for vp in value_params.clone().iter().cloned() {
+                                        for vp in value_params.iter().cloned() {
                                             if v1_type_expr_mentions_type_head(
                                                 decl_name.clone(),
                                                 param_node_type_expr(vp.clone()),
@@ -2769,7 +2769,7 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
                 let te = param_node_type_expr(vp.clone());
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
@@ -2904,7 +2904,7 @@ pub fn v1_generic_params_needing_clone_bound(
         );
         Rc::new({
             let mut __result = Vec::new();
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if (v1_fn_param_wf_needs_clone(
                     g.clone(),
                     value_params.clone(),
@@ -2976,7 +2976,7 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
 ) -> bool {
     {
         let mut __found = false;
-        for te in field_type_exprs.clone().iter().cloned() {
+        for te in field_type_exprs.iter().cloned() {
             if v1_field_type_expr_needs_clone_bound_for_param_narrow(
                 param_name.clone(),
                 te.clone(),
@@ -3421,7 +3421,7 @@ pub fn v1_fn_param_wf_needs_clone(
 ) -> bool {
     ({
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if v1_type_expr_wf_needs_clone_param(
                 param_name.clone(),
                 param_node_type_expr(vp.clone()),
@@ -3567,7 +3567,7 @@ pub fn v1_clone_bound_fixpoint_loop(
         if (remaining.clone() <= 0) {
             break bounds;
         } else {
-            let round = generic_type_names.clone().iter().cloned().fold(
+            let round = generic_type_names.iter().cloned().fold(
                 Rc::new(CloneBoundRound {
                     bounds: bounds,
                     added: 0,
@@ -3624,7 +3624,7 @@ pub fn v1_clone_bounded_type_params(
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
-        let seeded = generic_type_names.clone().iter().cloned().fold(
+        let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
                 bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
@@ -3693,7 +3693,7 @@ pub fn v1_clone_impl_required_type_params(
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
-        let seeded = generic_type_names.clone().iter().cloned().fold(
+        let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
                 bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
@@ -3729,7 +3729,7 @@ pub fn v1_item_clone_bounded_param_names(
     match v1_rt::map_get(&bounds, item_name.clone()) {
         Some(s) => Rc::new({
             let mut __result = Vec::new();
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if v1_rt::set_contains(&s, g.clone()) {
                     __result.push(g);
                 }
@@ -3751,7 +3751,7 @@ pub fn v1_emit_type_params_with_bounds(
         {
             let names = Rc::new({
                 let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     __result.push({
                         let pname = generic_param_name_at(p.clone(), source_indices.clone());
                         let pascal = to_pascal(pname.clone());
@@ -3787,7 +3787,7 @@ pub fn v1_emit_type_params_with_clone_bounds(
 ) -> String {
     v1_emit_type_params_with_bounds(
         params.clone(),
-        clone_param_names.clone().iter().cloned().fold(
+        clone_param_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
@@ -3812,7 +3812,7 @@ pub fn v1_emit_struct_from_capability_table(
     {
         let field_type_exprs = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push(child_type_node(f.clone()));
             }
             __result
@@ -3986,7 +3986,7 @@ pub fn v1_emit_struct_from_capability_table(
 pub fn v1_enum_variant_field_type_exprs(children: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for variant in children.clone().iter().cloned() {
+        for variant in children.iter().cloned() {
             __result.extend(
                 (*Rc::new({
                     let mut __result = Vec::new();

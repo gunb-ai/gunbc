@@ -224,7 +224,7 @@ pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))
+    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 
 pub type CommitSha = String;
