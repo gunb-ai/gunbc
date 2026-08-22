@@ -138,6 +138,7 @@ pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
+pub mod v1_tests_claim_carrier_realization_census;
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
 pub mod wt_a;
 pub mod wt_b;
