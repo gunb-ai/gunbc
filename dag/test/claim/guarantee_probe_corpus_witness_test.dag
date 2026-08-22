@@ -28,6 +28,9 @@ import gunbc.guarantee_probe_corpus {
   method_green_probe,
   conformance_scalar_red_probe,
   conformance_green_probe,
+  direct_call_arg_type_v2_module_red_probe,
+  direct_call_arg_type_ordinary_module_red_probe,
+  direct_call_arg_type_v2_green_control_probe,
   sole_constructor_cross_module_class,
   sole_ctor_forged_red_probe,
   sole_ctor_green_probe,
@@ -156,6 +159,18 @@ data call_shape_green_source: String = "module probe_call_green\nfn sub(a: Int, 
 data call_duplicate_red_source: String = "module probe_call_duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n"
 
 data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
+
+// The three sources differ in exactly two axes and nothing else, which is what makes the trio
+// readable. The RED pair differ ONLY in the module name (v2.probe_... vs probe_...): same callee,
+// same formal, same actual, same call form. The v2 GREEN differs from the v2 RED only in the
+// actual's type. Any wider difference would let a reader attribute a verdict to something other
+// than the axis being tested.
+data direct_call_arg_type_v2_red_source: String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+
+data direct_call_arg_type_ordinary_red_source: String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+
+data direct_call_arg_type_v2_green_source: String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
+
 
 data call_duplicate_named_then_positional_red_source: String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
 
@@ -400,6 +415,51 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: conformance_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED for the v2.* direct-call argument-type exemption, and it is EXPECTED-RED
+// today: the exemption is still standing, so the census carries zero blocking diagnostics for this
+// source and this assertion cannot hold. It is rostered in v2.workflow.floor_expected_red with its
+// trigger. Measured on a tree with the exemption deleted (gunbc#8886), it PASSES -- so it is a
+// satisfiable assertion held open by a named cause, not an aspiration.
+test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool {
+  let census = census_of(source: direct_call_arg_type_v2_red_source)
+  match active_probe_row(probe: direct_call_arg_type_v2_module_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// The paired nonzero, and it PASSES today with the exemption in place, because the exemption never
+// covered an ordinary module name. That is what makes the rostered red above interpretable: a red
+// on the v2 row alone cannot distinguish "the judgment is switched off for v2 callers" from "the
+// harness reds on anything". When the exemption goes, both are green and both are ordinary
+// regression controls.
+test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> Bool {
+  let census = census_of(source: direct_call_arg_type_ordinary_red_source)
+  match active_probe_row(probe: direct_call_arg_type_ordinary_module_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// Without this, a seam refusing EVERY argument in a v2.* module would satisfy both reds.
+test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: direct_call_arg_type_v2_green_control_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: direct_call_arg_type_v2_green_source), row: row)
     Absent => false
   }
 }
@@ -813,6 +873,9 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     bare_none_collection_red_probe as String,
     bare_none_green_probe as String,
     bare_none_scalar_red_probe as String,
+    direct_call_arg_type_ordinary_module_red_probe as String,
+    direct_call_arg_type_v2_green_control_probe as String,
+    direct_call_arg_type_v2_module_red_probe as String,
     sole_ctor_admitted_caller_green_probe as String,
     sole_ctor_cast_red_probe as String,
     sole_ctor_unadmitted_caller_red_probe as String,
