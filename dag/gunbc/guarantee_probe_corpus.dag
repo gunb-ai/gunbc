@@ -102,6 +102,7 @@ data bare_none_field_admission_class: GuaranteeClassId = "bare-none-field-admiss
 data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
 data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
 data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
+data direct_call_argument_type_class: GuaranteeClassId = "direct-call-argument-type" as GuaranteeClassId
 data sole_constructor_cross_module_class: GuaranteeClassId = "sole-constructor-cross-module" as GuaranteeClassId
 data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
 
@@ -110,6 +111,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     bare_none_field_admission_class,
     call_label_surplus_class,
     declared_conformance_ground_class,
+    direct_call_argument_type_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -131,6 +133,31 @@ data method_green_probe: GuaranteeProbeId = "method-established-surface-green-co
 
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
+
+// THE DIRECT-CALL ARGUMENT-TYPE SEAM, and specifically the seam's behaviour for a caller whose
+// module name begins with "v2." -- which until 2026-08-22 was exempt from this judgment by a
+// prefix test in v1.compiler.infer. The exemption is deleted; these three rows are the enrolled
+// evidence that it stays deleted, and they are ordered by what each one can and cannot show.
+//
+// direct_call_arg_type_v2_module_red_probe is THE DISCRIMINATING RED. Its source differs from the
+// ordinary-module row below in exactly one byte-run -- the module name -- so a change that
+// re-exempts v2.* callers by any mechanism (a restored prefix test, a module-keyed skip, a widened
+// compatibility relation keyed on caller) turns this row green while every other row in this file
+// stays as it is. Before the deletion this row WAS green: the mismatch compiled with zero blocking
+// diagnostics. Per DESIGN 4b(4) it does not retire now that it reds; it is a permanent regression
+// control.
+//
+// direct_call_arg_type_ordinary_module_red_probe is the paired NONZERO. A red on the v2 row alone
+// cannot distinguish "the judgment now runs for v2 callers" from "the harness reds on anything",
+// and this row is the same defect under a name the exemption never covered, so the two together
+// say the judgment is one judgment rather than a v2-specific addition.
+//
+// direct_call_arg_type_v2_green_control_probe holds the other side: a CORRECT call in a v2.-named
+// module compiles clean. Without it, a seam that refused every argument in a v2.* module would
+// satisfy both reds above.
+data direct_call_arg_type_v2_module_red_probe: GuaranteeProbeId = "direct-call-argument-type-v2-module-red" as GuaranteeProbeId
+data direct_call_arg_type_ordinary_module_red_probe: GuaranteeProbeId = "direct-call-argument-type-ordinary-module-red" as GuaranteeProbeId
+data direct_call_arg_type_v2_green_control_probe: GuaranteeProbeId = "direct-call-argument-type-v2-green-control" as GuaranteeProbeId
 
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
@@ -409,6 +436,24 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
     GuaranteeProbeRow {
       probe: conformance_scalar_red_probe,
       class: declared_conformance_ground_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_ordinary_module_red_probe,
+      class: direct_call_argument_type_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_v2_green_control_probe,
+      class: direct_call_argument_type_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_v2_module_red_probe,
+      class: direct_call_argument_type_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
     },
