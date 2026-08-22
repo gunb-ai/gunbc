@@ -91,7 +91,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_list_identities_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
-    decl_ref(module_path: "extdeps.git.git", decl_name: "git_config_local_set_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),

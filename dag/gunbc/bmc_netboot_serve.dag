@@ -211,13 +211,14 @@ func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptySt
 }
 
 
+// The BMC's mkdir is a PATH-resolved BusyBox applet, deliberately not an absolute path: this
+// repository has never read that image's filesystem (extdeps.tools.mkdir mkdir_parents_command_at,
+// extdeps.exec.command program_spelling_is_an_observation_claim).
 func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   uses net: Network
 {
   let mk = bmc_netboot_run_bmc(
     plan: plan,
-    // PATH-resolved BusyBox applet on the OpenBMC image, deliberately not an absolute path --
-    // extdeps.tools.mkdir mkdir_parents_command_at records why this one site keeps the bare name.
     command: mkdir_parents_command_at(
       mkdir_binary: "mkdir",
       path: join([plan.netboot_dir as String, "/nocloud"], ""),

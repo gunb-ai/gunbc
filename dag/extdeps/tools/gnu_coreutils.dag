@@ -41,6 +41,7 @@ data rm_program: NonEmptyStr = "rm"
 data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
+data readlink_program: NonEmptyStr = "readlink"
 
 fn cat_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program, arguments: [path])
@@ -72,4 +73,11 @@ fn true_command() -> ArgvCommand {
 
 fn whoami_command() -> ArgvCommand {
   argv_command(program: whoami_program, arguments: [])
+}
+
+// readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
+// makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
+// executing", and a non-symlink there is a broken assumption, not empty output.
+fn readlink_command(path: String) -> ArgvCommand {
+  argv_command(program: readlink_program, arguments: [path])
 }

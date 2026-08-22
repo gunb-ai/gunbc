@@ -207,6 +207,7 @@ import gunbc.build_cache_provision_verdict {
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, argv_words }
 import extdeps.tools.stat { stat_inode_command }
+import extdeps.tools.findutils { find_symlink_target_glob_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.build_cache_ensure {
@@ -242,10 +243,10 @@ import gunbc.build_cache_endpoint_observe {
   InodeLookupUndecided,
   listen_inode_at_path,
   fd_holder_of_find_output,
-  owner_cgroup_argv,
-  owner_proc_stat_argv,
-  owner_principal_argv,
-  owner_executable_argv,
+  owner_cgroup_command,
+  owner_proc_stat_command,
+  owner_principal_command,
+  owner_executable_command,
   path_kind_of_stat_read,
   survey_build_cache_endpoint,
 }
@@ -4139,8 +4140,8 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
         }
       }
     }
-    SshShell { ssh_host: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -4148,8 +4149,18 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
   }
 }
 
-fn socket_inode_holder_argv(inode: NonEmptyStr) -> List<String> {
-  ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", concat("socket:?", concat(inode as String, "?"))]
+// THE `?` WILDCARDS ARE THE BRACKETS, and they are load-bearing rather than sloppy: -lname takes a
+// GLOB, so the literal brackets of `socket:[12345]` would be read as a character class and match
+// nothing. extdeps.tools.findutils carries that fact beside the flags; this function keeps the
+// QUESTION -- which descriptor anywhere in /proc still resolves to this socket's inode -- which is
+// the caller's, not findutils'.
+fn socket_inode_holder_command(inode: NonEmptyStr) -> ArgvCommand {
+  find_symlink_target_glob_command(
+    search_root: "/proc",
+    max_depth: 3,
+    path_glob: "*/fd/*",
+    link_target_glob: concat("socket:?", concat(inode as String, "?")),
+  )
 }
 
 fn build_cache_endpoint_reads(
@@ -4167,10 +4178,10 @@ fn build_cache_endpoint_reads(
         path_kind: path_kind,
         listen_inode: listen_inode,
         listener: listener,
-        owner_cgroup: build_cache_host_read(argv: owner_cgroup_argv(pid: pid), transport: transport),
-        owner_proc_stat: build_cache_host_read(argv: owner_proc_stat_argv(pid: pid), transport: transport),
-        owner_principal: build_cache_host_read(argv: owner_principal_argv(pid: pid), transport: transport),
-        owner_executable: build_cache_host_read(argv: owner_executable_argv(pid: pid), transport: transport),
+        owner_cgroup: build_cache_host_read(command: owner_cgroup_command(pid: pid), transport: transport),
+        owner_proc_stat: build_cache_host_read(command: owner_proc_stat_command(pid: pid), transport: transport),
+        owner_principal: build_cache_host_read(command: owner_principal_command(pid: pid), transport: transport),
+        owner_executable: build_cache_host_read(command: owner_executable_command(pid: pid), transport: transport),
       }
     ListenerNone =>
       build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)

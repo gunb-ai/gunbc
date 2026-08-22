@@ -7,8 +7,8 @@ import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_command }
-import extdeps.tools.stat { stat_file_type_command }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
+import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -125,20 +125,20 @@ fn proc_pid_path(pid: Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "cgroup")]
+fn owner_cgroup_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "stat")]
+fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_argv(pid: Nat) -> List<String> {
-  ["stat", "-c", "%U", "--", proc_pid_path(pid: pid, leaf: "")]
+fn owner_principal_command(pid: Nat) -> ArgvCommand {
+  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_argv(pid: Nat) -> List<String> {
-  ["readlink", proc_pid_path(pid: pid, leaf: "exe")]
+fn owner_executable_command(pid: Nat) -> ArgvCommand {
+  readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
 // --- decoders ---------------------------------------------------------------
