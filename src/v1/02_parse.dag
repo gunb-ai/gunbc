@@ -25,7 +25,7 @@ import v1.std.core {
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
-  transport_url_key, transport_path_key,
+  transport_url_key, transport_path_key, transport_verb_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
   transport_auth_basic_key, transport_tls_key,
   service_config_properties,
@@ -3044,7 +3044,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
     let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
     if fname == "path" || fname == transport_path_key {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Present { value: r3.expr }, verb: verb)
-    } else if fname == "verb" {
+    } else if fname == transport_verb_key {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: Present { value: r3.expr })
     } else {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: verb)

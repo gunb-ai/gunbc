@@ -141,6 +141,17 @@ type StringPart
 
 type OperationModifier = Idempotent | Readonly | Hermetic
 
+// The closed transport roster. Before this existed the roster was implicit and held in three
+// places at once -- the emit dispatch's if-chain, is_local_transport's negative definition, and
+// is_file_transport_after_dispatch_precedence's private copy of the ordering -- so three
+// authorities agreed on one fact by coincidence (DESIGN section 3).
+type TransportKind = RestTransport | ShellTransport | FileTransport | LocalTransport
+
+// The file transport's closed action roster. The interpreter (v1_interpreter dispatch_file) is
+// the semantic authority for what each action does; this is the same roster read at emit time,
+// including its refusal: a verb outside the roster is Absent here exactly as it is an error there.
+type FileVerb = FileRead | FileWrite | FileWriteOwnerOnly | FileDelete | FileList
+
 type CompileResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
@@ -1180,6 +1191,7 @@ fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex
 
 data transport_url_key: String = "base_url"
 data transport_path_key: String = "base_path"
+data transport_verb_key: String = "verb"
 data transport_auth_token_key: String = "auth_token"
 data transport_auth_header_key: String = "auth_header"
 data transport_auth_scheme_key: String = "auth_scheme"
@@ -1256,7 +1268,7 @@ fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
   let props = match verb {
     Present { value: verb_expr } =>
-      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: no_span(), name_span: no_span())]
+      [path_field, make_field_init_node(name: transport_verb_key, value: verb_expr, span: no_span(), name_span: no_span())]
     Absent => [path_field]
   }
   make_transport_node(properties: props, children: [], body: none, span: span)
@@ -1359,7 +1371,65 @@ fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
+// A local transport is the one local_transport_node builds: no properties, no argv, no body.
+// This is a POSITIVE test over the roster, not "none of the others". The difference is not
+// stylistic. Defined by exclusion, `local` absorbed every transport no other predicate claimed,
+// so the emit dispatch's `unrecognized transport kind` arm could never be reached -- a check whose
+// red is unreachable is a decoration, permanently green and cited as coverage (DESIGN, the
+// reachability-read-as-occupancy class). A transport carrying properties that name no known key
+// now classifies as nothing and is refused, instead of being emitted as a direct function call.
+fn is_bare_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0 && t.body == none
+}
+
+// Absent = the transport matches no roster member. The precedence is declared ONCE here; every
+// consumer that used to re-derive it (the three emit dispatches, the file-diagnostic predicate)
+// now reads this.
+fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
+  if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
+  else if is_shell_transport(t: t) { Present { value: ShellTransport } }
+  else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
+  else if is_bare_transport(t: t) { Present { value: LocalTransport } }
+  else { none }
+}
+
+fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: LocalTransport } => true
+    _ => false
+  }
+}
+
+// The verb the realization must perform, resolved exactly as v1_interpreter dispatch_file resolves
+// it: an explicit `verb:` row on the transport wins; absent, the content-param convention decides
+// (write iff the operation declares a `content` input, else read). Absent result = a verb outside
+// the roster, which the interpreter refuses and the emitter must refuse too -- two realizations of
+// one declaration cannot disagree about which actions exist.
+fn file_transport_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileVerb? {
+  match find_property_string(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices) {
+    Present { value: v } =>
+      if v == "delete" { Present { value: FileDelete } }
+      else if v == "list" { Present { value: FileList } }
+      else if v == "write_owner_only" { Present { value: FileWriteOwnerOnly } }
+      else { none }
+    Absent =>
+      if op_node.params |> any(p => param_node_name_at(n: p, source_indices: source_indices) == "content") {
+        Present { value: FileWrite }
+      } else {
+        Present { value: FileRead }
+      }
+  }
+}
+
+fn file_verb_name(v: FileVerb) -> String {
+  match v {
+    FileRead => "read"
+    FileWrite => "write"
+    FileWriteOwnerOnly => "write_owner_only"
+    FileDelete => "delete"
+    FileList => "list"
+  }
+}
 
 fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
