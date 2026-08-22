@@ -313,8 +313,23 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 // nothing and would have made this divergence invisible.
 // ---------------------------------------------------------------------------
 
+// TWO SRV1 ROWS HAD TO BE EDITED TO MOVE ONE FACT, AND THAT IS A REPORTED DEFECT RATHER THAN A
+// REPAIRED ONE (2026-08-22). This list and the inline expectations inside fleet_dimm_verdicts
+// below are byte-identical copies of the same four expectations, and this list has NO consumer
+// anywhere in the corpus -- a grep for its name returns only this declaration. So the live
+// reconcile reads the copies, the copies drift independently, and the 2026-08-22 srv1 upgrade
+// was landed against the verdict copies while this one kept naming the Hynix part. Review caught
+// it; the closure compile could not, because a stale-but-well-typed catalog reference is a data
+// disagreement rather than a type error.
+//
+// NOT DISSOLVED HERE, DELIBERATELY. The construction fix is to derive the verdicts FROM this list
+// so srv1 has one row and the drift has no representation (DESIGN 5). That is the right change
+// and it is not this one: the module uses no map or pipeline idiom anywhere, so deriving would
+// mean introducing one on judgement, and an unconsumed declaration in this corpus may still be
+// read by a lens over the Node tree, which a name grep cannot rule out. Both questions want an
+// answer before the fork is removed, and neither is answerable from inside this diff.
 data fleet_dimm_expectations: List<HostDimmExpectation> = [
-  HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
   HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
   HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
   HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
@@ -342,7 +357,7 @@ data srv4_dimm_observation: HostDimmObservation = DimmPopulationObserved {
 
 data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
   dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    expectation: HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
     observation: srv1_dimm_observation,
   ),
   dimm_reconcile_verdict(

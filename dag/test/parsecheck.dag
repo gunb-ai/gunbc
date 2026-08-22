@@ -1,0 +1,14 @@
+module test.parsecheck
+import std.types { Bool }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
+import extdeps.memory.cisco_ucs { ucs_mr_1x648ru_a }
+import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
+import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
+import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
+import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
+fn parsecheck_holds() -> Bool {
+  ucs_mr_1x648ru_a.underlying_module.rank_count == 8
+    && fleet_dimm_verdicts.length() == 4
+    && fleet_dimm_expectations.length() == 4
+    && srv1_memory_population.rows.length() == 1
+}
