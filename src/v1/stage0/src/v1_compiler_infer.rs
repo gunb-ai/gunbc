@@ -17121,14 +17121,16 @@ pub fn transparent_alias_identity_agrees(
     left: String,
     right: String,
 ) -> bool {
-    (((left.clone() != "".to_string()) && (right.clone() != "".to_string()))
-        && (qualified_last_segment(transparent_alias_representative(
-            index.clone(),
-            left.clone(),
-        )) == qualified_last_segment(transparent_alias_representative(
-            index.clone(),
-            right.clone(),
-        ))))
+    {
+        let left_rep = transparent_alias_representative(index.clone(), left.clone());
+        let right_rep = transparent_alias_representative(index.clone(), right.clone());
+        let chased_an_alias_edge =
+            ((left_rep.clone() != left.clone()) || (right_rep.clone() != right.clone()));
+        ((((left.clone() != "".to_string()) && (right.clone() != "".to_string()))
+            && chased_an_alias_edge.clone())
+            && (qualified_last_segment(left_rep.clone())
+                == qualified_last_segment(right_rep.clone())))
+    }
 }
 
 pub fn build_symbol_index_census_raw_nodes(

@@ -3,6 +3,22 @@
 Companion receipt for the change that adds `SymbolIndex.transparent_alias_rep` to
 `v1.compiler.infer_env` and reads it at `v1.compiler.infer` `nominal_call_arg_brand_mismatch`.
 
+## What class of repair this is
+
+A phase-ordering repair, not a type-system project. The governing rule, from an outside review of
+the root cause below:
+
+> A judgment that depends on source-level declaration identity must run BEFORE normalization
+> erases that identity, or normalization must carry an explicit derived identity FORWARD. It must
+> never reconstruct the fact repeatedly from normalized structure.
+
+`brand_grounds_transparently_to` is the specimen: it needs the raw leaf declaration, and
+`resolve_item_types` has already replaced it. That is not a bug in the predicate -- it is a
+judgment running after the fact it tests was erased, and the repair is to carry the identity
+forward rather than re-derive it downstream. Re-deriving from normalized structure at every
+comparison is both the forbidden shape and the shape that cost 18x on the earlier attempt; the
+correctness argument and the cost argument land on the same design.
+
 ## The question this had to answer before anything was written
 
 `v1.compiler.infer` `module_skips_direct_call_arg_check` switches the direct-call argument-TYPE
@@ -78,6 +94,9 @@ depend on any classifier: a genuinely unequal pair does not disagree with itself
 
 ## What the relation moved
 
+*(Re-measured after review 54654's tightening -- see the fail-open fix below. The numbers
+below are the TIGHTENED predicate's, not the original's.)*
+
 Same entry, same root set, same instrument, one binary apart.
 
 | arm | rows | Compatible | WouldDiagnose | Unadjudicated |
@@ -149,6 +168,68 @@ the earlier 18× regression is present.
 
 Both arms emitted identically throughout — `0 blocking error(s), 503 advisory diagnostic(s)` on
 all six runs — so the two binaries were doing the same work, not one of them short-circuiting.
+
+### Regen, the workload that historically regressed
+
+The compile above is one entry's import closure. Whole-corpus REGENERATION is a different module
+population (src/v1 plus dag, 132 modules planned) and is the workload the earlier 18x incident was
+measured on, so the compile result does not transfer to it. One correction to the incident framing
+while citing it: regen on this tree today is ~430-460s, not the ~100s of the incident era, so the
+two are comparable in wall-clock -- which is why the compile figure fails to cover regen rather
+than why it would have been safe to skip it.
+
+Three alternating pairs of `claim_executor --required-regen --source-root dag --source-root src/v2`:
+
+| pair | gen1 (relation absent) | gen2 (relation present) |
+|---|---:|---:|
+| 1 | 457.4 s | 428.4 s |
+| 2 | 442.1 s | 428.1 s |
+| 3 | 460.7 s | 428.2 s |
+| **mean** | **453.4 s** | **428.2 s** |
+
+**Arm symmetry, observed rather than assumed.** All six runs report the same five phases
+completing (frontend, normalize, reconcile, analyses, emit), `planned=132 executed=132`, and BOTH
+arms FAIL identically (`generated surface drift: v1_compiler_infer.rs`) with the refusal appearing
+only in the final comparison after emit. A symmetric failure is a stronger control than a
+symmetric success: neither arm is skipping downstream work the other pays for.
+
+**A confound in this design, and what it costs the claim.** gen1 ran FIRST in every pair, so
+run-order is perfectly confounded with arm -- and gen2's three runs span 0.3s (428.1-428.4) while
+gen1's span 19s (442-461), which is what first-run page-cache warming looks like. Writing W for
+the warming advantage of second position and R for the relation's true cost, what is observed is
+`W - R = 25s`. That does not bound R on its own: if W were 60s, R would be 35s -- a real 8%
+regression, fully masked, producing data identical to this. So the consistent advantage to gen2 is
+NOT evidence the relation is free, let alone faster, and this table alone supports only
+`R < W` with W unmeasured. It IS decisive against the risk the bar was written for: an 18x
+regression is ~7,000s and no cache effect hides that.
+
+## The fail-open the first version shipped, and what caught it
+
+Review 54654 (`claude-opus-4-7`, REQUEST_CHANGES) found that `transparent_alias_identity_agrees`
+reduced both sides to `qualified_last_segment` UNCONDITIONALLY. When neither name has an entry in
+`transparent_alias_rep` -- the common case, since most names are not aliases -- each representative
+is the input name, so the comparison made any two homonymous nominal types from different modules
+(`mod_a.Foo` vs `mod_b.Foo`, no alias relation) "agree", suppressing the brand mismatch. That is a
+widening inside the one arm whose entire job is to exculpate, and it is the same erasure class as
+the incident that created this lane: the lane would have shipped a fail-open shaped like the thing
+it was funded to close.
+
+The fix requires the agreement to be licensed by an ALIAS EDGE rather than by spelling: at least
+one side must actually chase through `transparent_alias_rep`, and an unchased pair refuses, since
+the caller has already established the names differ. The last-segment reduction survives only for
+the chased case, where it is load-bearing -- an alias target is the authored RHS name and may be
+bare where the other side is qualified.
+
+**Residual, stated rather than hidden.** For a census-AMBIGUOUS bare name the reduction can still
+equate two distinct declarations. That is the open hole DESIGN 4b already names on the
+source->`.dag` acceptance path, not one this relation introduces.
+
+**All four arms were re-run against the tightened predicate before merge was requested**, because
+"it cannot have moved them" is reasoning, not evidence. They hold: 20527 rows, 19999 `Compatible`,
+0 `WouldDiagnose`, 528 unadjudicated -- identical to the pre-tightening measurement; the planted
+`String`-at-an-`Int`-formal still refuses as exactly one row with `kernel=true nominal=false`; and
+production still emits `0 blocking / 503 advisory`. A result that survives a constraint not in
+force when it was first produced is strictly stronger than the original.
 
 ## What is NOT claimed
 

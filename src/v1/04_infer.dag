@@ -8673,10 +8673,23 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
   }
 }
 
+// The agreement is licensed by an ALIAS EDGE, never by spelling alone. At least one side must
+// actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
+// a last-segment comparison would make any two homonymous nominal types from different modules
+// agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
+// distinction whose erasure caused the OccurrenceId/NodeOccurrenceId incident. The caller has
+// already established the names are not equal, so an unchased pair is a refusal, not a question.
+// The last-segment reduction survives only for the chased case, because an alias target is the
+// authored RHS name and may be bare where the other side is qualified. Residual, stated rather
+// than hidden: for a census-AMBIGUOUS bare name that reduction can still equate two distinct
+// declarations -- the same open hole DESIGN 4b names on the source->.dag acceptance path, not one
+// this relation introduces.
 fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: String) -> Bool {
-  left != "" && right != ""
-    && qualified_last_segment(name: transparent_alias_representative(index: index, name: left))
-      == qualified_last_segment(name: transparent_alias_representative(index: index, name: right))
+  let left_rep = transparent_alias_representative(index: index, name: left)
+  let right_rep = transparent_alias_representative(index: index, name: right)
+  let chased_an_alias_edge = left_rep != left || right_rep != right
+  left != "" && right != "" && chased_an_alias_edge
+    && qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
 }
 
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
