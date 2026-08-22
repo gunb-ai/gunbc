@@ -599,6 +599,37 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // construction is std.render.Group, a different declaration sharing a leaf. Joining on a spelling
 // produced a wrong answer inside a measurement about joining on a spelling. Corrected count: zero.
 
+// THE PRODUCER HALF IS NOW EXECUTED RATHER THAN DERIVED, AND ITS FRAMING NEEDS ONE CORRECTION.
+//
+// A sibling lane derived from the construction path -- v1.compiler.infer_emit_info
+// add_emit_item_summary's map_insert(with_variants, summary.name, summary) into one corpus-wide
+// Map<String, TypeSummary> -- that two declarations sharing a spelling do not merely share a
+// membership bit: the second insert OVERWRITES the first, so one declaration is destroyed before any
+// consumer runs. That was read, not run. RUN HERE, on the real interpreter: two map_insert calls
+// under one key return the SECOND value and leave the map with ONE key. Combined with the pool
+// measurement already on this carrier -- Nat resolving to both std.nat and v2.std.nat inside the
+// 161-module src/v2/compiler/00_compile pool -- the mechanism is executed on both arms it needs.
+//
+// WHY IT COMPOSES WITH THIS CARRIER'S RESULT INSTEAD OF COMPETING WITH IT. Re-keying at construction
+// stops the destruction and repairs nothing, because 23 consumers still ask by bare name. Re-pointing
+// the lookups cannot help either, because one declaration is already gone before any lookup runs.
+// Each half is necessary and insufficient, which makes the repair ONE change -- compose the key at
+// construction AND supply the qualifier at every lookup -- and makes the staged intermediate not
+// merely costlier but INCOHERENT: the map holds two summaries while the consumers still ask for one,
+// so destruction is replaced by arbitrary-pick and neither the old invariant nor the new one holds.
+//
+// THE CORRECTION, MEASURED, because the framing offered with it is stronger than the data supports.
+// The claim was that EVERY collision is a seed declaration against a v2 declaration, so the collision
+// population IS the self-hosting frontier and the defect dissolves when self-hosting completes.
+// Counted over the same 116: 70 are seed-versus-v2 and 46 ARE NOT -- 24 dag-versus-dag, 11
+// dag-versus-src/v1, 11 v2-versus-v2. Excluding names declared only in tests or fixtures moves it to
+// 109 with the same 70. Counter-specimens, all inside one tree: OccurrenceId (dag/std/observation.dag
+// versus dag/std/occurrence_identity.dag), IntegerOverflow (dag/extdeps/languages/rust/primitives.dag
+// versus dag/std/checked_arithmetic.dag), PowerRefusal (two dag/product modules). So self-hosting
+// PRODUCES most of this population and does not exhaust it: about 60 percent, not all. The difference
+// is load-bearing -- at 100 percent the defect retires with the frontier, at 60 percent a third of it
+// survives self-hosting and needs the key regardless.
+
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
 //
 // The open question this paragraph previously carried was WHICH pool holds both declarations. It is

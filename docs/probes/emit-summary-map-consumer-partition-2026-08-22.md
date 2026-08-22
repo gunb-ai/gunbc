@@ -203,6 +203,34 @@ turned on its author: my first intersection joined those sets on the **leaf name
 exposed type, `Group`. It isn't — the phantom-bearing one is `std.algebra.Group`, the qualified
 construction is `std.render.Group`. Corrected count: zero.
 
+### The producer half, executed — and one correction to its framing
+
+A sibling lane derived from the construction path (`add_emit_item_summary`'s
+`map_insert(with_variants, summary.name, summary)` into one corpus-wide `Map<String, TypeSummary>`)
+that two declarations sharing a spelling don't merely share a membership bit — **the second insert
+overwrites the first**, destroying one declaration before any consumer runs. That was read, not run.
+**Run here, on the real interpreter:** two `map_insert` calls under one key return the **second**
+value and leave the map with **one** key. With the pool row already on this carrier (`Nat` resolving
+to both `std.nat` and `v2.std.nat` inside the 161-module `00_compile` pool), both arms are executed.
+
+It composes with this document's result rather than competing: re-keying at construction stops the
+destruction and repairs nothing (23 consumers still ask by bare name); re-pointing the lookups cannot
+help (one declaration is already gone). Each half is necessary and insufficient — so the repair is
+**one** change, and the staged intermediate is not merely costlier but **incoherent**: the map holds
+two summaries while consumers ask for one, replacing destruction with arbitrary-pick, and neither the
+old invariant nor the new one holds.
+
+**The correction.** The framing offered alongside was that *every* collision is a seed declaration
+against a v2 declaration — so the collision population **is** the self-hosting frontier and the defect
+dissolves when self-hosting completes. Counted over the same 116: **70 are seed-vs-v2 and 46 are
+not** — 24 dag-vs-dag, 11 dag-vs-`src/v1`, 11 v2-vs-v2. (Excluding names declared only in
+tests/fixtures: 109, same 70.) Counter-specimens, all within one tree: `OccurrenceId`
+(`dag/std/observation.dag` vs `dag/std/occurrence_identity.dag`), `IntegerOverflow`
+(`dag/extdeps/languages/rust/primitives.dag` vs `dag/std/checked_arithmetic.dag`), `PowerRefusal`
+(two `dag/product` modules). Self-hosting **produces most of this population and does not exhaust
+it** — about 60%, not all. The difference is load-bearing: at 100% the defect retires with the
+frontier; at 60% a third of it survives self-hosting and needs the key regardless.
+
 ### The `Connective` specimen: pool named, and it is a third root
 
 `Connective` is declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
