@@ -2922,8 +2922,14 @@ enforces end to end.
    direction — it advertises a safety regression that does not exist and a trigger nobody owes.)*
 
    The `doc_graph_roots` bind **refuses loudly** on this deletion — but only once the cited-symbol
-   resolver runs **as a required check**, which is gunbc#8800. Until that merges, the refusal exists
-   as a mode nothing invokes.
+   resolver runs **as a required check**, which is gunbc#8800. **THAT HAS NOW MERGED**
+   (`4adfc5a76b`, "Enrol the cited-symbol census as a separately named required check"), and the
+   check is live: it ran and passed as a named gate on this row's own PR. So the sentence that
+   stood here — *until that merges, the refusal exists as a mode nothing invokes* — is superseded,
+   and the conditional below resolves to its **first** arm: were the deletion to land now, the bind
+   would refuse and **no drop would be declared at all**. That is a second, independent reason this
+   sub-section is dormant, and it is recorded rather than left because an unmerged-state claim about
+   a merged PR is premise contamination in the carrier whose subject is rung honesty.
 
    - **IF gunbc#8800 HAS MERGED at land time:** no drop is declared. The bind refuses, its owning lane
      (`session/quiet-lark-881-phase`) repoints it, and the joined witness reds with it. **Correct order
