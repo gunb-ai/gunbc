@@ -38,16 +38,6 @@ data coreutils_install_owner_flag: NonEmptyStr = "-o"
 data coreutils_install_group_flag: NonEmptyStr = "-g"
 data coreutils_install_binary_name: NonEmptyStr = "install"
 
-fn coreutils_install_file_argv(mode: NonEmptyStr, source: String, dest: String) -> List<String> {
-  [
-    coreutils_install_binary_name as String,
-    coreutils_install_mode_flag as String,
-    mode as String,
-    source,
-    dest,
-  ]
-}
-
 fn coreutils_install_directory_argv(mode: NonEmptyStr, path: String) -> List<String> {
   [
     coreutils_install_binary_name as String,

@@ -10,8 +10,9 @@ import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
 }
 import extdeps.tools.gnu_coreutils {
-  coreutils_install_file_argv,
   coreutils_install_directory_argv,
+  coreutils_install_binary_name,
+  coreutils_install_mode_flag,
   coreutils_install_file_owned_argv,
   coreutils_install_directory_owned_argv,
 }
@@ -112,11 +113,19 @@ fn deploy_stage_write_command(stage_name: String, content: String) -> String {
   )
 }
 
+// The one install this module cannot express as an argv of strings: its SOURCE is the staged
+// path, which is a word carrying a variable reference rather than a value known here. So the
+// leading words are taken from the same coreutils rows the argv builders use — the binary name
+// and the mode flag are not respelled — and only the two path arguments are placed as words.
 fn deploy_stage_install_command(stage_name: String, mode: NonEmptyStr, dest: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_command_with_words(words: concat(
       shell_literal_words(words: [
-        "sudo", "-n", "install", "-m", mode as String,
+        "sudo",
+        "-n",
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
       ]),
       [
         deploy_stage_path_word(stage_name: stage_name),
@@ -149,14 +158,6 @@ fn deploy_stage_write_expansion_command(stage_name: String, format: String, expa
       path: deploy_stage_path_word(stage_name: stage_name),
     ),
   )
-}
-
-fn install_file_command(mode: NonEmptyStr, source: String, dest: String, privileged: Bool) -> String {
-  if privileged {
-    shell_privileged_command_text_of_argv(argv: coreutils_install_file_argv(mode: mode, source: source, dest: dest))
-  } else {
-    shell_command_text_of_argv(argv: coreutils_install_file_argv(mode: mode, source: source, dest: dest))
-  }
 }
 
 fn install_file_owned_command(
