@@ -1,5 +1,6 @@
 module std.nat
 
+import std.types { List }
 import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
 import std.magnitude { Magnitude }
 
@@ -15,4 +16,24 @@ fn nat_max(a: Nat, b: Nat) -> Nat {
 
 fn nat_min(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
+}
+
+// AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat
+// rather than beside any consumer because the run is a fact about the naturals, not about runner
+// slots or DRAM channels; two consumers had each open-coded it as a bucket over hardcoded literal
+// lists, and both buckets were stranded at the widths their author happened to enumerate.
+//
+// AN EMPTY RUN IS AN ANSWER, NOT AN ABSENCE. lo > hi means the run between them is genuinely
+// empty -- there is no naturals-shaped question this function cannot express, so it never needs a
+// could-not-say arm and a caller reading [] here is reading a computed emptiness. That is the
+// property the bucketed forms did not have: they returned [] both for a genuinely empty run and
+// for a width they could not spell, which is the empty-observation narrow DESIGN section 5 names.
+// Callers that must distinguish "no work" from "cannot express the work" must not get that
+// distinction from this function; it has only the first meaning.
+fn nat_range_inclusive(lo: Nat, hi: Nat) -> List<Nat> {
+  if lo > hi {
+    []
+  } else {
+    concat([lo], nat_range_inclusive(lo: lo + 1, hi: hi))
+  }
 }

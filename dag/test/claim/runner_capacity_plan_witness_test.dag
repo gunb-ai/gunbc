@@ -3,6 +3,15 @@ module test.claim.runner_capacity_plan_witness
 import std.logic { Bool }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
+  desired_slot_indices,
+  addition_slot_indices,
+  reconcile_slot_population,
+  SlotPopulationVerdict,
+  SlotPopulationReconciled,
+  SlotPopulationRefused,
+}
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
@@ -17,7 +26,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host() -> Bool {
+// THIS REPLACES A WITNESS THAT ASSERTED TWO ADDITIONS PER HOST AT REQUESTED 7, AND THE OLD
+// ASSERTION WAS WRONG IN A WAY ITS GREEN CONCEALED. It required slots 06 AND 07 on hosts whose
+// committed width is 6, so it demanded a SEVENTH slot on a six-wide host -- an artifact of the
+// 14GiB era, when the managed hosts admitted 7. The 2026-08-17 16GiB ruling moved them to 6 and
+// this witness was never re-derived, so it kept ratifying the superseded width.
+//
+// WHAT IS ASSERTED NOW, AND THE TWO HOSTS DISAGREE ON PURPOSE. Both are six-wide, so neither can
+// reach a seventh slot however wide the request. srv4 has no fabric slot, so its GitHub population
+// is all 6 and one addition is planned: slot 06. srv3 carries the one compute-fabric slot, so its
+// GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth slot exists
+// in the model and is deliberately not a GitHub runner.
+test fn requested_seven_is_clamped_to_each_host_github_population() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
@@ -25,10 +45,31 @@ test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host(
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
+      runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 1
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
     PlanRefused { reason: _ } => false
   }
+}
+
+// ENROLLED REGRESSION CONTROL FOR THE EMPTY-OBSERVATION NARROW
+// (gunbc.runner_capacity_plan slot_enumeration_narrow_class_note).
+//
+// These two are a PAIR and neither is meaningful alone. Before the enumerator was derived,
+// desired_slot_indices(6) returned five indices and widening srv4 from 5 to 6 returned zero
+// actions. The srv4 row is the one that FLIPPED: it was false and is now true, so it goes red
+// again the moment an enumeration stops being able to express a width.
+//
+// THE srv3 ROW IS HERE BECAUSE IT DID NOT FLIP, WHICH IS THE TRAP. Widening srv3 from 5 to 6
+// planned zero additions before this change and plans zero additions after it, for entirely
+// different reasons -- first because the bucket could not spell 6, now because slot 06 is a
+// compute-fabric slot withheld from the GitHub plan. Enrolled alone it would have stayed green
+// straight through the defect AND the fix while silently changing meaning, which is precisely the
+// shape that let this class survive. It is only a check when read against the srv4 row beside it:
+// same width transition, same index, different purpose, different answer.
+test fn a_requested_width_is_always_enumerable_and_purpose_gates_the_plan() -> Bool {
+  desired_slot_indices(width: 6).length() == 6
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 5).length() == 1
+    && addition_actions(host: operator_host_srv3, requested_width: 6, observed_width: 5).length() == 0
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
@@ -45,4 +86,47 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
 test fn satisfied_observed_width_plans_zero_additions() -> Bool {
   addition_actions(host: operator_host_srv3, requested_width: 5, observed_width: 5).length() == 0
     && addition_actions(host: operator_host_srv3, requested_width: 7, observed_width: 7).length() == 0
+}
+
+fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
+  match v {
+    SlotPopulationRefused { reason: _ } => true
+    SlotPopulationReconciled => false
+  }
+}
+
+// THE ENUMERATOR IS A GENERAL POPULATION MODEL, NOT A SPECIAL CASE FOR SLOT 6, AND THESE TWO ROWS
+// ARE A PAIR FOR THAT REASON. Asserting only the 5-to-6 transition would go green against an
+// enumerator that hardcoded "if the gap is slot 6, add slot 6" -- the bucket rebuilt under a new
+// name, which is exactly the shape this change removed. The 5-to-7 row is what makes that
+// impossible: no single special case satisfies both.
+//
+// THEY ASSERT THE INDICES AND NOT THE COUNT. A length check cannot tell [6] from [7], so a run
+// that produced the right NUMBER of the WRONG slots would pass while planning work against slots
+// that are not the ones missing. This is the enumerator's own claim, taken below the host-policy
+// clamp deliberately: what a host may do with the run is purpose's business, but the run itself
+// must be a correct run of naturals for every transition.
+test fn the_additions_run_is_general_across_transitions() -> Bool {
+  addition_slot_indices(observed_width: 5, requested_width: 6) == [6]
+    && addition_slot_indices(observed_width: 5, requested_width: 7) == [6, 7]
+    && addition_slot_indices(observed_width: 0, requested_width: 3) == [1, 2, 3]
+    && addition_slot_indices(observed_width: 5, requested_width: 5) == []
+    && addition_slot_indices(observed_width: 6, requested_width: 5) == []
+}
+
+// A GitHub RUNNER SITTING IN THE FABRIC'S SLOT MUST NOT READ AS CONVERGED. srv3 commits 6 slots
+// with a GitHub population of 5, so an observation of 6 GitHub slots means an actions-runner
+// occupies srv3-06 -- the slot the fabric owns. The count-shaped answer is "no additions needed",
+// which is indistinguishable from a healthy converged host; the population-shaped answer is a
+// refusal, and this row is what holds the difference.
+//
+// THE srv1 ROW IS THE CONTROL AND WITHOUT IT THIS PROVES NOTHING. srv1 has no fabric slot, so an
+// observation equal to its committed width is genuinely converged and must NOT refuse. A verdict
+// that refused whenever observed reached the width would satisfy the srv3 assertion by being
+// broken everywhere, and this pairing is what separates "refuses correctly" from "refuses".
+test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
+  population_is_refused(v: reconcile_slot_population(host: operator_host_srv3, observed_width: 6))
+    && !population_is_refused(v: reconcile_slot_population(host: operator_host_srv3, observed_width: 5))
+    && !population_is_refused(v: reconcile_slot_population(host: operator_host_srv1, observed_width: 5))
+    && population_is_refused(v: reconcile_slot_population(host: operator_host_srv1, observed_width: 6))
 }

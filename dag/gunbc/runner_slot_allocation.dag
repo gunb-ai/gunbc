@@ -1,6 +1,7 @@
 module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -448,4 +449,54 @@ fn gunbc_floor_minimum_viable_armed_budget_wall_holds() -> Bool {
     && witness_floor_armed_budget_doomed_outcomes_are_failures()
     && witness_floor_armed_budget_success_outcome_is_no_failure()
     && byte_size_count(b: gunbc_floor_minimum_viable_armed_budget) == byte_size_count(b: byte_size(12884901888))
+}
+
+type RunnerSlotPurpose
+  = SlotServesGitHubActions
+  | SlotServesComputeFabric
+
+// WHAT A SLOT IS FOR IS A FACT ABOUT THE SLOT, AND UNTIL THIS ROW IT HAD NOWHERE TO LIVE. A host
+// carried exactly one slot fact -- a width Int -- so every slot in [1..width] was necessarily the
+// same kind of thing, and the add sequence registered every one of them with GitHub
+// unconditionally. Adding a compute-fabric slot under that shape meant provisioning it and then
+// REMEMBERING not to register it, which is validation standing exactly where construction was
+// available (DESIGN section 5).
+//
+// THE HARM IS NOT UNTIDINESS, IT IS DOUBLE ALLOCATION. GitHub believing srv3-06 is an idle
+// registered runner and the fabric believing srv3-06 is an available Offer member starts two
+// processes inside one 16GiB entitlement, on a fleet whose entire economic premise is that a slot
+// has a known cost. The two populations must be disjoint, and with purpose per slot they are
+// disjoint by construction: runner_slot_purpose is total over the index range, so a slot has
+// exactly one purpose and cannot be a member of both populations.
+//
+// THE FABRIC SLOTS ARE THE TOP INDICES, WHICH IS A CHOICE AND NOT A DERIVATION. Taking them from
+// the top means the GitHub population keeps the identities it already has -- srv3-01..05 are the
+// five live registered runners today -- so introducing a fabric slot renames nothing and
+// deregisters nothing. Taking them from the bottom would have renumbered every live runner.
+fn host_fabric_slot_count(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv3 as String) {
+    1
+  } else {
+    0
+  }
+}
+
+// srv3 CARRIES THE ONE FABRIC SLOT AND srv1 DELIBERATELY DOES NOT (operator, 2026-08-21). The
+// control plane is taking a temporary srv1 slice, so the canary executor is placed on a DIFFERENT
+// host: a control plane and the capacity it schedules failing together is the common-mode failure
+// the placement exists to avoid. srv3 is chosen over srv4 because both admit 6 at memory and srv4
+// additionally carries the apply-time disk preflight, so srv3 is the one with fewer axes able to
+// refuse it. This is the sixth slot on srv3 -- a provisioning target that has never existed and
+// has never been registered with GitHub, so the disjointness below is established rather than
+// restored, and no runner is removed from the Actions pool to pay for it.
+fn host_github_slot_count(host: HostIdentity) -> Int {
+  gunbc_runner_slots_per_host(host: host) - host_fabric_slot_count(host: host)
+}
+
+fn runner_slot_purpose(host: HostIdentity, slot_index: Nat) -> RunnerSlotPurpose {
+  if slot_index > host_github_slot_count(host: host) {
+    SlotServesComputeFabric
+  } else {
+    SlotServesGitHubActions
+  }
 }

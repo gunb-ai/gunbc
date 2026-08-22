@@ -15,7 +15,13 @@ import extdeps.github.actions_runner {
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  RunnerSlotPurpose,
+  SlotServesGitHubActions,
+  SlotServesComputeFabric,
+  runner_slot_purpose,
+}
 import gunbc.host_disk_observation {
   HostDiskObservation,
   DiskUnobserved,
@@ -75,6 +81,40 @@ fn runner_slot_add_steps_ordered() -> List<RunnerSlotAddStep> {
     AddStepGitHubRegistrationQuery,
     AddStepConvergeOnlineEphemeral,
   ]
+}
+
+type RunnerSlotAddSequence
+  = GitHubRunnerAddSequence { steps: List<RunnerSlotAddStep> }
+  | FabricSlotProvisioningNotModeled { reason: String }
+
+// REGISTRATION IS DERIVED FROM PURPOSE, WHICH IS THE HALF THAT MAKES THE PURPOSE FIELD REAL. A
+// purpose that does not gate the step is a label: it would record which slots we INTENDED not to
+// register while leaving the add sequence able to register every one of them. So the sequence is
+// selected by purpose and a compute-fabric slot has no arm that reaches
+// AddStepGitHubRegistrationQuery -- not an arm that skips it, no arm at all.
+//
+// THE FABRIC ARM REFUSES RATHER THAN FILTERING, AND THAT IS THE LOAD-BEARING CHOICE. The tempting
+// shape is to return the GitHub steps minus the three GitHub-specific ones, which reads as
+// economical and is wrong: this sequence fetches an actions-runner release, verifies its arch
+// digest and starts an actions-runner unit, so the filtered remainder would provision a slot that
+// downloads GitHub's runner in order never to run GitHub's runner. A compute-fabric slot is a
+// different payload, not a GitHub runner with pieces removed, and its provisioning sequence is not
+// modeled yet. Answering with a plausible subsequence would be the fabricated-plausible-output
+// failure DESIGN section 5 forbids; refusing names the gap and stops the line.
+//
+// NEXT-RUNG TRIGGER: the fabric slot's own provisioning sequence -- whatever installs and starts
+// the fabric executor -- landing as its own arm here. Until then this refusal is the honest
+// terminal state for the one fabric slot that exists (srv3-06), and it is why that slot is
+// declared but not yet convergeable.
+fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
+  match runner_slot_purpose(host: host, slot_index: slot_index) {
+    SlotServesGitHubActions =>
+      GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
+    SlotServesComputeFabric =>
+      FabricSlotProvisioningNotModeled {
+        reason: "compute-fabric slot: the GitHub runner add sequence does not apply and no fabric provisioning sequence is modeled yet; refusing rather than returning a filtered subsequence that would install an actions-runner for a slot that never serves Actions"
+      }
+  }
 }
 
 fn runner_slot_add_step_index(step: RunnerSlotAddStep) -> Int {

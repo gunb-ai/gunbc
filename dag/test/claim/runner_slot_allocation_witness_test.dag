@@ -1,6 +1,12 @@
 module test.claim.runner_slot_allocation_witness
 
 import gunbc.runner_slot_allocation {
+  RunnerSlotPurpose,
+  SlotServesGitHubActions,
+  SlotServesComputeFabric,
+  runner_slot_purpose,
+  host_fabric_slot_count,
+  host_github_slot_count,
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
@@ -176,4 +182,55 @@ test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliati
       probed_at: "synthetic-converged-control",
     }
   )
+}
+
+fn purpose_is_fabric(p: RunnerSlotPurpose) -> Bool {
+  match p {
+    SlotServesComputeFabric => true
+    SlotServesGitHubActions => false
+  }
+}
+
+// THE TWO SLOT POPULATIONS ARE DISJOINT BY CONSTRUCTION, AND THIS WITNESS IS WHAT KEEPS THAT
+// CLAIM HONEST RATHER THAN DECORATIVE. runner_slot_purpose is total over a host's index range and
+// returns exactly one variant, so a slot cannot be a member of both populations -- there is no
+// state in which GitHub believes srv3-06 is an idle registered runner while the fabric believes
+// it is an available Offer member, which is the double-allocation this partition exists to make
+// unwritable (two processes inside one 16GiB entitlement).
+//
+// THE SUMMANDS MUST ADD UP OR THE PARTITION IS NOT ONE. If github + fabric ever drifted from the
+// committed width, some slot would be in neither population or counted twice, and the arithmetic
+// below is the only thing standing between "purpose is a partition" and "purpose is a label."
+test fn slot_purposes_partition_every_host_committed_width() -> Bool {
+  host_github_slot_count(host: operator_host_srv1) + host_fabric_slot_count(host: operator_host_srv1) == gunbc_runner_slots_per_host(host: operator_host_srv1)
+    && host_github_slot_count(host: operator_host_srv2) + host_fabric_slot_count(host: operator_host_srv2) == gunbc_runner_slots_per_host(host: operator_host_srv2)
+    && host_github_slot_count(host: operator_host_srv3) + host_fabric_slot_count(host: operator_host_srv3) == gunbc_runner_slots_per_host(host: operator_host_srv3)
+    && host_github_slot_count(host: operator_host_srv4) + host_fabric_slot_count(host: operator_host_srv4) == gunbc_runner_slots_per_host(host: operator_host_srv4)
+}
+
+// THE CANARY SLOT IS srv3-06 AND NOTHING ELSE IS FABRIC (operator, 2026-08-21). srv4-06 is the
+// discriminating control and it is the whole point of the row: it is the SAME index on a host of
+// the SAME committed width, and it is a GitHub slot. So the partition is keyed on the host's
+// authored fabric count, not on the number 6 -- an implementation that special-cased the top index
+// fleet-wide would pass the srv3 assertion and fail here.
+test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
+  purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 6))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv4, slot_index: 6))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 5))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv1, slot_index: 5))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv2, slot_index: 5))
+}
+
+// THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. Fabric slots are taken from the TOP of the
+// index range, so srv3-01..05 -- the five registered runners that exist today -- are all still
+// GitHub slots and none is renamed or deregistered to pay for the canary. Taking the fabric slot
+// from the bottom would have renumbered every live runner on the host, and this row goes red if
+// anyone reverses that direction.
+test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
+  !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 1))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 2))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 3))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 4))
+    && !purpose_is_fabric(p: runner_slot_purpose(host: operator_host_srv3, slot_index: 5))
+    && host_github_slot_count(host: operator_host_srv3) == 5
 }

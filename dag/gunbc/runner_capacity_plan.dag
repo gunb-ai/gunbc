@@ -1,7 +1,7 @@
 module gunbc.runner_capacity_plan
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network {
@@ -20,8 +20,9 @@ import gunbc.fleet_runner_connectivity {
   SlotConnectivityUnknown,
 }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_slot_allocation { host_github_slot_count, host_fabric_slot_count }
 
-data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Five observed against seven requested yields EXACTLY two RunnerSlotAdd actions (06 and 07), not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
+data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Additions are the run of slot indices between observed and the host's GitHub ceiling, DERIVED rather than enumerated, and clamped to the GitHub population so this plan can never add a compute-fabric slot. Count equality is a POSTCONDITION, never a refusal, and the plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
 type RunnerCapacityAction
   = RunnerSlotAdd { to: RunnerSlotIdentity }
@@ -61,23 +62,10 @@ fn runner_slot_identity(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdenti
   RunnerSlotIdentity { host: host, slot_index: slot_index }
 }
 
-data five_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
-data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
-data two_addition_slot_indices: List<Nat> = [6, 7]
-data empty_nat_list: List<Nat> = []
-
-data one_slot_index: List<Nat> = [1]
+data slot_enumeration_narrow_class_note: String = "ERROR CLASS: A PLANNER'S ENUMERATION THAT COULD NOT SPELL A REQUESTED WIDTH ANSWERED 'NOTHING TO DO' (found 2026-08-21, dissolved by this change).\n\nINVALID STATE. desired_slot_indices bucketed a width into hardcoded literal lists — seven_slot_indices, five_slot_indices, one_slot_index — and addition_slot_indices spelled exactly one widening, (observed 5, requested 7). Every other widening fell to empty_nat_list. A twin pair, slot_indices_for_managed_width and local_incarnations_for_host, carried the same buckets in gunbc.fleet_runner_connectivity, so one concept had three implementations and eight duplicate constants across two modules (DESIGN 3).\n\nHARM, AND IT IS NOT THE ARITHMETIC. The 2026-08-17 16GiB ruling moved the managed hosts from width 7 to width 6. Nothing enumerated 6. srv3 and srv4 therefore carried a DECLARED provisioning target that the modeled capacity plan could not reach, and asking it to widen 5 to 6 returned zero actions — indistinguishable from a converged host with no work to do. The measurement: desired_slot_indices(6) yielded exactly FIVE indices, and addition_actions(srv3, requested 6, observed 5) yielded ZERO, while the superseded (5, 7) case still correctly yielded TWO. The enumerator worked only for the width the fleet no longer used.\n\nWHY IT SURVIVED. This is the empty-observation narrow, DESIGN 5: could-not-express rendered as the verdict 'nothing is affected'. It is the mirror of the absorbing fallback and strictly worse — a widen is merely expensive, a narrow is silently uncovered — and it zeroes its own frequency, so nothing ever ranked it for fixing. The existing witness could not see it either: runner_capacity_plan_witness_test asserted only the two NO-OP cases, requested == observed at widths 5 and 7, which stay green no matter what the enumerator can or cannot express. A test that only asks 'does a no-op produce nothing' cannot distinguish a working enumerator from one that produces nothing for everything.\n\nRUNG FOUND AT: mitigatable — nothing detected it, and it was found by executing the enumerator rather than by reading it. RUNG NOW: structurally impossible for this class. The buckets are gone; a run of naturals is derived by std.nat nat_range_inclusive, which is total over its inputs. There is no width the enumerator cannot express, so 'a width that falls through to empty' has no representation to be reached — validation is unnecessary because the state cannot be written (DESIGN 4b top rung).\n\nCEILING, AND WHY IT IS THE TOP. The class is decidable and fully modeled: a slot index run is a fact about the naturals, and nat_range_inclusive is its single authority. An empty list from it now means exactly one thing, a computed empty run, never 'the shape could not say'.\n\nWHAT THIS ROW DOES NOT COVER, STATED SO IT IS NOT READ AS A CLEAN SWEEP. admit_runner_capacity_width still refuses only above 7 for the managed hosts while their committed width is 6, so a request for 7 is admitted by that wall and then produces no seventh slot. That is the same 16GiB-era staleness in a second place, it is NOT fixed here, and it is left alone deliberately: the ceiling is an operator-ruled number and correcting it is a ruling, not a repair. It is harmless today only because nothing requests 7."
 
 fn desired_slot_indices(width: Int) -> List<Nat> {
-  if width >= 7 {
-    seven_slot_indices
-  } else if width >= 5 {
-    five_slot_indices
-  } else if width >= 1 {
-    one_slot_index
-  } else {
-    empty_nat_list
-  }
+  nat_range_inclusive(lo: 1, hi: width)
 }
 
 fn desired_slot_identities(host: HostIdentity, requested_width: Int) -> List<RunnerSlotIdentity> {
@@ -168,13 +156,12 @@ fn connectivity_actions_for_observed(
 }
 
 fn addition_slot_indices(observed_width: Int, requested_width: Int) -> List<Nat> {
-  if requested_width <= observed_width {
-    empty_nat_list
-  } else if observed_width == 5 && requested_width == 7 {
-    two_addition_slot_indices
-  } else {
-    empty_nat_list
-  }
+  nat_range_inclusive(lo: observed_width + 1, hi: requested_width)
+}
+
+fn github_addition_ceiling(host: HostIdentity, requested_width: Int) -> Int {
+  let github_ceiling = host_github_slot_count(host: host)
+  if requested_width < github_ceiling { requested_width } else { github_ceiling }
 }
 
 fn addition_actions(
@@ -183,7 +170,10 @@ fn addition_actions(
   observed_width: Int,
 ) -> List<RunnerCapacityAction> {
   map(
-    addition_slot_indices(observed_width: observed_width, requested_width: requested_width),
+    addition_slot_indices(
+      observed_width: observed_width,
+      requested_width: github_addition_ceiling(host: host, requested_width: requested_width),
+    ),
     i => RunnerSlotAdd { to: runner_slot_identity(host: host, slot_index: i) }
   )
 }
@@ -210,17 +200,63 @@ fn observed_materialized_width_for_plan(
   }
 }
 
+type SlotPopulationVerdict
+  = SlotPopulationReconciled
+  | SlotPopulationRefused { reason: String }
+
+// RECONCILIATION COMPARES POPULATIONS, NOT INDEX COUNTS, AND THIS IS WHERE THAT BITES. A width
+// answers how many slots a host has; it cannot say that the sixth belongs to the fabric while the
+// first five are GitHub runners. Once purposes differ the count is a PROJECTION of the population
+// and can never be an authority FOR it, so a reconciliation that reasons in counts alone is
+// deciding convergence on a fact that no longer determines the answer.
+//
+// THE REACHABLE BAD STATE, STATED CONCRETELY BECAUSE IT IS NOT HYPOTHETICAL. srv3 commits 6 slots
+// and its GitHub population is 5. If an actions-runner is ever registered at srv3-06 -- by a hand
+// run of the installer, by a converge from a checkout that predates the purpose model, or by
+// anyone reading the width row as "six runners" -- then observed_width becomes 6, the additions
+// run is empty because 6 already exceeds the GitHub ceiling of 5, and the host READS AS CONVERGED
+// while the slot the fabric is supposed to own is occupied by a GitHub runner. Nothing in a
+// count-shaped comparison can see that: the numbers agree, the population does not.
+//
+// SO IT REFUSES RATHER THAN KEEPING. Present-at-a-fabric-index-with-GitHub-purpose is not Keep,
+// and it is deliberately not silently repaired either -- removing a live registered runner is
+// destructive and belongs to an operator, not to a planner that inferred the situation from a
+// width. The line stops, typed and located, naming the host and both counts.
+fn reconcile_slot_population(host: HostIdentity, observed_width: Int) -> SlotPopulationVerdict {
+  if observed_width > gunbc_runner_slots_per_host(host: host) {
+    SlotPopulationRefused {
+      reason: "observed runner slots exceed the host committed width: the population is over-provisioned against its own memory admission, refusing rather than planning against a width this host was never admitted to carry"
+    }
+  } else if host_fabric_slot_count(host: host) > 0 && observed_width > host_github_slot_count(host: host) {
+    SlotPopulationRefused {
+      reason: "a GitHub runner occupies a compute-fabric slot index: observed GitHub slots exceed this host's GitHub population, so a slot reserved for the fabric is registered with Actions. Refusing rather than reading the host as converged — the counts agree while the populations do not, and deregistering a live runner is an operator action, not a planner inference"
+    }
+  } else {
+    SlotPopulationReconciled
+  }
+}
+
+type HostCapacityPlanOutcome
+  = HostCapacityPlanReady { plan: RunnerCapacityHostPlan }
+  | HostCapacityPlanRefused { reason: String }
+
+// THE OUTCOME CARRIES ITS REASON RATHER THAN BEING OPTIONAL. This returned RunnerCapacityHostPlan?
+// and answered `none` for roster-unavailable, so every future refusal cause would have collapsed
+// into that same silent Absent and the caller could only ever say "roster unavailable" -- it would
+// have had to fabricate a reason it did not have. That is the state-space conflation DESIGN warns
+// about, and the population refusal above is exactly the second cause that would have been
+// swallowed by it.
 fn plan_runner_capacity_host(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
-) -> RunnerCapacityHostPlan? {
+) -> HostCapacityPlanOutcome {
   let admission = admit_runner_capacity_width(host: host, requested: requested_width)
   let observed_width = observed_materialized_width_for_plan(host: host, roster: roster)
   match admission {
     WidthRefused { requested: _, cause: _ } =>
-      Present {
-        value: RunnerCapacityHostPlan {
+      HostCapacityPlanReady {
+        plan: RunnerCapacityHostPlan {
           host: host,
           requested_width: requested_width,
           admission: admission,
@@ -229,21 +265,28 @@ fn plan_runner_capacity_host(
         }
       }
     WidthAdmitted { width: admitted } =>
-      match connectivity_actions_for_observed(roster: roster, observed: observed_slot_identities(host: host)) {
-        Absent =>
-          none
-        Present { value: repairs } =>
-          Present {
-            value: RunnerCapacityHostPlan {
-              host: host,
-              requested_width: requested_width,
-              admission: admission,
-              observed_width: observed_width,
-              actions: concat(
-                repairs,
-                addition_actions(host: host, requested_width: admitted, observed_width: observed_width)
-              ),
-            }
+      match reconcile_slot_population(host: host, observed_width: observed_width) {
+        SlotPopulationRefused { reason: r } =>
+          HostCapacityPlanRefused { reason: r }
+        SlotPopulationReconciled =>
+          match connectivity_actions_for_observed(roster: roster, observed: observed_slot_identities(host: host)) {
+            Absent =>
+              HostCapacityPlanRefused {
+                reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
+              }
+            Present { value: repairs } =>
+              HostCapacityPlanReady {
+                plan: RunnerCapacityHostPlan {
+                  host: host,
+                  requested_width: requested_width,
+                  admission: admission,
+                  observed_width: observed_width,
+                  actions: concat(
+                    repairs,
+                    addition_actions(host: host, requested_width: admitted, observed_width: observed_width)
+                  ),
+                }
+              }
           }
       }
   }
@@ -255,11 +298,11 @@ fn runner_capacity_plan(
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerCapacityPlan {
   match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster) {
-    Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
-    Present { value: srv3 } =>
+    HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
+    HostCapacityPlanReady { plan: srv3 } =>
       match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster) {
-        Absent => PlanRefused { reason: "roster unavailable — refusing destructive runner capacity plan" }
-        Present { value: srv4 } => PlanReady { hosts: [srv3, srv4] }
+        HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
+        HostCapacityPlanReady { plan: srv4 } => PlanReady { hosts: [srv3, srv4] }
       }
   }
 }
