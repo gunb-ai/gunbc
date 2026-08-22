@@ -23,6 +23,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
+import v2.compiler.compile { CoreNode }
 import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness {
@@ -32,7 +33,24 @@ import v2.std.witness {
   Witness
 }
 
-type CoreNode = Node
+// `type CoreNode = Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
+// target, was also declared in v2.compiler.compile, and v2.compiler.ingest already imports it from
+// there -- so one concept had two authorities, which DESIGN 3 forbids independently of anything
+// downstream. This module now asks the same authority ingest does.
+//
+// WHAT THE DUPLICATE COST, measured rather than asserted: v1's direct-call argument-type judgment
+// resolves a nominal type by NAME, and a name declared in two modules is census-AMBIGUOUS, so the
+// transparent-alias identity relation (gunbc#8873) excludes it conservatively and cannot decide
+// that CoreNode and Node are the same type. Deleting the v2.* argument-type exemption over the
+// corpus left 67 blocking diagnostics, and 48 of them -- 72% -- were this one duplicate, as
+// `expected Primitive(CoreNode), got Product(Node)` and its reverse across 05_eval.dag,
+// self_host_fixed_point_test.dag, 00_compile.dag and this file.
+//
+// TO BE EXACT ABOUT WHAT THIS DOES AND DOES NOT FIX: it removes this SPECIMEN, not the class. A
+// name legitimately declared in two modules is still unadjudicable, and that is gunbc#8879's
+// row 24. The relation-side repair for the class is still-carp-717's, and the two are
+// complementary rather than alternatives -- theirs makes a legitimate duplicate survivable, this
+// one makes an illegitimate duplicate not exist.
 
 type SourceModels {
   stage1_committed_seed_source: Medium<String>

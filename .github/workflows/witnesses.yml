@@ -62,3 +62,13 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload floor disposition receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-floor-receipts
+          path: |
+            required_floor_disposition.tsv
+            expected_red_roster_join.tsv
+            long_home_storage_agreement.tsv
+          if-no-files-found: warn
+        if: "!cancelled()"
