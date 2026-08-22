@@ -2863,15 +2863,27 @@ enforces end to end.
 
    **These are prose and therefore cannot go red.** When either seam closes,
    nothing here will notice that the reproduction now passes. The right home is
-   the expected-red roster that already carries a sibling
-   (`direct_call_arg_type_v2_module_red_probe`, rostered in
-   `v2.workflow.floor_expected_red` and consumed by
-   `dag/test/claim/direct_call_argument_type_witness_test.dag`). They were **not**
-   enrolled there by this row's author, deliberately: landing them as live `.dag`
-   under a `v2.*` name makes them silent (the exemption), and under a non-`v2`
-   name makes them refuse against the corpus immediately — so enrolment is a
-   change to that carrier's expected-red roster, not a file drop, and it belongs
-   to whoever owns the seam. **Enrolment is the residue this row leaves behind.**
+   the probe corpus that already carries a sibling —
+   `gunbc.guarantee_probe_corpus` `direct_call_arg_type_v2_module_red_probe`,
+   consumed by `dag/test/claim/direct_call_argument_type_witness_test.dag`.
+   *(An earlier revision of this row said that probe was rostered in
+   `v2.workflow.floor_expected_red`. It is not — that file carries zero references
+   to it. The claim was inherited from a neighbouring row and repeated without
+   being resolved, which is the §3 positional-citation failure in its symbolic
+   form: a cited relation neither carrier asserts.)*
+
+   They were **not** enrolled by this row's author, deliberately, and
+   `v2.workflow.floor_expected_red`'s own header states the rule that makes this
+   more than caution: **enrolling an identity asserts that it reaches its subject
+   and answers.** That roster shed 101 rows on 2026-08-20 which had never reached
+   their subject at all, and records why it is the more dangerous mistake — *a
+   genuine red is loud when someone finally looks at it, while a never-executed
+   row looks identical to progress.* These reproductions are exactly that hazard:
+   under a `v2.*` name they are **silent**, because the exemption they demonstrate
+   is the thing suppressing them; under a non-`v2` name they refuse against the
+   corpus immediately. Neither is an enrollable state today. So enrolment is a
+   change to that carrier, not a file drop, and it belongs to whoever owns the
+   seam. **Enrolment is the residue this row leaves behind.**
 
    **That last claim was measured, not assumed, and the measurement is a finding
    in its own right that widens seam A well beyond cut B.** One shape, two module
