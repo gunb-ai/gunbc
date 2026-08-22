@@ -1941,7 +1941,7 @@ pub fn nominal_call_arg_brand_mismatch(
     {
         let formal_name = authored_name_at(source_indices.clone(), formal.clone());
         let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-        ((((((((((formal.connective.clone() != Connective::Arrow)
+        (((((((((((formal.connective.clone() != Connective::Arrow)
             && (actual.connective.clone() != Connective::Arrow))
             && (formal_name.clone() != "".to_string()))
             && (actual_name.clone() != "".to_string()))
@@ -1962,6 +1962,11 @@ pub fn nominal_call_arg_brand_mismatch(
                 formal.clone(),
                 type_env.clone(),
                 source_indices.clone(),
+            ))
+            && !transparent_alias_identity_agrees(
+                type_env.symbol_index.clone(),
+                formal_name.clone(),
+                actual_name.clone(),
             ))
     }
 }
@@ -16932,6 +16937,200 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
     }
 }
 
+pub fn transparent_alias_target_name(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let item_shape_admits = ((((((item.params.clone().len() as i64) == 0)
+            && (item.connective.clone() == Connective::NoConnective))
+            && ((item.children.clone().len() as i64) == 0))
+            && ((item.properties.clone().len() as i64) == 0))
+            && (item.type_annotation.clone() == None));
+        if !item_shape_admits.clone() {
+            "".to_string()
+        } else {
+            match item.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    let self_name = authored_name_at(source_indices.clone(), item.clone());
+                    let target_name = authored_name_at(source_indices.clone(), target.clone());
+                    let target_shape_admits = (((((target.connective.clone()
+                        == Connective::NoConnective)
+                        && ((target.children.clone().len() as i64) == 0))
+                        && ((target.params.clone().len() as i64) == 0))
+                        && (target.type_annotation.clone() == None))
+                        && (target.return_cardinality.clone() == Cardinality::Required));
+                    if !target_shape_admits.clone() {
+                        "".to_string()
+                    } else {
+                        if ((target_name.clone() == "".to_string())
+                            || (target_name.clone() == self_name.clone()))
+                        {
+                            "".to_string()
+                        } else {
+                            if (is_declared_container_alias_spelling(target_name.clone())
+                                || is_container_type(qualified_last_segment(target_name.clone())))
+                            {
+                                "".to_string()
+                            } else {
+                                target_name.clone()
+                            }
+                        }
+                    }
+                }
+                _ => "".to_string(),
+            }
+        }
+    }
+}
+
+pub fn transparent_alias_direct_edges(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item_counts: Rc<HashMap<String, i64>>,
+) -> Rc<HashMap<String, String>> {
+    module_nodes.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |edges: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
+            let module_path = authored_name_at(source_indices.clone(), module_node.clone());
+            module_items(module_node.clone()).iter().cloned().fold(
+                edges,
+                |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
+                    let target_name =
+                        transparent_alias_target_name(item.clone(), source_indices.clone());
+                    if (target_name.clone() == "".to_string()) {
+                        acc.clone()
+                    } else {
+                        {
+                            let self_name = authored_name_at(source_indices.clone(), item.clone());
+                            let qualified = v1_rt::rc_map_insert(
+                                acc.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(module_path.clone(), ".".to_string()),
+                                    self_name.clone(),
+                                ),
+                                target_name.clone(),
+                            );
+                            match v1_rt::map_get(&item_counts, self_name.clone()) {
+                                Some(1) => v1_rt::rc_map_insert(
+                                    qualified.clone(),
+                                    self_name.clone(),
+                                    target_name.clone(),
+                                ),
+                                _ => qualified.clone(),
+                            }
+                        }
+                    }
+                },
+            )
+        },
+    )
+}
+
+pub fn transparent_alias_chase(
+    mut edges: Rc<HashMap<String, String>>,
+    mut name: String,
+    mut fuel: i64,
+) -> String {
+    loop {
+        if (fuel.clone() <= 0) {
+            break name.clone();
+        } else {
+            match v1_rt::map_get(&edges, name.clone()) {
+                Some(next) => {
+                    if (next.clone() == name.clone()) {
+                        break name.clone();
+                    } else {
+                        {
+                            let __tco_0 = next.clone();
+                            let __tco_1 = (fuel - 1);
+                            name = __tco_0;
+                            fuel = __tco_1;
+                            continue;
+                        }
+                    }
+                }
+                None => match v1_rt::map_get(&edges, qualified_last_segment(name.clone())) {
+                    Some(next) => {
+                        if ((next.clone() == name.clone())
+                            || (qualified_last_segment(next.clone())
+                                == qualified_last_segment(name.clone())))
+                        {
+                            break name.clone();
+                        } else {
+                            {
+                                let __tco_0 = next.clone();
+                                let __tco_1 = (fuel - 1);
+                                name = __tco_0;
+                                fuel = __tco_1;
+                                continue;
+                            }
+                        }
+                    }
+                    None => {
+                        break name.clone();
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub fn transparent_alias_representatives(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item_counts: Rc<HashMap<String, i64>>,
+) -> Rc<HashMap<String, String>> {
+    {
+        let edges = transparent_alias_direct_edges(
+            module_nodes.clone(),
+            source_indices.clone(),
+            item_counts.clone(),
+        );
+        Rc::new(v1_rt::sorted_map_keys(&edges))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, k: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        k.clone(),
+                        transparent_alias_chase(edges.clone(), k.clone(), 16),
+                    )
+                },
+            )
+    }
+}
+
+pub fn transparent_alias_representative(index: Rc<SymbolIndex>, name: String) -> String {
+    match v1_rt::map_get(&index.transparent_alias_rep.clone(), name.clone()) {
+        Some(rep) => rep.clone(),
+        None => match v1_rt::map_get(
+            &index.transparent_alias_rep.clone(),
+            qualified_last_segment(name.clone()),
+        ) {
+            Some(rep) => rep.clone(),
+            None => name.clone(),
+        },
+    }
+}
+
+pub fn transparent_alias_identity_agrees(
+    index: Rc<SymbolIndex>,
+    left: String,
+    right: String,
+) -> bool {
+    (((left.clone() != "".to_string()) && (right.clone() != "".to_string()))
+        && (qualified_last_segment(transparent_alias_representative(
+            index.clone(),
+            left.clone(),
+        )) == qualified_last_segment(transparent_alias_representative(
+            index.clone(),
+            right.clone(),
+        ))))
+}
+
 pub fn build_symbol_index_census_raw_nodes(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -16941,7 +17140,7 @@ pub fn build_symbol_index_census_raw_nodes(
             corpus_disj_variant_name_counts_nodes(module_nodes.clone(), source_indices.clone());
         let corpus_item_counts =
             corpus_item_name_counts_nodes(module_nodes.clone(), source_indices.clone());
-        module_nodes.clone().iter().cloned().fold(
+        let folded = module_nodes.clone().iter().cloned().fold(
             empty_symbol_index(),
             |index: Rc<SymbolIndex>, module_node: Rc<Node>| {
                 let module_path = authored_name_at(source_indices.clone(), module_node.clone());
@@ -16966,7 +17165,17 @@ pub fn build_symbol_index_census_raw_nodes(
                     corpus_item_counts.clone(),
                 )
             },
-        )
+        );
+        Rc::new(SymbolIndex {
+            entries: folded.entries.clone(),
+            global_bare: folded.global_bare.clone(),
+            services: folded.services.clone(),
+            transparent_alias_rep: transparent_alias_representatives(
+                module_nodes.clone(),
+                source_indices.clone(),
+                corpus_item_counts.clone(),
+            ),
+        })
     }
 }
 
@@ -17557,6 +17766,7 @@ pub fn census_with_resolved_fn_sigs(
             entries: entries2.clone(),
             global_bare: global2.clone(),
             services: services2.clone(),
+            transparent_alias_rep: index.transparent_alias_rep.clone(),
         })
     }
 }
@@ -17610,6 +17820,10 @@ pub fn symbol_index_with_bare_fill(
             entries: closure.entries.clone(),
             global_bare: global2.clone(),
             services: services2.clone(),
+            transparent_alias_rep: v1_rt::rc_map_merge(
+                tree.transparent_alias_rep.clone(),
+                closure.transparent_alias_rep.clone(),
+            ),
         })
     }
 }
@@ -17681,6 +17895,10 @@ pub fn symbol_index_with_qualified_fill(
             entries: entries2.clone(),
             global_bare: closure.global_bare.clone(),
             services: closure.services.clone(),
+            transparent_alias_rep: v1_rt::rc_map_merge(
+                fill.transparent_alias_rep.clone(),
+                closure.transparent_alias_rep.clone(),
+            ),
         })
     }
 }
