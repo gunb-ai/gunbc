@@ -12,7 +12,7 @@ import extdeps.systemd.unit_file {
   ServiceType, ExecStart, Restart, Environment, ServiceUser, ServiceGroup, ServiceSlice,
   SliceMemoryMax, SliceMemoryHigh,
   WantedBy,
-  serialize_systemd_unit_file, serialize_systemd_drop_in,
+  serialize_systemd_unit_file,
   systemd_unit_file_lines, systemd_drop_in_lines,
 }
 import extdeps.cache.sccache {
@@ -66,10 +66,6 @@ fn runner_ordering_drop_in(instance: BuildCacheInstance) -> SystemdDropIn {
       },
     ],
   }
-}
-
-fn runner_ordering_drop_in_text(instance: BuildCacheInstance) -> String {
-  serialize_systemd_drop_in(drop_in: runner_ordering_drop_in(instance: instance))
 }
 
 fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
@@ -149,12 +145,6 @@ fn compile_pool_slice_unit_file(slice_unit: NonEmptyStr, sized: ByteSize) -> Sys
     ],
     install: NotInstallable,
   }
-}
-
-fn compile_pool_slice_text(slice_unit: NonEmptyStr, sized: ByteSize) -> String {
-  serialize_systemd_unit_file(
-    file: compile_pool_slice_unit_file(slice_unit: slice_unit, sized: sized),
-  )
 }
 
 fn render_compile_pool_slice(slice_unit: NonEmptyStr, sized: ByteSize) -> List<String> {
