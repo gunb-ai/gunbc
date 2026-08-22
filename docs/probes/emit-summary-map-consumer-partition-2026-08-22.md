@@ -141,24 +141,48 @@ module the fold reached last, and `is_known_variant`, `derive_variant_to_enum` a
 pair as the specimen where a bare-name rule realizes the wrong declaration. They are refused as a
 body or not at all, which puts the refusal downstream of the two-tree migration.
 
-### The `Connective` specimen: half verified, half not reproducible
+### The `Connective` specimen: pool named, and it is a third root
 
-`Connective` **is** declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
-(`src/v2/std/node.dag`). Wherever both are folded, bare keying puts them in one entry, and
-`derive_variant_to_enum`'s ambiguity wall cannot fire, because the collision it exists to detect was
-destroyed by the index one layer above it. The generalisation belongs beside `is_known_variant`'s
-row: **a fail-closed guard downstream of a lossy index is not fail-closed** — it is structurally
-unable to observe its own trigger and reads as coverage on the ledger, which is worse than an absent
-guard, because an absent guard ranks for building.
+`Connective` is declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
+(`src/v2/std/node.dag`). Wherever both are folded, bare keying puts them in one entry and
+`derive_variant_to_enum`'s ambiguity wall cannot fire: **a fail-closed guard downstream of a lossy
+index is not fail-closed** — it is structurally unable to observe its own trigger and reads as
+coverage on the ledger, which is worse than an absent guard, because an absent guard ranks for
+building. `is_known_variant` is the same inversion from the other side.
 
-What is **not** reproduced from here is the population. The two modules are co-resident in **no**
-pool measured above: not rule 1 (`v2.std.node` is outside the `src/v1`+`dag` index entirely, and no
-import names it), and not rule 2 for `src/v1/04_infer.dag` even with all three roots indexed and the
-reference extension applied — that pool is 42 modules with **zero** colliding names. Only rule 3
-holds both. The emitted `pub use crate::v2_std_node::{Connective, Edge, NamedEdgeTargetLookup,
-Node};` line reported for that module is also absent from `main` and from the pushed
-`session/crisp-crab-430` branch at the cited path. The mechanism is real; the invocation whose pool
-contains both declarations has not been located, and until it is, the specimen cannot be counted.
+The pool is `regen_source_roots` on `integration/namespace-cut` (head `48b55fa2d70`, PR #8282),
+which returns **three** roots — `src/v1`, `dag` **and** `src/v2` — where main returns two. Verified
+by reading that branch: the root list carries `src/v2`, and 36 stage0 mirrors there reference
+`crate::v2_std_node`. So rule 3 *is* the regen pool on that branch, and "co-resident in no pool" was
+correct for every pool reachable from main and wrong for the branch the artifact lives on.
+
+Measured on that branch's tree, seeding every `src/v1` module:
+
+| walk | modules | type decls | colliding |
+|---|---:|---:|---:|
+| imports only | 54 | 410 | **0** |
+| imports + reference extension | 126 | 990 | **3** — `Cardinality`, `Connective`, `Node` |
+
+The imports are deleted on that branch, so the import walk has nothing left to walk: there, the
+reference extension is not a refinement, it is the whole closure. Exactly one v2 module enters the
+pool — `v2.std.node` — and it alone brings two of the three collisions.
+
+**`Node` is the third name, and it closes a gap the tracing lane left open.** `Node` is declared in
+both `v1.std.core` and `v2.std.node`, so it collapses exactly as `Connective` does; it was filed
+there as entering by an unidentified third path. It is the same path. `Edge` and
+`NamedEdgeTargetLookup` are declared **only** in `v2.std.node`, do not collide, and remain
+unaccounted for — one emitted use-line, at least two causes.
+
+**The generalisation is worth more than the specimen: the folded population is a function of the
+root list, not of the module graph.** Adding one root to a `Vec` changed the emitter's identity
+answers, and the doc comment beside that root list still describes the two-root closure. A map keyed
+on identity would be indifferent to which roots were passed; a map keyed on a spelling is not.
+
+**One account corrected rather than carried.** Main is not silent about `Connective` because
+something suppressed the synthesis: main's own `v1_compiler_infer.rs` emits `use
+crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}` — the path runs and answers
+correctly, because only one `Connective` is in main's pool. The deficit did not exist until the pool
+admitted the homonym.
 
 ## What this means for the repair, stated as a size rather than a plan
 

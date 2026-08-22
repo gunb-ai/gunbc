@@ -469,6 +469,14 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
     specimens: "the same dual-tree family, minus Unit, TerminationProof and RankingDimension",
   },
   PoolMeasured {
+    pool_rule: "rule 1 root list plus the reference extension -- every src/v1 module seeded, indexed over THREE roots (src/v1, dag, src/v2) because regen_source_roots carries src/v2 on that branch",
+    pool_subject: "the stage0 regen population at integration/namespace-cut, head 48b55fa2d70 (PR 8282) -- the branch where the wrong emitted use-lines live",
+    modules_in_pool: 126,
+    type_declarations: 990,
+    distinct_colliding_names: 3,
+    specimens: "Cardinality, Connective and Node. v2.std.node is the ONE v2 module the reference extension pulls in and it brings two of the three: Connective (v1.std.core Conj | Disj | NoConnective | Arrow versus v2.std.node's own) and Node (declared in both). Import-only on the same tree gives 54 modules and ZERO collisions, because that branch has deleted its imports -- so on this pool the reference extension is not a refinement, it is the whole closure",
+  },
+  PoolMeasured {
     pool_rule: "rule 2 -- single entry, imports plus the reference extension",
     pool_subject: "dag/gunbc/design_document.dag",
     modules_in_pool: 127,
@@ -484,26 +492,46 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // at a time: they ARE the two-tree migration, so the refusal is downstream of it, and landing the
 // refusal first would red the compiler's own pool against a population nobody had counted.
 
-// THE Connective SPECIMEN, CARRIED AS AN OPEN QUESTION RATHER THAN AS A ROW, because half of it is
-// verified and half of it is not reproducible from here.
+// THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
 //
-// VERIFIED: Connective is declared twice -- v1.std.core (src/v1/00_core.dag) and v2.std.node
-// (src/v2/std/node.dag). Under bare keying those two summaries occupy one entry wherever both are
-// folded, and derive_variant_to_enum's ambiguity wall then cannot fire, because the collision it
-// exists to detect was destroyed by the index one layer above it. The sentence that generalises,
-// and it belongs beside is_known_variant's row: A FAIL-CLOSED GUARD DOWNSTREAM OF A LOSSY INDEX IS
-// NOT FAIL-CLOSED -- it is structurally unable to observe its own trigger, and it reads as coverage
-// on the ledger, which is worse than an absent guard because an absent guard ranks for building.
+// The open question this paragraph previously carried was WHICH pool holds both declarations. It is
+// `regen_source_roots` on integration/namespace-cut (head 48b55fa2d70, PR 8282), which returns
+// THREE roots -- src/v1, dag AND src/v2 -- where main returns two. So rule 3 IS the regen pool on
+// that branch, and my earlier "co-resident in no pool" was correct for every pool reachable from
+// main and wrong for the branch the artifact lives on. Verified by reading that branch: the root
+// list carries src/v2, and 36 stage0 mirrors there reference crate::v2_std_node.
 //
-// NOT REPRODUCED: the two modules are co-resident in NO pool measured here. Not rule 1 (v2.std.node
-// is outside the src/v1-plus-dag index entirely and no import names it), and not rule 2 for
-// src/v1/04_infer.dag even with all three roots indexed and the reference extension applied -- that
-// pool is 42 modules with ZERO colliding names. Only rule 3, the whole-tree union, holds both. The
-// emitted use-line reported for that module is also absent from main and from the pushed
-// session/crisp-crab-430 branch at the cited path. So the mechanism is real and the population it
-// needs has not been located: what is missing is the exact invocation whose pool contains both
-// declarations. Filed here as the open half rather than folded into a row, because a specimen whose
-// pool cannot be named cannot be counted.
+// MEASURED ON THAT BRANCH'S TREE, and the two rules answer very differently because the imports are
+// gone: seeding every src/v1 module and following IMPORTS ONLY gives 54 modules and ZERO collisions
+// -- the import walk has nothing left to walk. Following the reference extension as well gives 126
+// modules, 990 type declarations and THREE colliding names: Cardinality, Connective and Node. One
+// v2 module enters the pool, v2.std.node, and it alone brings two of the three.
+//
+// THAT THIRD NAME IS A CONTRIBUTION BACK, not a restatement: Node is declared in BOTH v1.std.core
+// and v2.std.node, so it collapses exactly as Connective does. The lane that traced the artifact
+// could account for Connective and not for Node, and filed Node as entering by an unidentified
+// third path. It is the same path. Edge and NamedEdgeTargetLookup are declared ONLY in v2.std.node,
+// do not collide, and remain unaccounted for -- one emitted use-line, at least two causes.
+//
+// THE GENERALISATION, and it is worth more than the specimen: the folded population is a function
+// of the ROOT LIST, not of the module graph. Adding one root to a Vec changed the emitter's
+// identity answers, and the doc comment beside that root list still describes the two-root closure.
+// A map keyed on identity would be indifferent to which roots were passed; a map keyed on a
+// spelling is not.
+//
+// AND THE SENTENCE THAT SURVIVES ALL OF IT, from the lane that traced it: A FAIL-CLOSED GUARD
+// DOWNSTREAM OF A LOSSY INDEX IS NOT FAIL-CLOSED. derive_variant_to_enum implements its ambiguity
+// wall correctly -- a second writer of a variant spelling overwrites with the empty sentinel so
+// neither parent is admitted -- and the wall cannot fire, because the collision it exists to detect
+// was destroyed by the index one layer above it. It reads as coverage on the ledger, which is worse
+// than an absent guard: an absent guard ranks for building. is_known_variant is the same inversion
+// from the other side.
+//
+// ONE ACCOUNT CORRECTED RATHER THAN CARRIED: main is NOT silent about Connective because something
+// suppressed the synthesis. Main's own v1_compiler_infer.rs emits
+// `use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}` -- the path runs and
+// answers correctly, because only one Connective is in main's pool. The deficit did not exist until
+// the pool admitted the homonym.
 
 // THE TIE BETWEEN THE GRAINS, derived rather than asserted: every pool is a subset of the tree, so
 // no pool row may report more colliding names than the whole-tree bound. The two
