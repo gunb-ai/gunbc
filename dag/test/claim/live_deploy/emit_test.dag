@@ -54,6 +54,10 @@ import extdeps.apt { apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.live_deploy.operations {
+  deploy_stage_install_command,
+  deploy_stage_write_expansion_command,
+  install_directory_owned_command,
+  install_file_owned_command,
   dpkg_status_command,
   apt_install_command,
   systemctl_restart_command,
@@ -185,12 +189,12 @@ data attempt_state_mode_derivation_witness_note: String = "This asserts the DERI
 test fn witness_apply_provisions_attempt_state_root_owned() -> Bool {
   string_contains(
     s: witness_apply_script(),
-    pattern: join([
-      "install -d -m ", managed_directory_mode_octal(d: srv1_attempt_state_directory()),
-      " -o ", gunbc_service_user as String,
-      " -g ", gunbc_service_user as String,
-      " ", srv1_dispatch_attempt_state_root as String,
-    ], ""),
+    pattern: install_directory_owned_command(
+      mode: managed_directory_mode_octal(d: srv1_attempt_state_directory()) as NonEmptyStr,
+      owner: gunbc_service_user,
+      group: gunbc_service_user,
+      path: srv1_dispatch_attempt_state_root as String,
+    ),
   )
 }
 
@@ -260,13 +264,13 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/gunbc")
-    && string_contains(s: sh, pattern: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\"")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" /etc/gunbc-tree-sync.env")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" /etc/systemd/system/gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
+    && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
+    && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
+    && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
     && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
-    && string_contains(s: sh, pattern: "sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
+    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg --https=443 8080")
@@ -730,4 +734,24 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   )
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && !string_contains(s: live, pattern: "ctrl-fleet-converge.timer")
+}
+
+// The staged unit files stopped being here-documents. A here-doc ends at a line equal to its
+// delimiter, so the delimiter is a value the CONTENT could contain — a unit body carrying the
+// tag line would end the document early and the rest would run as shell. These REDs fail if any
+// of the five converted writes goes back to that form, and the positive conjunct is the reason
+// it is safe now: the body reaches the host as one quoted argument through the POSIX authority,
+// which has no terminator to collide with.
+test fn emit_RED_unit_files_are_not_written_through_here_documents() -> Bool {
+  let sh = witness_apply_script()
+  !string_contains(s: sh, pattern: "GUNBC_UNIT_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_TREE_SYNC_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_BELT_SERVICE_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_BELT_TIMER_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_TREE_REMOTE_EOF")
+}
+
+test fn emit_staged_unit_body_is_quoted_by_the_posix_authority() -> Bool {
+  let sh = witness_apply_script()
+  string_contains(s: sh, pattern: concat("'printf' '%s' ", concat("'", "[Unit]")))
 }
