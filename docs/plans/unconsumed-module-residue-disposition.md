@@ -258,12 +258,13 @@ substrate refuses on an authority the rule had no part in building. And defects 
 found by **hand-reading rows**, with counters that stayed consistent throughout — the same
 lesson arriving a second time, from the other direction.
 
-## 4h. Five discriminators, and the count/set rule that resolves two instruments disagreeing
+## 4h. Six discriminators, and the count/set rule that resolves two instruments disagreeing
 
 The extraction defects were settled by **discriminating cases, not by descriptions**, and that
-is the reusable result. Three bug *descriptions* relayed from `silent-deer-368` found one bug
-in this lane's extractor; their four *test cases* found a second one nobody had named. **A
-discriminator travels; a description does not.**
+is the reusable result. Bug *descriptions* relayed between lanes found one bug in this lane's extractor; the *test
+cases* that came with them found two more nobody had named — and one of those cases still
+failed here after its own description had been implemented faithfully, which is (f2) below.
+**A discriminator travels; a description does not.**
 
 The roster, each failing on exactly the defect it names:
 
@@ -274,6 +275,34 @@ The roster, each failing on exactly the defect it names:
 | `Ready` | `gunbc.pr_digests` | defect 7, variant constructors |
 | `Capability` | `std.behavioral` | (d) same-line coproduct |
 | `Run` | `gunbc.cli_services` | (e) service-namespace-only module |
+| `v2.std.projection` NOT consumed by `v2.lens.common.graph_invariant` | (f) generic parameter counted as a reference |
+
+**(f) is the mirror of (a), and it has a second half the obvious fix does not reach.** A
+generic parameter is a **binder, not a reference**: `type GraphInvariant<Projection>` binds
+`Projection`, and `v2.lens.common.graph_invariant` imports no projection module at all. Two
+distinct false references come out of one construct:
+
+- **(f1)** the parameter list in the declaration header;
+- **(f2)** *uses of the bound name inside that declaration's body* — `projection: Projection`
+  on the very next line.
+
+Implementing (f1) alone left `v2.std.projection` scoring CONSUMED-DECISIVE here; only
+region-scoped shadowing of the bound name moved it to AMBIGUOUS. So the construct touches the
+instrument three ways, in two directions: a generic header **defeats declaration extraction**
+in (a) and **inflates reference extraction** in (f1) and again in (f2).
+
+**The scoping is the safety-critical part.** Dropping the bound name file-wide is the obvious
+implementation and it is the *delete-a-live-module* direction: removing references moves a
+live module into the residue, so a name bound as a parameter in one declaration and genuinely
+referenced in another would silently lose its real reference. The shadow is scoped to the
+binding declaration's region.
+
+**Direction check, stated because it is what makes (f) safe to have found late:** (f) and the
+withdrawn service-short-name credit both *inflate* consumption, so neither can cause a wrong
+deletion — they can only hold a dead module. Both were fixed anyway; the deletion set did not
+move. That is also the count/set rule predicting which lane had to care about which defect
+before either measured it: an inflated-consumption defect moves a residue *count* and leaves a
+conservative deletion *set* alone.
 
 **(e) is contributed back and is the sharpest of the five**, because its specimen's declared
 set is *empty* under an unfixed extractor rather than merely incomplete: `gunbc.cli_services`
