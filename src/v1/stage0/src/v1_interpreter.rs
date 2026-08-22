@@ -15334,6 +15334,17 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 /// A fabricated order would be the worst shape of wrong: `sorted_map_keys` exists to make
 /// a fold deterministic, so a silently-different permutation produces a plausible,
 /// stable, WRONG artifact (DESIGN.md 5 -- no fabricated plausible output).
+///
+/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE, and that is the load-bearing choice
+/// rather than an oversight. `cmp_values` answers `Ordering::Equal` for every pair it does
+/// not recognise -- mismatched kinds, records, variants, lists -- which is exactly the
+/// silent permutation above: a total comparator that never refuses produces *an* order for
+/// key sets the emitted realization cannot even represent, and `sort_by` with a
+/// non-total-order comparator leaves those keys in whatever relative position the map
+/// iteration handed them, so the answer is not merely different from Rust's, it is not
+/// stable across runs either. Refusing is the only honest arm for those kinds. (`sort_by`'s
+/// own use of `cmp_values` is a separate question with a separate caller contract and is
+/// not touched here.)
 fn sorted_map_keys_in_emitted_order(
     keys: Vec<Value>,
     what: &str,
@@ -16860,6 +16871,42 @@ mod sorted_map_keys_order_tests {
             .map(|s| (*s).to_string())
             .collect();
         assert_eq!(interpreted(), expected);
+    }
+
+    /// `sorted_map_keys` exists to make a fold deterministic, so the output must be a
+    /// function of the key SET alone. `HashMap` iteration order is unspecified in both
+    /// realizations, so this is the control that the sort -- not the map's incidental
+    /// traversal -- is what produces the answer.
+    #[test]
+    fn order_is_independent_of_insertion_order_in_both_realizations() {
+        let mut forward: HashMap<String, i64> = HashMap::new();
+        for (i, k) in KEYS.iter().enumerate() {
+            forward.insert((*k).to_string(), i as i64);
+        }
+        let mut reverse: HashMap<String, i64> = HashMap::new();
+        for (i, k) in KEYS.iter().rev().enumerate() {
+            reverse.insert((*k).to_string(), i as i64);
+        }
+        let forward_keys: std::vec::Vec<String> =
+            v1_rt::sorted_map_keys(&forward).into_iter().collect();
+        let reverse_keys: std::vec::Vec<String> =
+            v1_rt::sorted_map_keys(&reverse).into_iter().collect();
+        assert_eq!(forward_keys, reverse_keys);
+
+        let mut reversed_input: std::vec::Vec<Value> =
+            KEYS.iter().map(|s| Value::Str((*s).into())).collect();
+        reversed_input.reverse();
+        let interpreted_reversed: std::vec::Vec<String> =
+            sorted_map_keys_in_emitted_order(reversed_input, "sorted_map_keys")
+                .expect("String keys are admitted")
+                .into_iter()
+                .map(|v| match v {
+                    Value::Str(s) => s.to_string(),
+                    other => panic!("expected Str, got {other:?}"),
+                })
+                .collect();
+        assert_eq!(interpreted_reversed, interpreted());
+        assert_eq!(interpreted_reversed, forward_keys);
     }
 
     #[test]
