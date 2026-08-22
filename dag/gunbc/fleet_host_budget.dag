@@ -73,7 +73,6 @@ import gunbc.oomd_install {
   gunbc_oomd_sessions_policy,
 }
 
-
 fn build_cost_account(cfg: JobserverConfig) -> CostAccount<Nano> {
   CostAccount {
     time: time_measure(count: 0),
@@ -121,7 +120,6 @@ fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResoluti
 }
 
 
-
 fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcementEvidence {
   match mode {
     Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
@@ -136,7 +134,6 @@ fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcemen
 }
 
 data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = gunbc_fleet_oomd_evidence_for(mode: gunbc_ci_session_reservation_mode)
-
 
 data gunbc_compile_pool_doc: String = "THE COMPILE POOL IS A CLAIM ON HOST RAM THAT THE PER-SLOT MODEL DID NOT SEE. extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SCCACHE SERVER. So compile RSS is charged to the SERVER's cgroup, not to the runner slot that issued the compile, and a per-slot memory cap therefore does NOT bound compile memory. Measured consequence on srv1: the CI server was lazily auto-spawned inside dead slot srv1-10's cgroup and kept alive by SCCACHE_IDLE_TIMEOUT=0, so all five live slots' compiles executed under one dead slot's 15G high / 16G max caps and accumulated 229780 memory.max breach events and 12 oom_kills. Sizing is jobserver_build_pool_bytes (tokens * mib_per_job) — the same cited authority that bounds build concurrency, NOT a fresh literal: the pool must hold exactly the compiles the jobserver admits."
 
@@ -244,8 +241,13 @@ type HostAllocationVerdict
 // the host" and "one resident's size is unknown so no sum can be formed" are different states with
 // different remedies -- the first is a capacity decision, the second is a measurement someone has to
 // go and take -- and a shared false merges them into a plan that looks oversubscribed when it is
-// merely unmeasured. host_allocation_conserves survives below as the Bool projection its existing
-// callers want, defined over the verdict rather than beside it.
+// merely unmeasured. A Bool projection over this verdict used to sit beside it
+// and is DELETED rather than kept: gunbc.ci_runner_placement, its only production caller, now
+// matches the verdict directly, and a spare yes/no left in this module is how the collapse would
+// come back -- the next caller wanting a Bool would find one already written and would silently
+// drop the remedy again. The witnesses that legitimately ask a yes/no question declare their own
+// projection in test.claim.host_allocation_conservation, where a production import of it would be
+// visibly wrong.
 fn host_allocation_verdict(
   host: ByteSize,
   overhead: ByteSize,
@@ -301,25 +303,6 @@ fn host_allocation_verdict_charged(
 // That is the unfirable wall in its purest form, three declarations below the annotation warning
 // about it. Making it a parameter means every caller must say which host's claim it is charging,
 // and the ones that cannot say so stop compiling -- which is the census, not an inconvenience.
-fn host_allocation_conserves(
-  host: ByteSize,
-  overhead: ByteSize,
-  headroom: ByteSize,
-  runner_pool: ByteSize,
-  session_pool: ByteSize,
-  compile_pool: ByteSize,
-  control_plane: HostFabricControlPlaneClaim
-) -> Bool {
-  match host_allocation_verdict(
-    host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
-    session_pool: session_pool, compile_pool: compile_pool,
-    control_plane: control_plane
-  ) {
-    HostAllocationConserves => true
-    HostAllocationOversubscribed => false
-    HostAllocationUnchargeable { cause: _ } => false
-  }
-}
 
 data declared_runner_count_derivation_note: String = "This still divides the declared pool by the declared per-slot cap rather than reading gunbc_runner_slots_per_host directly, and the redundancy is now GONE rather than merely tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by construction — the two agree because one is the other's inverse, not because an author kept them coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with slots_per_host by construction at these values', which is a coincidence with a caveat attached, and the caveat was doing the work."
 
@@ -333,7 +316,6 @@ fn declared_runner_count_for(host: HostIdentity) -> Int {
 fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
   measure_fit_count_floor(capacity: session_pool, each: gunbc_session_container_memory)
 }
-
 
 fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize, compile_pool: ByteSize) -> ByteSize {
   let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
@@ -373,7 +355,6 @@ fn fleet_host_budget_tree(
     ],
   }
 }
-
 
 fn runner_slice_cap_drifted(disk_cap: ByteSize, effective: RunnerSliceCapEffectiveness) -> Bool {
   match effective {
@@ -454,7 +435,6 @@ fn fleet_host_plan() -> FleetHostPlan {
     oomd: gunbc_fleet_oomd_evidence
   )
 }
-
 
 fn fleet_host_plan_for_offer(
   offer: ComputeOffer,

@@ -70,7 +70,11 @@ data fabric_control_plane_placement: FabricControlPlanePlacement = ControlPlaneU
 // that skips the refusal, instead of having one that a reviewer must notice.
 //
 fn host_fabric_control_plane_claim(host: HostIdentity) -> HostFabricControlPlaneClaim {
-  match fabric_control_plane_placement {
+  host_fabric_control_plane_claim_under(host: host, placement: fabric_control_plane_placement)
+}
+
+fn host_fabric_control_plane_claim_under(host: HostIdentity, placement: FabricControlPlanePlacement) -> HostFabricControlPlaneClaim {
+  match placement {
     ControlPlaneUnplaced => ControlPlaneNotPlaced
     ControlPlaneStaticPinned { host: placed, envelope: envelope } =>
       if (placed as String) == (host as String) {
