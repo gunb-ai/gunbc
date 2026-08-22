@@ -11294,7 +11294,7 @@ fn emit_exit_code_handling(op_node: v1.std.core.Node, inferred: v1.std.core.Node
     let has_nonzero = exit_props |> any(p => v1.std.core.field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ") },") }
+      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ".into()) },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -11313,7 +11313,7 @@ fn emit_exit_arm(prop: v1.std.core.Node, inferred: v1.std.core.Node, source_indi
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_indices: source_indices), " },")
   } else {
-    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ") },")
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ".into()) },")
   }
 }
 
@@ -11424,8 +11424,9 @@ fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: std.types.Map
 fn emit_shell_return(inferred: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   let effective = unwrap_single_field_product(n: inferred)
   let is_product = v1.compiler.infer_types.is_product_type(n: effective)
-  let single_from = if is_product && effective.children |> count == 1 {
-    match effective.children |> first {
+  let declared = if v1.compiler.infer_types.is_product_type(n: inferred) && inferred.children |> count == 1 { inferred } else { effective }
+  let single_from = if v1.compiler.infer_types.is_product_type(n: declared) && declared.children |> count == 1 {
+    match declared.children |> first {
       Present { value: ch } => child_from_key(ch: ch, source_indices: source_indices)
       Absent => none
     }
@@ -11433,7 +11434,7 @@ fn emit_shell_return(inferred: v1.std.core.Node, source_indices: std.types.Map<S
   match single_from {
     Present { value: channel } =>
       let is_optional = effective.return_cardinality == v1.std.core.CardOptional
-      emit_shell_channel_expr(channel: channel, is_optional: is_optional)
+      concat("Ok(", emit_shell_channel_expr(channel: channel, is_optional: is_optional), ")")
     Absent =>
       if is_product && effective.children |> count > 1 {
         let needs_stderr = effective.children |> any(ch =>
@@ -11456,7 +11457,7 @@ fn emit_shell_return(inferred: v1.std.core.Node, source_indices: std.types.Map<S
         concat(lines, "Ok((", field_exprs |> join(separator: ", "), "))")
       } else {
         let is_optional = effective.return_cardinality == v1.std.core.CardOptional
-        emit_shell_channel_expr(channel: "stdout", is_optional: is_optional)
+        concat("Ok(", emit_shell_channel_expr(channel: "stdout", is_optional: is_optional), ")")
       }
   }
 }

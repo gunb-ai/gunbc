@@ -30649,7 +30649,7 @@ pub fn emit_exit_code_handling(
                 let default_arm = if has_nonzero.clone() {
                     "".to_string()
                 } else {
-                    v1_rt::concat(v1_rt::concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+                    v1_rt::concat(v1_rt::concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ".into()) },".to_string())
                 };
                 v1_rt::concat(
                     v1_rt::concat(
@@ -30696,7 +30696,7 @@ pub fn emit_exit_arm(
                 " },".to_string(),
             )
         } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string()), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string()), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ".into()) },".to_string())
         }
     }
 }
@@ -31057,20 +31057,34 @@ pub fn emit_shell_return(
     {
         let effective = unwrap_single_field_product(inferred.clone());
         let is_product = crate::v1_compiler_infer_types::is_product_type(effective.clone());
-        let single_from =
-            if (is_product.clone() && ((effective.children.clone().len() as i64) == 1)) {
-                match effective.children.clone().first().cloned() {
-                    Some(ch) => child_from_key(ch.clone(), source_indices.clone()),
-                    None => None,
-                }
-            } else {
-                None
-            };
+        let declared = if (crate::v1_compiler_infer_types::is_product_type(inferred.clone())
+            && ((inferred.children.clone().len() as i64) == 1))
+        {
+            inferred.clone()
+        } else {
+            effective.clone()
+        };
+        let single_from = if (crate::v1_compiler_infer_types::is_product_type(declared.clone())
+            && ((declared.children.clone().len() as i64) == 1))
+        {
+            match declared.children.clone().first().cloned() {
+                Some(ch) => child_from_key(ch.clone(), source_indices.clone()),
+                None => None,
+            }
+        } else {
+            None
+        };
         match single_from.clone() {
             Some(channel) => {
                 let is_optional =
                     (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                emit_shell_channel_expr(channel.clone(), is_optional.clone())
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok(".to_string(),
+                        emit_shell_channel_expr(channel.clone(), is_optional.clone()),
+                    ),
+                    ")".to_string(),
+                )
             }
             None => {
                 if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
@@ -31127,7 +31141,13 @@ pub fn emit_shell_return(
                     {
                         let is_optional =
                             (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                        emit_shell_channel_expr("stdout".to_string(), is_optional.clone())
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "Ok(".to_string(),
+                                emit_shell_channel_expr("stdout".to_string(), is_optional.clone()),
+                            ),
+                            ")".to_string(),
+                        )
                     }
                 }
             }
