@@ -2962,7 +2962,26 @@ fn collect_value_ref_names(n: v1.std.core.Node, source_indices: Map<String, v1.s
   concat(self_name, concat(list_fields, opt_fields))
 }
 
+data collect_decl_field_type_surface_names_note: String = "The use-line candidate collector harvests an ITEM ANNOTATION, its PARAMS and its INFERRED signature, and never its declared FIELDS. That was invisible while every cross-module name arrived through an authored import: the field spelled a bare name, the import carried the use-line, and the field walk was redundant. Namespace-only resolution inverts it. A field spelling std.types.FilePath RESOLVES -- it is fully qualified, so resolve_node never raises UnlistedImportUse -- while render_rust_fn_sig_type emits the leaf BARE via rust_fn_sig_leaf_name, so the reference needs a use-line that no arm proposes. The candidate collector is driven by a diagnostic that a qualified reference structurally cannot produce, so it goes blind exactly where the import cut makes every reference qualified. MEASURED at f3700a97414: 85 of the ~104 unresolved-name diagnostics sit in record or variant FIELD position, FilePath alone at 28. This walk is one level for a product (children ARE fields) and two for a coproduct (children are variants whose children are fields); a unit variant has no children and contributes nothing. It can only PROPOSE: the attestation gate reference_derived_authored_source_gate_note describes still refuses any candidate the module does not spell, so an over-collected name cannot become a fabricated pub use."
+
+fn collect_decl_field_type_surface_names(decl: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+  if v1.compiler.infer_types.is_coproduct_type(n: decl) {
+    decl.children |> flat_map(variant =>
+      variant.children |> flat_map(field =>
+        v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: v1.std.core.field_node_type_expr(n: field), source_indices: source_indices)
+      )
+    )
+  } else if v1.compiler.infer_types.is_product_type(n: decl) {
+    decl.children |> flat_map(field =>
+      v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: v1.std.core.field_node_type_expr(n: field), source_indices: source_indices)
+    )
+  } else {
+    []
+  }
+}
+
 fn collect_item_type_surface_names(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+  let from_fields = collect_decl_field_type_surface_names(decl: item, source_indices: source_indices)
   let from_ann = match item.type_annotation {
     Present { value: t } => v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: t, source_indices: source_indices)
     Absent => []
@@ -2974,7 +2993,7 @@ fn collect_item_type_surface_names(item: v1.std.core.Node, source_indices: Map<S
     Present { value: v1.std.core.Resolved { node: rt } } => v1.compiler.infer_emit_info.collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
     _ => []
   }
-  concat(from_ann, concat(from_params, from_inferred))
+  concat(from_fields, concat(from_ann, concat(from_params, from_inferred)))
 }
 
 fn emit_scrutinee_type_name(scrutinee: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {

@@ -28,7 +28,7 @@ use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
-pub use crate::std_types::{List, Map, Set};
+pub use crate::std_types::{FilePath, List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
@@ -6761,11 +6761,49 @@ pub fn collect_value_ref_names(
     })
 }
 
+pub fn collect_decl_field_type_surface_names_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The use-line candidate collector harvests an ITEM ANNOTATION, its PARAMS and its INFERRED signature, and never its declared FIELDS. That was invisible while every cross-module name arrived through an authored import: the field spelled a bare name, the import carried the use-line, and the field walk was redundant. Namespace-only resolution inverts it. A field spelling std.types.FilePath RESOLVES -- it is fully qualified, so resolve_node never raises UnlistedImportUse -- while render_rust_fn_sig_type emits the leaf BARE via rust_fn_sig_leaf_name, so the reference needs a use-line that no arm proposes. The candidate collector is driven by a diagnostic that a qualified reference structurally cannot produce, so it goes blind exactly where the import cut makes every reference qualified. MEASURED at f3700a97414: 85 of the ~104 unresolved-name diagnostics sit in record or variant FIELD position, FilePath alone at 28. This walk is one level for a product (children ARE fields) and two for a coproduct (children are variants whose children are fields); a unit variant has no children and contributes nothing. It can only PROPOSE: the attestation gate reference_derived_authored_source_gate_note describes still refuses any candidate the module does not spell, so an over-collected name cannot become a fabricated pub use.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn collect_decl_field_type_surface_names(
+    decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if crate::v1_compiler_infer_types::is_coproduct_type(decl.clone()) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for variant in decl.children.clone().iter().cloned() {
+                __result.extend((*Rc::new({ let mut __result = Vec::new(); for field in variant.children.clone().iter().cloned() { __result.extend((*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(crate::v1_std_core::field_node_type_expr(field.clone()), source_indices.clone())).iter().cloned()); } __result })).iter().cloned());
+            }
+            __result
+        })
+    } else {
+        if crate::v1_compiler_infer_types::is_product_type(decl.clone()) {
+            Rc::new({
+                let mut __result = Vec::new();
+                for field in decl.children.clone().iter().cloned() {
+                    __result.extend((*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(crate::v1_std_core::field_node_type_expr(field.clone()), source_indices.clone())).iter().cloned());
+                }
+                __result
+            })
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 pub fn collect_item_type_surface_names(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
+        let from_fields =
+            collect_decl_field_type_surface_names(item.clone(), source_indices.clone());
         let from_ann = match item.type_annotation.clone() {
             Some(t) => crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(
                 t.clone(),
@@ -6797,8 +6835,11 @@ pub fn collect_item_type_surface_names(
             _ => Rc::new(vec![]),
         };
         v1_rt::concat(
-            from_ann.clone(),
-            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            from_fields.clone(),
+            v1_rt::concat(
+                from_ann.clone(),
+                v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            ),
         )
     }
 }
