@@ -50,33 +50,31 @@ decodes *and* every surface it does not:
 
 
 
-## 2. The deletion as the census: what re-scoring after the cut showed
+## 2. The deletion as the census
 
-DESIGN 3 says the deletion *is* the census. Run against the instrument rather than only
-against the build, it produced one result worth recording, and it is the census's own island
-warning arriving on schedule:
+DESIGN §3 says the deletion *is* the census. Measured against the corrected instrument (§4d),
+before and after the cut:
 
 | | before | after | delta |
 | --- | --- | --- | --- |
-| modules | 3851 | 3780 | -71 |
+| modules | 3851 | 3795 | -56 |
 | **reachable** | **3549** | **3549** | **0** |
-| population | 302 | 231 | -71 |
-| CONSUMED-DECISIVE | 89 | 89 | 0 |
-| STILL-UNCONSUMED | 107 | 43 | -64 |
-| DEAD-CONSUMER-ONLY | 32 | 25 | -7 |
+| population | 302 | 246 | -56 |
+| **CONSUMED-DECISIVE** | **91** | **91** | **0** |
+| AMBIGUOUS-SHARED-ONLY | 97 | 97 | 0 |
+| STILL-UNCONSUMED | 80 | 29 | -51 |
+| DEAD-CONSUMER-ONLY | 34 | 29 | -5 |
 
-**Reachable is unchanged and CONSUMED-DECISIVE is unchanged**: nothing that had a live
-caller, and nothing any root could reach, was touched. That is the discriminating reading --
-a deletion that had caught a consumed module would have moved one of those two numbers.
+Reachable, CONSUMED-DECISIVE and AMBIGUOUS are all unchanged; the whole movement is inside
+the two residue buckets, and it equals the file count exactly.
 
-**Seven modules moved from DEAD-CONSUMER-ONLY to STILL-UNCONSUMED, and that is the island
-mechanic, not noise.** Their only bare-symbol caller was itself residue and is now gone, so
-they became newly eligible by the same rule that had been holding them ineligible. The
-census predicted exactly this and warned that a per-module verdict over a mutually
-referencing island is incoherent because each member looks consumed until its neighbours
-go. Confirmed here as a measurement: **the residue list is not a fixed set, it is a fixed
-point, and one pass does not reach it.** A follow-on pass over these seven is owed and is
-not attempted in this change.
+**These counters are necessary and NOT sufficient, and §4d is why.** An earlier revision
+offered exactly this table as proof the cut was safe. It was computed by an instrument
+carrying an extraction defect, so it could not surface the case that defect was blind to --
+and it read as reassurance precisely because it was consistent. The table is retained
+because it still falsifies a whole class of error (a cut that caught a *reachable* module
+would move the top row), and demoted because it cannot falsify the class that actually
+occurred. The independent instrument is the floor, in §8.
 
 ## 3. The one row the census deferred, now answered by its author -- and the cause it gave is not the cause the census guessed
 
@@ -143,28 +141,23 @@ mitigatable"* -- and this measurement is the independent corroboration of that s
 the module is not merely ungated, it is unreachable. Recorded as a rung-honesty datum for
 whoever climbs it, not as a disposition.
 
-## 4b. The one strand the deletion actually produced
+## 4b. A strand that appeared, then dissolved when its module came back
 
-The precondition in section 1 covers `.dag`, `.rs`, `.yml`, `.yaml`, `.toml`, `.sh` and
-`.md`. Widening it afterwards to `.txt` and `.json` found exactly one live consumer the
-source-extension scan could not see, and it is worth the row because of *where* it was:
+Worth keeping as a record of the surface, not of a repair. Widening the mention scan past
+source extensions to `.txt` found `docs/probes/census_extra_excludes.txt` and its seeds file
+naming `dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag`, which the first cut
+deleted. `v1_compiler.census_exclude_derive` loads both -- the seeds drive the derived
+exclude closure and the pinned oracle is its drift witness -- so a row naming a deleted path
+skews the symmetric diff toward *drift* rather than *staleness*.
 
-`docs/probes/census_extra_excludes.txt` and `docs/probes/census_extra_excludes_seeds.txt`
-both listed `dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag`, and
-`v1_compiler.census_exclude_derive` loads both -- the seeds drive the derived exclude
-closure and the pinned oracle is that closure's drift witness. A row naming a deleted path
-therefore skews the symmetric diff between them in the direction that reads as *drift*
-rather than as *staleness*, which is the wrong diagnosis by exactly one step. Both rows are
-removed, with the two count literals that pin the files (83 to 82, 27 to 26).
+**Both the row removal and the two count literals it forced are reverted**, because
+`gunbhub_serve_program` left the deletion set in §4d's re-derivation and the row is correct
+again. **This PR touches no file under `src/v1`.**
 
-The row is removed rather than the module restored: an exclusion exists to keep a module out
-of a resolve walk, and a module that is gone needs no exclusion.
-
-**What this says about the precondition.** A source-extension scan is not a complete
-consumption surface -- data files carry references too, and this one was load-bearing.
-Nothing else in the 71 has a `.txt`, `.json`, `.jsonl` or `.lock` reference outside historical
-receipt transcripts, checked after the fact. The general point stands for the next pass: the
-census's decoded-surface list should include authored data files, not only source.
+The reusable finding stands and is what the episode was worth: **a source-extension mention
+scan is not a complete consumption surface.** Authored data files carry references, and this
+one was load-bearing. The census's decoded-surface list should include them. That check is
+now part of the precondition in §1 and it stays there whether or not any row trips it.
 
 ## 4c. One deleted row was a committed copy of a DO-NOT-COMMIT artifact
 
@@ -210,45 +203,81 @@ is the wrong predicate for a row whose purpose is to be read by a human ledger.*
 row and section 3's `commit_closure_store` are that shape, and neither was caught by a
 mechanical rule -- both came from a per-row disposition someone had already written down.
 
-## 4d. Instrument defect 7, found by the floor: variant constructors are declared symbols
+## 4d. Four extraction defects, one mechanism: under-extraction creates false uniqueness
 
-**The floor refused this change, and the refusal was correct.** `required-ci` reported
-`unresolved type 'MergeReadinessVerdict'` in `gunbc.code_change_workflow` and eight
-`undefined variable 'Ready'` in its witness. `gunbc.pr_digests` was deleted and should not
-have been.
+**The floor refused the first cut**, with `unresolved type 'MergeReadinessVerdict'` and eight
+`undefined variable 'Ready'` in `gunbc.code_change_workflow`. `gunbc.pr_digests` had been
+deleted and should not have been.
 
-**Root cause, in the instrument rather than in the tree.** The re-score's declared-symbol
-extraction matched `fn`, `data`, `type` and `const` declarations. It did not match
-**coproduct variant constructors** -- the `= Ready | NotReady { ... }` continuation lines
-under `type MergeReadinessVerdict`. So `pr_digests` was credited with owning
-`MergeReadinessVerdict` but not `Ready` or `NotReady`, and `code_change_workflow` names
-`Ready` **bare, with no import** -- precisely the whole-pool resolution the defect-6 re-score
-exists to detect. The instrument was decoding declarations and not their variants, which is
-the census's own defect 6 one level down.
+The defect-6 re-score asks whether another `.dag` file names a candidate's declared symbol
+*bare*. Answering needs to know what a module **declares** — and four ways of getting that
+wrong were found, all under-extraction, all with the same consequence:
 
-**Corrected numbers at this branch's base**, replacing those in section 1 rather than sitting
-beside them:
-
-| bucket | as first measured | with variants counted |
+| # | defect | effect |
 | --- | --- | --- |
-| CONSUMED-DECISIVE | 89 | **94** |
-| STILL-UNCONSUMED | 107 | 102 |
-| DEAD-CONSUMER-ONLY | 32 | 31 |
-| AMBIGUOUS-SHARED-ONLY | 74 | 75 |
-| **residue** | 139 | **133** |
+| 7 | coproduct **variant constructors** not extracted (`= Ready \| NotReady`) | found here, by the floor |
+| a | a **generic header** `type X<P> = A \| B` skips the block | relayed by `silent-deer-368` |
+| b | a **multi-line variant record** truncates a start-of-line scan | relayed by `silent-deer-368` |
+| c | `operation`/`service`/`resource` are **declarations**, read as references | relayed by `silent-deer-368` |
+| d | a **same-line coproduct** `type X = A \| B` | found by their discriminator, in *my* extractor |
 
-Five modules move from residue to consumed. Only one of them was in the deleted batch, and
-it is the one the floor named.
+**Why this direction is the dangerous one.** Under-extraction means a module owns fewer
+symbols than it does, which makes a *shared* name look **uniquely owned** — false uniqueness.
+A module whose declarations all sit behind an unparsed header owns nothing, so a live consumer
+naming its symbols bare is invisible and the module scores residue and **gets deleted**. That
+is the opposite direction from the `pr_digests` case, which merely kept a dead-looking module
+alive.
 
-**What this says about the evidence in section 2, which was real but not sufficient.**
-`reachable` and `CONSUMED-DECISIVE` were unchanged across the cut, and I read that as
-"nothing consumed was touched". Both counters were computed by the *same instrument that had
-the defect*, so they could not see the case they were blind to -- a control derived from the
-measurement it is controlling cannot discriminate the measurement's own blind spot. **The
-floor could, and did.** That is the delete-first doctrine working exactly as DESIGN 3
-describes it: the deletion is the census, the real dependent refused loudly, and the refusal
-identified a load-bearing edge that three static surfaces and two reviews had all passed
-over.
+**Fixed at the root, not per bug.** Adopted `silent-deer-368`'s region-based extractor: a
+type's region runs to the next top-level declaration (so (b) cannot truncate it), a leading
+`<...>` is stripped before testing for `=` (so (a) parses), and `operation`/`service`/
+`resource` names are declarations (so (c) does not misattribute). Verified against their four
+discriminators — `Apply` in `std.upsert_decision`, `Select` in `v2.extdeps.languages.llvm_ir`,
+`Ready` in `gunbc.pr_digests`, `Capability` in `std.behavioral` — **my extractor passed three
+and failed the fourth**, which is how (d) was found. Their (c) tell also passes:
+`extdeps.transports.sql` scores AMBIGUOUS rather than consumed-by-`filesystem_io`, which
+linked to it only through `operation Delete {`.
+
+**What re-deriving cost, and it was not nothing.** **13 modules left the deletion set** — nine
+formatters, the `language_model` rust root, `generic_instantiation`, `roadmap_dispatch`,
+`gunbhub_serve_program` — and **every one landed in AMBIGUOUS-SHARED-ONLY, not CONSUMED.**
+That distinction is the whole reason the bucket exists: they are *no longer provably
+unconsumed* and *not proven consumed*, so none may be deleted on this evidence, and reading
+the shrinking residue as "more live modules found" would collapse exactly the gap the bucket
+is there to hold.
+
+**The general lesson, which outlives every row above:**
+
+> **A control derived from the measurement it controls does not discriminate that
+> measurement's blind spot.**
+
+Both counters §2 offers came from the instrument carrying defect 7. The floor caught it
+because the floor is an independent instrument that does not share the method. That is
+delete-first's actual mechanism (DESIGN §3): not that the rule is trustworthy, but that the
+substrate refuses on an authority the rule had no part in building. And defects (a)-(d) were
+found by **hand-reading rows**, with counters that stayed consistent throughout — the same
+lesson arriving a second time, from the other direction.
+
+## 4g. Eligibility is a fixed point over the set, not a property of a module
+
+31 residue rows are named bare only from *inside* the population. A per-module verdict over a
+mutually-referencing island returns "consumed" for every member and the island never becomes
+eligible; splitting one across batches reds the first batch.
+
+So the deletion set is computed as a **fixed point**: repeatedly drop any module with a
+surviving in-population consumer, until nothing drops. This ran twice for real, in both
+directions, which is why it is a section rather than a footnote:
+
+- **A deletion created a violation.** The first cut deleted `gunbc.pr_digests` while keeping
+  `gunbc.code_change_workflow` — one island, split. That is the row the floor refused on.
+- **A restore created one.** Putting the 13 AMBIGUOUS rows back re-created an in-population
+  consumer for `v2.std.rust_leaf_model_claim` (via `v2.test.language_model.rust`), which had
+  been eligible until its neighbour returned.
+
+**This is the reason the change is one PR** and not six cluster PRs: the property is over the
+set, so six PRs merging in arbitrary order re-open exactly this class unless each is
+re-derived against the others' merged state — strictly more work and strictly more risk than
+keeping the set closed. The reviewer's seams are the commits.
 
 ## 4f. A finding walked past while editing the pin, filed rather than fixed
 
@@ -276,16 +305,10 @@ without host fixed-point closure) — and repairing an oracle inside a deletion 
 this document's own §6 objection turned on itself. Recorded because the person who paid the
 cost is the right person to report it, and the wrong person to fix it.
 
-### Why the `src/v1` edit is admitted
-
-`census_exclude_derive.rs` is in the frozen seed, so the edit needs its class named.
-**The row the pin names is deleted by this PR**, so the choice is not *touch v1 or leave it
-alone* — it is *move two count literals, or knowingly land a dangling citation in the seed*,
-which is the staleness class this repository polices, landed deliberately. Under
-`gunbc.v1_maintenance_standing`'s PURPOSE test this is maintenance of an existing pin
-tracking a v2-side deletion: no new surface, no new capability, two literals following a row
-that had to move. The coupled change is the smaller harm and it is caused by this PR rather
-than imported into it.
+**Postscript: the edit that prompted this is reverted.** `gunbhub_serve_program` left the
+deletion set in §4d, so the pin's row is correct again and the literals return to 83 and 27.
+The finding is filed on its own merits, which is where it always belonged -- it is a property
+of the pin, not of this deletion.
 
 ## 5. The 56 deleted
 
