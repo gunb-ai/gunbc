@@ -506,8 +506,40 @@ same as a residue of forty.
 38 files both declare a cardinality-optional and construct the v2 coproduct.
 That is an **upper bound on candidates**, not a defect count — a file may
 legitimately hold both forms, and the defect is a **site** where a
-cardinality-optional position receives a coproduct value. The site-grain join is
-the measurement; until it lands, 38 is not a count of anything.
+cardinality-optional position receives a coproduct value.
+
+**The join has now landed (2026-08-22), and it moved the number twice over.**
+Compiling each of the 38 candidates and collecting the class's two diagnostic
+shapes:
+
+| quantity | value | what it is |
+|---|---|---|
+| raw diagnostic rows | 136 | a unit of the **apparatus** |
+| **unique sites** | **43** | a unit of the **world** — the defect count |
+| **files containing a site** | **14** | of 38 candidates scanned |
+
+Both intermediate numbers are traps and both were live here. **The row count
+overstates by 3.2×**, because the entry column is the file compiled and not the
+file containing the site, so one site in `extdeps.transports.rest` reappears
+under every entry whose closure reaches it — the row count is a function of how
+many entries someone chose to compile, which is a fact about their harness.
+**The candidate-file count overstates the affected files by 2.7×**, because
+co-occurrence of the two forms in one file is not a defect.
+
+The two shapes, which are one class seen from either side of the same
+conflation:
+
+- 28 — `type mismatch: expected 'Coproduct(X)', got 'Coproduct(Optional)'`
+- 15 — `if branches resolve to incompatible types: Coproduct(Optional) vs Product(Unit)`
+
+Concentration is real and worth knowing before anyone plans the repair: 3 of 14
+files (`product.spatial_projection`, `product.spatial_edit`,
+`product.rack_mount`) hold 20 of the 43 sites.
+
+**What this measurement does not cover, stated so it is not read as complete:**
+the 38 candidates were derived textually, so a module whose cardinality-optional
+declaration my pattern did not match is invisible to this join. 43 is a measured
+count over that candidate set, not a proof of the corpus-wide total.
 
 ### For whoever runs a qualification pass next
 
