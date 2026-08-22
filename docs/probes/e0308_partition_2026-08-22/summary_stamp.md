@@ -48,4 +48,11 @@ Four clusters cover 57% of sites; six more are single-file and cover another 45.
 sites in 4 files. This is a small number of producer decisions with wide fanout, not a site-by-site
 tail — the same shape the 2026-08-21 board reported on a different population.
 
+## The 182 in the commissioning brief
+
+Traced to the **465-board** at `4ce177491202217a1a1520b413a62b7c7dfe9f71` and withdrawn by its
+author, along with the accompanying 465-era histogram. Its retained series — 465-board 182,
+399-board 174, 339-board 135 — is monotone and this run's 128 is its next point. Nothing here is
+differenced against it.
+
 Receipt: [`e0308_partition_2026-08-22.md`](../e0308_partition_2026-08-22.md).
