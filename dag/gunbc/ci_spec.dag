@@ -841,10 +841,40 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
 }
 
 // Fleet convergence collection (operator verdict join 5, parent verification
-// msg_8d84ae4f): the LIVE invocation wire for collect_fleet_convergence_wet — runs on
-// main pushes downstream of the required ci check, from srv1 (inside the fleet, over
-// the typed SSH probe seam), so the collector->fold composition executes on a real
-// cadence and its collect receipt is printed into the job log.
+// msg_8d84ae4f). THIS WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE.
+// It read, present tense, that this is the LIVE invocation wire for
+// collect_fleet_convergence_wet, that it runs on main pushes downstream of the required
+// ci check from srv1 over the typed SSH probe seam, and that the collector-to-fold
+// composition therefore executes on a real cadence. Every clause of that was true when
+// written and none of it is true now: the step it builds was a step of ci.yml, and the
+// floor cut deleted that workflow. Measured 2026-08-22 — this function has ZERO
+// consumers, and no file under .github/workflows names collect_fleet_convergence_wet.
+// The three surviving workflows are witnesses.yml, fleet-converge.yml and
+// fleet-desired.yml, and none of them reaches it.
+//
+// WHY THE FALSE SENTENCE SURVIVED THE CUT, which is the part worth keeping. Nothing
+// refused when ci.yml was deleted, because no carrier ever had a dependency EDGE to a
+// workflow — they had prose naming it. DESIGN's delete-first doctrine rests on the
+// deletion BEING the census, every real dependent refusing loudly; a prose dependent
+// cannot refuse at all, so this class is exactly the doctrine's blind spot. See
+// docs/plans/replacement-migration-doctrine.md, which now names referents-named-rather-
+// than-imported alongside the other things a deletion cannot discover -- and records that
+// the path this comment spells is ALREADY a symbol: gunbc.generated_artifact
+// WitnessFloorYamlArtifact. A carrier pointing at the variant instead of the filename
+// gets its census from coproduct exhaustiveness for free.
+//
+// THIS CORRECTION IS ONE SENTENCE AND NOT A SWEEP (operator ruling, 2026-08-22).
+// ci.yml is still named 99 times across 39 .dag files, and correcting all of them would
+// fix those sentences and leave the class as open as it was — the next workflow deleted
+// decays the same way. The count is recorded rather than swept; the durable fix is the
+// next-rung trigger in that document, not prose hygiene here. This one is corrected
+// because it had already cost a session real time: read first, it agreed with what the
+// code looked like, and it nearly produced a report of a live actuation defect against
+// two hosts that do not exist.
+//
+// WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because the
+// collector it names is not itself dead — collect_fleet_convergence_wet is intact and
+// hand-callable. What ended is this wire's enrolment, not the capability.
 
 
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
