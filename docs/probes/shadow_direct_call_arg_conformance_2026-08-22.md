@@ -201,6 +201,37 @@ The `judged` column is byte-identical across both arms (1,100 / 1,093 / 0 / 7), 
 expected signature of a shared non-`v2.*` sub-closure and a second, incidental check that the
 instrument is deterministic across runs.
 
+## The ceiling row — held open, deliberately unfilled
+
+A guard-removal arm (exemption rewritten to `false`, whole-tree compile-clean histogram,
+cold, two-arm on one tree) is the **upper bound** on this population and is owned by
+`gentle-fox-223`. **As of this document it has not landed**, so the row cites a pending
+measurement rather than a number of mine — filling it with anything derived here would be
+the fabricated-plausible-output failure, since a ceiling I compute myself is not a ceiling.
+
+Two things are known about it in advance and both are recorded so the eventual number is
+read rather than inherited:
+
+- **It cannot partition.** That instrument has exactly two outcomes — a diagnostic appeared
+  or it did not — so every representation-gap false positive lands in it as though it were a
+  defect. It bounds; the adjudication above is what makes a bound mean anything.
+- **It is a different unit.** It counts DIAGNOSTICS produced with the guard removed; this
+  counts RELATION ROWS classified `WouldDiagnose`. One relation can produce no diagnostic if
+  a sibling arm already refused the call. Same order of magnitude is the agreement to look
+  for; a wide divergence is first a unit question, not a finding.
+
+The falsifiable prediction sent to that lane before its run finished: its delta on this
+closure should be dominated by the same two alias families and led by `v2.compiler.eval`.
+A family in the delta that is **not** an alias pair would be the first evidence this
+document's zero is closure-dependent.
+
+## A population NEITHER arm covers, named because nobody owns it
+
+The 521 unadjudicated relations are skipped by *production*, upstream of the guard — so a
+guard-removal arm cannot see them either. If hidden source debt exists at the argument seam,
+that is where it is, and reaching it needs a third instrument that judges an anonymous record
+literal against its formal. No lane currently owns that.
+
 ## Artifacts
 
 - `would_diagnose_ingest03.tsv` — all 115 candidate relations (03_ingest arm), full row shape.
