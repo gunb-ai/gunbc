@@ -1,8 +1,35 @@
 module std.dissolution
 
 
+// TWO TRIGGER SHAPES, AND THE SECOND IS THE ONE THE CORPUS ACTUALLY WRITES.
+//
+// `DeclarationAppears` fires when the named declaration is FOUND, so every trigger built
+// from it is a FORWARD reference — it names a carrier that does not exist yet. That is
+// correct for an obligation discharged by building something new, and it is the shape
+// `gunbc.self_host_promotion_obligations` reasons about at length.
+//
+// It is the wrong shape for the retirement this corpus overwhelmingly records. Measured
+// on this tree, the `dissolve-on:` marker names the SUBJECT — the declaration that must
+// GO AWAY — not a carrier that must arrive: `sol_console_send`, `configfs_op_line`,
+// `nbd_server_config_text`, `fleet_converge_apply_shell` and their kin are all live
+// declarations whose disappearance IS the retirement. With only the forward shape
+// available, an author had exactly two moves: bind forward to a symbol nobody has
+// declared, which `gunbc.runner_spec_from_offer` refuses by name as the DESIGN §3
+// fabricated-citation class, or write the condition into a description string. The
+// second move won overwhelmingly, and a description is unreadable to
+// `dissolution_status` by construction — so the debt's retirement condition became
+// something no mechanism can see. (The count is deliberately not written here: a
+// measurement is machine-consumed data and DESIGN §4c homes it in a carrier, not in an
+// annotation no `Accepted` program can read.)
+//
+// So the missing variant is the defect, not the authors. `DeclarationRetires` fires when
+// the named declaration is ABSENT, over exactly the same evidence the forward shape
+// already consumes. It has a property its sibling lacks: its ref names something that
+// exists TODAY, so it is verifiable at the moment it is written rather than a promise
+// about a name someone may or may not choose later.
 type DissolutionTrigger
   = DeclarationAppears { ref: std.decl_ref.DeclarationRef }
+  | DeclarationRetires { ref: std.decl_ref.DeclarationRef }
 
 type DissolutionCondition
   = BoundDissolution { trigger: DissolutionTrigger }
@@ -16,6 +43,18 @@ type DissolutionStatus
 fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> std.decl_ref.DeclarationRef {
   match trigger {
     DeclarationAppears { ref: r } => r
+    DeclarationRetires { ref: r } => r
+  }
+}
+
+// The one place the two shapes differ: presence discharges the forward trigger, absence
+// discharges the retirement trigger. Both read the same `present_decls` evidence, so a
+// consumer that can answer one can already answer the other.
+fn dissolution_trigger_fired(trigger: DissolutionTrigger, present_decls: List<std.decl_ref.DeclarationRef>) -> Bool {
+  let present = declaration_ref_in_list(target: dissolution_trigger_ref(trigger: trigger), refs: present_decls)
+  match trigger {
+    DeclarationAppears { ref: _ } => present
+    DeclarationRetires { ref: _ } => !present
   }
 }
 
@@ -25,7 +64,7 @@ fn dissolution_status(
 ) -> DissolutionStatus {
   match condition {
     BoundDissolution { trigger: t } =>
-      if declaration_ref_in_list(target: dissolution_trigger_ref(trigger: t), refs: present_decls) {
+      if dissolution_trigger_fired(trigger: t, present_decls: present_decls) {
         DissolutionFired
       } else {
         DissolutionPending
@@ -38,6 +77,15 @@ fn dissolution_status(
 
 fn bound_dissolution(ref: std.decl_ref.DeclarationRef) -> DissolutionCondition {
   BoundDissolution { trigger: DeclarationAppears { ref: ref } }
+}
+
+// RETIREMENT BY DISAPPEARANCE. `ref` names a declaration that exists NOW and whose
+// deletion is the condition — so an empty `present_decls` reports this condition FIRED,
+// which is the honest reading of "nothing is present" and not a default to fall back on.
+// A consumer folding retirement triggers must supply the real declaration population or
+// it is answering a question about a corpus it did not read.
+fn retires_dissolution(ref: std.decl_ref.DeclarationRef) -> DissolutionCondition {
+  BoundDissolution { trigger: DeclarationRetires { ref: ref } }
 }
 
 // The refinement is the PARAMETER, not an internal cast. The cast form was

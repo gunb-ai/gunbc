@@ -1892,9 +1892,9 @@ fn parse_token_at_optional(tokens: std.types.List<v2.std.compilers.lexing.Token>
 
 
 fn parse_expr_terminal(
-  token_class: v2.std.node.Symbol,
-  stamp: v2.std.grammar.StampClass,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  token_class: Symbol,
+  stamp: TerminalStampMode,
+  tokens: List<v2.std.compilers.lexing.Token>,
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
@@ -1914,7 +1914,7 @@ fn parse_expr_terminal(
                 )
                 match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: v2.std.node.node_occurrence_minted(id: minted.id)
+                  occurrence_id: minted.id
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
@@ -1925,7 +1925,10 @@ fn parse_expr_terminal(
                       table: table
                     }
                   Rejected { diagnostics: d } =>
-                    ParseExprRejected { diagnostics: d, table: table }
+                    ParseExprRejected {
+                      diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+                      table: table
+                    }
                 }
               } else {
                 let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)

@@ -304,7 +304,7 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
                     reason: join([
                       "fleet_desired_admission: the action was authorized, but the admission checkout's ",
                       "source revision could not be observed, so the receipt cannot record which source ",
-                      "this run adjudicated from -- refusing to actuate rather than publish an ",
+                      "this run was running from -- refusing to actuate rather than publish an ",
                       "unattributable action",
                     ], ""),
                   )

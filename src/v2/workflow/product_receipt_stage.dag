@@ -21,6 +21,7 @@ data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_in
 data product_receipt_stage_candidate_rel: String = "/candidate"
 data product_receipt_stage_receipt_rel: String = "/receipt.txt"
 data product_receipt_stage_census_rel: String = "/b4-retention-census.txt"
+data product_receipt_stage_ledger_rel: String = "/b4-diagnostic-ledger.txt"
 
 fn stage_identity_from_hex(hex: String, file_count: Int) -> v2.workflow.product_receipt.ArtifactIdentity {
   match std.content_hash.fnv1a64_structural_hex_digest(hex: hex) {
@@ -159,7 +160,8 @@ fn emitter_diagnostic_causes(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> std.t
 type ProductReceiptCandidate {
   observation: v2.workflow.product_receipt.BoundaryObservation
   emitted_source: String
-  census: v2.workflow.body_lowering_retention_census.CensusOutcome
+  census: B4EvidenceOutcome
+  ledger: B4EvidenceOutcome
 }
 
 func product_receipt_candidate(
@@ -202,6 +204,10 @@ func product_receipt_candidate_refused(
     path: concat(txn, product_receipt_stage_census_rel),
     content: retention_census_render(families: retention_census(ds: ds))
   )
+  let ledger_write = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_ledger_rel),
+    content: diagnostic_ledger_render(ds: ds)
+  )
   ProductReceiptCandidate {
     observation: stage_refused(
       boundary: v2.workflow.product_receipt.ClosureCandidateEmitted,
@@ -209,7 +215,8 @@ func product_receipt_candidate_refused(
       consumed: population_digest
     ),
     emitted_source: "",
-    census: if census_write.success { v2.workflow.body_lowering_retention_census.CensusWritten } else { v2.workflow.body_lowering_retention_census.CensusWriteFailed }
+    census: if census_write.success { EvidenceWritten } else { EvidenceWriteFailed },
+    ledger: if ledger_write.success { EvidenceWritten } else { EvidenceWriteFailed }
   }
 }
 
@@ -227,7 +234,8 @@ func product_receipt_candidate_materialize(
         consumed: population_digest
       ),
       emitted_source: emitted_source,
-      census: v2.workflow.body_lowering_retention_census.CensusNotApplicable
+      census: EvidenceNotApplicable,
+      ledger: EvidenceNotApplicable
     }
   } else {
     let made = shell.Mkdir.Parents(path: concat(candidate_dir, "/src"))
@@ -243,7 +251,8 @@ func product_receipt_candidate_materialize(
           produced: v2.workflow.product_receipt.product_artifact_identity(value: emitted_source, file_count: 1)
         ),
         emitted_source: emitted_source,
-        census: v2.workflow.body_lowering_retention_census.CensusNotApplicable
+        census: EvidenceNotApplicable,
+        ledger: EvidenceNotApplicable
       }
     } else {
       ProductReceiptCandidate {
@@ -253,7 +262,8 @@ func product_receipt_candidate_materialize(
           consumed: population_digest
         ),
         emitted_source: emitted_source,
-        census: v2.workflow.body_lowering_retention_census.CensusNotApplicable
+        census: EvidenceNotApplicable,
+        ledger: EvidenceNotApplicable
       }
     }
   }
@@ -488,12 +498,14 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     ProductReceiptCandidate {
       observation: stage_not_exercised(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted),
       emitted_source: "",
-      census: v2.workflow.body_lowering_retention_census.CensusNotApplicable
+      census: EvidenceNotApplicable,
+      ledger: EvidenceNotApplicable
     }
   }
   let b4 = candidate.observation
   let emitted_source = candidate.emitted_source
   let census_outcome = candidate.census
+  let ledger_outcome = candidate.ledger
 
   let b4_ok = match b4.standing {
     BoundaryCompleted => true
@@ -537,9 +549,13 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     content: v2.workflow.product_receipt.product_receipt_render(receipt: receipt)
   )
 
-  if !census_outcome_admits(outcome: census_outcome) {
+  if !b4_evidence_outcome_admits(outcome: census_outcome) {
     exit_failure(
       reason: "boundary-4 retention census could not be written; the receipt would understate a population it observed"
+    )
+  } else if !b4_evidence_outcome_admits(outcome: ledger_outcome) {
+    exit_failure(
+      reason: "boundary-4 diagnostic ledger could not be written; the receipt would name a refusal it cannot attribute"
     )
   } else {
     if written.success && product_receipt_green(receipt: receipt) {

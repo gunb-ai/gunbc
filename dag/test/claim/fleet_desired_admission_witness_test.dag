@@ -512,14 +512,18 @@ test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_a
 }
 
 // WHAT THIS FIELD IS, AND WHAT IT IS NOT. The receipt records the revision of the SOURCE TREE the
-// admission checkout was sitting on when it adjudicated -- nothing stronger. It is NOT the
-// revision of the binary that ran (nothing embeds that yet), NOT the candidate being admitted,
-// and NOT the workflow transport identity that GITHUB_WORKFLOW_SHA carries. Those four coincide
-// in today's workflow only because the job checks out one tree, builds the deciding binary from
-// it in the same job, and adjudicates in that same checkout -- a property of the CALLER, not of
-// this function. They diverge the moment the binary is pinned or prebuilt, which is exactly the
-// cut this recording exists to make falsifiable. The field is named for the observation, not for
-// the inference, so that the later pinning work has something to contradict.
+// admission checkout was sitting on, OBSERVED AFTER the authorized action was derived and BEFORE
+// that action was materialized -- nothing stronger, and in particular not an atomic reading taken
+// at the instant of adjudication. The wet entry point derives the action first and only then reads
+// HEAD, so a tree mutated in between would be reported rather than the tree that actually decided;
+// nothing in today's single-checkout job does that, which is a property of the CALLER again.
+// It is NOT the revision of the binary that ran (nothing embeds that yet), NOT the candidate
+// being admitted, and NOT the workflow transport identity that GITHUB_WORKFLOW_SHA carries.
+// Those four coincide in today's workflow only because the job checks out one tree, builds the
+// deciding binary from it in the same job, and adjudicates in that same checkout -- a property
+// of the CALLER, not of this function. They diverge the moment the binary is pinned or prebuilt,
+// which is exactly the cut this recording exists to make falsifiable. The field is named for the
+// observation, not for the inference, so the later pinning work has something to contradict.
 test fn the_advance_receipt_names_the_observed_judge_source_revision() -> Bool {
   let script = fleet_desired_authorized_action_script(
     action: FleetDesiredRemoteAdvance {

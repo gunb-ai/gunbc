@@ -16,7 +16,18 @@ type NbdExport {
   read_only: Bool
 }
 
-data nbd_server_config_render_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join.")
+// NbdExport is the typed authority; this renders it into nbd-server's INI config-file
+// format — a rendered artifact like grub_config_render, not shell — with the
+// section/key layout joined inline.
+//
+// It dissolves when a shared ini/config-file grammar (the emit direction of
+// extdeps.languages) renders NbdExport structurally, at which point the inline join
+// `nbd_server_config_text` is deleted rather than edited. The trigger names that
+// declaration, so the obligation is answered by the corpus rather than by reading this
+// paragraph.
+data nbd_server_config_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_config_text")
+)
 
 fn nbd_bool_word(b: Bool) -> String {
   if b { "true" } else { "false" }

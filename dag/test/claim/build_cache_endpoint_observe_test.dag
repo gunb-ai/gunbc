@@ -1,0 +1,450 @@
+module test.claim.build_cache_endpoint_observe
+
+
+data ambiguous_type_name_import_note: String = "THIS MODULE IMPORTS ProcessIdentity EXPLICITLY BECAUSE THE BARE NAME IS AMBIGUOUS CORPUS-WIDE, AND THE AMBIGUITY RESOLVES SILENTLY. Two types carry that name -- gunbc.build_cache_instance ProcessIdentity (boot_id, pid, start_time) and extdeps.posix ProcessIdentity (id, command, parent) -- and a module with no import block resolves the bare name by last-import-wins rather than refusing, which is one of the three confirmed source-path construction holes DESIGN names beside the sole_constructor wall. The observable cost was measured here rather than reasoned about: a targeted compile of this entry resolved a closure that never loaded extdeps.posix and reported zero blocking diagnostics, while the whole-corpus witness floor loaded both and refused with `no field 'pid' on type 'ProcessIdentity'` at the assertion below. The import is therefore not decoration -- it is the only thing that makes this module's meaning independent of which other modules happen to be in the resolver's population. A green targeted compile is not evidence that a bare name is unambiguous; only a run whose population contains every homonym is."
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data endpoint_observe_witness_doc: String = "THE CONTROLS FOR THE PRODUCER THAT WAS MISSING. Every fixture below is READ TEXT in the shape the live commands emit, and every assertion runs the same decode the realize path runs -- gunbc.build_cache_endpoint_observe survey_build_cache_endpoint, then gunbc.build_cache_ensure admit_ensure_build_cache_instance -- so what is witnessed is the decision realization now makes, not a restatement of the fold's arms. The specimen text is authored from the receipts in docs/plans/build-cache-placement-receipt.md and from proc(5); the two host-only controls (that a second observation does not perturb the subject, and that no read starts a server) remain live receipts rather than witnesses here, because a hermetic fixture cannot falsify them.\n\nTHE DISCRIMINATING RED IS witness_unreadable_listener_refuses_rather_than_admitting. A decoder that treated 'the fd-holder walk printed nothing' and 'the fd-holder walk could not be run' as one state would answer 'no listener' to a question it never got an answer to, and the admission would then ADMIT -- writing a unit and restarting it on a host whose current state was never read. That witness and witness_absent_endpoint_is_admitted differ in exactly one input field and must land on opposite arms; if the HostRead coproduct were collapsed to a String, they would both go green on the admitted arm and the wall would be gone."
+
+fn observe_srv1_ci_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv1")
+}
+
+data observe_managed_unit_cgroup_text: String = "0::/system.slice/gunbc-build-cache-ci.service\n"
+data observe_retired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service\n"
+data observe_desired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-02.service\n"
+
+data proc_net_unix_header: String = "Num       RefCount Protocol Flags    Type St Inode Path\n"
+
+data observe_proc_net_unix_listening_text: String = "Num       RefCount Protocol Flags    Type St Inode Path\n0000000000000000: 00000002 00000000 00010000 0001 01 3894042 /var/lib/ctrl/sccache-ci/server.sock\n0000000000000000: 00000003 00000000 00000000 0001 03 3894099 /run/dbus/system_bus_socket\n"
+
+data observe_proc_net_unix_no_listen_text: String = "Num       RefCount Protocol Flags    Type St Inode Path\n0000000000000000: 00000003 00000000 00000000 0001 03 3894099 /run/dbus/system_bus_socket\n"
+
+data observe_proc_net_unix_sibling_instance_only_text: String = "Num       RefCount Protocol Flags    Type St Inode Path\n0000000000000000: 00000002 00000000 00010000 0001 01 7770001 /var/lib/ctrl/sccache/server.sock\n"
+
+data observe_find_one_holder_text: String = "/proc/3975946/fd/4\n"
+data observe_find_two_holders_text: String = "/proc/3975946/fd/4\n/proc/4001122/fd/7\n"
+
+data observe_proc_stat_text: String = "3975946 (sccache) S 1 3975946 3975946 0 -1 4194560 1234 0 0 0 10 5 0 0 20 0 5 0 79870020 2307932160\n"
+data observe_proc_stat_adversarial_comm_text: String = "4242 (sc cache (x) ) S 1 4242 4242 0 -1 4194560 7 0 0 0 1 1 0 0 20 0 5 0 51501010 1024\n"
+data observe_boot_id_text: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b\n"
+
+fn observe_listen_inode(unix_text: String) -> gunbc.build_cache_endpoint_observe.EndpointInodeLookup {
+  gunbc.build_cache_endpoint_observe.listen_inode_at_path(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: unix_text },
+    path: "/var/lib/ctrl/sccache-ci/server.sock" as NonEmptyStr,
+  )
+}
+
+fn observe_reads_full(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  unix_text: String,
+  holder_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> gunbc.build_cache_endpoint_observe.BuildCacheEndpointReads {
+  gunbc.build_cache_endpoint_observe.BuildCacheEndpointReads {
+    boot_id: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_boot_id_text },
+    path_kind: path_kind,
+    listen_inode: observe_listen_inode(unix_text: unix_text),
+    listener: gunbc.build_cache_endpoint_observe.fd_holder_of_find_output(read: holder_read),
+    owner_cgroup: gunbc.build_cache_endpoint_observe.HostReadText { text: cgroup_text },
+    owner_proc_stat: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_proc_stat_text },
+    owner_principal: gunbc.build_cache_endpoint_observe.HostReadText { text: "ghrunner\n" },
+    owner_executable: gunbc.build_cache_endpoint_observe.HostReadText { text: "/usr/local/bin/sccache\n" },
+  }
+}
+
+fn observe_admission_full(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  unix_text: String,
+  holder_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> EnsureBuildCacheAdmission {
+  let instance = observe_srv1_ci_instance()
+  let survey = gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: instance,
+    reads: observe_reads_full(path_kind: path_kind, unix_text: unix_text, holder_read: holder_read, cgroup_text: cgroup_text),
+  )
+  admit_ensure_build_cache_instance(
+    desired: instance,
+    placement: survey.placement,
+    observed_path: survey.path,
+    currency: survey.currency,
+  )
+}
+
+fn observe_placement_full(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  unix_text: String,
+  holder_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> BuildCacheServerPlacement {
+  gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: observe_srv1_ci_instance(),
+    reads: observe_reads_full(path_kind: path_kind, unix_text: unix_text, holder_read: holder_read, cgroup_text: cgroup_text),
+  ).placement
+}
+
+fn observe_path_state_full(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  unix_text: String,
+  holder_read: gunbc.build_cache_endpoint_observe.HostRead,
+) -> EndpointPathState {
+  gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: observe_srv1_ci_instance(),
+    reads: observe_reads_full(path_kind: path_kind, unix_text: unix_text, holder_read: holder_read, cgroup_text: observe_managed_unit_cgroup_text),
+  ).path
+}
+
+fn observe_one_holder_read() -> gunbc.build_cache_endpoint_observe.HostRead {
+  gunbc.build_cache_endpoint_observe.HostReadText { text: observe_find_one_holder_text }
+}
+
+fn observe_no_holder_read() -> gunbc.build_cache_endpoint_observe.HostRead {
+  gunbc.build_cache_endpoint_observe.HostReadText { text: "" }
+}
+
+fn admission_is_refused_with_placement_unknown(admission: EnsureBuildCacheAdmission) -> Bool {
+  match admission {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsurePlacementUnknown { detail: _ } => true
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointPathConflict { detail: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_managed_unit_owner_is_already_converged() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_listening_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureAlreadyConverged { desired: _, unit: u } => (u as String) == "gunbc-build-cache-ci.service"
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+test fn witness_retired_runner_slot_owner_refuses() -> Bool {
+  match observe_placement_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_listening_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_retired_slot_cgroup_text,
+  ) {
+    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+      match lc {
+        RetiredRunnerSlot => s.slot_index == 10
+        DesiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_desired_runner_slot_owner_also_refuses() -> Bool {
+  match observe_placement_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_listening_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_desired_slot_cgroup_text,
+  ) {
+    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+      match lc {
+        DesiredRunnerSlot => s.slot_index == 2
+        RetiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_runner_owned_endpoint_is_not_admitted() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_listening_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_retired_slot_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointOccupied { owner: o } => o.pid == 3975946
+        EnsureEndpointPathConflict { detail: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_absent_endpoint_is_admitted() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindAbsent,
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_no_holder_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: lines } =>
+      match p {
+        EndpointClearForBind => lines.count() > 0
+        EndpointClearedByUnlink { stale_detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+data unreadable_listener_red_note: String = "THE DISCRIMINATING RED, AND WHAT IT IS DISCRIMINATING AGAINST. This witness and witness_absent_endpoint_is_admitted differ in ONE input: whether the fd-holder walk succeeded with empty output or failed. The first must be admitted (nothing holds the endpoint, a bind is clear) and the second must refuse (we do not know what holds it). Collapse gunbc.build_cache_endpoint_observe's HostRead coproduct to a bare String -- the shape this producer would have had if the reads were plumbed as text -- and both inputs become the empty string, both witnesses land on the admitted arm, and a host whose state could not be read gets a unit written and restarted on it. That is the empty-observation narrow, and this pair is what keeps it unwritable rather than merely unwritten. It is sharper under the /proc chain than it was under ss, because here the walk's EMPTY result is itself the evidence that licenses an unlink -- so the failed-versus-empty distinction is load-bearing twice over."
+
+test fn witness_unreadable_listener_refuses_rather_than_admitting() -> Bool {
+  admission_is_refused_with_placement_unknown(
+    admission: observe_admission_full(
+      path_kind: gunbc.build_cache_endpoint_observe.PathKindAbsent,
+      unix_text: observe_proc_net_unix_no_listen_text,
+      holder_read: gunbc.build_cache_endpoint_observe.HostReadFailed {
+        detail: "the read exited 1: find: /proc: Permission denied" as NonEmptyStr,
+      },
+      cgroup_text: observe_managed_unit_cgroup_text,
+    ),
+  )
+}
+
+data sibling_instance_red_note: String = "THE SECOND DISCRIMINATING RED: srv1 AND srv2 EACH RUN TWO CACHE INSTANCES. /var/lib/ctrl/sccache-ci/server.sock is the CI instance and /var/lib/ctrl/sccache/server.sock is the session instance, and the second is a PREFIX-ADJACENT path of the first's parent directory. A decode matching the path column by prefix or by `contains` would read the session server as the CI endpoint's owner and derive placement from the wrong process entirely. This fixture presents a table in which ONLY the sibling is listening; the CI endpoint must come back with no listen entry."
+
+test fn witness_sibling_instance_is_not_read_as_this_endpoint() -> Bool {
+  match observe_listen_inode(unix_text: observe_proc_net_unix_sibling_instance_only_text) {
+    NoListenEntryAtPath => true
+    ListenInodeFound { inode: _ } => false
+    InodeLookupUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_listen_entry_yields_its_inode() -> Bool {
+  match observe_listen_inode(unix_text: observe_proc_net_unix_listening_text) {
+    ListenInodeFound { inode: n } => (n as String) == "3894042"
+    NoListenEntryAtPath => false
+    InodeLookupUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_unreadable_proc_net_unix_refuses() -> Bool {
+  match gunbc.build_cache_endpoint_observe.listen_inode_at_path(
+    read: gunbc.build_cache_endpoint_observe.HostReadFailed { detail: "denied" as NonEmptyStr },
+    path: "/var/lib/ctrl/sccache-ci/server.sock" as NonEmptyStr,
+  ) {
+    InodeLookupUndecided { detail: _ } => true
+    NoListenEntryAtPath => false
+    ListenInodeFound { inode: _ } => false
+  }
+}
+
+test fn witness_two_owners_refuse_rather_than_pick_the_first() -> Bool {
+  match gunbc.build_cache_endpoint_observe.fd_holder_of_find_output(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_find_two_holders_text },
+  ) {
+    ListenerAmbiguous { candidate_count: n } => n == 2
+    ListenerOwnerPid { pid: _ } => false
+    ListenerNone => false
+    ListenerUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_empty_holder_walk_is_no_holder() -> Bool {
+  match gunbc.build_cache_endpoint_observe.fd_holder_of_find_output(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "\n" },
+  ) {
+    ListenerNone => true
+    ListenerOwnerPid { pid: _ } => false
+    ListenerAmbiguous { candidate_count: _ } => false
+    ListenerUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_one_owner_yields_its_pid() -> Bool {
+  match gunbc.build_cache_endpoint_observe.fd_holder_of_find_output(read: observe_one_holder_read()) {
+    ListenerOwnerPid { pid: p } => p == 3975946
+    ListenerNone => false
+    ListenerAmbiguous { candidate_count: _ } => false
+    ListenerUndecided { detail: _ } => false
+  }
+}
+
+data srv4_stale_socket_note: String = "srv4's SHAPE, AND IT IS NOW AN ADMITTED UNLINK RATHER THAN A PERMANENT REFUSAL. Observed 2026-08-01: a socket file present, no listener, no process holding it, and every bind failing with 'Address in use (os error 98)' -- srv4 uncached for roughly a week for that reason alone. All four clauses of the stale-socket observer contract are established by this producer's reads (stat says socket; no LISTEN entry for the exact path; the fd walk resolves no holder for the file's inode; one boot id across the pass), so the path axis returns EndpointStaleSocket and the admission returns Admitted behind an EndpointClearedByUnlink preflight.\n\nThe PAIRED witness below is what makes this safe rather than merely permissive: the same fixture with a HOLDER present must NOT unlink. Without that pair this witness would pass equally well against a producer that never checked clause (3) at all, which is precisely the producer this PR replaced."
+
+test fn witness_stale_socket_is_admitted_behind_an_unlink() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_no_holder_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: _ } =>
+      match p {
+        EndpointClearedByUnlink { stale_detail: _ } => true
+        EndpointClearForBind => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+data held_without_listening_fixture_note: String = "THE CGROUP IN THE NEXT WITNESS IS THE RETIRED SLOT, NOT OUR UNIT, AND THE SUBSTITUTION IS THE FINDING. Written first with observe_managed_unit_cgroup_text it FAILED, and the failure was not in the decode: a holder pid whose cgroup IS gunbc-build-cache-ci.service makes placement_already_converged true, and gunbc.build_cache_ensure admit_ensure_build_cache_instance answers EnsureAlreadyConverged from the placement axis WITHOUT ever consulting the path. So the path-conflict property this witness exists to pin is unobservable through a converged placement, and the fixture had to name an owner that is not ours to reach the arm at all.\n\nTHE SHORT-CIRCUIT IS RECORDED HERE RATHER THAN REPAIRED, and the distinction matters: it means a server that IS our unit, holding its socket open while not listening on it, is reported converged by ensure while the cache is unreachable. That is a live gap in the admission's placement axis, it predates this wiring (the fold is unchanged by this PR), and closing it is a change to what ALREADY-CONVERGED means -- the converged arm would have to require a LISTENING path, not merely our unit's ownership -- which is a decision about the admission's contract rather than about its consumer. It is named here so the next reader finds a measured boundary instead of re-deriving it from a failing fixture.\n\nWhat this witness does pin, and what it must keep pinning: a socket held open by a wrong owner that is not listening REFUSES with a path conflict and is NOT unlinked. Its sibling witness_stale_socket_is_admitted_behind_an_unlink differs in exactly one input -- the fd-holder walk is empty rather than naming a pid -- and lands on the admitted-unlink arm. The pair is the same-run empty/non-empty control the unlink licence requires: the EMPTY walk is what authorizes destroying a file, so it is only readable as evidence beside a non-empty walk that provably refuses."
+
+test fn witness_socket_held_open_without_listening_is_not_unlinked() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_retired_slot_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointPathConflict { detail: _ } => true
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_our_own_unit_holding_an_unlistened_socket_reads_converged() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_one_holder_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureAlreadyConverged { desired: _, unit: _ } => true
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+test fn witness_stale_socket_path_axis_is_stale_not_absent() -> Bool {
+  match observe_path_state_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_no_holder_read(),
+  ) {
+    EndpointStaleSocket { detail: _ } => true
+    EndpointPathAbsent => false
+    EndpointListening { owner: _ } => false
+    EndpointPathConflict { detail: _ } => false
+    EndpointPathObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn witness_non_socket_at_the_endpoint_path_is_a_conflict() -> Bool {
+  match observe_admission_full(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindOtherObject { described: "directory" as NonEmptyStr },
+    unix_text: observe_proc_net_unix_no_listen_text,
+    holder_read: observe_no_holder_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointPathConflict { detail: d } => string_contains(s: d as String, pattern: "directory")
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
+  let socket_kind = gunbc.build_cache_endpoint_observe.path_kind_of_stat_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "socket\n" },
+    exit_success: true,
+  )
+  let absent_kind = gunbc.build_cache_endpoint_observe.path_kind_of_stat_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "" },
+    exit_success: false,
+  )
+  match socket_kind {
+    PathKindSocket =>
+      match absent_kind {
+        PathKindAbsent => true
+        PathKindSocket => false
+        PathKindOtherObject { described: _ } => false
+        PathKindNoFilesystemPath => false
+        PathKindUnreadable { detail: _ } => false
+      }
+    PathKindAbsent => false
+    PathKindOtherObject { described: _ } => false
+    PathKindNoFilesystemPath => false
+    PathKindUnreadable { detail: _ } => false
+  }
+}
+
+data starttime_parse_red_note: String = "THE ADVERSARIAL COMM IS THE POINT OF THIS WITNESS. /proc/PID/stat field 2 is the executable name in parentheses and it may contain spaces AND parentheses, so a decoder that split the whole line on spaces reads the wrong field for exactly the processes whose names are hostile. proc(5) fixes the shape -- fields 3 onward follow the FINAL ')' -- and the second fixture below carries a comm of '(sc cache (x) )' whose naive split lands three tokens off. Both fixtures must yield their own start time, so the witness reds if the parse ever regresses to splitting the line."
+
+test fn witness_starttime_reads_after_the_final_paren() -> Bool {
+  gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_text) == "79870020"
+    && gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_adversarial_comm_text) == "51501010"
+}
+
+test fn witness_unreadable_boot_id_leaves_currency_unknown() -> Bool {
+  match gunbc.build_cache_endpoint_observe.currency_of_boot_id_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadFailed { detail: "denied" as NonEmptyStr },
+  ) {
+    ObservationCurrencyUnknown { detail: _ } => true
+    ObservationCurrent { observed_at_boot: _ } => false
+    ObservationStale { detail: _ } => false
+  }
+}
+
+test fn witness_unreachable_host_reaches_placement_unknown_through_the_ordinary_decode() -> Bool {
+  let instance = observe_srv1_ci_instance()
+  let survey = gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: instance,
+    reads: gunbc.build_cache_endpoint_observe.unreachable_host_reads(
+      detail: "ssh: connect to host srv1 port 22: No route to host" as NonEmptyStr,
+    ),
+  )
+  admission_is_refused_with_placement_unknown(
+    admission: admit_ensure_build_cache_instance(
+      desired: instance,
+      placement: survey.placement,
+      observed_path: survey.path,
+      currency: survey.currency,
+    ),
+  )
+}
+
+data empty_licensing_probe_rule_note: String = "STANDING RULE FOR THIS LANE (eager-crane-282, 2026-08-21): EVERY PROBE THAT LICENSES AN ACTION ON AN EMPTY RESULT CARRIES A SAME-RUN NON-EMPTY CONTROL. The fd-holder walk is the specimen that produced the rule. Its EMPTY result is the evidence that licenses unlinking a socket file, so a walk that silently matches nothing does not produce a refusal, it produces a DATA-LOSS defect: it authorizes deleting a live process's socket while reporting that nothing holds it. That is a strictly worse failure class than the refusal defects this module's other arms guard, and it is not hypothetical -- it is exactly what the bracketed find pattern does, and it is what made an earlier revision of this lane conclude the walk was impossible.\n\nTHE PAIRS THAT DISCHARGE THE RULE HERE, each two witnesses over one fixture differing in one field: witness_stale_socket_is_admitted_behind_an_unlink (walk empty -> unlink admitted) against witness_socket_held_open_without_listening_is_not_unlinked (walk non-empty -> refused); and witness_absent_endpoint_is_admitted (walk empty -> admitted) against witness_unreadable_listener_refuses_rather_than_admitting (walk FAILED -> refused). The first pair proves the empty result is read, the second proves empty and failed are different states. Below them sits the construction check on the emitted pattern itself, because both pairs run against fixture text and neither can see the argv that produces it on a real host."
+
+test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
+  let argv = gunbc.host_effect_realize.socket_inode_holder_argv(inode: "3894042" as NonEmptyStr)
+  let pattern = match argv.last() {
+    Present { value: p } => p
+    Absent => ""
+  }
+  pattern == "socket:?3894042?"
+    && !string_contains(s: pattern, pattern: "[")
+    && !string_contains(s: pattern, pattern: "]")
+    && !string_list_contains(xs: argv, wanted: "sh")
+    && !string_list_contains(xs: argv, wanted: "-c")
+}
+
+data holder_argv_construction_note: String = "WHY THE ARGV IS ASSERTED AND NOT ONLY THE DECODE. Every other witness in this file runs the decode against fixture text, so all of them stay green if the argv that gathers that text on a real host regresses to `-lname \"socket:[N]\"` -- which silently matches nothing, which the decode then reads as a licensed unlink. The fixtures cannot see that; only the argv can. Asserting the exact pattern also pins the two shapes that would reintroduce a shell (an `sh -c` wrapper), because a shell would expand the glob itself and this lane may not grow emitted shell."
+

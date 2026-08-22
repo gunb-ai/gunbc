@@ -31,9 +31,9 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
-    ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
+    BuildCacheProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 
@@ -82,8 +82,8 @@ test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
-    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
-    ProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
@@ -102,9 +102,9 @@ test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
       },
     },
   ) {
-    ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 
@@ -124,8 +124,8 @@ fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
       placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
   ) {
-    ProvisionConverged { catalog_id: _, stats_line: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => true
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
@@ -166,8 +166,8 @@ fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonAbsent,
   ) {
-    ProvisionConverged { catalog_id: _, stats_line: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => true
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
@@ -193,12 +193,12 @@ test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
   ) {
-    ProvisionRefused { cause: RefusalPathShadowed, reason: reason } =>
+    BuildCacheProvisionRefused { cause: RefusalPathShadowed, reason: reason } =>
       string_contains(s: reason as String, pattern: "/usr/bin/sccache")
         && string_contains(s: reason as String, pattern: "/usr/local/bin/sccache")
         && string_contains(s: reason as String, pattern: "Fail-closed")
-    ProvisionRefused { cause: _, reason: _ } => false
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 
@@ -207,8 +207,8 @@ test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bo
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
   ) {
-    ProvisionConverged { catalog_id: _, stats_line: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => true
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
   } && !build_cache_provision_gate_accepts(
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_absorbing_fallback_widen_sketch(
@@ -259,12 +259,12 @@ test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
   ) {
-    ProvisionRefused { cause: RefusalDaemonUnsupervised, reason: reason } =>
+    BuildCacheProvisionRefused { cause: RefusalDaemonUnsupervised, reason: reason } =>
       string_contains(s: reason as String, pattern: "sccache.service")
         && string_contains(s: reason as String, pattern: "inactive (dead)")
         && string_contains(s: reason as String, pattern: "Fail-closed")
-    ProvisionRefused { cause: _, reason: _ } => false
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 
@@ -273,8 +273,8 @@ test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> B
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
   ) {
-    ProvisionConverged { catalog_id: _, stats_line: _ } => true
-    ProvisionRefused { cause: _, reason: _ } => false
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => true
+    BuildCacheProvisionRefused { cause: _, reason: _ } => false
   } && !build_cache_provision_gate_accepts(
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_absorbing_fallback_widen_sketch(

@@ -6,7 +6,15 @@ data build_cache_endpoint_observation_authority_disposition: std.disposition.Dis
 // THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
 // memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
-// with gunbc.build_cache_instance.ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
+// with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
+//
+// CORRECTED 2026-08-21: THE ENDPOINT-OWNER WALK LANDED, AND IT DID NOT LAND HERE. gunbc.build_cache_endpoint_observe
+// decodes the endpoint owner, path state and observation currency, and gunbc.host_effect_realize drives it
+// per effect. What this surface still cannot do is reach it, and the reason is its own signature rather
+// than a missing implementation: it takes a HostIdentity and answers for the whole fleet, so there is no
+// HostEffectTransport in scope to read anything through. Its remaining honest arm is therefore the
+// unavailable one, and the dissolve-on below is unchanged and now precise — a HostEffectTransport
+// obtainable FROM a HostIdentity is exactly what it waits on. Its only consumers today are witnesses.
 
 fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   let instance = ci_cache_instance(host: host)
@@ -14,8 +22,8 @@ fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.Host
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: gunbc.build_cache_instance.ProcTableUnreadable {
-          detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as std.types.NonEmptyStr,
+        reason: ProcTableUnreadable {
+          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache_endpoint_observe, driven from gunbc.host_effect_realize where a HostEffectTransport exists" as NonEmptyStr,
         },
       }
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>

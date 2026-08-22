@@ -16,8 +16,6 @@ module test.claim.scm_image_witness
 
 
 
-
-
 // ------------------------------------------------------------------------------------------------
 // Fixtures. Every name here is prefixed so it cannot collide corpus-wide: a top-level definition is
 // corpus-scoped and the resolver ADMITS duplicates while silently selecting one, so a generic
@@ -388,4 +386,57 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
     ),
     expected: scm_image_atom(identity: ^A),
   )
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CHECKED ENCODER. encode_image cannot refuse -- it returns a JsonValue -- so an incomplete
+// closure encodes to a document carrying the empty reference, which decode rejects. That is correct
+// and it is too late for any writer: the adjudication has to happen BEFORE bytes exist, or a
+// successful write reports success over content that will never load.
+//
+// copy_object copies ONE record without its children, so it is the sanctioned way to build the
+// incomplete closure these claims need -- no hand-authored broken store, no representation reach.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_encode_refused(outcome: ImageEncodeOutcome) -> Bool {
+  match outcome {
+    ImageEncodeRefused { cause: _ } => true
+    ImageEncoded { value: _ } => false
+  }
+}
+
+fn scm_image_orphan_parent_store() -> ScmImagePut {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
+    Copied { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    CopySourceAbsent { identity: _ } => ScmImagePut { store: empty_store(), identity: full.identity }
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmImagePut { store: empty_store(), identity: full.identity }
+  }
+}
+
+test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  scm_image_encode_refused(
+    outcome: encode_image_checked(store: empty_store(), root: full.identity)
+  )
+}
+
+test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
+  let orphan = scm_image_orphan_parent_store()
+  scm_image_encode_refused(
+    outcome: encode_image_checked(store: orphan.store, root: orphan.identity)
+  )
+}
+
+// THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
+// everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
+test fn scm_image_a_complete_closure_encodes() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: scm_image_program())
+  match encode_image_checked(store: full.store, root: full.identity) {
+    ImageEncoded { value: v } =>
+      serialize_json(v: v) == serialize_json(v: encode_image(store: full.store, root: full.identity))
+    ImageEncodeRefused { cause: _ } => false
+  }
 }

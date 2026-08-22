@@ -17,6 +17,7 @@ type ProcfsPath
   = ProcMeminfo
   | ProcSelfStatus
   | ProcSelfCgroup
+  | ProcNetUnix
   | ProcSwaps
   | ProcSysKernelHostname
 
@@ -25,6 +26,7 @@ fn procfs_path_literal(p: ProcfsPath) -> std.types.NonEmptyStr {
     ProcMeminfo => "/proc/meminfo"
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
+    ProcNetUnix => "/proc/net/unix"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
   }
@@ -34,6 +36,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStatus,
   ProcSelfCgroup,
+  ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
 ]

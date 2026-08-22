@@ -21,11 +21,16 @@ pub enum DissolutionTrigger {
         #[serde(rename = "ref")]
         ref_: Rc<DeclarationRef>,
     },
+    DeclarationRetires {
+        #[serde(rename = "ref")]
+        ref_: Rc<DeclarationRef>,
+    },
 }
 impl DissolutionTrigger {
     pub fn ref_(&self) -> Rc<DeclarationRef> {
         match self {
             DissolutionTrigger::DeclarationAppears { ref_: __val, .. } => __val.clone(),
+            DissolutionTrigger::DeclarationRetires { ref_: __val, .. } => __val.clone(),
         }
     }
 }
@@ -50,6 +55,23 @@ pub enum DissolutionStatus {
 pub fn dissolution_trigger_ref(trigger: Rc<DissolutionTrigger>) -> Rc<DeclarationRef> {
     match (*trigger.clone()).clone() {
         DissolutionTrigger::DeclarationAppears { ref_: r, .. } => r.clone(),
+        DissolutionTrigger::DeclarationRetires { ref_: r, .. } => r.clone(),
+    }
+}
+
+pub fn dissolution_trigger_fired(
+    trigger: Rc<DissolutionTrigger>,
+    present_decls: Rc<Vec<Rc<DeclarationRef>>>,
+) -> bool {
+    {
+        let present = declaration_ref_in_list(
+            dissolution_trigger_ref(trigger.clone()),
+            present_decls.clone(),
+        );
+        match (*trigger.clone()).clone() {
+            DissolutionTrigger::DeclarationAppears { ref_: _, .. } => present,
+            DissolutionTrigger::DeclarationRetires { ref_: _, .. } => !present,
+        }
     }
 }
 
@@ -59,7 +81,7 @@ pub fn dissolution_status(
 ) -> DissolutionStatus {
     match (*condition.clone()).clone() {
         DissolutionCondition::BoundDissolution { trigger: t, .. } => {
-            if declaration_ref_in_list(dissolution_trigger_ref(t.clone()), present_decls.clone()) {
+            if dissolution_trigger_fired(t.clone(), present_decls.clone()) {
                 DissolutionStatus::DissolutionFired
             } else {
                 DissolutionStatus::DissolutionPending
@@ -74,6 +96,12 @@ pub fn dissolution_status(
 pub fn bound_dissolution(ref_: Rc<DeclarationRef>) -> Rc<DissolutionCondition> {
     Rc::new(DissolutionCondition::BoundDissolution {
         trigger: Rc::new(DissolutionTrigger::DeclarationAppears { ref_: ref_.clone() }),
+    })
+}
+
+pub fn retires_dissolution(ref_: Rc<DeclarationRef>) -> Rc<DissolutionCondition> {
+    Rc::new(DissolutionCondition::BoundDissolution {
+        trigger: Rc::new(DissolutionTrigger::DeclarationRetires { ref_: ref_.clone() }),
     })
 }
 

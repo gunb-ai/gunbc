@@ -44,6 +44,15 @@ pub fn files_by_name_sorted_positional_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn socket_inode_holder_bracket_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHY THE PATTERN SPELLS THE BRACKETS AS `?` RATHER THAN ESCAPING THEM. A /proc fd symlink for a socket reads `socket:[N]`, and find's -lname argument is a GLOB, in which `[...]` is a character class -- so the obvious `-lname \"socket:[N]\"` silently matches nothing at all, which is the worst possible failure for a probe whose empty result is load-bearing evidence (it is exactly the clause that licenses unlinking a stale socket). Escaping the brackets works but puts backslashes through two layers of quoting; `?` matches the one literal bracket character in each position and is length-anchored, so `socket:?N?` matches `socket:[N]` and cannot match a different inode. Confirmed by execution 2026-08-21 against a live listening socket, WITH the negative control that a non-existent inode returns empty -- a probe whose only observed state is `found nothing` proves nothing, so the pair is the measurement.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone)]
 pub struct ShellFind {
     pub working_dir: Option<String>,
@@ -141,6 +150,40 @@ impl ShellFind {
                 .arg(&format!("{}", root))
                 .arg("-name")
                 .arg(&format!("{}", name_glob))
+                .current_dir(self.working_dir.as_deref().unwrap_or("."))
+                .output()?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let exit_code = output.status.code().unwrap_or(-1);
+            match exit_code {
+                0 => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Ok((output.status.success(), stdout.clone(), stderr.clone()))
+                }
+                _ => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(stderr)
+                }
+            }
+        }
+    }
+
+    /// Modifiers: readonly
+    pub async fn socket_inode_holders(
+        &self,
+        inode: String,
+    ) -> Result<(bool, String, String), Box<dyn std::error::Error>> {
+        if self.dry_run.is_dry_run() {
+            eprintln!("[dry-run] SocketInodeHolders");
+            panic!("no mock data available for dry-run operation: SocketInodeHolders")
+        } else {
+            let output = std::process::Command::new("find")
+                .arg("/proc")
+                .arg("-maxdepth")
+                .arg("3")
+                .arg("-path")
+                .arg("*/fd/*")
+                .arg("-lname")
+                .arg(&format!("socket:?{}?", inode))
                 .current_dir(self.working_dir.as_deref().unwrap_or("."))
                 .output()?;
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();

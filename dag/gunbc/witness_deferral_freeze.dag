@@ -15,6 +15,75 @@ WHAT THIS ROSTER IS, AND WHAT IT IS NOT. It is the exact identity-grain populati
 
 THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 701 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
 
+// THE FORWARD RULE THIS MODULE STATES IS CURRENTLY UNSATISFIABLE FOR A GREEN
+// WITNESS, AND THIS IS THE DECLARED ROW FOR IT (DESIGN.md §4b(3)).
+//
+// The note above says the forward hole closes immediately: "a new or relocated
+// witness under any OfflineLocalRecipe path must carry an exact admission naming
+// an executing cadence". That sentence was true when written. It is not
+// satisfiable today, and it is left standing above rather than quietly reworded
+// because what changed is not the rule's intent but the world underneath it --
+// which is exactly the fact this row exists to record.
+//
+// WHAT IS GONE. `gunbc.explicit_witness_admission` `explicit_witness_admission_cadence_executes`
+// admits exactly five cadences. Four of them no longer execute anything:
+// FalsifierSelfHostWet, FalsifierRehomedBinWet and FalsifierSubstrateLongLane died
+// with falsifier.yml at 611fd02770 (#8283, the floor cut) -- `gunbc.ci_layer_roots`
+// records that "falsifier batch 2 no longer executes anything" -- and BinWitnessWet
+// died with the per-PR wet job in ci.yml in the same cut, which that module's
+// excl_bin_wet_reason states for the whole class: 94 rows across 38 entry files
+// name an executing consumer that does not execute. The fifth,
+// QuarantineProbeExpectRed, does execute, on the floor. It answers a different
+// question: it is the declaration that a witness is RED. It cannot be written
+// truthfully about a green one.
+//
+// So the only compliant moves for a green witness under an offline home are to
+// declare it expected-red, which is a lie, or not to author there. THE SECOND IS
+// THE ANSWER, and the rule keeps its force on exactly that reading: unsatisfiability
+// is not permission any more than detection failure is. gunbc#8818 is the worked
+// instance -- it routed a relocated witness OUT rather than admitting it in.
+//
+// WHY NOTHING REFUSED WHEN THE RULE WAS BROKEN. The refusal exists and is well
+// written: `v1_compiler.cli_run` `refuse_unexecuted_deferred_witnesses` produces
+// UnclassifiedPathDeferral and says in its own text that moving a file under a
+// long/ or offline path "executes it NOWHERE". It has ONE caller,
+// `run_discovery_corpus_with_options_inner` -- the discovery-corpus batch path.
+// `claim_executor --required-ci` runs three phases, parse / regen / floor, and the
+// floor does its own site projection via `v2.workflow.required_floor`
+// `long_home_prefixes` rather than entering that path. No workflow invokes a batch
+// or plan mode. So the host that would have refused is unreachable from every
+// required run, and the rule's breakage could not surface.
+//
+// EVIDENCE GRADE, stated because two of the three claims above are about absences.
+// The cadence standing is read from the corpus's own recorded corrections, not
+// re-derived. The reach argument is a source read: the caller set, the phase
+// banners in claim_executor, and .github/workflows holding three files. NO
+// EXECUTION WAS ATTEMPTED against the discovery-corpus path, so this row does not
+// establish behaviour under a mode nobody ran; it establishes that no required run
+// enters it. A fourth workflow, or a required phase that enters a batch mode, can
+// make the reach half false with nobody having touched this row.
+//
+// WHY LostAsPassenger RATHER THAN DeletedWithoutReplacement: nothing deleted this
+// rule. The cut deleted the cadences it names and the mode that enforces it, and a
+// deletion census accounts for what it removed and never for what was riding on it.
+// Re-adding any one falsifier cadence would restore one door; it would not restore
+// the refusal, which needs a required run to enter the discovery path. Both halves
+// are in the restoration trigger for that reason.
+data witness_deferral_freeze_forward_rule_rung_drop: GuaranteeRungDrop = GuaranteeRungDrop {
+  subject: "gunbc.witness_deferral_freeze forward admission rule",
+  previous: MechanicallyPreventable,
+  temporary: OutsideTheLadder,
+  reason: LostAsPassenger { carrier: "the per-PR discovery-corpus batch and the wet/falsifier cadences, deleted by the floor cut of 2026-08-15 (611fd02770, #8283)" },
+  population: [
+    "gunbc.witness_deferral_freeze witness_deferral_freeze_authority_note",
+    "gunbc.explicit_witness_admission explicit_witness_admission_cadence_executes",
+    "v2.workflow.witness_admission witness_path_policy_execution_standing_in",
+    "v1_compiler.cli_run refuse_unexecuted_deferred_witnesses",
+    "v1_compiler.cli_run run_discovery_corpus_with_options_inner"
+  ],
+  restoration_trigger: "BOTH halves: a cadence that actually executes offline-homed witnesses exists, so a green witness under such a path has a truthful admission row to write; AND a required run enters the discovery-corpus path, so refuse_unexecuted_deferred_witnesses can fire when it does not"
+}
+
 data witness_deferral_freeze_shrink_log_note: String = "SHRINK LOG. The 701-identity / 152-entry figures the notes around this one quote are the FREEZE-POINT BASELINE and are deliberately not restated as the roster's current size — a hand-maintained live count is the change detector DESIGN section 5's oracle rule rejects, and the roster below is the authority for what the population is right now. This row records migrations OUT, which is the only direction permitted, so that the baseline stays legible as history rather than decaying into a false present-tense claim. 2026-08-19 — dag/test/claim/srv3_host_effect_apply_witness_test.dag [partial], 2 identities (witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed, srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve), DELETED not migrated and not exempted: host_effect_nbd_proxy_serve_dissolution_trigger dissolved (observe-side port/unit read-back grounded on gunbc.systemctl_is_active_read; actuate-side typed argv dispatch via gunbc.systemd_run_transient / gunbc.systemctl_stop_run retired the WitnessBin scaffolding), so the module's disposition became std.disposition.Terminal and the two witness functions were rewritten under new names (witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed, srv3_nbd_proxy_serve_realize_layer_is_terminal_via_host_effect_nbd_proxy_serve) that assert the grounded/Terminal behavior instead of the old stub/Scaffold behavior. The old identities no longer exist in the tree under those names, so their frozen rows are StaleFrozenPathDeferral and delete in this change rather than after it; this is a shrink, and the remaining functions at this entry are untouched. 2026-08-19 — 24 entries (dag/test/claim/ci_exclusion_proof_test.dag, dag/test/claim/deploy_access_privilege_witness_test.dag [partial], dag/test/claim/host_effect_apply_witness_test.dag [partial], dag/test/claim/interp_recorded_fixture_witness_test.dag, dag/test/claim/random_bytes_csprng_witness_test.dag, dag/test/claim/self_host_00_compile_behavioral_witness_test.dag, dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag, dag/test/claim/self_host_02_parse_behavioral_witness_test.dag, dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag, dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag, dag/test/claim/self_host_04_infer_behavioral_witness_test.dag, dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag, dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag, dag/test/claim/self_host_program_partition_behavioral_witness_test.dag, dag/test/claim/self_host_source_authority_behavioral_witness_test.dag, dag/test/claim/srv3_host_effect_apply_witness_test.dag [partial], src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag, src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag, src/v2/test/claim/execution/emit_ingest_python_same_language_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag [partial], src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag [partial], src/v2/test/claim/execution/floor_diff_observe_witness_test.dag, src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag), 38 identities, DELETED not exempted: these identities were simultaneously enrolled in v2.workflow.floor_expected_red's known-red roster (removable only by observing a pass) and path-deferred here as LegacyFrozenPathDeferral (declared never-executed) — a contradictory intersection, because the required floor already treats each of these identities as an executing, known-red subject, so their freeze classification was stale rather than load-bearing; a frozen row naming a witness the required floor already runs has no LegacyFrozenPathDeferral standing left to protect. Computed by joining floor_expected_red_roster against this file's frozen_path_deferrals, qualifying every frozen row through its own entry's module line (not its path string), at commit 063a604e0099c56c3e0a1f72af60d7a6199d1f0b: 38 of 669 qualified freeze identities across 24 entries collided. All 24 entries carry an independently executing consumer already (WitnessHasExecutingConsumer via floor_expected_red), so retirement here removes no coverage — 15 entries had every one of their functions collide and are deleted whole; 9 entries had only some functions collide and keep their remaining, non-colliding functions frozen. A construction wall (expected_red_freeze_intersection, wired into run_required_floor in src/v1/stage0/src/cli_run.rs) now refuses this exact contradiction going forward: any future frozen row whose qualified identity re-enters floor_expected_red_roster fails the required floor with a located, counted refusal naming the exact colliding identities and the git head the collision was observed at, rather than silently coexisting. 2026-08-19 — src/v2/test/claim/execution/long/add_arrow_eval_by_execution_test.dag, 4 identities, and src/v2/test/claim/execution/long/pick_ingested_probe_test.dag, 1 identity, DELETED as subsumed or duplicate coverage, none migrated and none exempted. add_arrow_eval_tokenize_holds, add_arrow_eval_parse_holds and add_arrow_eval_normalize_holds were the shallow steps of a staircase whose deepest step, add_arrow_eval_resolve_holds, cannot reach resolve unless all three stages accepted, so four stages were costing ten stage-runs across four frames to assert what one row asserts; the survivor reds on exactly the refusals they redded on and what is lost is which stage failed. add_arrow_eval_produced_add_body_executes_holds had a body byte-identical to add_arrow_eval_source_driven_add_executes_holds — and BOTH ARE CURRENTLY RED, which is stated rather than left for a reader to assume a green row was removed: main head 5ee2572 fails the pair identically, along with add_arrow_eval_direct_runtime_holds, add_arrow_eval_generality_executes_holds and add_arrow_eval_lazy_arm_branch_suppression_holds, the five identities floor_expected_red already documents as enrolled-and-correctly-red before this module relocated. The surviving twin carries the red; deleting a duplicate of a failing claim removes a second report of one failure, not the report of it. pick_probe_resolved_else_arm_has_magnitude_child_holds differed from its then-arm sibling only in an arm index over one source at one stage, and both arms are now asserted against one bound resolved module; both passed on main and the merged row passes. In every case the assertion survives on a row that keeps it; none of this coverage is relocated because none of it was ever separate. 2026-08-19 — src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag, 1 identity (dag_add_emit_add_fn_accepts_holds), DELETED as duplicate coverage, not migrated and not exempted: its whole body was a call to its sibling dag_add_emit_matches_serialize_holds, so it asserted nothing that sibling did not already assert and paid a second full emit-and-serialize crossing to assert it, each claim evaluating in its own frame. Deleting it removes a crossing and no fact. This is a shrink by deletion of the witness, and the coverage it named is not relocated because it was never separate from the sibling row that keeps it. 2026-08-11 — dag/test/claim/long/inert_lens_hygiene_witness_test.dag, 2 identities, DELETED not migrated and not exempted: the inert-lens census the two witnesses read is gone from the tree entirely, along with the v2.lens.inert_lens module, its two host builtins and the registry/contract rows that obligated it, so the witnesses have no subject to execute against. A frozen row naming a witness the tree no longer carries is a StaleFrozenPathDeferral refusal, which is why the row deletes in the same change rather than after it. This is a shrink by deletion of the subject, NOT by a cadence enrolling the rows — the coverage those two witnesses provided is not relocated anywhere and the scope narrowing is declared in DESIGN §6. 2026-08-06 — src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag, 1 identity, MIGRATED not exempted: TS-0/LANG-2 enrolled realization_vocab_live_corpus_receipt_holds on falsifier_substrate_long_lane_rows (FalsifierSubstrateLongLane cadence), so the freeze row deletes and the live-corpus receipt executes on the scheduled lane. 2026-08-05 — src/v2/test/claim/long/orchestration_while_emit_test.dag, 14 identities, MIGRATED not exempted: the file returned to src/v2/workflow/orchestration_while_emit_test.dag, the per-PR-discovered path it occupied before gunbc#7098 relocated it, so its rows now classify as WitnessHasExecutingConsumer and the freeze row had to go — a row naming a witness the tree no longer carries at that entry is a StaleFrozenPathDeferral refusal, and its diagnostic says to delete it in the change that moved the witness. Measured eval justifying the return, on a load-average-28 host: 94 / 54 / 36 / 8 ms per witness against the 5000ms gunbc_ci_fast_lane_witness_eval_budget; those are wall figures against a thread-CPU budget, and cpu <= wall for one witness thread, so the bound runs the safe way. Rationale and the receipt live with the witness in orch_while_unfreeze_note."
 
 data witness_deferral_freeze_purpose_frontier_note: String = "WHAT THIS FREEZE DELIBERATELY DOES NOT CARRY, so its coverage is not overread. A frozen row records IDENTITY only — that this exact (entry, function) was already deferred by path policy when the wall landed. It records no purpose, no measured cost, and no consumer, because it has none: the whole point of the freeze is that these 701 identities (152 entries, measured at the freeze point) were admitted without any of the three. The purpose taxonomy (which boundary, population, external effect, or resource contract justifies the size) and the per-witness cost envelope are the NEXT slice, and a frozen row is the debt marker that one is owed.
@@ -715,15 +784,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "quad_import_scoped_admission_reds_ambiguous_export_holds",
       "quad_with_peer_import_scoped_reds_ambiguous_export_holds",
       "quad_with_peer_greens_under_namespace_only_projection"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/fold_lowering_test.dag",
-    functions: [
-      "fold_probe_ingest_is_accepted", "fold_callee_name_survives_parse",
-      "fold_collection_name_survives_parse", "fold_call_lowers_to_terminating_loop",
-      "lowered_loop_binds_carrier_binder", "duplicate_carrier_edge_is_malformed",
-      "non_fold_call_refuses", "bodyless_fold_call_refuses_no_loop_fabricated"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },

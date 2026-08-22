@@ -22,24 +22,29 @@ type RetainedProduction {
   occurrence: String
 }
 
-// THREE STATES, NOT A BOOL. "The census was written", "no census was
-// applicable because this run produced no retained population", and "the
-// census could not be written" are different facts with different remedies,
+// THREE STATES, NOT A BOOL. "The evidence artifact was written", "no such
+// artifact was applicable because this run produced no diagnostics to write
+// one from", and "it could not be written" are different facts with different
+// remedies,
 // and a v2.std.logic.Bool spelled them as two. The middle one is the common case on every
 // non-refused path, so a true there was reporting a write that never
 // happened -- harmless as a gate today and a lie the moment anything reads
 // the field for what it says. Splitting it is the repository's own
-// state-space-conflation rule applied to a field this lane authored.
-type CensusOutcome
-  = CensusWritten
-  | CensusNotApplicable
-  | CensusWriteFailed
+// state-space-conflation rule applied to a field this lane authored. The
+// vocabulary is named for the boundary rather than for the retention census
+// because boundary 4 now writes two evidence artifacts -- the census and the
+// diagnostic ledger below -- and one outcome type per artifact would be two
+// names for one concept.
+type B4EvidenceOutcome
+  = EvidenceWritten
+  | EvidenceNotApplicable
+  | EvidenceWriteFailed
 
-fn census_outcome_admits(outcome: CensusOutcome) -> v2.std.logic.Bool {
+fn b4_evidence_outcome_admits(outcome: B4EvidenceOutcome) -> v2.std.logic.Bool {
   match outcome {
-    CensusWritten => true
-    CensusNotApplicable => true
-    CensusWriteFailed => false
+    EvidenceWritten => true
+    EvidenceNotApplicable => true
+    EvidenceWriteFailed => false
   }
 }
 
@@ -253,5 +258,198 @@ fn retention_census_render(families: std.types.List<RetentionFamily>) -> String 
         )
       )
     )
+  )
+}
+
+// THE LEDGER IS NOT A SECOND CENSUS, and the difference is which question it
+// answers. The census above partitions ONE reason -- wrapper-retained -- at
+// the grain of the missing producer, because that is the grain at which
+// somebody can go and write one. The ledger answers a question the receipt
+// asks and cannot answer at all: WHICH diagnostic is the one that rejected.
+//
+// docs/probes/b4_causal_versus_carried_2026-08-21.md established by reading
+// the producers' return constructors that 39 of boundary 4's 40 diagnostics
+// are produced on Accepted paths and merely carried into the Rejected list by
+// rejected_with_pending, so the door is held by exactly one. That reading
+// names the REASON of the door-holder. It cannot name the SUBJECT, because
+// the reason symbol is shared by sixteen producer sites and the receipt
+// renders only a tally of reasons.
+//
+// So this renders every diagnostic the refusal carries, in the order it
+// carries them, each attributed through the same locus channel and the same
+// production-identity vocabulary the census already uses. It is the minimum
+// that makes a door-holder addressable, and it reuses the attribution rather
+// than re-deriving it, so there is one place that decides how a v2.std.node.Node is
+// named in this transaction's artifacts.
+//
+// WHAT IT DOES NOT DO: it does not decide which line is causal. That
+// distinction is destroyed at rejected_with_pending, which the probe document
+// records as needing a change to the shared carriers rather than a
+// hand-maintained list of "carried" reasons here -- validation standing where
+// construction was available. The ledger makes the population readable; a
+// reader still joins it against the producers to say which line closed the
+// door.
+// WHY THE LEXEMES AND NOT JUST THE PRODUCTION IDENTITY. The production
+// identity names the SHAPE the emitter refused (dag_surface_let_expr); it
+// does not name WHICH one, and a v2.std.node.Node carries no module and no file. On the
+// compiler's own closure that left the door-holder identified as "a let
+// somewhere in 107 modules", which is not an addressable subject. The atoms
+// in the refused subtree are the only channel the node itself carries that
+// distinguishes one specimen from another, and they spell the source form
+// closely enough to find it by grep.
+//
+// BOUNDED, and the bound is reported rather than silently applied. A refused
+// subtree can be arbitrarily large; a ledger that truncated without saying so
+// would let a reader believe they had seen the whole form.
+type AtomLexemeAccumulator {
+  taken: Int
+  total: Int
+  text: String
+}
+
+data diagnostic_ledger_atom_cap: Int = 48
+
+fn atom_lexeme_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<String> {
+  match node.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: identity } => v2.std.optional.Present { value: symbol_lexeme(sym: identity) }
+        Conj => v2.std.optional.Absent
+        Disj => v2.std.optional.Absent
+        Arrow => v2.std.optional.Absent
+        Cardinality => v2.std.optional.Absent
+        Instantiation => v2.std.optional.Absent
+      }
+    ComputationNode { behavior: _ } => v2.std.optional.Absent
+  }
+}
+
+fn atom_lexeme_step(
+  acc: AtomLexemeAccumulator,
+  node: v2.std.node.Node
+) -> AtomLexemeAccumulator {
+  match atom_lexeme_optional(node: node) {
+    Absent => acc
+    Present { value: lexeme } =>
+      if acc.taken < diagnostic_ledger_atom_cap {
+        AtomLexemeAccumulator {
+          taken: acc.taken + 1,
+          total: acc.total + 1,
+          text: concat(acc.text, concat(" ", lexeme))
+        }
+      } else {
+        AtomLexemeAccumulator {
+          taken: acc.taken,
+          total: acc.total + 1,
+          text: acc.text
+        }
+      }
+  }
+}
+
+fn diagnostic_subtree_atoms(node: v2.std.node.Node) -> String {
+  let acc = fold_list(
+    xs: node_subtree_nodes(root: node),
+    empty: AtomLexemeAccumulator { taken: 0, total: 0, text: "" },
+    cons: fn(a, n) { atom_lexeme_step(acc: a, node: n) }
+  )
+  if acc.total > acc.taken {
+    concat(
+      acc.text,
+      concat(
+        "  ... (",
+        concat(
+          to_string(acc.total - acc.taken),
+          " further atom(s) not shown)"
+        )
+      )
+    )
+  } else {
+    acc.text
+  }
+}
+
+fn diagnostic_extent_label(extent: Extent) -> String {
+  match extent {
+    WholeFile => "whole-file"
+    ByteRange { start: start, end: end } =>
+      concat("bytes ", concat(to_string(start), concat("..", to_string(end))))
+  }
+}
+
+fn diagnostic_attribution(d: Diagnostic) -> String {
+  match d.at {
+    NodeLocus { anchor: anchor } =>
+      concat(
+        retained_production_key(observation: retained_production_of(node: anchor.at)),
+        concat(
+          "  arity ",
+          concat(
+            to_string(length(xs: anchor.at.children)),
+            concat(
+              "  occurrence ",
+              concat(
+                occurrence_label(occurrence: anchor.at.occurrence_id),
+                concat(
+                  "\n      atoms:",
+                  diagnostic_subtree_atoms(node: anchor.at)
+                )
+              )
+            )
+          )
+        )
+      )
+    Textual { file: file, extent: extent } =>
+      concat(
+        "textual ",
+        concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent)))
+      )
+    PortLocus { anchor: anchor } => concat("port ", symbol_lexeme(sym: anchor.at))
+  }
+}
+
+fn diagnostic_ledger_line(index: Int, d: Diagnostic) -> String {
+  concat(
+    "\n  ",
+    concat(
+      to_string(index),
+      concat(
+        "  ",
+        concat(
+          symbol_lexeme(sym: d.reason),
+          concat("\n      ", diagnostic_attribution(d: d))
+        )
+      )
+    )
+  )
+}
+
+type DiagnosticLedgerAccumulator {
+  next_index: Int
+  text: String
+}
+
+fn diagnostic_ledger_step(
+  acc: DiagnosticLedgerAccumulator,
+  d: Diagnostic
+) -> DiagnosticLedgerAccumulator {
+  DiagnosticLedgerAccumulator {
+    next_index: acc.next_index + 1,
+    text: concat(acc.text, diagnostic_ledger_line(index: acc.next_index, d: d))
+  }
+}
+
+fn diagnostic_ledger_render(ds: NonEmptyDiagnostics) -> String {
+  let folded = fold_list(
+    xs: ds.tail,
+    empty: diagnostic_ledger_step(
+      acc: DiagnosticLedgerAccumulator { next_index: 1, text: "" },
+      d: ds.head
+    ),
+    cons: fn(acc, d) { diagnostic_ledger_step(acc: acc, d: d) }
+  )
+  concat(
+    "boundary 4 diagnostic ledger (carriage order, one line per diagnostic)\n\ndiagnostics: ",
+    concat(to_string(folded.next_index - 1), concat("\n", concat(folded.text, "\n")))
   )
 }

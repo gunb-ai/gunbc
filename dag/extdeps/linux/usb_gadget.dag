@@ -84,7 +84,18 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
   ]
 }
 
-data configfs_op_render_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: configfs_op_line — the ConfigfsOp list is the typed authority (structure), but each op is rendered to a POSIX shell line because a configfs attribute write is a remote-file-write with no argv-only form (printf > sysfs needs a redirect) and the BMC transport is SSH. This single per-variant renderer replaces 32 scattered concats. DISSOLVES WHEN host_effect_apply binds ConfigfsOp directly to a remote Filesystem.Write effect (WriteAttr → Filesystem.Write, Mkdir/Symlink/Rmdir → typed FS ops) over the ssh transport, removing the shell leaf.")
+// The ConfigfsOp list is the typed authority for the structure; each op is nonetheless
+// rendered to a POSIX shell line because a configfs attribute write is a remote file
+// write with no argv-only form (`printf > sysfs` needs a redirect) and the BMC transport
+// is SSH. This single per-variant renderer replaced 32 scattered concats.
+//
+// It dissolves when host_effect_apply binds ConfigfsOp directly to a remote
+// Filesystem.Write effect — WriteAttr to Filesystem.Write, Mkdir/Symlink/Rmdir to typed
+// FS ops — over the ssh transport. That removal is observable exactly as the
+// disappearance of `configfs_op_line`, which is what the trigger names.
+data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
+)
 
 fn configfs_op_line(op: ConfigfsOp) -> String {
   match op {

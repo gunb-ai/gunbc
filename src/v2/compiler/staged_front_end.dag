@@ -1,0 +1,298 @@
+module v2.compiler.staged_front_end
+
+
+data staged_front_end_note: String = "One authority for the .dag front-end ORDER, two projections. The order tokenize -> parse -> normalize -> resolve was spelled once inside ingested_resolved_module_from_source as a nest of bind_outcome, which returns one Outcome<Node> for the whole front end and therefore cannot say WHICH stage a candidate died at. The acceptance harness needs exactly that fact per candidate, and re-inlining the four calls beside the existing arrow would have been a second copy of the order — the section-3 nickname class, and one that drifts silently because nothing makes the two copies disagree loudly. So the order moved HERE and both consumers project from it: front_end_run_outcome folds the staged run back to the Outcome<Node> the old arrow returned, and the acceptance harness reads the per-stage steps."
+
+data staged_front_end_projection_fidelity_note: String = "The projection is a FOLD OF THE STAGED RESULT AND NOTHING ELSE — it never re-runs a stage, so it cannot disagree with the steps it reports. It reproduces bind_outcome's diagnostic threading exactly, which is the whole of the behavior it must preserve: accepted-stage diagnostics accumulate in stage order (diagnostics_merge), and a refusal carries the accumulated pending diagnostics ahead of its own (rejected_with_pending) — the two moves bind_outcome_accepted makes. A projection that dropped accepted-stage diagnostics would be silently lossy for every existing caller while still typechecking."
+
+type FrontEndStage
+  = FrontEndTokenize
+  | FrontEndParse
+  | FrontEndNormalize
+  | FrontEndResolve
+
+type FrontEndStageReceipt
+  = TokenizedSource { token_count: Int }
+  | ParsedModule { node_count: Int }
+  | NormalizedModule { node_count: Int }
+  | ResolvedModule { node_count: Int }
+
+type FrontEndStageStep
+  = FrontEndStagePassed {
+      stage: FrontEndStage,
+      receipt: FrontEndStageReceipt,
+      diagnostics: Diagnostics
+    }
+  | FrontEndStageRejected {
+      stage: FrontEndStage,
+      diagnostics: NonEmptyDiagnostics
+    }
+
+type FrontEndCompletion
+  = FrontEndResolvedModule { resolved: v2.std.node.Node }
+  | FrontEndRefused
+  | FrontEndBoundReached { last: FrontEndStage }
+
+type FrontEndRun {
+  steps: List<FrontEndStageStep>,
+  completion: FrontEndCompletion
+}
+
+data front_end_bound_note: String = "A BOUNDED RUN IS A THIRD COMPLETION, NOT AN ABSENT NODE. run_front_end_to stops after the deepest stage its caller actually needs — the acceptance harness asks for exactly the depth its contract requires, so a contract requiring only tokenize never pays for resolve. Rendering that stop as 'no resolved node' would make it indistinguishable from a refusal at the last stage, which is the empty-observation narrow DESIGN section 5 names: an observation that could not express what happened read as the verdict that nothing happened. So the completion says WHICH stage the bound stopped at, and the whole-front-end projection refuses over it rather than answering."
+
+fn front_end_stage_index(stage: FrontEndStage) -> Int {
+  match stage {
+    FrontEndTokenize => 1
+    FrontEndParse => 2
+    FrontEndNormalize => 3
+    FrontEndResolve => 4
+  }
+}
+
+data front_end_full_depth: Int = 4
+
+fn front_end_passed(
+  steps: List<FrontEndStageStep>,
+  stage: FrontEndStage,
+  receipt: FrontEndStageReceipt,
+  diagnostics: Diagnostics
+) -> List<FrontEndStageStep> {
+  list_snoc_item(
+    xs: steps,
+    item: FrontEndStagePassed { stage: stage, receipt: receipt, diagnostics: diagnostics }
+  )
+}
+
+fn front_end_stopped(
+  steps: List<FrontEndStageStep>,
+  stage: FrontEndStage,
+  diagnostics: NonEmptyDiagnostics
+) -> FrontEndRun {
+  FrontEndRun {
+    steps: list_snoc_item(
+      xs: steps,
+      item: FrontEndStageRejected { stage: stage, diagnostics: diagnostics }
+    ),
+    completion: FrontEndRefused
+  }
+}
+
+fn run_front_end(source: String, file: Symbol) -> FrontEndRun {
+  run_front_end_to(source: source, file: file, depth: front_end_full_depth)
+}
+
+fn run_front_end_to(source: String, file: Symbol, depth: Int) -> FrontEndRun {
+  front_end_tokenize_step(source: source, file: file, lm: dag_language_model(), depth: depth)
+}
+
+fn front_end_bounded(
+  steps: List<FrontEndStageStep>,
+  stage: FrontEndStage
+) -> FrontEndRun {
+  FrontEndRun { steps: steps, completion: FrontEndBoundReached { last: stage } }
+}
+
+fn front_end_tokenize_step(source: String, file: Symbol, lm: LanguageModel, depth: Int) -> FrontEndRun {
+  match v2.compiler.tokenize.tokenize(text: source, file: file, rules: lm.lex) {
+    Rejected { diagnostics: r } =>
+      front_end_stopped(steps: [], stage: FrontEndTokenize, diagnostics: r)
+    Accepted { value: tokens, diagnostics: d } =>
+      front_end_continue_parse(
+        steps: front_end_passed(
+          steps: [],
+          stage: FrontEndTokenize,
+          receipt: TokenizedSource { token_count: token_stream_remaining_count(stream: tokens) },
+          diagnostics: d
+        ),
+        tokens: tokens,
+        lm: lm,
+        depth: depth
+      )
+  }
+}
+
+fn front_end_continue_parse(
+  steps: List<FrontEndStageStep>,
+  tokens: v2.std.compilers.lexing.TokenStream,
+  lm: LanguageModel,
+  depth: Int
+) -> FrontEndRun {
+  if depth <= front_end_stage_index(stage: FrontEndTokenize) {
+    front_end_bounded(steps: steps, stage: FrontEndTokenize)
+  } else {
+    front_end_parse_step(steps: steps, tokens: tokens, lm: lm, depth: depth)
+  }
+}
+
+fn front_end_parse_step(
+  steps: List<FrontEndStageStep>,
+  tokens: v2.std.compilers.lexing.TokenStream,
+  lm: LanguageModel,
+  depth: Int
+) -> FrontEndRun {
+  match v2.compiler.parse.parse_module(tokens: tokens, grammar: lm.grammar) {
+    Rejected { diagnostics: r } =>
+      front_end_stopped(steps: steps, stage: FrontEndParse, diagnostics: r)
+    Accepted { value: artifact, diagnostics: d } =>
+      front_end_continue_normalize(
+        steps: front_end_passed(
+          steps: steps,
+          stage: FrontEndParse,
+          receipt: ParsedModule { node_count: node_subtree_count(n: artifact.tree) },
+          diagnostics: d
+        ),
+        parse_tree: artifact.tree,
+        lm: lm,
+        depth: depth
+      )
+  }
+}
+
+fn front_end_continue_normalize(
+  steps: List<FrontEndStageStep>,
+  parse_tree: v2.std.node.Node,
+  lm: LanguageModel,
+  depth: Int
+) -> FrontEndRun {
+  if depth <= front_end_stage_index(stage: FrontEndParse) {
+    front_end_bounded(steps: steps, stage: FrontEndParse)
+  } else {
+    front_end_normalize_step(steps: steps, parse_tree: parse_tree, lm: lm, depth: depth)
+  }
+}
+
+fn front_end_normalize_step(
+  steps: List<FrontEndStageStep>,
+  parse_tree: v2.std.node.Node,
+  lm: LanguageModel,
+  depth: Int
+) -> FrontEndRun {
+  match normalize(parse_tree: parse_tree) {
+    Rejected { diagnostics: r } =>
+      front_end_stopped(steps: steps, stage: FrontEndNormalize, diagnostics: r)
+    Accepted { value: normalized, diagnostics: d } =>
+      front_end_continue_resolve(
+        steps: front_end_passed(
+          steps: steps,
+          stage: FrontEndNormalize,
+          receipt: NormalizedModule { node_count: node_subtree_count(n: normalized.root) },
+          diagnostics: d
+        ),
+        normalized: normalized,
+        lm: lm,
+        depth: depth
+      )
+  }
+}
+
+fn front_end_continue_resolve(
+  steps: List<FrontEndStageStep>,
+  normalized: NormalizedTree,
+  lm: LanguageModel,
+  depth: Int
+) -> FrontEndRun {
+  if depth <= front_end_stage_index(stage: FrontEndNormalize) {
+    front_end_bounded(steps: steps, stage: FrontEndNormalize)
+  } else {
+    front_end_resolve_step(steps: steps, normalized: normalized, lm: lm)
+  }
+}
+
+fn front_end_resolve_step(
+  steps: List<FrontEndStageStep>,
+  normalized: NormalizedTree,
+  lm: LanguageModel
+) -> FrontEndRun {
+  match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
+    Rejected { diagnostics: r } =>
+      front_end_stopped(steps: steps, stage: FrontEndResolve, diagnostics: r)
+    Accepted { value: resolved, diagnostics: d } =>
+      FrontEndRun {
+        steps: front_end_passed(
+          steps: steps,
+          stage: FrontEndResolve,
+          receipt: ResolvedModule { node_count: node_subtree_count(n: resolved) },
+          diagnostics: d
+        ),
+        completion: FrontEndResolvedModule { resolved: resolved }
+      }
+  }
+}
+
+fn front_end_accumulated_diagnostics(steps: List<FrontEndStageStep>) -> Diagnostics {
+  fold(steps, init: None, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: d } =>
+        diagnostics_merge(outer: acc, inner: d)
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+fn front_end_first_refusal(steps: List<FrontEndStageStep>) -> v2.std.optional.Optional<NonEmptyDiagnostics> {
+  fold(steps, init: optional_absent(), f: fn(acc, step) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match step {
+          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => optional_absent()
+          FrontEndStageRejected { stage: _, diagnostics: r } => optional_present(value: r)
+        }
+    }
+  })
+}
+
+fn front_end_run_outcome(run: FrontEndRun) -> Outcome<v2.std.node.Node> {
+  match front_end_first_refusal(steps: run.steps) {
+    Present { value: r } =>
+      v2.std.diagnostic.Rejected {
+        diagnostics: rejected_with_pending(
+          pending: front_end_accumulated_diagnostics(steps: run.steps),
+          rejected: r
+        )
+      }
+    Absent =>
+      match run.completion {
+        FrontEndResolvedModule { resolved: resolved } =>
+          Accepted {
+            value: resolved,
+            diagnostics: front_end_accumulated_diagnostics(steps: run.steps)
+          }
+        FrontEndBoundReached { last: last } =>
+          v2.std.diagnostic.Rejected { diagnostics: front_end_bounded_diagnostics(last: last) }
+        FrontEndRefused =>
+          v2.std.diagnostic.Rejected { diagnostics: front_end_incomplete_diagnostics() }
+      }
+  }
+}
+
+data front_end_incomplete_note: String = "The no-refusal-and-no-resolved arm is unreachable by construction: run_front_end reaches FrontEndRun with Present resolved only through front_end_resolve_step's Accepted arm, and every other exit appends a FrontEndStageRejected. It refuses with a typed, located diagnostic rather than fabricating an Accepted over a node it does not have — an unreachable arm refuses, never fabricates (DESIGN section 5)."
+
+fn front_end_bound_reason(stage: FrontEndStage) -> Symbol {
+  match stage {
+    FrontEndTokenize => ^staged_front_end_bounded_after_tokenize
+    FrontEndParse => ^staged_front_end_bounded_after_parse
+    FrontEndNormalize => ^staged_front_end_bounded_after_normalize
+    FrontEndResolve => ^staged_front_end_bounded_after_resolve
+  }
+}
+
+fn front_end_bounded_diagnostics(last: FrontEndStage) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: front_end_bound_reason(stage: last),
+      at: port_locus(port: ^staged_front_end_locus_port),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn front_end_incomplete_diagnostics() -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^staged_front_end_run_incomplete,
+      at: port_locus(port: ^staged_front_end_locus_port),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}

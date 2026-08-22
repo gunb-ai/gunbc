@@ -82,7 +82,18 @@ type SolConsoleSendIntent {
   read_timeout_seconds: std.types.Seconds
 }
 
-data sol_console_send_bash_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sol_console_send — ipmitool/obmc-console interactive send composed as shell transport (medium-as-string, IPMI_PASSWORD via -E env); DISSOLVES WHEN host_effect_apply binds SolConsoleSend without concat-built runner glue and dag/extdeps/bmc/serial_console.dag retires its concat-built transport")
+// The interactive ipmitool/obmc-console send is composed as a shell transport
+// (medium-as-string, IPMI_PASSWORD carried through `-E`) because host_effect_apply has
+// no binding for SolConsoleSend that reaches an interactive console without
+// concat-built runner glue. When it does, this module's concat-built transport goes,
+// and `sol_console_send_script` — the declaration this trigger names — goes with it.
+//
+// The retirement is now the trigger rather than a sentence about one: the named
+// declaration exists today, so `dissolution_status` reports this obligation PENDING
+// against the live declaration population and FIRED the moment the script is deleted.
+data sol_console_send_bash_emit_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script")
+)
 
 fn sol_console_send_script(intent: SolConsoleSendIntent) -> String {
   let h = intent.bmc_host as String
