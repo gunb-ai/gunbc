@@ -3,7 +3,7 @@
 ## Completeness standing (reporting convention adopted 2026-08-22)
 
 ```
-VISIBLE CANARY        coded rustc rows: 316 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
+VISIBLE CANARY        coded rustc rows: 315 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
                       canonical E0308 sites: 154
 DIAGNOSTIC COVERAGE   standing: PARTIAL
   known censor        LexMatchThunk.apply / generic-instantiation failure (E0599 aborts before
@@ -22,7 +22,7 @@ censor is removed the board will RISE, and that is diagnostic completion, not re
 | entry | `src/v2/compiler/03_ingest.dag` (M=1) |
 | producer | `curated_cargo_probe_one+emit+seedlink+cargo`, `CSSL_STD_SEED_LINK=1`, shim `""` |
 | emitted roster | 177 files, 503 emit diagnostics (same roster count as the 2026-08-21 run — same subject) |
-| raw E0308 blocks | **128** (40.5% of 316 coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
+| raw E0308 blocks | **128** (40.6% of **315** coded rows — counted as `grep -cE '^error\[E[0-9]+\]'`, never derived by subtracting the uncoded histogram from `HISTOGRAM_SUM`, which lands one high; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`, uncoded 15) |
 | canonical sites | **154** |
 | clusters | 14 + residue |
 | unclassified residue | **7 (4.5%)**, printed in full; residue arm known-positive |
