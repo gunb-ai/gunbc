@@ -154,7 +154,7 @@ test fn guarantee_recovery_bind_pins_both_anchors() -> Bool {
   return (rows |> count) == 1 && match rows |> first {
     Present { value: b } =>
       b.primary_work.module_path == "v1.compiler.infer"
-        && b.primary_work.decl_name == "module_skips_direct_call_arg_check"
+        && b.primary_work.decl_name == "direct_call_arg_mismatch_diags"
         && (b.additional_works |> count) == 1
         && (hand_authored_bind_works(b: b) |> any(r => r.module_path == "v2.std.constraints" && r.decl_name == "solve_constraints"))
     Absent => false
