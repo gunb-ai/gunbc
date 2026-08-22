@@ -94,9 +94,6 @@ fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
   )
 }
 
-fn slot_identity_eq(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
-  runner_slot_identity_equal(a: a, b: b)
-}
 
 
 fn find_local_incarnation_for_slot(slot: RunnerSlotIdentity) -> LocalRunnerSlotIncarnation? {
