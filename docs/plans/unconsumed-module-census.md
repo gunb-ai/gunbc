@@ -443,6 +443,38 @@ census.
   persistence layer the envelope should consume — differ on the #8820 author's intent, and
   guessing is how a second authority gets ratified. Raised for that author.
 
+**h. The list the cleanup directive actually points at is 131, not 298 — and two rows in
+it are not what their names say.** Combining the re-score's buckets: **96 STILL-UNCONSUMED
+(no bare reference on any surface) + 35 DEAD-CONSUMER-ONLY (named bare only from *inside*
+the population — §4a's island shape, which deletes as a group or not at all) = 131 modules
+that are residue on all three decoded surfaces.** That is the defensible starting point for
+the operator's *"clean up anything without consumers"* arm. The other 167 are not: 91 have
+live callers, and 75 are unresolvable at identity grain and need a per-row read before
+anything touches them.
+
+Two observations from reading that population, neither of which the disposition classes
+capture:
+
+- **`v2.test.*` is a name, not an enrolment, and 22 of the 131 are the gap.** Floor
+  discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
+  discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
+  `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
+  `test fn`.** Most are ordinary support modules consumed by real witnesses; the 22 in this
+  population are the ones consumed by nothing, and their names and paths disagree —
+  `v2.test.language_model.go_r1` lives at `src/v2/extdeps/language_model/go_r1.dag`,
+  `v2.test.algebra_laws.zip_eq_list_equality` at `src/v2/std/algebra_laws/`. This subsumes
+  and sharpens finding **f**: those language-model rungs are not merely unclimbed, they are
+  named as tests, declare no test, sit outside any test path, and execute nowhere. **A name
+  that implies enrolment while the mechanism keys on something else is the more useful form
+  of that finding** — the ladder metaphor invites "climb it", and the measurement says
+  "nothing here was ever wired to run."
+- **`gunbc.spark.provisioning`'s appendix row no longer resolves** — the path it names does
+  not exist in the tree. It was one of the two rows §5 excluded from every batch as
+  `fierce-lynx-647`'s area; it appears to have been deleted since. Recorded rather than
+  silently dropped, because an appendix row pointing at nothing is the same staleness class
+  this document polices elsewhere, and because it is a receipt that the population has a
+  clock on it.
+
 **A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree of this
 repo can be **shallow-grafted** — the 2026-08-22 run found its clone rooted at a single
 4608-file import commit dated six days earlier, so `git log <file>` reported that graft
