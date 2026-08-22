@@ -2710,6 +2710,34 @@ enforces end to end.
    decidable `Node`-tree read the namespace authority already performs everywhere else. This is a
    missing wiring, not an undecidable property.
 
+   THE POSITION DOES NOT MERELY SKIP A CHECK — IT PRODUCES A NODE THE PIPELINE TREATS AS
+   RESOLVED, and this is the half that makes the cheap fix wrong. The undeclared identifier is
+   admitted as `ExprVar` with `binding_kind` null and NO INFERRED NODE. So there are two failures
+   stacked: the loud one (nothing refuses an unknown name) and the silent one (what flows onward
+   is indistinguishable, to every downstream consumer, from a name that resolved). A narrow
+   "refuse unknown identifiers in transport argv" patch closes the loud half and leaves the silent
+   half exactly as it is — a null-binding node still travelling the pipeline under the name of a
+   resolved one. Running the existing expression-resolution and type-inference authority over the
+   argv expression tree closes both at once, because a node that authority produces carries its
+   binding by construction. Recorded because the cheap patch is the tempting one and it would
+   retire this row's visible symptom without retiring the row.
+
+   THE FIX MUST NOT COLLAPSE TWO DIFFERENT FACTS. The existing operation-argv note requires a
+   literal in the executable position because letting an operation INPUT choose the executable is
+   unsafe. That argument does not reach a resolved module declaration:
+
+   - program selected by a resolved declaration → allowed, a compile-time cited authority
+   - program selected by arbitrary runtime operation input → still refused
+
+   So the sites currently unreachable are not sites where citation is unsafe; they are sites where
+   a missing path refuses the safe case along with the unsafe one. A cut that preserves the
+   refusal uniformly would entrench the conflation rather than fix it, and would leave
+   `extdeps.tools.env` `env_path_resolved_program` and `extdeps.tools.chmod` `chmod_binary_path` —
+   declarations authored precisely to be cited — permanently uncitable at the position that needs
+   them. The cut must also NOT introduce a transport-specific symbol resolver: that would be an
+   N-th resolver beside the namespace authority (§2/§3), and it is the reuse of the existing
+   authority that makes this class's ceiling *structurally guaranteed* rather than merely fixable.
+
    NEXT-RUNG TRIGGER: resolve identifiers in transport argv positions through the ordinary
    name-resolution path, and refuse an unresolved one with a typed, located diagnostic. Until
    then every `transport shell` argv is an unchecked string channel wearing expression syntax.
