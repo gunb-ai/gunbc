@@ -444,3 +444,74 @@ NOT CLAIMED: that every residue row shares this mechanism, or that the count is
 known. The whole-tree number is still in flight. What is claimed is that ONE
 confirmed instance exists, that it is the second-largest class's real cause, and
 that it is unreachable by source edits.
+
+---
+
+## The inversion: a site where QUALIFYING is the defect (2026-08-22)
+
+Everything above describes the pass under-reaching — bare references it never
+rewrote. This section is the opposite failure, and it is more dangerous because
+every instinct the branch has trained points the wrong way on it.
+
+**`T?` is not `Optional<T>`.** The question mark is a **cardinality** on the node
+(`return_cardinality: CardOptional`). `v2.std.optional.Optional` is an ordinary
+coproduct, declared in `src/v2/std/optional.dag` — the only `type Optional` in
+the pool. They are different things that share the spellings `Present` and
+`Absent`.
+
+So in a cardinality-optional position, **bare `Present` is not an unqualified
+reference at all** — it is the kernel cardinality form. Qualifying it to
+`v2.std.optional.Present` does not make it safer or more explicit. **It changes
+the meaning**, and the compiler says so exactly:
+
+```
+type mismatch: expected 'Coproduct(WorldRefusal)', got 'Coproduct(Optional)'
+```
+
+for a field declared `refusal: WorldRefusal?`.
+
+### The visible symptom, and the invisible one
+
+The pass rewrote **constructors** and left **patterns** alone, so a single
+expression ends up carrying two conventions — `product.spatial_world` `find_room`
+matched `Present { value: found }` and `Absent` bare while constructing
+`v2.std.optional.Present`. That inconsistency is the visible tell.
+
+The invisible one is worse: **the rewrite is semantically wrong even where it
+looks internally consistent.** A module whose constructors were all qualified
+reads as correctly and uniformly cut. Nothing about its appearance distinguishes
+it from a module that was right to be.
+
+### Why no existing number shows it
+
+These modules sit outside the seed closure, so they never appear in the rustc
+diagnostic count the branch is driven by. That count was blind to this class by
+construction — it is a second axis, not a subset. Confirmed: repairing
+`std.orthogonal_topology` and `product.spatial_world` moved the rustc count by
+zero.
+
+### What it blocks, which is the reason it is urgent
+
+`gunbc run` loads the whole pool, so **one** module failing to typecheck makes
+**every witness on the branch unexecutable**. Not slower, not narrower —
+unexecutable. For as long as such a module exists, witness evidence on this
+branch is absent rather than weak, and a witness that cannot run is
+indistinguishable from a green one unless something forces the distinction.
+
+This population therefore admits no prioritisation: a residue of one costs the
+same as a residue of forty.
+
+### Population, stated with its noun
+
+38 files both declare a cardinality-optional and construct the v2 coproduct.
+That is an **upper bound on candidates**, not a defect count — a file may
+legitimately hold both forms, and the defect is a **site** where a
+cardinality-optional position receives a coproduct value. The site-grain join is
+the measurement; until it lands, 38 is not a count of anything.
+
+### For whoever runs a qualification pass next
+
+Do not qualify `Present`/`Absent`/`none` in a position whose declared type ends
+in `?`. Check the declaration, not the spelling. If the pass cannot distinguish a
+cardinality-optional position from a coproduct one, it must refuse the site
+rather than guess — guessing produces a module that looks cut and is wrong.
