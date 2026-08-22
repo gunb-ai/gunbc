@@ -66,9 +66,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DO NOT SIZE THE ROSTER GAP FROM THE NUMBER ABOVE — IT IS THE SMALLER OF THE TWO DECLINE ARMS, and
 // this block would otherwise be the exact place a reader picks up the wrong denominator. Admission
 // is an OR of two independent arms, not one gate: a long home declines first, then a live-tree read
-// declines second. Measured on this branch's own floor run 32582755530 (head 8b28945b27, so the base
-// is stated rather than inherited): declined_long=543 and declined_live=830. The live arm is the
-// LARGER population by half again, and the corpus already says so about itself in
+// declines second. THE CLAIM IS THE RELATION, NOT THE INTEGERS: the live arm is the larger
+// population by roughly half again, and this lane worked the smaller one. That survives the next run;
+// the figures do not, and this mechanism has already accumulated 778, 782 and 830 for one population
+// (gunbc#8878's receipt), which is why substituting a fresher count is minting the next stale copy
+// rather than fixing anything. As dated evidence for the relation and nothing more: floor run
+// 32582755530, head 8b28945b27, declined_long=543 against declined_live=830. The corpus says the same
+// thing about itself in
 // test.claim.transport_script_wall_compile_red_test, which recorded 766 against 536 at its own
 // measurement and observed that an entire multi-session effort had been aimed at the smaller arm.
 // This lane did the same thing. Anyone sizing the gap starts from the live arm.
