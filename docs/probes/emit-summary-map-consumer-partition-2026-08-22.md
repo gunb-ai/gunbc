@@ -184,6 +184,51 @@ crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}` — the path 
 correctly, because only one `Connective` is in main's pool. The deficit did not exist until the pool
 admitted the homonym.
 
+## The two-part guard test, and why the check being well written is the wrong question
+
+A guard deserves system-level credit only if **both** hold:
+
+- **trigger preservation** — every raw state that *should* trigger it stays distinguishable in the
+  guard's **input**;
+- **refusal** — it refuses every trigger it can distinguish.
+
+`derive_variant_to_enum` satisfies the second and fails the first, and that is why it survived
+review: nothing about the fold's text is wrong. Its input arrived through a map that had already
+merged the two declarations by spelling, so the state that should have fired the wall was gone
+before the wall could look.
+
+| guard | trigger preserved? | refuses? | return type can express the answer? |
+|---|---|---|---|
+| `derive_variant_to_enum` | no — merged at `add_emit_item_summary` | yes — empty-string sentinel | yes |
+| `is_known_variant` | no — and it quantifies, so it inverts under load | no — plain `Bool` | **no** |
+| `variant_belongs_to_enum` | no | no — `false` conflates absent with wrong provider | **no** |
+| `reference_derived_variant_induced_parent_spelled` | no — via `variant_name_set` | yes | yes |
+| `type_has_fn_fields` | no | no | **no** |
+| `is_optional_struct_field` | no | no | **no** |
+| `build_qualified_item_registry` | **yes** — qualified `module.leaf` | **yes** — define-and-consume marker | yes |
+
+Read it as two different repairs: a row failing trigger preservation needs a **faithful input**; a
+row failing refusal needs a **better check**. One "broken" column would have merged them.
+
+**`is_known_variant` is not fixed by fixing the map.** Its return type is the other half: even with
+a faithful index, a `Bool` cannot distinguish *uniquely known* from *ambiguously known*, so the
+caller cannot refuse what it cannot be told. The same holds for `variant_belongs_to_enum`,
+`type_has_fn_fields` and `is_optional_struct_field`, whose `false` arm already conflates absent with
+wrong-provider.
+
+## Population state, because neither "passing" nor "failing" fits
+
+- **PopulationIndependentCorrectness** — correct even when homonyms enter.
+- **PopulationConditionalCorrectness** — correct only while an unenforced uniqueness premise holds.
+- **TriggeredWrongAnswer** — the population violates the premise and a consumer sees it.
+
+The bare-keyed map is in the **second** state on main and the **third** on `integration/namespace-cut`.
+"Main is correct and the branch broke it" understates the defect; "the deficit existed but was
+masked on main" overstates it — nothing was masking anything, the mechanism returned the right
+answer for the input it had. The structural defect existed; the wrong output did not, until the
+collision population arrived. Measured cost of moving between the two states: **one element appended
+to a `Vec`**.
+
 ## What this means for the repair, stated as a size rather than a plan
 
 Re-keying the map alone repairs **0 of 23 rows** — the intersection of "identity obtainable at the

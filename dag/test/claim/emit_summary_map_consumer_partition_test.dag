@@ -20,7 +20,11 @@ import gunbc.emit_summary_map_consumer_partition {
   partition_repaired_by_rekey_alone,
   whole_tree_collision_upper_bound,
   largest_measured_pool_collision_count,
-  measured_pool_row_count
+  measured_pool_row_count,
+  emit_summary_map_guard_rows,
+  guard_row_count,
+  guards_written_correctly_but_unable_to_fire,
+  guards_preserving_their_trigger
 }
 
 // WHAT THIS WITNESS IS NOT. It does not measure the emitter and cannot: the roster it guards is a
@@ -104,4 +108,22 @@ fn no_pool_collides_more_than_the_whole_tree_bound() -> Bool {
 // rows and keep the corpus row.
 fn the_collision_population_is_measured_at_pool_grain() -> Bool {
   measured_pool_row_count() > 0
+}
+
+// A CORRECTLY WRITTEN GUARD THAT CANNOT SEE ITS OWN TRIGGER IS THE FINDING, so it is asserted.
+// If this set were empty the two-part test would be carrying no information here and the roster
+// would collapse back into "is the check well written". RED case: file every guard row as
+// preserving its trigger.
+fn some_guard_is_correct_and_unable_to_fire() -> Bool {
+  (guards_written_correctly_but_unable_to_fire() |> count) > 0
+}
+
+// AND AT LEAST ONE GUARD MUST PRESERVE ITS TRIGGER, or the roster has no contrast row and the
+// column cannot be read as discriminating. RED case: drop build_qualified_item_registry.
+fn some_guard_preserves_its_trigger() -> Bool {
+  (guards_preserving_their_trigger() |> count) > 0
+}
+
+fn every_guard_row_is_counted() -> Bool {
+  guard_row_count() == (emit_summary_map_guard_rows |> count)
 }

@@ -533,6 +533,134 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // answers correctly, because only one Connective is in main's pool. The deficit did not exist until
 // the pool admitted the homonym.
 
+// THE TWO-PART GUARD TEST, APPLIED AS ITS OWN ROSTER RATHER THAN AS A COLUMN ON EVERY ROW.
+//
+// A guard deserves system-level credit only if BOTH hold:
+//   TRIGGER PRESERVATION -- every raw state that SHOULD trigger it stays distinguishable in the
+//                           guard's INPUT;
+//   REFUSAL              -- it refuses every trigger it can distinguish.
+//
+// The separation is what makes this worth a roster: a reviewer reads derive_variant_to_enum, sees
+// correct fail-closed logic, and stops -- because the failure is not IN the guard, it is in what
+// reached it. Nothing about the fold's own text is wrong. Its input arrived through a map that had
+// already merged the two declarations by spelling, so the state that should have fired the wall was
+// gone before the wall could look at it.
+//
+// The rule for reading these rows: a row failing trigger preservation needs a FAITHFUL INPUT, and a
+// row failing refusal needs a BETTER CHECK. Those are different repairs, and a single "this row is
+// broken" column would have put them in the same bucket.
+type GuardCondition
+  = HoldsHere { how: String }
+  | FailsHere { what_merged_the_input: DeclarationRef, what_is_lost: String }
+  | NotAGuard { what_it_does_instead: String }
+
+type GuardRow {
+  site: DeclarationRef
+  trigger_preservation: GuardCondition
+  refusal: GuardCondition
+  return_type_can_express_the_answer: Bool
+}
+
+data emit_summary_map_guard_rows: List<GuardRow> = [
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "two enums declaring one spelling occupy ONE map entry, so the fold sees a single enum and its ambiguity arm is unreachable for exactly the case it exists for" },
+    refusal: HoldsHere { how: "a second writer of a variant spelling overwrites with the empty-string sentinel, so an ambiguous variant admits neither parent" },
+    return_type_can_express_the_answer: true,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "it quantifies over every summary, so a merged entry does not merely mislead it -- it makes the quantifier answer true MORE often as the input degrades" },
+    refusal: NotAGuard { what_it_does_instead: "it answers a Bool and never refuses" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_belongs_to_enum"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the enum half of the composite key is a spelling, so a homonym enum answers for the one the caller meant" },
+    refusal: NotAGuard { what_it_does_instead: "answers false on a miss, which is indistinguishable from answering false on a wrong-provider hit" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), what_is_lost: "the variant_name_set it reads is keyed on bare variant spellings, and it then re-consults variant_to_enum, which inherits the same merge" },
+    refusal: HoldsHere { how: "it requires the variant to bind back to this exact enum, so an ambiguous variant is refused -- when the ambiguity survives to be seen" },
+    return_type_can_express_the_answer: true,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_has_fn_fields"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the name may name either declaration and nothing at the site can tell which answered" },
+    refusal: NotAGuard { what_it_does_instead: "answers false when the name is absent, which decides whether the emitted struct derives serde" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_optional_struct_field"),
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the struct name is a spelling assembled by the caller, so a homonym decides whether a field value is wrapped in Some" },
+    refusal: NotAGuard { what_it_does_instead: "answers false and the value is emitted unwrapped" },
+    return_type_can_express_the_answer: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_qualified_item_registry"),
+    trigger_preservation: HoldsHere { how: "it keys on the qualified module.leaf, so two declarations sharing a leaf remain two entries and a genuine duplicate is still distinguishable" },
+    refusal: HoldsHere { how: "an exact duplicate key inserts duplicate_qualified_item_registry_marker, which its consumers refuse through emit_error_expr -- define-and-consume" },
+    return_type_can_express_the_answer: true,
+  },
+]
+
+// is_known_variant's return type is the half a repaired map does not reach. Even with a faithful
+// index a Bool cannot distinguish UNIQUELY KNOWN from AMBIGUOUSLY KNOWN, so the caller cannot refuse
+// what it cannot be told. "Fix the map and this row is fine" is the natural inference and it is
+// wrong; the same holds for variant_belongs_to_enum, type_has_fn_fields and is_optional_struct_field,
+// whose false arm already conflates absent with wrong-provider.
+
+fn guard_fails_trigger_preservation(g: GuardRow) -> Bool {
+  match g.trigger_preservation {
+    FailsHere { what_merged_the_input: _, what_is_lost: _ } => true
+    _ => false
+  }
+}
+
+fn guard_refuses(g: GuardRow) -> Bool {
+  match g.refusal {
+    HoldsHere { how: _ } => true
+    _ => false
+  }
+}
+
+fn guard_row_count() -> Int {
+  emit_summary_map_guard_rows |> count
+}
+
+// THE CELL THE TEST EXISTS TO EXPOSE: a guard whose refusal is correctly written and whose trigger
+// never reaches it. These are the rows a reviewer signs off on and a system still gets wrong.
+fn guards_written_correctly_but_unable_to_fire() -> List<GuardRow> {
+  emit_summary_map_guard_rows |> filter(g => guard_refuses(g: g) && guard_fails_trigger_preservation(g: g))
+}
+
+fn guards_preserving_their_trigger() -> List<GuardRow> {
+  emit_summary_map_guard_rows |> filter(g => !guard_fails_trigger_preservation(g: g))
+}
+
+// THE POPULATION-STATE VOCABULARY, adopted because neither "passing" nor "failing" describes the
+// middle state and both retired formulations were wrong in opposite directions. "Main is correct and
+// the branch broke it" understates the defect; "the deficit existed but was masked on main"
+// overstates it, since nothing was masking anything -- the mechanism returned the right answer for
+// the input it had.
+type PopulationCorrectness
+  = PopulationIndependentCorrectness { why: String }
+  | PopulationConditionalCorrectness { unenforced_premise: String, who_could_violate_it: String }
+  | TriggeredWrongAnswer { population: String, observed: String }
+
+data emit_summary_map_population_state: List<PopulationCorrectness> = [
+  PopulationConditionalCorrectness {
+    unenforced_premise: "every declaration name in the folded population is unique",
+    who_could_violate_it: "anyone adding a module, or a root, that introduces a homonym -- measured cost of violating it on the namespace-cut branch: one element appended to regen_source_roots",
+  },
+  TriggeredWrongAnswer {
+    population: "the stage0 regen pool at integration/namespace-cut head 48b55fa2d70, three roots, 126 modules, three colliding names",
+    observed: "36 stage0 mirrors carrying pub use crate::v2_std_node lines for names their modules never reference; the tracing lane attributes 10334 of 10821 rustc errors on that branch to the 26 of those it measured",
+  },
+]
+
 // THE TIE BETWEEN THE GRAINS, derived rather than asserted: every pool is a subset of the tree, so
 // no pool row may report more colliding names than the whole-tree bound. The two
 // numbers were taken by different walks over different populations, so this is a real consistency
