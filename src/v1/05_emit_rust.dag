@@ -143,7 +143,7 @@ import v1.compiler.emit {
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
-  emit_typed_let_shared
+  emit_typed_let_shared, emit_unmodeled_file_transport_refusal
 }
 import v1.compiler.languages {
   wrap_shared_type,
@@ -10878,7 +10878,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { emit_unmodeled_file_transport_refusal(op_name: op_name, target: Rust) }
   else { emit_local_call(op_name: op_name) }
 }
 
@@ -11556,20 +11556,6 @@ fn unwrap_single_field_product(n: Node) -> Node {
       Absent => n
     }
   } else { n }
-}
-
-fn emit_file_call(op_name: String, inferred: Node) -> String {
-  let effective = unwrap_single_field_product(n: inferred)
-  let is_product = is_product_type(n: effective)
-  let parse_line = if is_product && effective.children |> count > 1 {
-    "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
-  } else {
-    "Ok(content)"
-  }
-  concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    emit_ident(name: op_name, target: Rust), "\");\n",
-    "let content = std::fs::read_to_string(&path)?;\n",
-    parse_line)
 }
 
 fn emit_local_call(op_name: String) -> String {

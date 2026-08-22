@@ -51,12 +51,13 @@ pub use crate::v1_compiler_emit::{
     emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
     emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
     emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
-    extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
-    is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
-    module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
-    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
+    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
+    emit_unmodeled_file_transport_refusal, escape_rust_interp_text, extract_modifier_names,
+    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
+    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
+    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
+    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
+    service_field_decls, tco_reassign_core, typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
@@ -28935,7 +28936,7 @@ pub fn emit_transport_call(
             )
         } else {
             if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_file_call(op_name.clone(), inferred.clone())
+                emit_unmodeled_file_transport_refusal(op_name.clone(), RenderTarget::Rust)
             } else {
                 emit_local_call(op_name.clone())
             }
@@ -30785,32 +30786,6 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
         } else {
             n.clone()
         }
-    }
-}
-
-pub fn emit_file_call(op_name: String, inferred: Rc<Node>) -> String {
-    {
-        let effective = unwrap_single_field_product(inferred.clone());
-        let is_product = is_product_type(effective.clone());
-        let parse_line = if (is_product.clone() && ((effective.children.clone().len() as i64) > 1))
-        {
-            "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)".to_string()
-        } else {
-            "Ok(content)".to_string()
-        };
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let path = format!(\"{}/{}\", self.base_path, \"".to_string(),
-                        emit_ident(op_name.clone(), RenderTarget::Rust),
-                    ),
-                    "\");\n".to_string(),
-                ),
-                "let content = std::fs::read_to_string(&path)?;\n".to_string(),
-            ),
-            parse_line.clone(),
-        )
     }
 }
 

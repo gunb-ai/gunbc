@@ -34,7 +34,6 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1EnumerationMismatch,
   HostConvergeSlice1Refused,
   host_converge_slice1_unit_outcome_to_legacy_result,
-  host_converge_slice1_memory_max_converge_apply_suppressed,
   host_converge_slice1_tasks_knob_name,
   host_converge_slice1_tasks_knob,
   host_converge_slice1_tasks_verdict,
@@ -171,9 +170,10 @@ test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
   }
 }
 
-test fn witness_convergence_suppresses_memory_max_set_property_apply() -> Bool {
-  host_converge_slice1_memory_max_converge_apply_suppressed
-}
+// witness_convergence_suppresses_memory_max_set_property_apply WAS HERE. It asserted a
+// `data ...: Bool = true` and nothing else, so it passed by reading its own subject's literal
+// while the converge apply arm stayed wired. Deleted with the flag; the hold is now the absence
+// of the arm (gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason).
 
 // --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
 // repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
