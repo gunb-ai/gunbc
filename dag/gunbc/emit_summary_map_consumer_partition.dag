@@ -599,36 +599,54 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // construction is std.render.Group, a different declaration sharing a leaf. Joining on a spelling
 // produced a wrong answer inside a measurement about joining on a spelling. Corrected count: zero.
 
-// THE PRODUCER HALF IS NOW EXECUTED RATHER THAN DERIVED, AND ITS FRAMING NEEDS ONE CORRECTION.
+// THE PRODUCER HALF: EXECUTED, LIVE, AND NARROWER THAN THIS CARRIER FIRST RECORDED IT -- INCLUDING A
+// SPECIMEN OF MINE THAT WAS WRONG.
 //
-// A sibling lane derived from the construction path -- v1.compiler.infer_emit_info
-// add_emit_item_summary's map_insert(with_variants, summary.name, summary) into one corpus-wide
-// Map<String, TypeSummary> -- that two declarations sharing a spelling do not merely share a
-// membership bit: the second insert OVERWRITES the first, so one declaration is destroyed before any
-// consumer runs. That was read, not run. RUN HERE, on the real interpreter: two map_insert calls
-// under one key return the SECOND value and leave the map with ONE key. Combined with the pool
-// measurement already on this carrier -- Nat resolving to both std.nat and v2.std.nat inside the
-// 161-module src/v2/compiler/00_compile pool -- the mechanism is executed on both arms it needs.
+// THE MECHANISM IS EXECUTED. add_emit_item_summary does map_insert(with_variants, summary.name,
+// summary) into one corpus-wide Map<String, TypeSummary>, so a second declaration sharing a spelling
+// OVERWRITES the first and one declaration is destroyed before any consumer runs. Run on the real
+// interpreter: two map_insert calls under one key return the SECOND value and leave the map with ONE
+// key.
 //
-// WHY IT COMPOSES WITH THIS CARRIER'S RESULT INSTEAD OF COMPETING WITH IT. Re-keying at construction
-// stops the destruction and repairs nothing, because 23 consumers still ask by bare name. Re-pointing
-// the lookups cannot help either, because one declaration is already gone before any lookup runs.
-// Each half is necessary and insufficient, which makes the repair ONE change -- compose the key at
-// construction AND supply the qualifier at every lookup -- and makes the staged intermediate not
-// merely costlier but INCOHERENT: the map holds two summaries while the consumers still ask for one,
-// so destruction is replaced by arbitrary-pick and neither the old invariant nor the new one holds.
+// AND IT IS LIVE, measured by a sibling lane inside a real emit of the 03_ingest closure with both
+// roots (instrumented build_emit_graph_info, tree pinned inside the run): modules=171,
+// top_level_summaries=1059, distinct_names=1056, colliding_names=3 -- Bool (dag/std/types.dag versus
+// src/v2/std/logic.dag), RankingDimension and TerminationProof (dag/std/termination.dag versus
+// src/v2/std/cardinality.dag). 1059 minus 1056 is 3, so the arithmetic closes on three genuinely
+// destroyed summaries.
 //
-// THE CORRECTION, MEASURED, because the framing offered with it is stronger than the data supports.
-// The claim was that EVERY collision is a seed declaration against a v2 declaration, so the collision
-// population IS the self-hosting frontier and the defect dissolves when self-hosting completes.
-// Counted over the same 116: 70 are seed-versus-v2 and 46 ARE NOT -- 24 dag-versus-dag, 11
-// dag-versus-src/v1, 11 v2-versus-v2. Excluding names declared only in tests or fixtures moves it to
-// 109 with the same 70. Counter-specimens, all inside one tree: OccurrenceId (dag/std/observation.dag
-// versus dag/std/occurrence_identity.dag), IntegerOverflow (dag/extdeps/languages/rust/primitives.dag
-// versus dag/std/checked_arithmetic.dag), PowerRefusal (two dag/product modules). So self-hosting
-// PRODUCES most of this population and does not exhaust it: about 60 percent, not all. The difference
-// is load-bearing -- at 100 percent the defect retires with the frontier, at 60 percent a third of it
-// survives self-hosting and needs the key regardless.
+// MY OWN SPECIMEN WAS WRONG AND IS REPLACED. This carrier previously offered Nat -- co-resident as
+// std.nat and v2.std.nat in the 161-module 00_compile pool -- as the executed co-residency arm. Nat
+// is NOT a collision in the map, and the reason is decidable from the declarations: dag/std/nat.dag
+// declares `type Nat = CommutativeSemiring<Magnitude>`, an ALIAS, and build_type_summary returns none
+// when item.connective == NoConnective, so the seed's Nat never becomes a summary and there is no
+// second entry to destroy. Co-residency of two DECLARATIONS is not co-residency of two SUMMARIES, and
+// I conflated them. Bool is the specimen that survives: coproduct against coproduct, both
+// summary-producing, and in the live three.
+//
+// THE STATIC BOUND NARROWS ACCORDINGLY, and this is the number this carrier owns. Of the 116
+// whole-tree colliding names, only 79 have BOTH sides in a form that produces a summary at all
+// (record or coproduct); 13 have exactly one such side, so the collision is invisible to this map by
+// construction; 24 have neither. So 79 is the upper bound the map can even be exposed to, before any
+// closure-membership narrowing -- and the live closure measured above narrows it much further, to 3.
+//
+// PRICING, IN BOTH DIRECTIONS. The 3 is ONE closure's live damage: it is a FLOOR, not a ceiling. It
+// refutes "the static census measures live damage"; it does not establish that live damage is small,
+// and n=3 cannot support any claim about what fraction of collisions are seed-versus-v2.
+
+// AND THE REFRAME THAT MATTERS MOST FOR THIS CARRIER'S OWN RESULT, verified here rather than relayed:
+// shared_types is NOT a projection of type_summaries. build_shared_types folds map_values over it AND
+// THEN INJECTS to_pascal of every key of rust_container_templates -- container names that are not
+// declarations at all. So the two carriers are KEYED ALIKE AND POPULATED FROM DIFFERENT DOMAINS, and a
+// name can be in shared_types while absent from type_summaries entirely. That is why a composite key
+// on the map cannot reach the shared_types membership row however carefully it is composed: identity
+// has to reach the SET and the test, not the map they were partly derived from.
+//
+// SO THE EARLIER "ONE CHANGE, TWO NECESSARY HALVES" FRAMING ON THIS CARRIER IS WITHDRAWN. It read the
+// producer and consumer defects as two halves of one repair. They are two CARRIERS with three
+// dispositions: the type_summaries key collision, where a composite key IS the repair and the live
+// population is 3; the shared_types membership test, which the key does not reach; and the static
+// census, an upper bound narrowed by summary-producing form and again by closure membership.
 
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
 //

@@ -203,33 +203,50 @@ turned on its author: my first intersection joined those sets on the **leaf name
 exposed type, `Group`. It isn't — the phantom-bearing one is `std.algebra.Group`, the qualified
 construction is `std.render.Group`. Corrected count: zero.
 
-### The producer half, executed — and one correction to its framing
+### The producer half: executed, live, and narrower — including a specimen of mine that was wrong
 
-A sibling lane derived from the construction path (`add_emit_item_summary`'s
-`map_insert(with_variants, summary.name, summary)` into one corpus-wide `Map<String, TypeSummary>`)
-that two declarations sharing a spelling don't merely share a membership bit — **the second insert
-overwrites the first**, destroying one declaration before any consumer runs. That was read, not run.
-**Run here, on the real interpreter:** two `map_insert` calls under one key return the **second**
-value and leave the map with **one** key. With the pool row already on this carrier (`Nat` resolving
-to both `std.nat` and `v2.std.nat` inside the 161-module `00_compile` pool), both arms are executed.
+**Mechanism, executed.** `add_emit_item_summary` does `map_insert(with_variants, summary.name,
+summary)` into one corpus-wide map, so a second declaration sharing a spelling **overwrites** the
+first. Run on the real interpreter: two `map_insert` calls under one key return the **second** value
+and leave **one** key.
 
-It composes with this document's result rather than competing: re-keying at construction stops the
-destruction and repairs nothing (23 consumers still ask by bare name); re-pointing the lookups cannot
-help (one declaration is already gone). Each half is necessary and insufficient — so the repair is
-**one** change, and the staged intermediate is not merely costlier but **incoherent**: the map holds
-two summaries while consumers ask for one, replacing destruction with arbitrary-pick, and neither the
-old invariant nor the new one holds.
+**Live, measured by a sibling lane** inside a real emit of the `03_ingest` closure with both roots
+(instrumented `build_emit_graph_info`, tree pinned inside the run): `modules=171`,
+`top_level_summaries=1059`, `distinct_names=1056`, `colliding_names=3` — `Bool`, `RankingDimension`,
+`TerminationProof`. 1059 − 1056 = 3, so the arithmetic closes on three destroyed summaries.
 
-**The correction.** The framing offered alongside was that *every* collision is a seed declaration
-against a v2 declaration — so the collision population **is** the self-hosting frontier and the defect
-dissolves when self-hosting completes. Counted over the same 116: **70 are seed-vs-v2 and 46 are
-not** — 24 dag-vs-dag, 11 dag-vs-`src/v1`, 11 v2-vs-v2. (Excluding names declared only in
-tests/fixtures: 109, same 70.) Counter-specimens, all within one tree: `OccurrenceId`
-(`dag/std/observation.dag` vs `dag/std/occurrence_identity.dag`), `IntegerOverflow`
-(`dag/extdeps/languages/rust/primitives.dag` vs `dag/std/checked_arithmetic.dag`), `PowerRefusal`
-(two `dag/product` modules). Self-hosting **produces most of this population and does not exhaust
-it** — about 60%, not all. The difference is load-bearing: at 100% the defect retires with the
-frontier; at 60% a third of it survives self-hosting and needs the key regardless.
+**My own specimen was wrong and is replaced.** This document offered `Nat` — co-resident as
+`std.nat` and `v2.std.nat` in the 161-module `00_compile` pool — as the executed co-residency arm.
+`Nat` is *not* a collision in the map, and the reason is decidable from the declarations:
+`dag/std/nat.dag` declares `type Nat = CommutativeSemiring<Magnitude>`, an **alias**, and
+`build_type_summary` returns `none` when `item.connective == NoConnective`. **Co-residency of two
+declarations is not co-residency of two summaries**, and I conflated them. `Bool` (coproduct vs
+coproduct, in the live three) is the specimen that survives.
+
+**The static bound narrows, and this number is this document's own.** Of the 116 whole-tree colliding
+names, only **79** have both sides in a summary-producing form (record or coproduct); **13** have
+exactly one, so the collision is invisible to this map by construction; **24** have neither. 79 is
+the upper bound the map can be exposed to at all, before closure membership narrows it — and the live
+closure narrows it to 3.
+
+**Pricing, both directions.** The 3 is one closure's live damage: a **floor**, not a ceiling. It
+refutes "the static census measures live damage"; it does not establish that live damage is small,
+and n=3 supports no claim about what fraction of collisions are seed-vs-v2.
+
+### `shared_types` is not a projection of `type_summaries` — verified, and it withdraws my earlier framing
+
+`build_shared_types` folds `map_values(type_summaries)` **and then injects `to_pascal` of every key of
+`rust_container_templates`** — container names that are not declarations at all. The two carriers are
+**keyed alike and populated from different domains**: a name can be in `shared_types` while absent
+from `type_summaries` entirely. That is why a composite key on the map cannot reach the
+`shared_types` membership row however carefully composed — identity has to reach the **set and the
+test**, not the map they were partly derived from.
+
+So the earlier *"one change, two necessary halves"* framing here is **withdrawn**. It read the
+producer and consumer defects as two halves of one repair; they are two carriers with three
+dispositions — the `type_summaries` key collision (composite key *is* the repair; live population 3),
+the `shared_types` membership test (the key does not reach it), and the static census (an upper bound
+narrowed by summary-producing form, then by closure membership).
 
 ### The `Connective` specimen: pool named, and it is a third root
 
