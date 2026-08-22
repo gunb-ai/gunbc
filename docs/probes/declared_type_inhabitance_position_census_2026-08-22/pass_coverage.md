@@ -80,15 +80,25 @@ be larger than six rows and reported the check coming back empty.)
   | `let x = nosuchname_zzz` in a function body | REFUSED, `undefined variable 'nosuchname_zzz'` |
   | ordinary function body | ACCEPTED |
 
-  So the service subtree IS inferred and the table's `walked` classification for transport
-  properties is CONFIRMED IN BOTH DIRECTIONS. The gap is one hop deeper and it is a position
-  nothing had named: **a LIST-LITERAL ELEMENT inside a walked transport property value is not
-  walked.** Every `transport shell { argv: [...] }` in the corpus carries that surface.
+  So the service subtree IS inferred: the function-body controls behave, and one of the two service
+  arms refuses.
 
-  Note what it is NOT: a list element in a `data` initializer IS walked — `data xs: List<Rel> =
-  [nosuchname_zzz]` refuses in the census's own run. So this is specific to the transport property
-  value, not a general list-element hole, and the next question is structural: what node the argv
-  list is stored as, and which child `infer_property_values` actually descends into.
+  **AND THE STRUCTURE SAYS I NAMED THE POSITION WRONG.** `v1.core` `shell_transport_node` stores
+  `argv` as the transport node's **`children`**, not as a property — properties carry `env` and
+  `stdin`. So `argv: ["echo", nosuchname_zzz]` being accepted is NOT "a list element inside a walked
+  property"; it is the table's own **transport `children` — NEVER WALKED** row, confirmed by
+  execution. `infer_transport_node` copies `children: t.children` unchanged, and every
+  `transport shell { argv: [...] }` in the corpus sits behind that copy.
+
+  Two things follow, and the second is why the intermediate claim is recorded rather than quietly
+  replaced. The flagged row is now a CONFIRMED member on its own terms. And the reason it looked
+  like a new position was that the fixture was written from the SURFACE spelling (`argv:` looks like
+  a field init) instead of from the node the parser builds — the same mistake as reading a refusal
+  count without asking which layer refused.
+
+  What the `argv: nosuchname_zzz` refusal proves is therefore still open: it may be a parse or
+  resolve refusal of a non-list argv rather than evidence that properties are walked. The
+  property-side question is being asked with `stdin:`, which IS a property.
 
 - **Flagged by structure, not yet confirmed**: non-`svc_auth_source` item properties, `uses` config
   args, service exit-entry status patterns, transport children. None is counted as a member here.
