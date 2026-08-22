@@ -43,19 +43,16 @@ fn spark_grant_listing_reports_no_passwordless_grant(detail: String) -> Bool {
   string_contains(detail, "a password is required")
 }
 
-fn spark_grant_listing_entry_command(line: String) -> String? {
+fn spark_grant_listing_entry_commands(line: String) -> List<String> {
   match line.split(delimiter: "NOPASSWD: ").skip(n: 1).last() {
-    Absent => none
-    Present { value: rest } => Present { value: trim(rest) }
+    Absent => []
+    Present { value: rest } => map(rest.split(delimiter: ","), c => trim(c))
   }
 }
 
 fn spark_grant_listing_names_command(listing: String, command: String) -> Bool {
-  any(listing.split(delimiter: "\n"), l =>
-    match spark_grant_listing_entry_command(line: l) {
-      Absent => false
-      Present { value: c } => c == command
-    })
+  any(flat_map(listing.split(delimiter: "\n"), l => spark_grant_listing_entry_commands(line: l)),
+      c => c == command)
 }
 
 // A grant is HELD when a listing ENTRY names exactly the command the grant authorizes -- entry by
@@ -79,6 +76,23 @@ fn spark_grant_listing_names_command(listing: String, command: String) -> Bool {
 // separators are not entries, so they contribute nothing to the join instead of contributing a
 // negative vote. The command string still comes from the same row the installer writes, so this
 // remains a join against one authority -- now at the grain that authority actually uses.
+//
+// ONE ENTRY LINE MAY CARRY SEVERAL COMMANDS, so the marker split is not the last one. sudo renders
+// a multi-command Cmnd_Spec comma-separated on a single line, and reading that line as ONE command
+// would match neither of the two it names. MEASURED on both live hosts 2026-08-22, each grant is
+// its own drop-in and therefore its own line -- so the comma case does not occur on srv5 or srv6
+// today, and this split is written for the shape sudo may emit rather than only the shape these two
+// hosts currently do. Splitting cannot make a wrong answer right-looking: if a command's own
+// ARGUMENT ever contained a comma, the fragments match nothing, the grant reads not-held, and the
+// installer reinstalls -- the same safe direction as not splitting at all, over a strictly larger
+// set of listings read correctly.
+//
+// `NOPASSWD: ALL` READS NOT HELD, and that is correct rather than a defect, though it is surprising
+// enough to be worth naming here before someone files it. `ALL` is a sudoers wildcard, not the
+// command string any grant authorizes, so no equality holds and the reconcile reports the grant
+// missing on a host that can in fact run it. The alternative -- teaching the join that `ALL`
+// subsumes everything -- would make a blanket grant answer for every specific one, which is exactly
+// the host-grained "is provisioned" Bool this module exists to avoid.
 fn spark_managed_grant_standing_from_outcome(
   grant: SparkManagedGrant,
   outcome: SparkGrantOutcome,
