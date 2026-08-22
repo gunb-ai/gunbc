@@ -2944,12 +2944,48 @@ enforces end to end.
    prescribes it: `map_lookup` is the total primitive and `map_get` is a projection
    (`outcome_accepted` unconditionally — it can never return `Rejected`), warning that "a caller
    reaching for `map_get` must match a `Rejected` arm that no producer can construct… a substrate
-   failure would report as a domain fact." The three sites want `map_lookup`. Correct
-   independently of this row; it repairs THREE of FORTY-SIX.
+   failure would report as a domain fact." But `map_lookup` IS NOT THE REPAIR, and an earlier
+   revision of this row said it was: `map_lookup` lives in `v2.std.collection` — the very module
+   whose presence in the consumer's closure is the unstable fact — so switching to it would keep
+   the dependency this row is about and merely change which name it hangs on. gunbc#8944 uses the
+   `Map` primitive method `X.lookup(key)` instead, which has 35 existing consumers and requires no
+   module to enter any closure at all. Correct independently of this row; it repairs THREE of
+   FORTY-SIX.
 
    NOT CLAIMED: that any of the 43 is currently mis-resolved. They are not — they resolve to the
    builtin today and typecheck. The claim is that their meaning is contingent on an import graph
    nobody is watching.
+
+   THE THREE-STATE OUTCOME THIS ROW ASKS FOR ALREADY EXISTS, AND THAT MAKES THE FINDING WORSE
+   RATHER THAN CHEAPER. Measured in the live tree 2026-08-22. `v1.compiler.infer_sigs`
+   `FuncSigLookup` is exactly `FuncSigResolved | FuncSigUnresolved | FuncSigAmbiguous
+   { candidates }` — the vocabulary is built, named, and documented as never falling through to a
+   fallback. Two mechanisms keep it from ever describing the collision measured above.
+
+   (a) **The candidate set is never assembled, so the ambiguity arm cannot see a cross-authority
+   collision.** `v1.compiler.infer_lookup` `lookup_func_sig` asks the resolved function
+   environment FIRST and consults the global/builtin path (`func_sig_from_global_bare`) ONLY on
+   `FuncSigUnresolved`. A declared `map_get` and the registered builtin `map_get` are therefore
+   never co-candidates: the declared one wins by short-circuit, and `FuncSigAmbiguous` is
+   reachable only among declarations. The incident is not an unlucky precedence order — ANY
+   precedence silently changes meaning when the candidate population changes, which is precisely
+   what one import edge did.
+
+   (b) **Where ambiguity IS constructed, one projection erases it.** `func_sig_if_resolved` maps
+   `FuncSigAmbiguous { candidates: _ }` to `Absent` — the same `Absent` that means "no such
+   signature" — so a refusal that the lookup went to the trouble of building is discarded into the
+   arm that permits fallback. This is the not-applicable-versus-malformed conflation named in
+   DESIGN's failure-mode list, in its third form: *ambiguous* rendered as *unresolved*, two states
+   with opposite repairs (qualify the reference / declare the function). Ten call sites consume
+   that projection — nine in `v1.compiler.infer` and one in `v1.compiler.emit` — so every ordinary
+   inference path in the seed reads ambiguity as absence.
+
+   WHAT THIS CHANGES ABOUT THE ROW'S TRIGGER: the next rung is not "build a three-state outcome",
+   it is "collect all admissible callable candidates before deciding, and stop erasing the arm
+   that already exists." The vocabulary being present while neither the collection nor the
+   projection can carry it is the §4b rung-inflation shape at the level of a single type: a
+   `FuncSigAmbiguous` variant in the source reads as coverage, and nothing that can construct it
+   for this class ever runs. A grep for the variant name would report the wall as built.
 
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
