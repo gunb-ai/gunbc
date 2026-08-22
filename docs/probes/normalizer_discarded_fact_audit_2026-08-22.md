@@ -98,6 +98,31 @@ a **prefix regex** rather than as the concept: `stage_normalize` and
 without starting with `normalize_`. Matching a spelling where a concept was meant is the same failure
 the class itself is about.
 
+## The class is wider than normalizers — normalizers are where it was found
+
+**A fifth instance surfaced inside the reporting of this audit.** An interim report named the 13
+frame-escapes by **basename**, and `complexity.dag` exists in *both* `src/v1` and `src/v2/lens` — so
+`complexity.dag:2066` collapsed two real files. A basename is **a shorter spelling substituted for a
+discriminating identity**, which is the same shape as the bare-keyed summary map collapsing two
+declarations that share a name, and as `type_reference_decl_file`'s `String` collapsing four states
+into two spellings. The prefix regex above is a third: it collapsed `stage_normalize` and
+`program_assembly_read_to_normalized_root_prepared` into non-members by matching a spelling where a
+concept was meant.
+
+So the class generalises:
+
+> **Any layer that substitutes a shorter spelling for a discriminating identity, and any consumer
+> downstream that needed the distinction.**
+
+Instances today span five layers, and only the first is where anyone would have gone looking:
+the emitter (`unwrap_single_field_product`, the summary map, `decl_file`), an extraction pattern (a
+character class without digits turning `v1` into `v`), adjudication tooling (the prefix regex), and a
+report (the basenames).
+
+That framing predicts where to look next **with no new instrument**: wherever this repository
+shortens a name to report, key, group or match on it. Extending the enumeration to cover the wider
+class is deliberately **not** in scope here — it is a different subject.
+
 ## Known members
 
 | member | status |
