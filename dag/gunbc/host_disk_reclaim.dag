@@ -1,0 +1,163 @@
+module gunbc.host_disk_reclaim
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second }
+import std.upsert_decision { ObservationVerdict, UnknownRefused }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+
+// THE FLEET'S DISK CAPACITY MECHANISM, SUBSUMED. This module models what
+// ctrl-runner-reclaim.timer has been doing on every runner host since 2026-07-23, read from the
+// script itself (scripts/session-dashboard/host/reclaim-runner-disk.sh and its .service/.timer)
+// rather than from a description of it. It follows the precedent gunbc.runner_lifecycle
+// runner_lifecycle_ctrl_void_note sets for exactly this situation: READ the ctrl artifact as ground
+// truth for what the host actually does, subsume it here, and never invoke ctrl from gunbc.
+//
+// WHY THIS IS A FABRIC CONCERN AND NOT HOUSEKEEPING. The runners are ephemeral in IDENTITY -- a
+// one-shot JIT registration per job -- but their WORKSPACE is deliberately persistent: each slot
+// keeps a fixed _work checkout so CI does not re-clone the ~10G repo and rebuild cold every job.
+// That trade was taken on purpose and nothing bounded its cost side, so a slot's own growth is a
+// standing claim on the host's disk. A fabric that allocates slots without modeling that claim is
+// allocating against a number that drifts underneath it.
+//
+// AND IT IS ALREADY LOAD-BEARING, WHICH IS THE REASON TO MODEL IT RATHER THAN REPLACE IT. Measured
+// on srv4 (operator, 2026-08-22): packs are 15-46 per checkout against the ~370 the script's own
+// header describes, and slots are 2.5G against the 13G it describes. The slots are small BECAUSE
+// this runs. Deleting it re-opens a 5x disk regression on every host, so this model exists to give
+// the mechanism a home in the substrate, not to supersede a working thing with an unproven one.
+//
+// NOT A SECOND HYGIENE AUTHORITY. gunbc.host_hygiene_reaper is a DIFFERENT mechanism that shares
+// the word: it reaps residual SLOTS -- stale cgroups, inactive units, control-override dirs -- and
+// carries zero coverage of packs, repack, tmp_pack, _diag or docker (verified by grep against both
+// it and its _remediate half, all six terms zero). Treating one as the other's successor is the
+// one-name-two-concepts error, so this module states the boundary rather than assuming a reader
+// infers it.
+data host_disk_reclaim_subsumption_note: String = "Subsumes ctrl-runner-reclaim.timer / .service / reclaim-runner-disk.sh, read as ground truth per gunbc.runner_lifecycle runner_lifecycle_ctrl_void_note. The script is the authority for WHAT the host does today; this module is the authority for what the fabric believes about it. Disjoint from gunbc.host_hygiene_reaper, which reaps residual slots and models no disk reclamation."
+
+// THE FIVE GROWTH PATHS, each a separate arm because each has a different owner and a different
+// repair. Four are the accretion the script's header names; the fifth is a WEDGE rather than
+// growth, and it is the one a summary of this mechanism is most likely to drop: a review killed
+// mid-run leaks a refs/heads/review/* ref, and once its target object goes missing `git gc` dies
+// with a bad-object error AND writes a .git/gc.log that DISABLES ALL FUTURE AUTO-GC. So the failure
+// is self-perpetuating: the mechanism that would reclaim the disk is exactly what the wedge turns
+// off, and every subsequent review on that runner stays wedged until a human intervenes.
+type DiskReclaimConcern
+  = UnrepackedPackAccretion { pack_count: Int }
+  | InterruptedFetchResidue { tmp_pack_count: Int }
+  | UnrotatedDiagnosticLogs { log_bytes: ByteSize }
+  | DockerBuildCacheAccretion { rootless: Bool }
+  | WedgedObjectStore { cause: StoreWedgeCause }
+
+type StoreWedgeCause
+  = BrokenReviewRef { ref_name: NonEmptyStr }
+  | PoisonedGcLog
+
+// A SLOT RUNNING A JOB IS NOT A SLOT WHOSE STATE IS UNKNOWN, and collapsing the two is what would
+// make this mechanism unsafe. The script decides busy-ness by cgroup -- every Runner.Worker lives
+// in its slot's actions-runner@<slot>.service cgroup -- which is an observation that can itself
+// fail. Busy means "do not touch git here"; unobservable means "we could not tell", and both refuse
+// git work while being different facts with different repairs (DESIGN section 5: a failure arm
+// refuses, it never widens, and could-not-observe must never render as a verdict about the subject).
+type SlotJobState
+  = SlotRunningJob { worker_cgroup_unit: NonEmptyStr }
+  | SlotIdle
+  | SlotJobStateUnobservable { reason: NonEmptyStr }
+
+type CheckoutObservation {
+  git_dir: NonEmptyStr
+  owner: NonEmptyStr
+  pack_count: Int
+  tmp_pack_count: Int
+  git_dir_bytes: ByteSize
+}
+
+type SlotDiskObservation {
+  slot: RunnerSlotIdentity
+  job_state: SlotJobState
+  diag_log_bytes: ByteSize
+  checkouts: List<CheckoutObservation>
+}
+
+// THE PARAMETERS ARE THE SCRIPT'S DEFAULTS, CARRIED AS DATA RATHER THAN RESTATED IN PROSE, so a
+// consumer reads the same number the host runs on. Each is an operator override in the real unit
+// (EnvironmentFile=-/etc/default/ctrl-runner-reclaim), which is why they are declarations here and
+// not literals inlined at their use sites.
+data reclaim_fragmentation_gate_packs: Int = 8
+
+data reclaim_diag_max_age_days: Int = 3
+
+data reclaim_tmp_pack_min_age_days: Int = 1
+
+data reclaim_per_repo_timeout: Second = second(count: 1800)
+
+data reclaim_parameters_note: String = "RECLAIM_GIT_GC_MIN_PACKS=8, RECLAIM_DIAG_MAX_AGE_DAYS=3, RECLAIM_GIT_GC_TIMEOUT_S=1800, and the tmp_pack sweep's -mtime +1. The pack gate is a FRAGMENTATION gate, not a size gate: a repo at or below it is skipped because the I/O is not worth it, which is what makes a re-run cheap and idempotent. The tmp_pack age floor exists so the sweep can never race a live index-pack."
+
+// THE DECISION IS FOUR-WAY AND THE TWO REFUSALS ARE NOT ONE ARM. Warranted and below-gate are both
+// answers about the repo; busy and unobservable are answers about whether we may ask at all. An
+// earlier shape that returned a Bool could not say which, and a consumer reading false could not
+// tell "already packed" from "we did not look".
+type RepackDecision
+  = RepackWarranted { git_dir: NonEmptyStr, owner: NonEmptyStr, pack_count: Int }
+  | RepackBelowFragmentationGate { git_dir: NonEmptyStr, pack_count: Int }
+  | RepackRefusedSlotBusy { git_dir: NonEmptyStr, worker_cgroup_unit: NonEmptyStr }
+  | RepackRefusedJobStateUnobservable { git_dir: NonEmptyStr, reason: NonEmptyStr }
+
+fn repack_decision_for(job_state: SlotJobState, checkout: CheckoutObservation) -> RepackDecision {
+  match job_state {
+    SlotRunningJob { worker_cgroup_unit: unit } =>
+      RepackRefusedSlotBusy { git_dir: checkout.git_dir, worker_cgroup_unit: unit }
+    SlotJobStateUnobservable { reason: r } =>
+      RepackRefusedJobStateUnobservable { git_dir: checkout.git_dir, reason: r }
+    SlotIdle =>
+      if checkout.pack_count > reclaim_fragmentation_gate_packs {
+        RepackWarranted {
+          git_dir: checkout.git_dir,
+          owner: checkout.owner,
+          pack_count: checkout.pack_count,
+        }
+      } else {
+        RepackBelowFragmentationGate { git_dir: checkout.git_dir, pack_count: checkout.pack_count }
+      }
+  }
+}
+
+fn slot_repack_decisions(obs: SlotDiskObservation) -> List<RepackDecision> {
+  map(obs.checkouts, c => repack_decision_for(job_state: obs.job_state, checkout: c))
+}
+
+// THE TMP_PACK SWEEP AND THE DIAG ROTATION RUN REGARDLESS OF BUSY-NESS, and that is a property of
+// the subjects rather than an exception to the safety rule: neither is job state. A leftover
+// tmp_pack_* is pure garbage from an interrupted index-pack, and _diag holds logs, so removing
+// either cannot disturb a running job. Only the git object store is serialised against live work.
+fn slot_has_interrupted_fetch_residue(obs: SlotDiskObservation) -> Bool {
+  fold_list(
+    xs: obs.checkouts,
+    empty: false,
+    cons: fn(acc, c) { acc || c.tmp_pack_count > 0 },
+  )
+}
+
+data reclaim_unconditional_arms_note: String = "tmp_pack sweep and _diag rotation are not gated on slot busy-ness because their subjects are not job state -- an interrupted index-pack's leftover and a log file are safe to remove under a running job. The git object store is the only subject serialised against live work, and it is serialised twice over: skipped entirely for a busy slot, and left to git's own repo lock otherwise."
+
+// WHAT THE FABRIC ACTUALLY WANTS FROM THIS: a per-slot disk claim derived from OBSERVATION rather
+// than from arithmetic. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot is today a single
+// literal, byte_size(40960000000), whose own annotation derives it as "~38GB per slot at width 7 on
+// 500GB class disk" -- that is the disk divided by the width you want, then used to preflight
+// whether that width fits, so the charge and the question are the same number. Measured reality on
+// srv4 is ~2.5G per slot, about sixteen times smaller, and the literal post-dates this reclaimer by
+// two weeks -- so it was never a stale measurement, it was never a measurement at all.
+//
+// This fold is the replacement's input, not the replacement: it says what a slot currently occupies,
+// which is the quantity a width preflight should charge. Retiring the literal is deliberately NOT
+// done here, because the operator's sequencing is that the reclaimer is subsumed before anything
+// touches the width numbers -- those numbers are downstream of whether this mechanism runs.
+fn slot_observed_bytes(obs: SlotDiskObservation) -> ByteSize {
+  byte_size(
+    count: fold_list(
+      xs: obs.checkouts,
+      empty: byte_size_count(b: obs.diag_log_bytes),
+      cons: fn(acc, c) { acc + byte_size_count(b: c.git_dir_bytes) },
+    ),
+  )
+}
+
+data reclaim_budget_supersession_note: String = "THE INTENDED CONSUMER, named so this fold is not mistaken for a report. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot is circular -- disk divided by desired width, used to preflight that width -- and measures ~16x the observed per-slot occupancy. slot_observed_bytes is the observed quantity that replaces it. NOT DONE IN THIS MODULE, by operator sequencing 2026-08-22: the reclaimer is subsumed first, because the width literals are downstream of whether reclamation runs at all. A width charge derived from observation while the mechanism holding that observation down is unmodeled would be a number resting on an unmodeled dependency."
