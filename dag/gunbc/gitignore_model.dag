@@ -82,6 +82,10 @@ type IgnoreArtifact
   | PythonAuditScriptAllowlisted
   | PythonProbeScriptAllowlisted
   | FloorCutNameResolutionPartitionScriptAllowlisted
+  | ShadowDirectCallArgConformanceSummarizeScriptAllowlisted
+  | ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted
+  | ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted
+  | E0308ClassifySitesScriptAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir

@@ -58,12 +58,12 @@ pub fn dag_collect_pack_slots(
         });
         let order = Rc::new({
             let mut __result = Vec::new();
-            for s in ordered_slots.clone().iter().cloned() {
+            for s in ordered_slots.iter().cloned() {
                 __result.push(s.node.clone());
             }
             __result
         });
-        let seen = ordered_slots.clone().iter().cloned().fold(
+        let seen = ordered_slots.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
                 v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
@@ -140,7 +140,7 @@ pub fn connective_name(value: Connective) -> String {
 
 pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     Rc::new({
-        let mut __sorted: Vec<_> = digests.clone().iter().cloned().collect();
+        let mut __sorted: Vec<_> = digests.iter().cloned().collect();
         __sorted.sort_by(|a: &String, b: &String| {
             let __ka = (|d: String| d.clone())(a.clone());
             let __kb = (|d: String| d.clone())(b.clone());
@@ -157,7 +157,7 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
 }
 
 pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
-    digests.clone().iter().cloned().fold(
+    digests.iter().cloned().fold(
         v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string()),
         |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
     )
@@ -241,7 +241,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
             ));
             let field_hashes = Rc::new({
                 let mut __result = Vec::new();
-                for f in fbs.clone().iter().cloned() {
+                for f in fbs.iter().cloned() {
                     __result.push(dag_node_surface_fingerprint_rec(f.clone()));
                 }
                 __result
