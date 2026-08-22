@@ -168,10 +168,29 @@ construction cell and the parameter control agree with each other and differ fro
 this document's cell on direction alone. Seam B is unaffected and still stands as
 written: it is the *admitting* direction failing across an import.
 
-What remains open, and is nobody's finding yet: whether the asymmetry is
-**intended** rather than incidental. A cardinality-annotated position accepting the
-kernel form and not the coproduct is a defensible shape, but a directional relation
-that no authority declares is where an unexamined leniency would live.
+**That question is now ANSWERED: the asymmetry is INCIDENTAL** (`crisp-crab-430`,
+2026-08-22, by searching the authority rather than probing further). Two locations,
+enumerated rather than grepped topically:
+
+- `src/v2/std/optional.dag` declares **nothing** about the kernel cardinality — no
+  `CardOptional`, no sugar note, no relation of any kind.
+- `v1.compiler.infer_types` carries the cardinality rules, and the only ones
+  involving `T?` relate it to **unit**: `left_opt && right_is_unit` compatible,
+  `left_is_unit && right_opt` compatible. That is the `none` case, and nothing else.
+
+The load-bearing premise is that `infer_types` is *the* place carrying every other
+cardinality rule — so this is an absence measured where the rule would have to
+live, not an absence inferred from a topical search. **Nothing in the authority
+relates `T?` to `Optional<T>` at all.** The one-directional admission is therefore
+a byproduct of where the structural product/coproduct comparison happens to land.
+That is also *why* it is one-directional: nobody wrote a direction, so the
+direction is whatever falls out.
+
+**This makes it a §3 finding rather than a compiler quirk.** One concept — an
+absent value — carried by two representations, with no single authority relating
+them, and their compatibility delegated to comparison code that was never asked the
+question. The clean cell in this document's own table is that delegation happening
+to admit; the two refusals are it happening to refuse.
 
 ---
 
