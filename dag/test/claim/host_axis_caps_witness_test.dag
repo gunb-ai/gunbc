@@ -28,7 +28,9 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_script_matches_ordered_composition,
   deploy_memory_cap_shadow_revert_script,
   deploy_runner_memory_cap_author_script,
+  cap_upsert_script,
 }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
 import gunbc.host_converge {
   gunbc_runner_per_slot_dropin_path,
@@ -143,7 +145,10 @@ test fn witness_runner_memory_cap_author_script_derived() -> Bool {
   let desired = gunbc_runner_slot_desired()
   string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
     && string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
-    && !string_contains(s: runner_memory_cap_author_script(), pattern: "systemctl revert")
+    && !string_contains(
+      s: runner_memory_cap_author_script(),
+      pattern: deploy_memory_cap_shadow_revert_script(units: [shadow_unit]),
+    )
 }
 
 test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
@@ -170,4 +175,38 @@ test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate
     script: concat(concat(reverts, author), "padding"),
     units: units,
   )
+}
+
+
+// The quoting these three witnesses pin is the SERIALIZER'S, not this module's: the cap
+// content is a word handed to a bash grammar tree, so an apostrophe inside it is encoded by
+// extdeps.posix.shell_command_language posix_single_quote. Under the former hand-joined
+// spelling ("printf '%s' '" ++ content ++ "' > path") the same content closed the quoting
+// early and the rest of the drop-in became shell words — so each RED below is a real
+// discriminator against that spelling returning, not a restatement of the emitter.
+data apostrophe_cap_content: String = "[Service]\nEnvironment=CAP='quoted'\n"
+
+data apostrophe_cap_member: CapMember = CapMember {
+  dropin_path: path20,
+  content: apostrophe_cap_content,
+}
+
+test fn witness_cap_upsert_script_quotes_content_through_posix_authority() -> Bool {
+  string_contains(
+    s: cap_upsert_script(m: apostrophe_cap_member),
+    pattern: posix_single_quote(spelling: apostrophe_cap_content),
+  )
+}
+
+test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool {
+  !string_contains(
+    s: cap_upsert_script(m: apostrophe_cap_member),
+    pattern: concat("'", concat(apostrophe_cap_content, "'")),
+  )
+}
+
+test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool {
+  !string_contains(s: cap_upsert_script(m: apostrophe_cap_member), pattern: "printf '%s' '")
+    && !string_contains(s: runner_memory_cap_author_script(), pattern: "printf '%s' '")
+    && !string_contains(s: deploy_runner_memory_cap_author_script(), pattern: "printf '%s' '")
 }
