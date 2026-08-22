@@ -8064,7 +8064,6 @@ fn run_walk(
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[Option<ResolvedFloorBatchClamp>]>,
     budget_tighten_ms: Option<u128>,
-    falsifier_cadence: bool,
     emit_ordinary_floor_receipts: bool,
     // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
     // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
@@ -8916,7 +8915,6 @@ fn run_perturb_check(
         FloorBatchStopPolicy::StopBeforeDependents,
         None,
         None,
-        false,
         true,
         // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
         // written and no identity is owed.
@@ -11204,7 +11202,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
-        plan_function == "gunbc_falsifier_plan",
         !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })),
         walk_attempt_id.as_deref(),
     );
@@ -12759,7 +12756,6 @@ mod tests {
             FloorBatchStopPolicy::StopBeforeDependents,
             None,
             None,
-            false,
             false,
             None,
         );
@@ -15471,7 +15467,6 @@ mod tests {
                 None,
                 None,
                 false,
-                false,
                 None,
             )
         };
@@ -15553,7 +15548,6 @@ mod tests {
             FloorBatchStopPolicy::StopBeforeDependents,
             None,
             None,
-            false,
             true,
             walk_attempt_id,
         )
