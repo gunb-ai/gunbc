@@ -1929,6 +1929,15 @@ pub fn set_element_types_mismatch(
         ))
 }
 
+pub fn type_node_is_established(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    authored_name_at(source_indices.clone(), n.clone()) != *""
+        || n.children.len() > 0
+        || n.params.len() > 0
+}
+
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     ((n.params.clone().len() as i64) > 0)
 }
@@ -8280,16 +8289,21 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 {
                     let exp = expected.clone().unwrap();
                     if ((exp.params.clone().len() as i64) > 0) {
-                        {
-                            let declared_ret = resolved_type(exp.clone());
-                            if is_fully_resolved(
-                                declared_ret.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                Some(declared_ret.clone())
-                            } else {
-                                None
+                        match exp.inferred.as_deref() {
+                            Some(InferredNode::Resolved { node: declared_ret }) => {
+                                if type_node_is_established(
+                                    declared_ret.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) && is_fully_resolved(
+                                    declared_ret.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    Some(declared_ret.clone())
+                                } else {
+                                    None
+                                }
                             }
+                            _ => None,
                         }
                     } else {
                         None

@@ -1224,6 +1224,12 @@ fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indice
     && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
+fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) != ""
+    || n.children |> count > 0
+    || n.params |> count > 0
+}
+
 fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
@@ -4592,10 +4598,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_expected = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
-          let declared_ret = resolved_type(n: exp)
-          if is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
-            Present { value: declared_ret }
-          } else { none }
+          match exp.inferred {
+            Present { value: Resolved { node: declared_ret } } =>
+              if type_node_is_established(n: declared_ret, source_indices: scope.type_env.source_indices)
+                && is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
+                Present { value: declared_ret }
+              } else { none }
+            _ => none
+          }
         } else { none }
       } else { none }
       let body_scope = InferScope {
