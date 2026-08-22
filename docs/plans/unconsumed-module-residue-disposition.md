@@ -297,8 +297,26 @@ live module into the residue, so a name bound as a parameter in one declaration 
 referenced in another would silently lose its real reference. The shadow is scoped to the
 binding declaration's region.
 
+**A correction to this document's own reason for dropping the `service` short-name credit.**
+It was dropped citing a false-consumption claim measured on the *other* lane's instrument. That
+reason was never true here: their specimen is `service gcp.Metadata`, a **dotted** name this
+lane's pattern never matched in either configuration. Re-run with the credit restored and (f)
+fixed, `extdeps.cloud.gcp.sts` scores DEAD-CONSUMER-ONLY either way and the aggregate counts
+are identical — the credit moves nothing on this population. The honest reason is therefore
+**"no measured effect here"**, not "it causes false consumption".
+
+The evidence in fact points the other way, and it is the seventh discriminator:
+`v2.extdeps.realization.artifact_store_fs` names `Filesystem.Write`, `.Read` and `.Delete`
+with **no import of `Filesystem` anywhere in its import block**, and `Filesystem` is declared
+undotted twice — `service Filesystem` in `extdeps.filesystem.filesystem_io` and `resource
+Filesystem` in `std.resources`. So a consumer *does* bare-resolve an undotted service short
+name through whole-pool resolution, and being declared in both places is exactly what should
+make the symbol non-uniquely-owned. Withdrawing the declaring-side credit wholesale is too
+blunt: it stops `filesystem_io` owning a symbol it visibly declares, which is the own-nothing
+direction (e) exists to catch.
+
 **Direction check, stated because it is what makes (f) safe to have found late:** (f) and the
-withdrawn service-short-name credit both *inflate* consumption, so neither can cause a wrong
+service-short-name credit both *inflate* consumption, so neither can cause a wrong
 deletion — they can only hold a dead module. Both were fixed anyway; the deletion set did not
 move. That is also the count/set rule predicting which lane had to care about which defect
 before either measured it: an inflated-consumption defect moves a residue *count* and leaves a
