@@ -30,8 +30,11 @@ import gunbc.scm.repository_envelope {
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_node_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
-  RepositoryRefusal, RepositoryImageRefusal, RepositoryCommitRootUnresolved,
-  RepositoryCheckedOutUnresolved, RepositoryIdentityRuleUnrecognized,
+  RepositoryEncodeRefusal, RepositoryEncodeImageRefusal,
+  RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
+  RepositoryDecodeRefusal, RepositoryDecodeImageRefusal,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryUnexpectedMember, RepositoryMemberContext,
   RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
@@ -422,11 +425,9 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
     RepositoryEncoded { value: _ } => "encoded"
     RepositoryEncodeRefused { cause: cause } =>
       match cause {
-        RepositoryImageRefusal { cause: _ } => "image"
-        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
-        RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
-        RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
-        RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+        RepositoryEncodeImageRefusal { cause: _ } => "image"
+        RepositoryCommitRootNotInStore { root: _ } => "commit_root"
+        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
       }
   }
 }
@@ -490,10 +491,10 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecoded { envelope: _ } => "decoded"
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
-        RepositoryImageRefusal { cause: _ } => "image"
+        RepositoryDecodeImageRefusal { cause: _ } => "image"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
-        RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
-        RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
+        RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
+        RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
       }
   }

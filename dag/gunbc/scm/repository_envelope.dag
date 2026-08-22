@@ -52,7 +52,6 @@ import gunbc.scm.image {
   ImageFormatUnrecognized,
   ImageRootUnresolved,
   ImageEdgeTargetUnresolved,
-  object_id_key,
   DecodeAcc,
   DecodePositions,
   EncodeAcc,
@@ -121,11 +120,38 @@ type RepositoryEnvelope {
   checked_out: ObjectId?
 }
 
-type RepositoryRefusal
-  = RepositoryImageRefusal { cause: ImageRefusal }
+// ENCODE AND DECODE HAVE DIFFERENT FAILURE POPULATIONS, SO THEY ARE DIFFERENT TYPES.
+//
+// One shared RepositoryRefusal made every total consumer of an ENCODE result state how it classifies
+// RepositoryUnexpectedMember -- a decode-only fact that an encoder cannot produce, because an encoder
+// receives a RepositoryEnvelope and never an input JSON object. The closed coproduct was doing its
+// job and the carrier was lying to it: the exhaustiveness obligation is only as honest as the type it
+// ranges over, and a union of two operations' failures forces each to handle the other's impossible
+// states. Caught by review after a witness had to add exactly that impossible arm.
+//
+// Splitting also dissolves a conflation that was already live before the member sets landed. Both
+// paths spelled their unresolved reference `String`, and the two strings are different things:
+//
+//   encode  -- the caller handed us an ObjectId that the store or the commit list does not contain
+//   decode  -- the DOCUMENT named an image-local position, and no object decoded at that position
+//
+// An ObjectId and a wire position are not one type because both render as text. On the encode side
+// the domain type is now carried directly, so the identity no longer round-trips through a string
+// nobody can resolve back.
+type RepositoryEncodeRefusal
+  = RepositoryEncodeImageRefusal { cause: ImageRefusal }
+  | RepositoryCommitRootNotInStore { root: ObjectId }
+  | RepositoryCheckoutNotInCommits { selected: ObjectId }
+
+// The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
+// a resolved one: an image-local position is still spelled as bare text here, and image.dag's whole
+// reference vocabulary would have to be typed for this to be honest. Naming it here so the next
+// reader finds a declared gap instead of re-deriving it.
+type RepositoryDecodeRefusal
+  = RepositoryDecodeImageRefusal { cause: ImageRefusal }
   | RepositoryIdentityRuleUnrecognized { found: String }
-  | RepositoryCommitRootUnresolved { reference: String }
-  | RepositoryCheckedOutUnresolved { reference: String }
+  | RepositoryCommitRootReferenceUnresolved { reference: String }
+  | RepositoryCheckoutReferenceUnresolved { reference: String }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
 
 // THE CONTEXT VOCABULARY IS THIS LAYER'S, THE MEMBERSHIP MECHANISM IS SHARED. image.dag owns
@@ -142,7 +168,7 @@ fn repository_member_set_refusal(
   v: JsonValue,
   allowed: List<String>,
   context: RepositoryMemberContext
-) -> RepositoryRefusal? {
+) -> RepositoryDecodeRefusal? {
   match unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
     Present { value: key } =>
@@ -152,7 +178,7 @@ fn repository_member_set_refusal(
 
 type RepositoryDecodeOutcome
   = RepositoryDecoded { envelope: RepositoryEnvelope }
-  | RepositoryDecodeRefused { cause: RepositoryRefusal }
+  | RepositoryDecodeRefused { cause: RepositoryDecodeRefusal }
 
 fn empty_repository() -> RepositoryEnvelope {
   RepositoryEnvelope { store: empty_store(), commits: [], checked_out: none }
@@ -267,7 +293,20 @@ fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Lis
   map(commits, c => encode_commit_record(acc: acc, commit: c))
 }
 
+// THE CODEC IS NAMED FOR THE EXACT WIRE VERSION IT UNDERSTANDS, and `encode_repository` is the
+// separate question of which version we currently EMIT. They are one function today and that is
+// precisely why the names must differ now rather than later: once a document exists in the world,
+// the v1 body must stay frozen, and the seam that lets a v2 arrive beside it has to be somewhere no
+// author is tempted to "just add the field here".
+//
+// THIS FABRICATES NO v2. There is no second arm, no version enum member for a format that does not
+// exist, and no migration claim -- building a synthetic second version now would test an invented
+// migration rather than the one the product eventually needs.
 fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
+  encode_repository_v1(repo: repo)
+}
+
+fn encode_repository_v1(repo: RepositoryEnvelope) -> JsonValue {
   let acc = encode_object_table(store: repo.store)
   json_object(
     members: [
@@ -285,7 +324,7 @@ fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
 
 type RepositoryEncodeOutcome
   = RepositoryEncoded { value: JsonValue }
-  | RepositoryEncodeRefused { cause: RepositoryRefusal }
+  | RepositoryEncodeRefused { cause: RepositoryEncodeRefusal }
 
 // THE CHECKED ENCODER IS WHAT A PERSISTENCE BOUNDARY MUST CALL, and it exists because
 // encode_repository CANNOT refuse -- it returns a JsonValue, so its only honest treatment of an
@@ -302,43 +341,46 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
   let acc = encode_object_table(store: repo.store)
   match unresolved_edge_reference(acc: acc, store: repo.store) {
     Present { value: reference } =>
-      RepositoryEncodeRefused { cause: RepositoryImageRefusal { cause: ImageEdgeTargetUnresolved { reference: reference } } }
+      RepositoryEncodeRefused { cause: RepositoryEncodeImageRefusal { cause: ImageEdgeTargetUnresolved { reference: reference } } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
-        Present { value: reference } =>
-          RepositoryEncodeRefused { cause: RepositoryCommitRootUnresolved { reference: reference } }
+        Present { value: root } =>
+          RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
         Absent =>
-          match unresolved_checkout_reference(commits: repo.commits, selected: repo.checked_out) {
-            Present { value: reference } =>
-              RepositoryEncodeRefused { cause: RepositoryCheckedOutUnresolved { reference: reference } }
+          match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
+            Present { value: selected } =>
+              RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
             Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
           }
       }
   }
 }
 
-fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> String? {
+// These answer with the ObjectId the CALLER supplied, not with a wire string derived from it. The
+// caller holds that identity and can act on it; a hex key it would have to parse back is the same
+// fact rendered into a shape that has lost its type.
+fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> ObjectId? {
   fold(commits, init: none, f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) })
 }
 
-fn unresolved_commit_root_step(acc: EncodeAcc, found: String?, commit: RepositoryCommit) -> String? {
+fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: RepositoryCommit) -> ObjectId? {
   match found {
     Present { value: _ } => found
     Absent =>
       if encoded_root_reference(acc: acc, root: commit.root) == "" {
-        Present { value: object_id_key(identity: commit.root) }
+        Present { value: commit.root }
       } else {
         none
       }
   }
 }
 
-fn unresolved_checkout_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> String? {
+fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
   match selected {
     Absent => none
     Present { value: identity } =>
       if commit_reference_of(commits: commits, selected: identity) == "" {
-        Present { value: object_id_key(identity: identity) }
+        Present { value: identity }
       } else {
         none
       }
@@ -362,7 +404,7 @@ fn unresolved_checkout_reference(commits: List<RepositoryCommit>, selected: Obje
 // dropped or applied twice.
 type CommitDecodeAcc {
   commits: List<RepositoryCommit>
-  refusal: RepositoryRefusal?
+  refusal: RepositoryDecodeRefusal?
 }
 
 // A commit record's member set is closed for the same reason the envelope's is: a writer that states
@@ -390,29 +432,29 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
     Absent =>
       match read_string_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
-          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: c } } }
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeImageRefusal { cause: c } } }
         MemberString { value: reference } =>
           match resolve_reference(positions: positions, reference: reference) {
             Absent =>
               CommitDecodeAcc {
                 commits: acc.commits,
-                refusal: Present { value: RepositoryCommitRootUnresolved { reference: reference } },
+                refusal: Present { value: RepositoryCommitRootReferenceUnresolved { reference: reference } },
               }
             Present { value: root } =>
               match read_string_member(v: value, key: "message") {
                 MemberFailed { cause: c } =>
-                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: c } } }
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeImageRefusal { cause: c } } }
                 MemberString { value: message } =>
                   CommitDecodeAcc {
                     commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),
                     refusal: acc.refusal,
                   }
                 _ =>
-                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "message" } } } }
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "message" } } } }
               }
           }
         _ =>
-          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "root" } } } }
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "root" } } } }
       }
   }
 }
@@ -421,46 +463,70 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
 // a document written under a different node-identity rule would decode cleanly and reconstruct
 // DIFFERENT identities, so discovering the mismatch after the walk would mean reporting a
 // well-formed repository that silently is not the one that was stored.
+// FORMAT DISPATCH IS ITS OWN STEP, and it selects a decoder that understands ONE exact schema. The
+// shape a second version must take is a second arm here calling decode_repository_v2 -- never the v1
+// body widened to admit v2's members, which would erase the reason the member sets are closed at all.
+// The identity-rule tag stays a separate axis for the same reason it is separate today: a schema-v2
+// document may still carry the v1 node-identity rule, and an identity migration may leave the JSON
+// schema untouched.
+type RepositoryFormat
+  = RepositoryFormatV1
+  | RepositoryFormatUnknown { found: String }
+
+fn repository_format_of(tag: String) -> RepositoryFormat {
+  if tag == repository_envelope_format_tag {
+    RepositoryFormatV1
+  } else {
+    RepositoryFormatUnknown { found: tag }
+  }
+}
+
 fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "format") {
-    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: c } }
     MemberString { value: format } =>
-      if format != repository_envelope_format_tag {
-        RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageFormatUnrecognized { found: format } } }
+      match repository_format_of(tag: format) {
+        RepositoryFormatUnknown { found: f } =>
+          RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageFormatUnrecognized { found: f } } }
+        RepositoryFormatV1 => decode_repository_v1(v: v)
+      }
+    _ => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "format" } } }
+  }
+}
+
+// EXACTLY v1. Every member population below is v1's, and this body is frozen once a v1 document
+// exists anywhere.
+fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
+  match read_string_member(v: v, key: "identity_rule") {
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: c } }
+    MemberString { value: rule } =>
+      if rule != repository_node_identity_rule_tag {
+        RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
       } else {
-        match read_string_member(v: v, key: "identity_rule") {
-          MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
-          MemberString { value: rule } =>
-            if rule != repository_node_identity_rule_tag {
-              RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
-            } else {
-              match repository_member_set_refusal(
-                v: v,
-                allowed: ["format", "identity_rule", "objects", "commits", "checked_out"],
-                context: RepositoryEnvelopeMembers
-              ) {
-                Present { value: c } => RepositoryDecodeRefused { cause: c }
-                Absent => decode_repository_body(v: v)
-              }
-            }
-          _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "identity_rule" } } }
+        match repository_member_set_refusal(
+          v: v,
+          allowed: ["format", "identity_rule", "objects", "commits", "checked_out"],
+          context: RepositoryEnvelopeMembers
+        ) {
+          Present { value: c } => RepositoryDecodeRefused { cause: c }
+          Absent => decode_repository_body(v: v)
         }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "format" } } }
+    _ => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "identity_rule" } } }
   }
 }
 
 fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
-    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: c } }
     MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: table_refusal } =>
           match table_refusal {
-            Present { value: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+            Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: c } }
             Absent =>
               match read_member(v: v, key: "commits") {
-                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: c } }
                 MemberArray { elements: commit_values } =>
                   match fold(
                     commit_values,
@@ -476,11 +542,11 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                           )
                       }
                   }
-                _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "commits" } } }
+                _ => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "commits" } } }
               }
           }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "objects" } } }
+    _ => RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "objects" } } }
   }
 }
 
@@ -496,11 +562,11 @@ fn decode_repository_checkout(
 ) -> RepositoryDecodeOutcome {
   match json_object_unique_member(v: v, key: "checked_out") {
     JsonMemberAbsent =>
-      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberMissing { key: "checked_out" } } }
+      RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberMissing { key: "checked_out" } } }
     JsonMemberDuplicated { count: _ } =>
-      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberDuplicated { key: "checked_out" } } }
+      RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberDuplicated { key: "checked_out" } } }
     JsonMemberNotAnObject =>
-      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageNotAnObject } }
+      RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageNotAnObject } }
     JsonMemberFound { value: found } =>
       match found {
         JsonNull =>
@@ -510,7 +576,7 @@ fn decode_repository_checkout(
         JsonString { value: reference } =>
           match commit_at_reference(commits: commits, reference: reference) {
             Absent =>
-              RepositoryDecodeRefused { cause: RepositoryCheckedOutUnresolved { reference: reference } }
+              RepositoryDecodeRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
             Present { value: selected } =>
               RepositoryDecoded {
                 envelope: RepositoryEnvelope {
@@ -519,7 +585,7 @@ fn decode_repository_checkout(
               }
           }
         _ =>
-          RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "checked_out" } } }
+          RepositoryDecodeRefused { cause: RepositoryDecodeImageRefusal { cause: ImageMemberWrongShape { key: "checked_out" } } }
       }
   }
 }
