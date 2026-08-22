@@ -609,6 +609,31 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why the targets are declared here rather than inline: a new call site that re-inlines a literal
 // pair is outside the join and the wall would not see it.
+//
+// THIS LIST IS ITSELF A HAND-MAINTAINED PARALLEL ENUMERATION, and naming only the inline hole
+// above understated the denominator problem. There are TWO ways a target escapes this roster,
+// and they need different mechanisms:
+//
+//   1. a `gunbc run` step spelling a literal entry/function pair inline, never declared as a
+//      target at all -- invisible to any enumeration of declarations, because the pair is not a
+//      declaration. Only a check over the emitted steps can see it.
+//   2. a twentieth `data ..._target: GunbcRunStepTarget` declared correctly and simply NOT ADDED
+//      HERE. It looks completely correct at its declaration site and silently under-reports on
+//      anything that folds this list.
+//
+// The second is the open-denominator class this repository has already named and priced:
+// `std.primitives` `primitive_contract_roster_note` records the identical shape over
+// *_contract rows, its silent under-reporting, and its dissolution -- derive the roster by
+// enumerating the declarations once declaration introspection lands.
+//
+// That dissolution condition is SATISFIED for this roster: `decl_facts` is a registered builtin
+// callable from ordinary `.dag`, so the nineteen can be derived by enumerating every
+// module-scope `data` of type `GunbcRunStepTarget` in this module instead of being retyped
+// here. Doing so costs nothing extra to any consumer that already walks decl_facts, and it
+// turns a fold over "the rows someone remembered to list" into a fold over "the rows that
+// exist". Until that lands, hole 2 is open and this list is diligence, not a denominator.
+//
+// Counted at authoring: 19 declarations, 19 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
