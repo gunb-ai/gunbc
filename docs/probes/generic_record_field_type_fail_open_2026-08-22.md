@@ -108,46 +108,109 @@ Once the expectation is nameless, `kernel_value_declared_type_mismatch` returns 
 even after the upstream one lands**: an upstream fix removes today's population, not the arm that
 converts a nameless expectation into silence for whatever produces one next.
 
-## Four repairs attempted and measured as NOT sufficient
+## The class is TWO rows, not one
 
-Recorded because they are the cost of the next attempt, not a reason to stop looking. Each was
-built and run against the full arm table; **every arm was byte-identical** each time.
+Two stacked defects, which is why every single-cause theory died in turn.
+
+### Row (a) — concrete-typed field in a parameter-carrying declaration. CAUSE FOUND, repair measured and NOT landable.
+
+`type BoxI<T> { v: Int }` — parameter declared but **unused**, field a plain kernel type — fails
+open at `BoxI { v: "s" }` against `BoxI<Int>`. So the trigger is that the declaration carries type
+parameters at all, not that a field mentions one.
+
+**Cause, measured:** a field node carries its declared type in `sf.inferred`; `children[0]` is a
+stripped placeholder (`inf=true`, `field_node_type_expr` authored name `""`).
+`record_lit_instantiated_fields` substitutes into `field_node_type_expr(sf)` — the placeholder —
+while every other consumer reads `sf.inferred` first. Two readings of one field, and the
+instantiated path took the wrong one, so it **preempted a working expectation with a nameless
+node**. Forcing the instantiation to bail out on a wrong arity brings the judgment back on the same
+declaration, which is what proves the preemption:
+
+```
+arity_bail_bad  BoxI<Int, Int>  RC=1 arity error + RC=1 type mismatch  <-- judgment FIRES
+arity_fire_bad  BoxI<Int>       RC=0 compiled, 0 diagnostics           <-- preempted, silent
+arity_mono_bad  non-generic     RC=1 type mismatch
+```
+
+**Repair built:** extract `field_declared_type_node` as the single authority for "a field's declared
+type node" (`sf.inferred` first, `field_node_type_expr` as fallback) and point both the instantiated
+path and the consumption site at it. `kernelfield_gen_bad` flips **RC=0 → RC=1** with a located
+`expected 'Primitive(Int)', got 'Primitive(String)'`; `kernelfield_gen_ok` stays green.
+
+**Why it is NOT landed — the corpus refuses it.** Whole-tree compile, `dag` + `src/v2`, at
+`b4c59feb2b`. Baseline (unpatched, same tree, same binary vintage): **2** hard diagnostics, both
+unrelated (`workflow CLI default`, `dag/gunbc/tools/review_codex.dag`). Patched: the run emits
+**12** diagnostics over **8** files, none of which the baseline emits:
+
+- **8 × `empty list literal: expected type is not a collection`** — `dag/std/claim_evidence.dag`,
+  `dag/gunbc/source_integration_landing_spine.dag`, `src/v2/std/bounded_lattice_completeness.dag`
+  (×2), `dag/extdeps/git/object_store.dag` (×2), `src/v2/lens/mandatory_tag.dag`,
+  `dag/test/claim/host_effect_plan_witness_test.dag`. Every one a `fn(_) { [] }` / `fn(l) { [l] }`
+  lambda body in a **function-typed** generic field (`EvidenceInferenceFold` and kin). With the
+  substitution now producing a real type, the expectation reaching the lambda body is the
+  **function type instead of its return type**. That is the repair being *incomplete*, not wrong,
+  and it is the single next thing to fix.
+- **4 × frontier-row count mismatch on receiver type `Primitive()`** — `any`/`map`/`flat_map` in
+  `dag/extdeps/mercurial.dag`, `dag/gunbc/scm_compatibility/mercurial.dag`,
+  `dag/extdeps/git/object_store.dag` (×2). Downstream census rows keyed on a receiver type that
+  changes once the expectation is real.
+
+The repair is recorded here rather than shipped because narrowing it until the corpus greens is how
+a wall keeps its name and loses its population. What the measurement actually shows is that **the
+instantiated path's silence was masking these representation gaps**, so the wall cannot land ahead
+of them.
+
+### Row (b) — type-parameter-typed field (`v: T`). OPEN.
+
+All six seams still RC=0 under the row (a) repair, and `Pair<A, B> { a: A, b: B }` with them.
+`sf.inferred` for a `v: T` field holds a nameless node, because `T` is not resolvable when the
+binding is constructed. Distinct from (a) and unaddressed.
+
+## Repairs attempted and measured as NOT sufficient
+
+Recorded because they are the cost of the next attempt. Each was built and run against the full arm
+table; **every arm was byte-identical** each time.
 
 1. `record_lit_instantiated_fields` reading the type argument with `child_type_node` instead of
    `resolved_type`. Closes a real second-order fail-open — `resolved_type`'s `Absent` arm is
-   `error_type`, itself nameless, and a type-argument node carries no `inferred` — but the
-   substitution is never applied, so nothing moves.
+   `error_type`, itself nameless — but the substitution is never applied, so nothing moves.
 2. `resolve_item_types` carrying `tr.resolved` onto the field's `inferred`.
-3. `resolve_item_types` installing `tr.resolved` as the field's **type_expr child** (`children[0]`),
-   which is what `record_lit_instantiated_fields` actually reads. Correct slot, wrong function.
-4. *(implied by 2 and 3)* anything else in `resolve_item_types`.
+3. `resolve_item_types` installing `tr.resolved` as the field's type_expr child (`children[0]`).
 
-**One cause for all of them, established by reading the construction site rather than by another
-build:** `ResolvedModule.module` is `module_occurrence_input_node(input)` — the raw
-parsed/normalized node. `build_type_env`'s `local_bindings` folds **those** items through
-`local_binding_for_item`, which copies `children` verbatim. `resolve_item_types` runs later, inside
-`analyze_item`, and its output feeds `resolved_item` — **never the binding**. So `ResolvedModule`
-means *import*-resolved, not *type*-resolved, and three repair cycles were spent editing a
-function whose output the binding never sees.
+**One cause for all three, established by reading the construction site rather than by another
+build:** `ResolvedModule.module` is `module_occurrence_input_node(input)` — the raw parsed node.
+`build_type_env`'s `local_bindings` folds **those** items through `local_binding_for_item`, which
+copies `children` verbatim. `resolve_item_types` runs later, inside `analyze_item`, and its output
+feeds `resolved_item` — **never the binding**. `ResolvedModule` means *import*-resolved, not
+*type*-resolved.
+
+## A refuted lead, recorded so it is not re-run
+
+The ident-versus-intern address-space theory is **dead**, by source read plus measurement.
+`Node.ident` is set from `intern(...).id` in exactly three places — the module node and two import
+nodes — so a type use site carries `ident=None`; measured `exp_ident=None`, the ident arm is never
+taken, and both `lookup_type_for` and `lookup_type_by_name` return **identical** field lists.
+
+Two §5 defects were found on that path and are real but unrelated to this bug, each worth its own
+row: `intern_str` returns `""` on a miss in a `String`-not-`String?` carrier, so a refusal is
+unrepresentable — and its arm is **unreachable from all three live call sites**, since the other two
+iterate `map_keys(bindings)`, which are intern ids by construction, so it can be proved dead and
+deleted. And `lookup_binding` does not refuse on a miss; it retries through a different lookup,
+uncounted.
 
 ## Found on the way, worth its own row
 
-`v1.compiler.resolve` `resolve_field` does the right thing — it installs `type_resolved` into the
-field via `make_field_node` — and has **zero callers**, while `resolve_item_types` hand-rolls a
-lossy version beside it that discards `tr.resolved` except for its `properties`. Its sibling
-`resolve_field_init` *is* wired, which makes this an **incomplete migration** rather than
-abandoned scaffolding. It is emitted into the stage0 mirror, so the seed pays for it today.
-
-Two authorities for "resolve a field", the correct one dead and the lossy one live, is a §3
-violation at the grain §3 forbids. It is **not** established as this lane's repair — the
-discriminators above moved the cause off it — but a cleanup sweep would be entitled to delete it
-as a §5 dead scaffold, and that would remove a correct implementation while leaving the lossy one
-as the only authority. Claim staked on gunbc#8901.
+`v1.compiler.resolve` `resolve_field` installs `type_resolved` into the field via `make_field_node`
+and has **zero callers**, while `resolve_item_types` hand-rolls a lossy version beside it. Its
+sibling `resolve_field_init` *is* wired, which makes this an **incomplete migration** rather than
+abandoned scaffolding, and it is emitted into the stage0 mirror. It is **not** this lane's repair —
+the discriminators moved the cause off it — but a cleanup sweep would be entitled to delete it as a
+§5 dead scaffold and leave the lossy copy as the only authority. Claim staked on gunbc#8901.
 
 ## Rung
 
 Source→acceptance, record-literal field type on a type declared with parameters: **below floor —
-not a rung** (§4b). The non-generic position is at least mechanically preventable (executing wall,
-discriminating RED plus positive control, both above). The class rung is the minimum across paths,
-so citing the non-generic path would be inflation. Next-rung trigger: the ident-versus-intern
-address-space question above.
+not a rung** (§4b), for both rows. Row (a) has a cause and a measured repair blocked on the
+function-typed-field propagation above; row (b) has neither. The non-generic position is at least
+mechanically preventable. Class rung is the minimum across paths, so citing the non-generic path
+would be inflation.
