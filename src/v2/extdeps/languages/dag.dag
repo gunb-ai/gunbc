@@ -86,6 +86,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.node {
+  NodeOccurrenceId,
   Arrow,
   Atom,
   Bind,
@@ -104,7 +105,6 @@ import v2.std.node {
   SyntheticOccurrence,
   is_empty_conj_root,
 }
-import std.occurrence_identity { OccurrenceId }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -4208,7 +4208,12 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
+// THE PARAMETER IS THE NODE-CARRIER TYPE, NOT THE SHARED IDENTITY. `Node.occurrence_id` is a
+// `NodeOccurrenceId` -- the coproduct of SyntheticOccurrence and MintedOccurrence -- and a bare
+// `std.occurrence_identity.OccurrenceId` is the PAYLOAD INSIDE one of its arms, not a member of it.
+// Declaring the parameter as the payload let a raw id be stored where the coproduct was expected,
+// and every later total match over that field then failed at runtime on a value it had no arm for.
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4221,7 +4226,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceId) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(

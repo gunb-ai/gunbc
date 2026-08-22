@@ -2059,7 +2059,7 @@ fn parse_expr_terminal(
                 )
                 match dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: minted.id
+                  occurrence_id: node_occurrence_minted(id: minted.id)
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
