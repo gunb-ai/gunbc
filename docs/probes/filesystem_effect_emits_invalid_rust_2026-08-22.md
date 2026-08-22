@@ -98,3 +98,45 @@ program currently carries an effect in its own vocabulary that it cannot emit.
 **Consequence already forced on this lane:** the carrier-realization census cannot source its own
 input in the terminal witness shape, because reading the corpus is not an optional readout. Its input
 must arrive from a harness that has already crossed the boundary.
+
+---
+
+## SUBJECT CORRECTION — "two defects" is the wrong frame; it is one binding question with two symptoms
+
+Confirmed in the emitter source by another lane after this document was written. **What is observed
+above stands. What it is a defect *in* has moved.**
+
+**Defect 2 is probably not a defect.** `src/v1/05_emit_rust.dag` `file_transport` emission
+unconditionally builds the path from `base_path` plus the **operation name** — there is no branch by
+which a caller-supplied path could reach it. So the reading above was exact, but the thing being read
+is a **file transport**: *fetch the recorded result for operation X from a directory of files named
+after operations*, parsing JSON when the return type is a multi-field product and returning text
+otherwise. That is correct fixture behaviour, sitting beside shell and REST as one of N realizations
+of a service operation. The surrounding machinery agrees — `00_core.dag` carries `file_transport_node`,
+`is_file_transport` and `transport_base_path`; `languages.dag` carries `file_ctor`. The dry-run arm's
+*"no mock data available"* is the same fact from the other side.
+
+So the real question is **why `Filesystem`'s operations are bound to the file transport at all**, and
+the likely answer is that a real filesystem handler is missing and the binding fell through silently.
+That is DESIGN §3's interface-versus-realization seam. It also means **teaching the file transport to
+honour a path argument would break the one thing it does correctly** while still giving nobody a real
+read.
+
+**The independence claim above needs the same correction.** It was accurate as an observation about
+two code paths and is probably wrong as a claim about two root causes: defect 1's unbound receiver is
+plausibly the same misbinding surfacing at the call site rather than an independent template bug.
+
+**And it is two targets, which neither this document nor the lane that corrected it found first.**
+`src/v1/05_emit_python.dag` emits the identical construction, so a Rust-only repair leaves Python
+broken and the next target gets a third copy — one operation body forked per target instead of one
+shape with N bound handlers, DESIGN §3's fused-transport tell in its literal form. The population is
+**per-target emitters**, not one function.
+
+**Unaffected by this correction:** defect 2 being strictly worse than defect 1, for the reason given
+above — one stops the line at `rustc`, the other compiles and would have silently read `./read` and
+parsed it as JSON. Build-time fabrication versus runtime fabrication.
+
+This is the third time in this lane that a correct observation was filed under a wrong subject (the
+pre-reconcile phase break, the variant-blindness absence, and now this). The guard that catches it is
+stating **OBSERVED ON** and **CLAIM ABOUT** separately — which this document does at the top, and
+which is why the observation survived the correction intact.
