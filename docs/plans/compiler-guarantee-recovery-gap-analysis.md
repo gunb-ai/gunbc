@@ -2434,6 +2434,58 @@ enforces end to end.
    non-`v2` modules, which neither this row nor `module_skips_direct_call_arg_check` reaches.
    Two seams have now been measured; the number of seams is NOT known to be two (gunbc#8868).
 
+24. **An identifier inside a `transport shell { argv: [...] }` position is NEVER NAME-RESOLVED
+   at compile time — a symbol declared nowhere in the corpus produces ZERO diagnostics.**
+   Measured 2026-08-22 by `still-seal-394` while dissolving the `env`/`chmod` binary-path
+   nicknames; recorded here in its CORRECTED, WEAKER form at the measuring session's own request.
+
+   DISCRIMINATING CONTROL, same file, same run — this is what makes it a finding rather than an
+   observation. An undefined variable in an ordinary `fn` body reds `undefined variable`. The
+   identical undefined name placed in a transport argv produces no diagnostic at all. So the
+   silence is specific to the argv position, not a property of the run.
+
+   WHAT THE POSITION ACTUALLY DOES, read off the emitted AST rather than inferred from the
+   diagnostic count (three arms, one 0-diagnostic run):
+
+   - `argv: [probe_bin, "0700", "{path}"]` → `ExprVar`, `binding_kind` null, no inferred node
+   - `argv: ["chmod", probe_tail(path: path)]` → `ExprCall`, unresolved
+   - `argv: [nowhere_declared_symbol, "{path}"]` → `ExprVar`, unresolved, ZERO diagnostics
+
+   The position PARSES expressions — consistent with `clever-crab-309`'s independent finding that
+   a service argv can splice a function returning `List<String>` — and simply never resolves them.
+
+   THE CLAIM, STATED AT THE STRENGTH THE EVIDENCE CARRIES. The honest form is that citing a symbol
+   in a transport argv is **UNGUARDED**, not that it is impossible. It may resolve correctly at
+   realization. The first version of this finding said the transport layer *cannot* be dissolved
+   by citation; that was stronger than what was measured, and the measuring session retracted it
+   unprompted, in the direction that weakened its own result.
+
+   WHY THE CORRECTED VERSION IS WORSE, NOT BETTER. "Impossible" would at least fail loudly. What
+   was actually measured is that a citation written here emits as a LITERAL TOKEN with nothing
+   refusing — so the failure mode is a SILENTLY WRONG ARGV, not a refusal. That is below floor
+   (§5), not a rung on the ladder: the deficit's frequency is zero by construction because no
+   instrument counts it.
+
+   RUNG: outside the ladder — silent wrongness, forbidden outright rather than ranked. NOT
+   `mitigatable`: nothing contains the harm, because nothing observes it.
+
+   CEILING: *structurally guaranteed* — name resolution over an argv expression is the same
+   decidable `Node`-tree read the namespace authority already performs everywhere else. This is a
+   missing wiring, not an undecidable property.
+
+   NEXT-RUNG TRIGGER: resolve identifiers in transport argv positions through the ordinary
+   name-resolution path, and refuse an unresolved one with a typed, located diagnostic. Until
+   then every `transport shell` argv is an unchecked string channel wearing expression syntax.
+
+   BLAST RADIUS, and it is why this blocks a live program rather than sitting in a queue: it puts
+   roughly 15 of 46 bare-`env` sites out of scope for citation-based dissolution, covering
+   `extdeps/{shell,python,gunbc,rust/cargo_build,tools/npm}` and `cli_services`. Those sites are
+   out of scope for want of per-site live execution, NOT out of reach in principle — the
+   corrected claim is what makes that distinction available.
+
+   NOT CLAIMED: that any argv in the corpus is currently wrong. No instrument can answer that
+   today, which is the row's point. It records a blindness, not a defect count.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
