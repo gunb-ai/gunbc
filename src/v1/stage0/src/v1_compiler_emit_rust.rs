@@ -53,13 +53,13 @@ pub use crate::v1_compiler_emit::{
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
     emit_unmodeled_file_transport_refusal_with_cause, escape_rust_interp_text,
     extract_modifier_names, file_emission_refusal, file_operation_has_content_input,
-    file_transport_declared_verb, file_transport_verb_delete, file_transport_verb_list,
-    file_transport_verb_write_owner_only, has_nested_records_node, has_service_items,
-    is_null_coalesce, is_self_recursive, is_tco_eligible, is_tco_identity_passthrough, lookup_item,
-    module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
-    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
-    service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
-    unwrap_single_field_product,
+    file_output_channel_fields, file_output_channel_of_field, file_transport_declared_verb,
+    file_transport_verb_delete, file_transport_verb_list, file_transport_verb_write_owner_only,
+    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
+    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
+    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
+    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
+    service_field_decls, tco_reassign_core, typed_named_arg_matches, unwrap_single_field_product,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
@@ -28829,7 +28829,6 @@ pub fn emit_transport_call(
                 emit_file_call(
                     op_name.clone(),
                     transport.clone(),
-                    inferred.clone(),
                     op_node.clone(),
                     source_indices.clone(),
                 )
@@ -30639,7 +30638,6 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
 pub fn emit_file_call(
     op_name: String,
     transport: Rc<Node>,
-    inferred: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -30656,10 +30654,10 @@ pub fn emit_file_call(
         ),
         None => {
             let path_line = emit_file_path_line(transport.clone(), source_indices.clone());
-            let empty_guard = "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }".to_string();
+            let empty_guard = file_empty_path_guard();
             let action =
                 emit_file_action_block(transport.clone(), op_node.clone(), source_indices.clone());
-            let return_line = emit_file_return(inferred.clone(), source_indices.clone());
+            let return_line = emit_file_return(op_node.clone(), source_indices.clone());
             Rc::new(vec![
                 path_line.clone(),
                 empty_guard.clone(),
@@ -30788,6 +30786,15 @@ pub fn emit_file_path_line(
     }
 }
 
+pub fn file_empty_path_guard() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_channel_binding_prefix() -> String {
     thread_local! {
         static CACHED: String = {
@@ -30892,7 +30899,18 @@ pub fn emit_file_channel_expr(channel: String, is_optional: bool) -> String {
                     if (channel.clone() == "error".to_string()) {
                         "file_error.clone()".to_string()
                     } else {
-                        "file_content.clone()".to_string()
+                        if (channel.clone() == "content".to_string()) {
+                            "file_content.clone()".to_string()
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "compile_error!(\"file transport output key '".to_string(),
+                                    channel.clone(),
+                                ),
+                                "' reached the rust renderer without a modeled channel\")"
+                                    .to_string(),
+                            )
+                        }
                     }
                 }
             }
@@ -30909,53 +30927,39 @@ pub fn emit_file_channel_expr(channel: String, is_optional: bool) -> String {
 }
 
 pub fn emit_file_return(
-    inferred: Rc<Node>,
+    op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let effective = unwrap_single_field_product(inferred.clone());
-        let is_product = is_product_type(effective.clone());
-        if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
-            {
-                let field_exprs = Rc::new({
-                    let mut __result = Vec::new();
-                    for ch in effective.children.clone().iter().cloned() {
-                        __result.push({
-                            let channel = match child_from_key(ch.clone(), source_indices.clone()) {
-                                Some(c) => c.clone(),
-                                None => authored_name_at(source_indices.clone(), ch.clone()),
-                            };
-                            emit_file_channel_expr(
-                                channel.clone(),
-                                (ch.return_cardinality.clone() == Cardinality::CardOptional),
-                            )
-                        });
-                    }
-                    __result
-                });
+        let fields = file_output_channel_fields(op_node.clone());
+        let field_exprs = Rc::new({
+            let mut __result = Vec::new();
+            for ch in fields.clone().iter().cloned() {
+                __result.push(emit_file_channel_expr(
+                    file_output_channel_of_field(ch.clone(), source_indices.clone()),
+                    (ch.return_cardinality.clone() == Cardinality::CardOptional),
+                ));
+            }
+            __result
+        });
+        if ((fields.clone().len() as i64) == 0) {
+            "Ok(())".to_string()
+        } else {
+            if ((fields.clone().len() as i64) == 1) {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok(".to_string(),
+                        field_exprs.clone().join(&", ".to_string()),
+                    ),
+                    ")".to_string(),
+                )
+            } else {
                 v1_rt::concat(
                     v1_rt::concat(
                         "Ok((".to_string(),
                         field_exprs.clone().join(&", ".to_string()),
                     ),
                     "))".to_string(),
-                )
-            }
-        } else {
-            {
-                let channel = match child_from_key(effective.clone(), source_indices.clone()) {
-                    Some(c) => c.clone(),
-                    None => "content".to_string(),
-                };
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "Ok(".to_string(),
-                        emit_file_channel_expr(
-                            channel.clone(),
-                            (effective.return_cardinality.clone() == Cardinality::CardOptional),
-                        ),
-                    ),
-                    ")".to_string(),
                 )
             }
         }

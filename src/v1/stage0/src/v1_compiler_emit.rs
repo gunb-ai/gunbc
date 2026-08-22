@@ -4273,6 +4273,7 @@ pub enum FileEmissionRefusal {
     FilePathNotStaticallyRenderable,
     FileWriteMissingContentInput { verb: String },
     FileOutputKeyNotModeled { key: String },
+    FileOutputShapeNotModeled,
 }
 
 pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
@@ -4282,6 +4283,7 @@ pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
     FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
     FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
     FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content".to_string()),
+    FileEmissionRefusal::FileOutputShapeNotModeled => "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering".to_string(),
 }
 }
 
@@ -4359,30 +4361,41 @@ pub fn is_modeled_file_output_channel(key: String) -> bool {
         || (key.clone() == "content".to_string()))
 }
 
+pub fn file_output_channel_fields(op_node: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let rt = resolved_type(op_node.clone());
+        if is_product_type(rt.clone()) {
+            rt.children.clone()
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn file_output_channel_of_field(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match child_from_key(ch.clone(), source_indices.clone()) {
+        Some(k) => k.clone(),
+        None => authored_name_at(source_indices.clone(), ch.clone()),
+    }
+}
+
 pub fn file_operation_output_channels(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    {
-        let effective = unwrap_single_field_product(resolved_type(op_node.clone()));
-        if is_product_type(effective.clone()) {
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in effective.children.clone().iter().cloned() {
-                    __result.push(match child_from_key(ch.clone(), source_indices.clone()) {
-                        Some(k) => k.clone(),
-                        None => authored_name_at(source_indices.clone(), ch.clone()),
-                    });
-                }
-                __result
-            })
-        } else {
-            match child_from_key(effective.clone(), source_indices.clone()) {
-                Some(k) => Rc::new(vec![k.clone()]),
-                None => Rc::new(vec!["content".to_string()]),
-            }
+    Rc::new({
+        let mut __result = Vec::new();
+        for ch in file_output_channel_fields(op_node.clone()).iter().cloned() {
+            __result.push(file_output_channel_of_field(
+                ch.clone(),
+                source_indices.clone(),
+            ));
         }
-    }
+        __result
+    })
 }
 
 pub fn file_transport_path_is_renderable(
@@ -4460,28 +4473,34 @@ pub fn file_emission_refusal(
                     match verb_refusal.clone() {
                         Some(r) => Some(r.clone()),
                         None => {
-                            let unmodeled = Rc::new({
-                                let mut __result = Vec::new();
-                                for k in file_operation_output_channels(
-                                    op_node.clone(),
-                                    source_indices.clone(),
-                                )
-                                .iter()
-                                .cloned()
+                            if !is_product_type(resolved_type(op_node.clone())) {
+                                Some(Rc::new(FileEmissionRefusal::FileOutputShapeNotModeled))
+                            } else {
                                 {
-                                    if !is_modeled_file_output_channel(k.clone()) {
-                                        __result.push(k);
+                                    let unmodeled = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for k in file_operation_output_channels(
+                                            op_node.clone(),
+                                            source_indices.clone(),
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if !is_modeled_file_output_channel(k.clone()) {
+                                                __result.push(k);
+                                            }
+                                        }
+                                        __result
+                                    });
+                                    match unmodeled.clone().first().cloned() {
+                                        Some(k) => Some(Rc::new(
+                                            FileEmissionRefusal::FileOutputKeyNotModeled {
+                                                key: k.clone(),
+                                            },
+                                        )),
+                                        None => None,
                                     }
                                 }
-                                __result
-                            });
-                            match unmodeled.clone().first().cloned() {
-                                Some(k) => {
-                                    Some(Rc::new(FileEmissionRefusal::FileOutputKeyNotModeled {
-                                        key: k.clone(),
-                                    }))
-                                }
-                                None => None,
                             }
                         }
                     }
