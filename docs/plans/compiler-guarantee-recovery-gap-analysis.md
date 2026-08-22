@@ -2468,6 +2468,22 @@ enforces end to end.
    recorded in that form deliberately: an unreconciled 2.4% named as unreconciled is worth more
    than a reconciled figure no reader can check.
 
+   RECEIPT, EXECUTED — THE DECLINE MEASURED AS A DELTA RATHER THAN PREDICTED. The PR that
+   authored this item added exactly 20 witness identities in one new `ReadsLiveTree` file and
+   changed nothing else the floor discovers. Main run `32553487573`: `offered=11812
+   routed=10439 declined_live=830`. This branch, run `32578661087`: `offered=11832 routed=10439
+   declined_live=850`. **+20 offered, +20 declined_live, routed UNCHANGED** — every one of the
+   new identities was discovered and declined, none executed, and the run is `success` with
+   `failed=0` because a declined witness cannot fail. That is the zero paired with its nonzero
+   control in the same run: the +20 discovered proves the instrument saw the file, the +0 routed
+   is the finding. A green required-ci is therefore NOT evidence that these probes pass; it is
+   consistent with their never having run, which is precisely the confusion this item exists to
+   end. Side effect worth recording because it bears on the population figure above: the floor's
+   `declined_live` moved by exactly the 20 this session counted with `grep -c '^test fn'`, so the
+   grep counts identities the way the floor does — the unreconciled 20 between 850 and 830 on main
+   is therefore NOT a counting-method difference, and the two candidate causes named above stand
+   with one of them (a differently-counted `test fn`) now unlikely.
+
    RUNG. Outside the ladder rather than on it, like the regen-producer entry in DESIGN's CI
    section: nothing about the compiler regressed, an OPERATION lost its route. The classes'
    own rungs are unchanged in substance and were overstated in evidence; the §1c cells that
