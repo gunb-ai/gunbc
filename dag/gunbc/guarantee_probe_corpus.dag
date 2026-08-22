@@ -105,11 +105,33 @@ data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance
 data sole_constructor_cross_module_class: GuaranteeClassId = "sole-constructor-cross-module" as GuaranteeClassId
 data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
 
+// THE SIX UNENROLLED FLOOR CLASSES (gap analysis sec 11 item 10 + the parse-separator and
+// v2-exemption rows beside it). Each was measured ONCE by hand and cited in a sec 1c Evidence
+// cell; nothing in the corpus re-ran the measurement, so the rung was honest about 2026-08-01
+// and silent about today. These class ids exist so the measurement executes on every floor run
+// (DESIGN 4b meta-obligation 4). FOUR of them are BELOW-FLOOR HOLES, not walls: their probes
+// declare ExpectSilentAcceptanceHole, which is a pinned defect and NOT a passing control -- read
+// the variant's own note before treating a green here as a guarantee.
+data floor_closed_match_exhaustiveness_class: GuaranteeClassId = "floor-closed-match-exhaustiveness" as GuaranteeClassId
+data floor_declared_conformance_v2_exemption_class: GuaranteeClassId = "floor-declared-conformance-v2-module-exemption" as GuaranteeClassId
+data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through-generics" as GuaranteeClassId
+data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instantiation-inhabitance" as GuaranteeClassId
+data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId
+data floor_record_field_completeness_class: GuaranteeClassId = "floor-record-field-completeness" as GuaranteeClassId
+
+data floor_class_seam_note: String = "WHY floor-declared-conformance-v2-module-exemption IS A SEPARATE CLASS FROM declared-conformance-ground-fragment, and not a nickname for it (DESIGN 3). The judgment is the same judgment -- a value must inhabit its declared type -- but the gap analysis row for it records that the class has AT LEAST TWO SEAMS and that closing one must never be read as closing the class. declared-conformance-ground-fragment measures the RETURN/data seam, which refuses in every module. This class measures the DIRECT-CALL ARGUMENT seam, which v1.compiler.04_infer module_skips_direct_call_arg_check switches OFF for every caller module whose name begins with v2., i.e. for the entire active v2 corpus. One class id per seam is what keeps a green on the first from reading as coverage of the second. The enumeration is NOT closed: a record-literal FIELD seam is measured below floor in ordinary non-v2 modules (gunbc#8865) and has no probe here, so this corpus covers two of at least three seams."
+
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
   [
     bare_none_field_admission_class,
     call_label_surplus_class,
     declared_conformance_ground_class,
+    floor_closed_match_exhaustiveness_class,
+    floor_declared_conformance_v2_exemption_class,
+    floor_field_through_generics_class,
+    floor_generic_instantiation_class,
+    floor_parse_list_separator_class,
+    floor_record_field_completeness_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -132,6 +154,25 @@ data method_green_probe: GuaranteeProbeId = "method-established-surface-green-co
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
 
+// The type-variable scrutinee arm of closed-match exhaustiveness. The COPRODUCT arm is already
+// enrolled and executing at test.claim.match_exhaustiveness_coproduct_witness
+// (w_missing_coproduct_arm_reports_one_non_exhaustive), so it is NOT re-probed here -- that
+// witness is this class's probe-adequacy control, on the same harness and the same floor run.
+data floor_exhaustiveness_type_variable_hole_probe: GuaranteeProbeId = "floor-closed-match-exhaustiveness-type-variable-hole" as GuaranteeProbeId
+data floor_conformance_v2_exemption_hole_probe: GuaranteeProbeId = "floor-declared-conformance-v2-module-exemption-hole" as GuaranteeProbeId
+data floor_conformance_v2_exemption_control_probe: GuaranteeProbeId = "floor-declared-conformance-v2-module-exemption-non-v2-control" as GuaranteeProbeId
+data floor_field_through_generics_record_control_probe: GuaranteeProbeId = "floor-field-through-generics-declared-record-control" as GuaranteeProbeId
+data floor_field_through_generics_green_probe: GuaranteeProbeId = "floor-field-through-generics-green-control" as GuaranteeProbeId
+data floor_field_through_generics_hole_probe: GuaranteeProbeId = "floor-field-through-generics-type-variable-hole" as GuaranteeProbeId
+data floor_generic_instantiation_green_probe: GuaranteeProbeId = "floor-generic-instantiation-green-control" as GuaranteeProbeId
+data floor_generic_instantiation_monomorphic_control_probe: GuaranteeProbeId = "floor-generic-instantiation-monomorphic-control" as GuaranteeProbeId
+data floor_generic_instantiation_hole_probe: GuaranteeProbeId = "floor-generic-instantiation-type-argument-hole" as GuaranteeProbeId
+data floor_parse_list_separator_control_probe: GuaranteeProbeId = "floor-parse-list-separator-double-separator-control" as GuaranteeProbeId
+data floor_parse_list_separator_green_probe: GuaranteeProbeId = "floor-parse-list-separator-green-control" as GuaranteeProbeId
+data floor_parse_list_separator_hole_probe: GuaranteeProbeId = "floor-parse-list-separator-omitted-hole" as GuaranteeProbeId
+data floor_record_completeness_green_probe: GuaranteeProbeId = "floor-record-field-completeness-green-control" as GuaranteeProbeId
+data floor_record_completeness_red_probe: GuaranteeProbeId = "floor-record-field-completeness-missing-field-red" as GuaranteeProbeId
+
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
 data sole_ctor_mint_fn_hole_probe: GuaranteeProbeId = "sole-constructor-mint-fn-cross-module-hole" as GuaranteeProbeId
@@ -152,15 +193,27 @@ data sole_ctor_admitted_caller_green_probe: GuaranteeProbeId = "sole-constructor
 data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value-red" as GuaranteeProbeId
 data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
 
+// ExpectSilentAcceptanceHole IS NOT ExpectZeroDiagnostics WITH A COMMENT. Both hold on exactly
+// the same observation -- AcceptedClean -- and that coincidence is precisely why they must be two
+// variants rather than one: a green control's silence is the guarantee, a hole's silence IS the
+// defect, and the two have opposite owners and opposite repairs (DESIGN, not-applicable-rendered-
+// as-malformed, read in the other direction). Collapsing them would make the corpus unable to
+// answer "how many of these greens are walls?" -- the question the sec 4b rung census asks of it.
+// invalid_state names the state that compiles today and must not; when the wall lands the probe
+// flips RED and its row is rewritten as ExpectBlockingRefusal naming the class that then fires.
+// It does not retire at that point: per sec 4b meta-obligation 4 it becomes the permanent
+// regression control that the higher rung stays real.
 type ProbeExpectation
   = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
   | ExpectZeroDiagnostics
   | ExpectAcceptedCounted { diagnostic_class: NonEmptyStr }
+  | ExpectSilentAcceptanceHole { invalid_state: NonEmptyStr }
 
 type ProbeExpectationFold<R> {
   blocking_refusal: fn(NonEmptyStr) -> R
   zero_diagnostics: R
   accepted_counted: fn(NonEmptyStr) -> R
+  silent_acceptance_hole: fn(NonEmptyStr) -> R
 }
 
 fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>) -> R {
@@ -168,7 +221,24 @@ fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>)
     ExpectBlockingRefusal { diagnostic_class: d } => fold.blocking_refusal(d)
     ExpectZeroDiagnostics => fold.zero_diagnostics
     ExpectAcceptedCounted { diagnostic_class: d } => fold.accepted_counted(d)
+    ExpectSilentAcceptanceHole { invalid_state: s } => fold.silent_acceptance_hole(s)
   }
+}
+
+fn probe_expectation_is_below_floor_hole(e: ProbeExpectation) -> Bool {
+  probe_expectation_fold(
+    e: e,
+    fold: ProbeExpectationFold {
+      blocking_refusal: fn(_) { false },
+      zero_diagnostics: false,
+      accepted_counted: fn(_) { false },
+      silent_acceptance_hole: fn(_) { true },
+    },
+  )
+}
+
+fn guarantee_probe_below_floor_hole_rows() -> List<GuaranteeProbeRow> {
+  guarantee_probe_rows() |> filter(row => probe_expectation_is_below_floor_hole(e: row.expectation))
 }
 
 fn harness_digest_from_material_and_expectation(
@@ -250,6 +320,12 @@ fn expectation_harness_digest(e: ProbeExpectation) -> Fnv1a64Structural {
         content_hash_tagged_structural(
           tag: "accepted-counted" as NonEmptyStr,
           payload: content_hash_atom(value: d),
+        )
+      },
+      silent_acceptance_hole: fn(s) {
+        content_hash_tagged_structural(
+          tag: "silent-acceptance-hole" as NonEmptyStr,
+          payload: content_hash_atom(value: s),
         )
       },
     },
@@ -411,6 +487,100 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: declared_conformance_ground_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_exhaustiveness_type_variable_hole_probe,
+      class: floor_closed_match_exhaustiveness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "match on an unconstrained type parameter with one arm naming a variant of an unrelated type compiles with zero diagnostics" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_conformance_v2_exemption_hole_probe,
+      class: floor_declared_conformance_v2_exemption_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a String actual at a direct-call parameter declared Int compiles with zero diagnostics when the CALLER module name begins with v2." as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_conformance_v2_exemption_control_probe,
+      class: floor_declared_conformance_v2_exemption_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_record_control_probe,
+      class: floor_field_through_generics_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_green_probe,
+      class: floor_field_through_generics_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_hole_probe,
+      class: floor_field_through_generics_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a field access on a bare type parameter names a field no type declares and compiles with zero diagnostics" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_generic_instantiation_green_probe,
+      class: floor_generic_instantiation_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_generic_instantiation_monomorphic_control_probe,
+      class: floor_generic_instantiation_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_generic_instantiation_hole_probe,
+      class: floor_generic_instantiation_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a String literal inhabits the T-typed field of a Boxed<Int> at a declared Boxed<Int> return and compiles with zero diagnostics" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_parse_list_separator_control_probe,
+      class: floor_parse_list_separator_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "ParseError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_parse_list_separator_green_probe,
+      class: floor_parse_list_separator_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_parse_list_separator_hole_probe,
+      class: floor_parse_list_separator_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a list literal whose second separator is omitted parses as element juxtaposition -- two elements where three were written -- with zero diagnostics" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_green_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_red_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: method_green_probe,
@@ -706,6 +876,7 @@ fn probe_row_observation_holds(observation: ProbeObservation, expectation: Probe
       blocking_refusal: fn(wanted) { observation_is_blocking_refusal(o: observation, wanted: wanted) },
       zero_diagnostics: observation_is_clean(o: observation),
       accepted_counted: fn(wanted) { observation_is_accepted_counted(o: observation, wanted: wanted) },
+      silent_acceptance_hole: fn(_) { observation_is_clean(o: observation) },
     },
   )
 }
