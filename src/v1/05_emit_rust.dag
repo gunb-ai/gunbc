@@ -5025,7 +5025,12 @@ fn emit_typed_item(item: v1.std.core.Node, module_name: String, registry: std.ty
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-      emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+      match rust_scalar_checkpoint_grounding_base(dag_name: item_text, decl_file: decl_identity_file(item: item)) {
+        Present { value: host } =>
+          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+        Absent =>
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+      }
     } else {
       match rust_scalar_checkpoint_grounding_base(dag_name: item_text, decl_file: decl_identity_file(item: item)) {
         Present { value: host } =>

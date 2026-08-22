@@ -12232,14 +12232,38 @@ pub fn emit_typed_item(
                             item.clone(),
                             env.source_indices.clone(),
                         ) {
-                            emit_zero_param_phantom_opaque_struct(
-                                item.clone(),
-                                v1_rt::set_contains(
-                                    &emit_info.map_key_required_type_names.clone(),
-                                    item_text.clone(),
+                            match rust_scalar_checkpoint_grounding_base(
+                                item_text.clone(),
+                                decl_identity_file(item.clone()),
+                            ) {
+                                Some(host) => v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        rust_visibility_prefix(),
+                                                        rust_items().type_alias_keyword.clone(),
+                                                    ),
+                                                    " ".to_string(),
+                                                ),
+                                                item_text.clone(),
+                                            ),
+                                            " = ".to_string(),
+                                        ),
+                                        host.clone(),
+                                    ),
+                                    ";".to_string(),
                                 ),
-                                env.source_indices.clone(),
-                            )
+                                None => emit_zero_param_phantom_opaque_struct(
+                                    item.clone(),
+                                    v1_rt::set_contains(
+                                        &emit_info.map_key_required_type_names.clone(),
+                                        item_text.clone(),
+                                    ),
+                                    env.source_indices.clone(),
+                                ),
+                            }
                         } else {
                             match rust_scalar_checkpoint_grounding_base(
                                 item_text.clone(),

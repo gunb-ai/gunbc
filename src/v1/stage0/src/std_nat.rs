@@ -10,8 +10,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Nat(pub std::marker::PhantomData<()>);
+pub type Nat = i64;
 
 pub fn nat_compare(a: Nat, b: Nat) -> Ordering {
     if (a.clone() < b.clone()) {
