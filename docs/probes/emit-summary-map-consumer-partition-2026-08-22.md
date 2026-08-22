@@ -113,6 +113,15 @@ the count differs by an order of magnitude between them. So every row names its 
   alone, **161 / 25** once the extension is applied.
 - **Rule 3 — whole-tree union** over the three roots. The upper bound.
 
+**Rule 2 is not as objective as the other two, and a reader will assume it is.** Its population is a
+function of which dotted references the *source* spells, so it inherits any mis-qualification
+upstream of it. Receipt, measured by another lane the same day: four dotted references in
+`src/v1/05_emit_rust.dag` (two `v2.std.node.Arrow`, two `v2.std.node.Bind`) had been qualified to the
+wrong declarer by a repair pass — main spells all four **bare**, and `v1.std.core` declares both
+names — and those four references alone pulled `v2.std.node` into the seed pool. Rules 1 and 3
+cannot move that way: rule 1 follows declared import edges, rule 3 takes everything. A rule-2 count
+measures the tree *and* the correctness of its qualifications, inseparably.
+
 | pool | modules | type decls | colliding names |
 |---|---:|---:|---:|
 | rule 1 — stage0 regen (the seed emitting itself) | 128 | 974 | **1** |

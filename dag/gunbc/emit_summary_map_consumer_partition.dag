@@ -428,6 +428,17 @@ fn partition_severance_point_count() -> Int {
 // and 23 colliding names for src/v2/compiler/00_compile.dag by imports alone, 161 and 25 once the
 // reference extension is applied.
 //
+// RULE 2 IS NOT AS OBJECTIVE AS THE OTHER TWO, AND A READER WILL ASSUME IT IS. Its population is a
+// function of which dotted references the SOURCE spells, so it inherits any mis-qualification
+// upstream of it: a reference qualified to the wrong declarer pulls in a module the program never
+// meant to name, and the pool grows by exactly that mistake. Receipt, measured by another lane on
+// 2026-08-22: four dotted references in src/v1/05_emit_rust.dag (two v2.std.node.Arrow, two
+// v2.std.node.Bind) had been qualified to the wrong declarer by a repair pass -- main spells all
+// four BARE and v1.std.core declares both names -- and those four references alone pulled v2.std.node
+// into the seed pool. Rules 1 and 3 cannot move that way: rule 1 follows declared import edges and
+// rule 3 takes everything. So a rule-2 count measures the tree AND the correctness of its
+// qualifications, and the two are not separable from the number.
+
 // RULE 3 -- WHOLE-TREE UNION over the three roots. This is the upper bound, and it is the ONLY
 // population measured here in which v1.std.core and v2.std.node are co-resident.
 type CollisionPopulation
