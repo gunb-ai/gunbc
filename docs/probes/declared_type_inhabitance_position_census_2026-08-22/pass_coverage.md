@@ -96,9 +96,25 @@ be larger than six rows and reported the check coming back empty.)
   a field init) instead of from the node the parser builds — the same mistake as reading a refusal
   count without asking which layer refused.
 
-  What the `argv: nosuchname_zzz` refusal proves is therefore still open: it may be a parse or
-  resolve refusal of a non-list argv rather than evidence that properties are walked. The
-  property-side question is being asked with `stdin:`, which IS a property.
+  **THE REFUSAL WAS A PARSE ERROR, SO THE DISCRIMINATOR DID NOT DISCRIMINATE — RETRACTED.** Measured:
+  `argv: nosuchname_zzz` refuses as `module index refused: 1 unparseable .dag source(s)`, which is
+  the grammar rejecting a non-list argv and says nothing about inference. And the property-side arm
+  written to settle it, `stdin: nosuchname_zzz` — `stdin` IS a transport property — is **ACCEPTED**,
+  with an ordinary-service control accepted beside it.
+
+  So the paragraph above claiming the service subtree is inferred rests on a refusal from the wrong
+  layer, which is this census's own map-key lesson turned on its author. Retracted. Every service
+  arm measured so far accepts: exit-entry status pattern, service-input field default, argv element,
+  and now a transport property value.
+
+  That is consistent with a single explanation — **no expression inside a `service` declaration is
+  inferred at all** — which would make four apparent members ONE fact wearing four spellings, and
+  would also contradict the table's `walked` row for transport properties. It is not yet
+  established: the discriminating pair is a RESOLVE-level refusal inside a service (an unresolved
+  type in `input`) against an INFER-level one (a type error in a property value), with the same
+  type error in a function body as the positive control. Until that returns, all four service rows
+  are FLAGGED, none is counted, and the `walked` classification for transport properties is
+  UNCONFIRMED rather than confirmed.
 
 - **Flagged by structure, not yet confirmed**: non-`svc_auth_source` item properties, `uses` config
   args, service exit-entry status patterns, transport children. None is counted as a member here.
