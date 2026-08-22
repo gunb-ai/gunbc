@@ -4018,7 +4018,17 @@ fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.node.Node {
+// THE PARAMETER IS THE NODE-LEVEL OCCURRENCE, NOT THE RAW ID. It is assigned straight into
+// Node.occurrence_id, which is a NodeOccurrenceId -- the coproduct of SyntheticOccurrence and
+// MintedOccurrence. A bare OccurrenceId is the PAYLOAD INSIDE one of those arms, never a member of
+// the coproduct itself, which is the whole modeling error in one line.
+// Declaring the raw OccurrenceId here meant a caller could satisfy the signature
+// with an unwrapped id and build a Node whose occurrence field held a value outside the coproduct;
+// every downstream match over the two variants then failed at run time with a non-exhaustive
+// pattern on OccurrenceId, which is what took the required floor red at #8833. Every real caller
+// was already passing a NodeOccurrenceId (SyntheticOccurrence at the fixtures, node.occurrence_id
+// in the body-lowering fold), so this declaration was the outlier, not them.
+fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: v2.std.node.NodeOccurrenceId) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4031,7 +4041,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitud
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: v2.std.node.NodeOccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.integer.integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       v2.std.diagnostic.outcome_accepted(
