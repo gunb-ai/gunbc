@@ -101,6 +101,23 @@ The name asserts a test-hood nothing grants. Both corollaries are one rule — a
 work only a mechanism can do — and the second is self-demonstrating, because this census
 read those names as enrolment until the suffix was checked.
 
+**That rule has three independent sightings, which is what makes it a pattern rather than
+an anecdote**, and they were found by three different lanes on one night:
+
+1. **200 modules named `v2.test.*`** whose file is not `_test.dag`, of which 2 declare a
+   test (§4h). Named as tests, discovered as nothing.
+2. **`commit_closure_round_trip_probe`** (§4g): a carrier claiming its persistence is
+   *"verified by direct execution"* while the probe it names **is enrolled nowhere and
+   nothing executes it** — a §4b rung-honesty defect, volunteered by the module's own
+   author rather than found by any census.
+3. **Vacuous witnesses** in the `spark` lane, reported separately.
+
+The variation across the three is worth naming, because it says where to look next: the
+unread surface is **discovery** in (1), **enrolment** in (2), and **assertion content** in
+(3). Same shape, three different mechanisms, and none of the three could be refused by
+anything — which is precisely why each survived. **A claim that no mechanism can refuse is
+not evidence, whatever it asserts about itself.**
+
 Attribution matters here, because a lesson that reads as one session's mistakes gets
 discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
 that commissioned this census. **Defect 3 was in both instruments** — theirs and this
@@ -493,63 +510,41 @@ census.
   *refused at resolve* because the invalid state has no constructor, so the predicate and
   its witness were deleted rather than kept as a green that cannot go red.
 
-- **`gunbc.scm.commit_closure_store`** (#8807) — **the one real finding in the batch: a
-  replacement-migration leftover, not residue and not correctly standing.**
-  `gunbc.scm.repository_envelope` (#8820, one day later) is by its own header the layer
-  *above* this module's grain, and the store's header anticipates it by name. The envelope
-  imports `gunbc.scm.image` and `gunbc.scm.object_store` and **does not import
-  `commit_closure_store`** — so the envelope took the grain and left the `Filesystem`
-  save/load half unattached, with the store's only tree-wide mention being a prose line in
-  `image.dag`. This is DESIGN §3's replacement-migration shape caught mid-cutover: X still
-  standing after Y claimed its root. **Not dispositioned here**, because the two arms —
-  the envelope grows save/load and this module deletes, versus this module is the
-  persistence layer the envelope should consume — differ on the #8820 author's intent, and
-  guessing is how a second authority gets ratified. Raised for that author.
+- **`gunbc.scm.commit_closure_store`** (#8807) — **DELETE. Cause: staged orphan at the
+  wrong grain.** Answered by the `#8820` author (SCM lane, `gentle-eagle-360`), who
+  disposed of it *and* refuted both arms this row originally offered — recorded because a
+  false cause attached to a true deletion is exactly the class this document exists to
+  catch, and because this row asserted both arms as the live possibilities.
 
-**h. The list the cleanup directive actually points at is 131, not 298 — and two rows in
-it are not what their names say.** Combining the re-score's buckets: **83 STILL-UNCONSUMED
-(no bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside*
-the population — §4a's island shape, which deletes as a group or not at all) = 117 modules
-that are residue on all three decoded surfaces.** That is the defensible starting point for
-the operator's *"clean up anything without consumers"* arm. The other 181 are not: 93 have
-live callers, and 87 are unresolvable at identity grain and need a per-row read before
-anything touches them. **The list was 131 before defect 7** — and the 14 that left it did
-*not* all become consumed: 2 did, and the rest moved to AMBIGUOUS, which means they are no
-longer provably unconsumed rather than proven consumed. That distinction is the whole
-reason the ambiguous bucket exists.
+  **Arm A ("the envelope grew its own save/load and this deletes with the grain it
+  served") was false.** `gunbc.scm.repository_envelope` contains **zero `Filesystem`
+  operations and not one `func`** (verified independently here) — it is a pure codec,
+  `RepositoryEnvelope ↔ JsonValue`. Nothing superseded this module, so "replaced by the
+  envelope" would have been a false cause.
 
-Two observations from reading that population, neither of which the disposition classes
-capture:
+  **Arm B ("the envelope should consume it") was false, and is the load-bearing half.**
+  The grains differ: this module persists **one root and its closure**, while a repository
+  has an empty initialized state with *no root*, several commits over one shared node
+  population, and a checked-out selection. Wiring the envelope to a carrier that demands a
+  root would force `init` to invent a phantom commit — a grain mismatch dressed as a fix.
 
-- **`v2.test.*` is a name, not an enrolment, and 23 of the 117 are the gap.** Floor
-  discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
-  discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
-  `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
-  `test fn`.** Most are ordinary support modules consumed by real witnesses; the 22 in this
-  population are the ones consumed by nothing, and their names and paths disagree —
-  `v2.test.language_model.go_r1` lives at `src/v2/extdeps/language_model/go_r1.dag`,
-  `v2.test.algebra_laws.zip_eq_list_equality` at `src/v2/std/algebra_laws/`. This subsumes
-  and sharpens finding **f**: those language-model rungs are not merely unclimbed, they are
-  named as tests, declare no test, sit outside any test path, and execute nowhere. **A name
-  that implies enrolment while the mechanism keys on something else is the more useful form
-  of that finding** — the ladder metaphor invites "climb it", and the measurement says
-  "nothing here was ever wired to run."
-**The 35 island rows carry a constraint that is not a preference, and it belongs on the
-row rather than in a report.** A per-module verdict over a mutually-referencing island is
-incoherent: **each member looks consumed until its neighbours go**, so scoring them one at
-a time returns "consumed" for every one of them and the island never becomes eligible.
-They delete as a group or not at all, and the group is the connected component, not the
-directory. Whoever takes the deletion lane will otherwise meet this as a surprising
-refusal partway through a batch — which is the census working, but expensively.
+  So it was never wired, and the layer that will do this job is repository-grain and gets
+  written that way regardless. It is deleted rather than frozen because **a surviving X is
+  an attractor** (DESIGN §3): while it stands, nearby persistence questions keep being
+  answered in a vocabulary already scheduled to die. *Citation for this row is
+  `gentle-eagle-360`'s disposition message, deliberately **not** a pointer into the module
+  — the module is going away, and a citation into it dies with it.*
 
-- **`gunbc.spark.provisioning`'s appendix row no longer resolves** — the path it names does
-  not exist in the tree. It was one of the two rows §5 excluded from every batch as
-  `fierce-lynx-647`'s area. The deletion was deliberate — ruled by the lane that
-  commissioned this census, on the grounds that the model predated knowledge of the real
-  procedure — so the row, not the deletion, is the defect. Recorded rather than
-  silently dropped, because an appendix row pointing at nothing is the same staleness class
-  this document polices elsewhere, and because it is a receipt that the population has a
-  clock on it.
+  **One defect surfaced with the disposition, volunteered by its author and not found by
+  this census.** The module's header claims its persistence is *"verified by direct
+  execution in Wet mode"* and names `commit_closure_round_trip_probe` as the executable
+  subject. That was true when it was run **by hand**; it is not true now. **The probe is
+  enrolled nowhere and nothing executes it** — verified here: no reference to it exists
+  anywhere in the tree outside its own module, and the file is not `_test.dag`, so floor
+  discovery never sees it. A carrier asserting executed evidence for a probe that does not
+  run is a §4b **rung-honesty** defect — the reported rung exceeds what executed evidence
+  establishes — and it is the reason the claim survived unchallenged: nothing could refuse
+  it. The class is in §2's common cause, one sighting of three.
 
 **A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree of this
 repo can be **shallow-grafted** — the 2026-08-22 run found its clone rooted at a single
