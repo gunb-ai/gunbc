@@ -664,6 +664,33 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // population is 3; the shared_types membership test, which the key does not reach; and the static
 // census, an upper bound narrowed by summary-producing form and again by closure membership.
 
+// GROUND TRUTH ARRIVED FOR THE ALIAS EXCLUSION, AND IT IS THE MECHANISM RATHER THAN THE RUN. A probe
+// reading item.connective itself -- not a textual stand-in for it -- inside the same instrumented emit
+// reports BOTH nat modules present in the closure (dag/std/nat.dag and src/v2/std/nat.dag), with
+// dag/std/nat.dag conn=NoConnective summary=false and src/v2/std/nat.dag conn=Disj summary=true. So
+// co-residency is refuted as the explanation and alias exclusion is confirmed as the cause: every
+// alias-versus-coproduct collision in the corpus is invisible to type_summaries BY CONSTRUCTION, not
+// by accident of which modules a closure pulls.
+//
+// AND Int IS EXCLUDED ON BOTH SIDES: dag/std/integer.dag and src/v2/std/integer.dag are both
+// conn=NoConnective, summary=false. Int cannot be in type_summaries at all, and therefore cannot
+// reach shared_types through the summary fold. That independently corroborates a third lane's
+// consumer-side trace finding zero shared-type sites for Int, arrived at by tracing producers rather
+// than by reading connectives -- and the connective is the explanation for both.
+//
+// WHAT THIS DOES TO THE POOL ROWS ABOVE, said explicitly because I have already made this conflation
+// once. Those rows count DECLARATION collisions in a pool: that is what the walk measures and it is
+// the right denominator for the question they answer. They are NOT map collisions. Int and Nat are
+// both named there as specimens and both are now known to be alias-excluded, so neither is a live
+// collision in type_summaries. Bool, RankingDimension and TerminationProof are the three that are.
+//
+// A FIVE-POINT VALIDATION OF THIS CARRIER'S OWN CLASSIFIER, worth recording because the classifier is
+// the instrument the roughly-80 bound rests on: on every name where ground truth now exists it agrees
+// -- Int alias/alias (neither side produces), Nat alias/coproduct (exactly one), and Bool,
+// RankingDimension, TerminationProof all both-sides-producing, which is exactly the live three. So
+// the four-name disagreement between the two classifiers lies outside the five names the connective
+// has been read for, and the bound stays ROUGHLY 80 until it is read for all of them.
+
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
 //
 // The open question this paragraph previously carried was WHICH pool holds both declarations. It is

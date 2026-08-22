@@ -258,6 +258,33 @@ dispositions — the `type_summaries` key collision (composite key *is* the repa
 the `shared_types` membership test (the key does not reach it), and the static census (an upper bound
 narrowed by summary-producing form, then by closure membership).
 
+### Ground truth for the alias exclusion: the mechanism, not the run
+
+A probe reading `item.connective` itself — not a textual stand-in — inside the same instrumented emit
+reports **both** nat modules present in the closure, with `dag/std/nat.dag` `conn=NoConnective
+summary=false` and `src/v2/std/nat.dag` `conn=Disj summary=true`. Co-residency is refuted as the
+explanation; **alias exclusion is the cause**, so every alias-vs-coproduct collision in the corpus is
+invisible to `type_summaries` **by construction**.
+
+**`Int` is excluded on both sides** — `dag/std/integer.dag` and `src/v2/std/integer.dag` are both
+`conn=NoConnective, summary=false`. `Int` cannot be in `type_summaries` at all, hence cannot reach
+`shared_types` through the summary fold. That independently corroborates a third lane's consumer-side
+trace finding zero shared-type sites for `Int`, reached by tracing producers rather than reading
+connectives — and the connective explains both.
+
+**What this does to the pool rows above**, stated explicitly because this document has made the
+conflation once already: those rows count **declaration** collisions in a pool — the right
+denominator for the question they answer — and are **not** map collisions. `Int` and `Nat` appear
+there as specimens and both are now known to be alias-excluded. `Bool`, `RankingDimension` and
+`TerminationProof` are the three live ones.
+
+**Five-point validation of this document's classifier**, worth recording since the *roughly 80* bound
+rests on it: on every name where ground truth now exists it agrees — `Int` alias/alias (neither),
+`Nat` alias/coproduct (exactly one), and `Bool`, `RankingDimension`, `TerminationProof` all
+both-sides-producing, which is exactly the live three. So the four-name disagreement lies **outside**
+the five names the connective has been read for, and the bound stays *roughly 80* until it is read
+for all of them.
+
 ### The `Connective` specimen: pool named, and it is a third root
 
 `Connective` is declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
