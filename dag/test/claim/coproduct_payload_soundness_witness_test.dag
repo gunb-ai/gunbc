@@ -104,3 +104,33 @@ test fn cpp_payload_inside_its_own_arm_still_compiles() -> Bool {
     []
   )
 }
+
+fn cpp_alias_mediated_negative_fixture_source() -> String {
+  "module cpp.alias\n\nimport std.types { Int }\n\ntype CppInner { value: Int }\n\ntype CppInnerAlias = CppInner\n\ntype CppOuter\n  = CppWrapped(CppInner)\n\ntype CppHolder {\n  subject: CppOuter\n}\n\nfn cpp_inner_via_alias() -> CppInnerAlias {\n  CppInner { value: 7 }\n}\n\nfn cpp_alias_payload_where_coproduct_required() -> CppHolder {\n  CppHolder { subject: cpp_inner_via_alias() }\n}\n"
+}
+
+// THE ALIAS-MEDIATED RED, and it is not a restatement of the one above -- it is the arm that made the
+// difference between a wall that refuses a demonstration and a wall that reaches production.
+//
+// A first measured version of this wall refused the direct spelling and stayed SILENT on the live
+// specimen it was built against: `v2.std.materialize` storing `content_hash(n)` into a field declared
+// `ContentHash`. `content_hash` returns `v2.std.node` `Hash`, a TRANSPARENT ALIAS of the payload type
+// `Fnv1a64Structural`, and that fact does not survive `resolve_item_types` -- so the seam could not
+// recover it by peeling and the refusal never fired. This fixture is that shape reduced to nothing but
+// the mechanism: the producer's declared return type is an alias of the payload rather than the payload
+// itself, and the variant carries its payload positionally rather than as a named field, so neither the
+// name nor the arm shape is doing the work.
+//
+// Measured on the pre-relation binary this fixture COMPILED (`0 diagnostics`); with
+// `transparent_alias_identity_agrees` consulted it refuses
+// (`expected 'Coproduct(COuter)', got 'Primitive(CAlias)'` on the equivalent probe). Deleting the
+// alias arm from the wall leaves both witnesses above green and only this one red, which is exactly why
+// it is enrolled separately.
+test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    cpp_alias_mediated_negative_fixture_source(),
+    "src/cpp_alias.rs",
+    [],
+    []
+  )
+}
