@@ -145,3 +145,19 @@ type SystemdUnitStatus {
   name: NonEmptyStr
   active_state: SystemdUnitActiveState
 }
+
+// WHERE SYSTEMD'S CLIENT BINARIES LIVE, declared once because the corpus needs two spellings of the
+// same binary and had been writing each by hand. A sudoers grant names a command by ABSOLUTE path --
+// sudo matches on the resolved path and a relative spelling in a drop-in is a policy error -- while
+// an argv handed to sudo names it BARE and lets secure_path resolve it. Those are both correct and
+// they are not two facts: they are one binary rendered for two consumers.
+//
+// Rendering them from one row is what makes them unable to disagree. Measured on srv5 and srv6
+// 2026-08-22, `command -v` reports /usr/bin for loginctl, systemctl and journalctl alike, which is
+// the ordinary filesystem-hierarchy location for a distribution-packaged systemd; a host that
+// installed systemd somewhere else would need this row and not a second spelling at the call site.
+data systemd_binary_directory: NonEmptyStr = "/usr/bin" as NonEmptyStr
+
+fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
+  join([systemd_binary_directory as String, "/", name as String], "") as NonEmptyStr
+}

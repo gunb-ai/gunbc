@@ -1,7 +1,7 @@
 module gunbc.fleet_runner_connectivity
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
@@ -174,14 +174,6 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
-
-data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
-
-data one_slot_index: List<Nat> = [1]
-
-data empty_nat_list: List<Nat> = []
-
 data converged_seven_roster_observed_on: NonEmptyStr = "converged-seven-fixture" as NonEmptyStr
 
 fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
@@ -189,15 +181,7 @@ fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEm
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
-  if width >= 7 {
-    seven_slot_indices
-  } else if width >= 5 {
-    incident_materialized_slot_indices
-  } else if width >= 1 {
-    one_slot_index
-  } else {
-    empty_nat_list
-  }
+  nat_range_inclusive(lo: 1, hi: width)
 }
 
 fn count_host_registrations_at_width(
@@ -312,19 +296,10 @@ fn organization_runner_roster_materialized_slots_online_evidence() -> Organizati
 }
 
 fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
-  if width == 7 {
-    map(
-      seven_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
-    )
-  } else if width == 5 {
-    map(
-      incident_materialized_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
-    )
-  } else {
-    []
-  }
+  map(
+    slot_indices_for_managed_width(width: width),
+    i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
+  )
 }
 
 fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {

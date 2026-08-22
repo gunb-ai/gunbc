@@ -60,6 +60,7 @@ import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 import v1.compiler.infer_types { algebra_field_kind_name }
 
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
+import v1.compiler.emit { unmodeled_file_transport_diagnostics }
 
 import v1.compiler.emit_rust { emit_rust }
 
@@ -224,6 +225,10 @@ fn compile_bundle_error(message: String) -> ErrorNode {
 }
 
 fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+  let unmodeled_transports = unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target)
+  if unmodeled_transports |> count > 0 {
+    return EmitResult { files: [], diagnostics: unmodeled_transports }
+  }
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
