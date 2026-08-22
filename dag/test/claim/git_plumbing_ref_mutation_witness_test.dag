@@ -1,0 +1,300 @@
+module test.claim.git_plumbing_ref_mutation_witness_test
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }
+import extdeps.git.plumbing {
+  GitRepositoryAddress,
+  GitWorktreeAt,
+  GitDirectoryAt,
+  git_repository_address_argv,
+  git_index_file_env_argv,
+  GitCommitParents,
+  GitNoParents,
+  GitParents,
+  git_commit_parents_argv,
+  GitExactRefMutation,
+  GitCreateRefIfAbsent,
+  GitAdvanceRefIfExpected,
+  GitDeleteRefIfExpected,
+  GitRefObservation,
+  GitRefObserved,
+  GitRefAbsent,
+  GitRefObservationRefused,
+  GitRefMutationOutcome,
+  GitRefMutationApplied,
+  GitRefMutationPreconditionNotHeld,
+  GitRefMutationExecutionRefused,
+  GitRefMutationObservationRefused,
+  GitRefMutationReadBackMismatch,
+  git_ref_mutation_outcome,
+  git_ref_mutation_applied,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_scope_note: String = "What is claimed is the DECISION, not the process. git_ref_mutation_outcome takes exactly the three things an executing caller holds after an attempt - the exit code, the stderr, and an independent read-back of the ref - and every arm is therefore reachable with no repository and no git binary. What is NOT claimed, stated so the bound is visible: nothing here runs git.Plumbing.CreateRefIfAbsent or any sibling operation, so a change that broke a transport argv while leaving this decision intact would keep these green. The argv claims below are over the pure shape functions the transports splice, which is a narrower thing again: they prove the SPELLING those functions produce, not that any operation runs."
+
+data fixture_hex_a: String = "1111111111111111111111111111111111111111"
+data fixture_hex_b: String = "2222222222222222222222222222222222222222"
+
+fn oid_a() -> GitObjectId? { git_object_id_from_untagged_hex(hex: fixture_hex_a) }
+
+fn oid_b() -> GitObjectId? { git_object_id_from_untagged_hex(hex: fixture_hex_b) }
+
+fn outcome_is_applied(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => true
+    GitRefMutationPreconditionNotHeld { mutation, observed } => false
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => false
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => false
+    GitRefMutationReadBackMismatch { mutation, observed } => false
+  }
+}
+
+fn outcome_is_precondition_not_held(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => false
+    GitRefMutationPreconditionNotHeld { mutation, observed } => true
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => false
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => false
+    GitRefMutationReadBackMismatch { mutation, observed } => false
+  }
+}
+
+fn outcome_is_execution_refused(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => false
+    GitRefMutationPreconditionNotHeld { mutation, observed } => false
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => true
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => false
+    GitRefMutationReadBackMismatch { mutation, observed } => false
+  }
+}
+
+fn outcome_is_observation_refused(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => false
+    GitRefMutationPreconditionNotHeld { mutation, observed } => false
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => false
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => true
+    GitRefMutationReadBackMismatch { mutation, observed } => false
+  }
+}
+
+fn outcome_is_read_back_mismatch(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => false
+    GitRefMutationPreconditionNotHeld { mutation, observed } => false
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => false
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => false
+    GitRefMutationReadBackMismatch { mutation, observed } => true
+  }
+}
+
+test fn a_create_that_succeeded_and_reads_back_is_applied() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      outcome_is_applied(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+          exit_code: 0,
+          stderr: "",
+          observed_after: GitRefObserved { oid: a },
+        ),
+      )
+  }
+}
+
+data zero_exit_is_not_a_receipt_note: String = "THE DISCRIMINATING CLAIM FOR THE APPLIED ARM. A decision that read only the exit code would answer Applied here too, because the process ended zero - and the ref holds something else. That is the fabricated plausible output at its shortest: the caller is told the store holds a commit it does not hold. The read-back is what makes Applied a receipt rather than a restatement of the exit status, and this arm is the input on which the two disagree."
+
+test fn a_zero_exit_whose_ref_holds_something_else_is_a_read_back_mismatch() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          outcome_is_read_back_mismatch(
+            outcome: git_ref_mutation_outcome(
+              mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+              exit_code: 0,
+              stderr: "",
+              observed_after: GitRefObserved { oid: b },
+            ),
+          )
+      }
+  }
+}
+
+data one_exit_code_two_causes_note: String = "THE PAIR THE EXIT CODE CANNOT SEPARATE, which is the reason this function takes an observation at all. `update-ref` exits 128 both when it LOST the precondition race and when it could not reach the object store, and those have opposite remedies - re-evaluate against the winner, versus stop and fix the store. The two claims below hand the decision the SAME exit code and the same stderr and differ only in what the ref holds afterwards; a decision derived from the process result alone cannot tell them apart and would have to pick one for both."
+
+test fn a_refused_create_whose_ref_is_now_present_lost_the_precondition() -> Bool {
+  match oid_b() {
+    Absent => false
+    Present { value: b } =>
+      match oid_a() {
+        Absent => false
+        Present { value: a } =>
+          outcome_is_precondition_not_held(
+            outcome: git_ref_mutation_outcome(
+              mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+              exit_code: 128,
+              stderr: "cannot lock ref",
+              observed_after: GitRefObserved { oid: b },
+            ),
+          )
+      }
+  }
+}
+
+test fn a_refused_create_whose_ref_is_still_absent_is_an_execution_refusal() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      outcome_is_execution_refused(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+          exit_code: 128,
+          stderr: "cannot lock ref",
+          observed_after: GitRefAbsent,
+        ),
+      )
+  }
+}
+
+test fn a_stale_advance_is_a_precondition_failure_and_an_exact_one_applies() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          outcome_is_precondition_not_held(
+            outcome: git_ref_mutation_outcome(
+              mutation: GitAdvanceRefIfExpected { name: "refs/devboot/lease" as GitRefName, expected_old: a, new: b },
+              exit_code: 128,
+              stderr: "is at 2222 but expected 1111",
+              observed_after: GitRefObserved { oid: b },
+            ),
+          )
+            && outcome_is_applied(
+              outcome: git_ref_mutation_outcome(
+                mutation: GitAdvanceRefIfExpected { name: "refs/devboot/lease" as GitRefName, expected_old: a, new: b },
+                exit_code: 0,
+                stderr: "",
+                observed_after: GitRefObserved { oid: b },
+              ),
+            )
+      }
+  }
+}
+
+data delete_desires_absence_note: String = "A DELETE'S DESIRED STATE IS ABSENCE, WHICH IS THE ONE ARM AN OBSERVED-OID COMPARISON CANNOT EXPRESS. The three arms of GitRefObservation exist so that absence is a value rather than a missing one; if a read-back returned an optional oid, `no oid` would have to stand for both `the ref is gone` and `the read said nothing`, and a delete would then be confirmed by the failure to observe it."
+
+test fn an_exact_delete_that_left_the_ref_absent_is_applied() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      outcome_is_applied(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitDeleteRefIfExpected { name: "refs/devboot/lease" as GitRefName, expected_old: a },
+          exit_code: 0,
+          stderr: "",
+          observed_after: GitRefAbsent,
+        ),
+      )
+  }
+}
+
+test fn a_stale_delete_whose_ref_moved_is_a_precondition_failure() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          outcome_is_precondition_not_held(
+            outcome: git_ref_mutation_outcome(
+              mutation: GitDeleteRefIfExpected { name: "refs/devboot/lease" as GitRefName, expected_old: a },
+              exit_code: 128,
+              stderr: "is at 2222 but expected 1111",
+              observed_after: GitRefObserved { oid: b },
+            ),
+          )
+      }
+  }
+}
+
+data unreadable_is_not_unapplied_note: String = "AN UNREADABLE STORE IS NOT AN ANSWER ABOUT THE REF. If the read-back itself refused, this decision knows nothing about what happened - not that the mutation failed, and not that it succeeded - so it says so rather than folding the ignorance into either verdict. Folding it into ExecutionRefused would report a mutation as not applied when it may well have been, which is the state-space conflation an absorbing fallback commits on the answer lattice. It holds on BOTH exit codes, which is why both are claimed here."
+
+test fn an_unreadable_read_back_refuses_on_either_exit_code() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      outcome_is_observation_refused(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+          exit_code: 0,
+          stderr: "",
+          observed_after: GitRefObservationRefused { exit_code: 128, stderr: "not a git repository" },
+        ),
+      )
+        && outcome_is_observation_refused(
+          outcome: git_ref_mutation_outcome(
+            mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+            exit_code: 128,
+            stderr: "cannot lock ref",
+            observed_after: GitRefObservationRefused { exit_code: 128, stderr: "not a git repository" },
+          ),
+        )
+  }
+}
+
+test fn only_the_applied_arm_reports_applied() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      git_ref_mutation_applied(
+        outcome: git_ref_mutation_outcome(
+          mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+          exit_code: 0,
+          stderr: "",
+          observed_after: GitRefObserved { oid: a },
+        ),
+      )
+        && !git_ref_mutation_applied(
+          outcome: git_ref_mutation_outcome(
+            mutation: GitCreateRefIfAbsent { name: "refs/devboot/answer" as GitRefName, new: a },
+            exit_code: 128,
+            stderr: "cannot lock ref",
+            observed_after: GitRefAbsent,
+          ),
+        )
+  }
+}
+
+data address_is_one_axis_note: String = "THE TWO REPOSITORY READINGS ARE NOT INTERCHANGEABLE, which is why they are a parameter and not a default. `-C <path>` changes directory and discovers a repository from there; `--git-dir=<path>` names the store directly and is the only one that reaches a bare repository with no worktree. An operation family that hardcoded either would be unusable on one side of devboot's exchange."
+
+test fn each_repository_reading_produces_its_own_spelling() -> Bool {
+  git_repository_address_argv(address: GitWorktreeAt { path: "/repo" })
+    == ["-C", "/repo"]
+    && git_repository_address_argv(address: GitDirectoryAt { path: "/store.git", run_in: "/repo" })
+      == ["-C", "/repo", "--git-dir=/store.git"]
+}
+
+test fn the_index_override_is_an_environment_prefix_not_a_flag() -> Bool {
+  git_index_file_env_argv(index: "/work/scratch.index")
+    == ["env", "GIT_INDEX_FILE=/work/scratch.index"]
+}
+
+data parentless_is_not_an_empty_list_note: String = "A PARENTLESS COMMIT IS A ROOT ON PURPOSE. devboot builds them so a client can clone one commit shallowly, so `no parents` is an intended shape rather than a caller who had none to give - and the argv it produces carries no `-p` at all, which is the observable difference."
+
+test fn commit_parents_spell_one_dash_p_per_parent_and_none_for_a_root() -> Bool {
+  git_commit_parents_argv(parents: GitNoParents) == []
+    && git_commit_parents_argv(parents: GitParents { first: "aaa" as NonEmptyStr, remaining: [] })
+      == ["-p", "aaa"]
+    && git_commit_parents_argv(
+      parents: GitParents { first: "aaa" as NonEmptyStr, remaining: ["bbb" as NonEmptyStr, "ccc" as NonEmptyStr] },
+    ) == ["-p", "aaa", "-p", "bbb", "-p", "ccc"]
+}

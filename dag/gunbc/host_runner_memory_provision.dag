@@ -23,21 +23,11 @@ import gunbc.host_effect {
   host_effect_converge_loop_evidence,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.host_converge_realize { interpret_converge_knob, KnobUnimplemented, KnobEffect }
 import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
 import std.realization_reconcile { Converged, NotConverged }
 
-data host_runner_memory_provision_scope_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_converge_realize",
-    decl_name: "interpret_converge_knob",
-    field: WholeDeclaration,
-  },
-}
-
-data host_runner_memory_provision_scope_note: String = "Path (b) modeled ConvergePlan ensure on assimilation spine (P1:runner-deploy-slot): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs from gunbc.runner_slot_allocation, shaped as host_effect_apply_gated → ConvergePlan — never hand systemctl. LIVE APPLY now interprets PerSlotMemoryCap to a derived drop-in write + daemon-reload (host_converge_realize KnobEffect) executed through host_effect_realize run_shell_transport (in-process LocalShell), grounded on the REAL exit code — a nonzero exit is a typed NotConverged refusal, never a fabricated exit 0. Read-back verdict helper (per_slot_memory_cap_verdict_from_unit_read) is mandatory on the verify path; apply-path read-back is dissolve-on with the realize scaffold."
+data host_runner_memory_provision_scope_note: String = "Per-slot MemoryMax/MemoryHigh/MemorySwapMax knobs from gunbc.runner_slot_allocation, selected here as a caps-only HostConverge. THIS MODULE NO LONGER HAS A LIVE APPLY, and the previous sentence of this note described one: it said live apply interprets PerSlotMemoryCap into a derived drop-in write plus daemon-reload executed through host_effect_realize run_shell_transport and grounded on the real exit code. That arm is DELETED (2026-08-21, operator decision) because the 2026-08-13 privilege hold reserves drop-in authoring to the deploy principal, and the hold was enforced by nothing but two self-asserting Bool flags while the arm stayed wired. provision_runner_memory_caps therefore reaches a ConvergePlan realization that refuses by construction; it is retained as the typed entry that produces that refusal rather than deleted, so an operator invoking it is told why instead of finding nothing. The read-back half was always the correct one and is untouched: per_slot_memory_cap_verdict_from_unit_read on the verify path (gunbc.host_runner_memory_cap_verify). What used to be named here as dissolve-on debt — apply-path read-back — is not debt any more, because there is no apply path to read back."
 
 data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -85,24 +75,6 @@ fn runner_memory_host_converge(host: HostIdentity) -> HostConverge? {
 
 fn runner_memory_cap_readback_verdict(read: RunnerUnitMemoryLiveRead, knob: ConvergeKnob) -> ConvergeVerdict? {
   per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
-}
-
-fn runner_memory_knob_apply_interpreted(knob: ConvergeKnob) -> Bool {
-  match interpret_converge_knob(knob: knob) {
-    KnobEffect { knob_name: _, effect_script: s } => s != ""
-    KnobUnimplemented { target_kind: _, knob_name: _, reason: _ } => false
-  }
-}
-
-fn host_runner_memory_provision_scope_binds_realize_frontier() -> Bool {
-  match host_runner_memory_provision_scope_disposition {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
-    } =>
-      m == "gunbc.host_converge_realize" && n == "interpret_converge_knob"
-    Terminal { reason: _ } => false
-  }
 }
 
 fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {

@@ -17,6 +17,12 @@ import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
 import product.placement_supply { HostIdentity }
+import gunbc.fabric_control_plane_charge {
+  HostFabricControlPlaneClaim,
+  ControlPlaneNotPlaced,
+  ControlPlaneClaimResolved,
+  ControlPlaneClaimUnmeasured,
+}
 import gunbc.ci_fleet { ComputeOffer }
 import gunbc.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
@@ -67,7 +73,6 @@ import gunbc.oomd_install {
   gunbc_oomd_sessions_policy,
 }
 
-
 fn build_cost_account(cfg: JobserverConfig) -> CostAccount<Nano> {
   CostAccount {
     time: time_measure(count: 0),
@@ -115,7 +120,6 @@ fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResoluti
 }
 
 
-
 fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcementEvidence {
   match mode {
     Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
@@ -130,7 +134,6 @@ fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcemen
 }
 
 data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = gunbc_fleet_oomd_evidence_for(mode: gunbc_ci_session_reservation_mode)
-
 
 data gunbc_compile_pool_doc: String = "THE COMPILE POOL IS A CLAIM ON HOST RAM THAT THE PER-SLOT MODEL DID NOT SEE. extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SCCACHE SERVER. So compile RSS is charged to the SERVER's cgroup, not to the runner slot that issued the compile, and a per-slot memory cap therefore does NOT bound compile memory. Measured consequence on srv1: the CI server was lazily auto-spawned inside dead slot srv1-10's cgroup and kept alive by SCCACHE_IDLE_TIMEOUT=0, so all five live slots' compiles executed under one dead slot's 15G high / 16G max caps and accumulated 229780 memory.max breach events and 12 oom_kills. Sizing is jobserver_build_pool_bytes (tokens * mib_per_job) — the same cited authority that bounds build concurrency, NOT a fresh literal: the pool must hold exactly the compiles the jobserver admits."
 
@@ -201,13 +204,19 @@ fn session_pool_bytes(active_sessions: Nat) -> ByteSize {
   measure_scale_fraction_floor(m: gunbc_session_container_memory, num: active_sessions, den: 1)
 }
 
+// fabric_control_plane_pool IS A NAMED CHILD RATHER THAN AN ADDITION TO fixed_overhead, because the
+// resident it charges has an exact identity, an exact placement, an explicit lifecycle, a measurable
+// envelope and a later migration path. Folding it into overhead erases all five and makes a future
+// MOVE indistinguishable from a drift in miscellaneous OS usage -- and it would double-charge the
+// moment overhead is next measured on a host where the service is running.
 fn host_allocation_tree(
   host: ByteSize,
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
   session_pool: ByteSize,
-  compile_pool: ByteSize
+  compile_pool: ByteSize,
+  control_plane: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -217,28 +226,83 @@ fn host_allocation_tree(
       child_node(name: "runner_pool", b: runner_pool),
       child_node(name: "session_pool", b: session_pool),
       child_node(name: "compile_pool", b: compile_pool),
+      child_node(name: "fabric_control_plane_pool", b: control_plane),
       child_node(name: "headroom", b: headroom),
     ],
   }
 }
 
-fn host_allocation_conserves(
+type HostAllocationVerdict
+  = HostAllocationConserves
+  | HostAllocationOversubscribed
+  | HostAllocationUnchargeable { cause: String }
+
+// THE VERDICT IS A COPRODUCT BECAUSE A Bool CANNOT SAY WHY IT IS false. "The declared claims exceed
+// the host" and "one resident's size is unknown so no sum can be formed" are different states with
+// different remedies -- the first is a capacity decision, the second is a measurement someone has to
+// go and take -- and a shared false merges them into a plan that looks oversubscribed when it is
+// merely unmeasured. A Bool projection over this verdict used to sit beside it
+// and is DELETED rather than kept: gunbc.ci_runner_placement, its only production caller, now
+// matches the verdict directly, and a spare yes/no left in this module is how the collapse would
+// come back -- the next caller wanting a Bool would find one already written and would silently
+// drop the remedy again. The witnesses that legitimately ask a yes/no question declare their own
+// projection in test.claim.host_allocation_conservation, where a production import of it would be
+// visibly wrong.
+fn host_allocation_verdict(
   host: ByteSize,
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
   session_pool: ByteSize,
-  compile_pool: ByteSize
-) -> Bool {
-  node_conserves(node: host_allocation_tree(
+  compile_pool: ByteSize,
+  control_plane: HostFabricControlPlaneClaim
+) -> HostAllocationVerdict {
+  match control_plane {
+    ControlPlaneClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
+    ControlPlaneNotPlaced =>
+      host_allocation_verdict_charged(
+        host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: byte_size(0)
+      )
+    ControlPlaneClaimResolved { memory: m } =>
+      host_allocation_verdict_charged(
+        host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: m
+      )
+  }
+}
+
+fn host_allocation_verdict_charged(
+  host: ByteSize,
+  overhead: ByteSize,
+  headroom: ByteSize,
+  runner_pool: ByteSize,
+  session_pool: ByteSize,
+  compile_pool: ByteSize,
+  control_plane: ByteSize
+) -> HostAllocationVerdict {
+  if node_conserves(node: host_allocation_tree(
     host: host,
     overhead: overhead,
     headroom: headroom,
     runner_pool: runner_pool,
     session_pool: session_pool,
-    compile_pool: compile_pool
-  ))
+    compile_pool: compile_pool,
+    control_plane: control_plane
+  )) {
+    HostAllocationConserves
+  } else {
+    HostAllocationOversubscribed
+  }
 }
+
+// THE CLAIM IS A PARAMETER RATHER THAN A DEFAULT, AND THE FIRST VERSION OF THIS GOT IT WRONG. It
+// passed ControlPlaneNotPlaced here, which is TRUE TODAY and would have stayed silently true after
+// someone placed the control plane -- this function takes host BYTES, not a host identity, so it
+// cannot derive the claim and would have gone on answering about a fleet that no longer existed.
+// That is the unfirable wall in its purest form, three declarations below the annotation warning
+// about it. Making it a parameter means every caller must say which host's claim it is charging,
+// and the ones that cannot say so stop compiling -- which is the census, not an inconvenience.
 
 data declared_runner_count_derivation_note: String = "This still divides the declared pool by the declared per-slot cap rather than reading gunbc_runner_slots_per_host directly, and the redundancy is now GONE rather than merely tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by construction — the two agree because one is the other's inverse, not because an author kept them coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with slots_per_host by construction at these values', which is a coincidence with a caveat attached, and the caveat was doing the work."
 
@@ -252,7 +316,6 @@ fn declared_runner_count_for(host: HostIdentity) -> Int {
 fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
   measure_fit_count_floor(capacity: session_pool, each: gunbc_session_container_memory)
 }
-
 
 fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize, compile_pool: ByteSize) -> ByteSize {
   let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
@@ -292,7 +355,6 @@ fn fleet_host_budget_tree(
     ],
   }
 }
-
 
 fn runner_slice_cap_drifted(disk_cap: ByteSize, effective: RunnerSliceCapEffectiveness) -> Bool {
   match effective {
@@ -373,7 +435,6 @@ fn fleet_host_plan() -> FleetHostPlan {
     oomd: gunbc_fleet_oomd_evidence
   )
 }
-
 
 fn fleet_host_plan_for_offer(
   offer: ComputeOffer,
