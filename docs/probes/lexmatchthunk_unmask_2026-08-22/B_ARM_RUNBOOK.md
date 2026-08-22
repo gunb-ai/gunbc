@@ -45,6 +45,22 @@ not reading as regression. Both are the instrument getting more honest and looki
    qualitative statement is enough and is the registered one: the 315 series is not comparable to
    the next takeable board in the way a same-subject A/B would normally assume.
 
+### Confirmed at the repair SHA, 2026-08-22
+
+Measured at `calm-heron-887`'s (c)+(a) repair `ffddac8b55` (parent `f5be77a16a`), with a compiler
+built from that tree — so this is the gate's status on the tree the B arm would actually use, not
+an extrapolation from main:
+
+| check | result |
+|---|---|
+| `03_ingest` emit | **exit 1, 0 files**, the same five `file` transport refusals |
+| `controls/algebra_genericity_pair.dag` `arm_b` | **still red** — one `Primitive()` refusal |
+
+Both are **confirmations of predictions registered in advance**, from opposite lanes: the repair
+author predicted `arm_b` would still be red because (c)+(a) do not close (b), and this runbook
+registered the transport gate as independent of the chain. So the B arm is blocked twice over, by
+two unrelated gates, and neither reading is a repair having failed.
+
 ## Arms
 
 | arm | ref |
