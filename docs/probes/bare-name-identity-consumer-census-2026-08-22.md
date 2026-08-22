@@ -234,11 +234,29 @@ than land an inert change inside a "1,801 → 395" narrative. Recorded here as a
 repair* rather than as an open item, precisely so the next reader who notices the exact comparison
 does not re-derive and re-land it.
 
-**One thing that lane explicitly did not establish, carried so nobody inherits it as settled:** for
-the residual `Nat` rendering, `decl_file == ""` (identity unknown) and `decl_file ==
-"src/v2/std/nat.dag"` (identity known and correctly refused) produce *identical* output and have
-**opposite** repairs. Distinguishing them needs one instrumented emit that has not been run. Note
-that the second case is the fail-closed arm working as designed — `numeric_realization_identity_note`
-says an unknown identity yields no realization rather than a guess — so this is a resolver-identity
-gap upstream of the renderer, not a rendering defect.
+**The `shared_types` result now carries a same-binary control**, which it did not when first
+relayed. The concern was real and that lane raised it against itself: their bootstrap host predates
+the identity machinery by thirteen commits on exactly `coercion.dag` and `05_emit_rust.dag`, so "an
+older, more main-like emitter produced the consistency" was a live alternative explanation for the
+714/0. Two arms, same binary vintage, same tree, same roots, one difference:
 
+| arm | wrapped / unwrapped |
+|---|---|
+| bootstrap binary **with** the leaf-reduction | 714 / 0 |
+| same binary **without** it (control) | 343 / 371 |
+
+The control reproduces the original split exactly, so the old emitter alone does not produce main's
+shape and the leaf-reduction is what closes it. The row's second measurement is controlled.
+
+**And the `Nat` mechanism I recorded here an hour ago is RETRACTED by its author, before anyone built
+on it.** I wrote it as two live hypotheses — identity-unknown versus identity-known-and-refused,
+identical output, opposite repairs. That framing is wrong in a way that matters: the measurement was
+taken on a tree emitted by a binary that **lacks `type_reference_decl_file` entirely**, so the
+instrument cannot exhibit the mechanism it was offered as evidence for, and neither hypothesis is
+supported by it. What survives is only the **observation** — 119 errors, `Measure<Q, S, Nat>` where
+main emits `Measure<Q, S, i64>` — which is exactly what an emitter with no `decl_file` threading
+produces whether or not a resolution defect exists. The four-cell classification is still the right
+instrument and **cannot be run on that host**, because the function it would instrument is not there;
+it is gated on that tree compiling, not on anyone's willingness. This is the instrument-vintage trap,
+and it is recorded here rather than quietly deleted because I had already written the superseded
+version into this receipt.
