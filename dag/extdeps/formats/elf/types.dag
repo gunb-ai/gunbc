@@ -1,6 +1,5 @@
 module extdeps.formats.elf.types
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.formats.elf.primitives { ElfClass, ElfDataEncoding, ElfFileType, ElfMachine }
@@ -53,6 +52,11 @@ type ElfDecodeReason
   | UnsupportedElfMachine { raw: Int }
   | UnsupportedElfSegmentType { raw: Int }
 
+// THE SOLE DECODE-OUTCOME AUTHORITY for this module, stated because a parallel one was
+// once carried alongside it: `elf.segments.PhdrDecodeOutcome` answered the same question
+// for program headers and has been deleted. Program-header decode reports through this
+// type and `ElfDecodeReason`, and a second outcome coproduct for one decode is the §3
+// violation that fork was.
 type ElfDecodeOutcome<T>
   = ElfDecoded { value: T }
   | ElfRejected { reason: ElfDecodeReason }
@@ -186,4 +190,3 @@ fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
   EntryPoint { virtual_address: hdr.entry }
 }
 
-data elf_phdr_decode_outcome_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: elf.segments.PhdrDecodeOutcome — deleted parallel decode machinery; sole authority is extdeps.formats.elf.types.ElfDecodeOutcome / ElfDecodeReason.")
