@@ -204,7 +204,7 @@ Landed:
   row.
 - The outcome table of §3, as `git_ref_mutation_outcome`, decided from an independent read-back
   rather than from the exit code. `Applied` is unreachable without the read-back.
-- All thirty-seven git argv sites in `gunbc.devboot` are gone; the seventeen `RetainedWitnessRun`
+- All thirty-five git argv sites in `gunbc.devboot` are gone; the seventeen `RetainedWitnessRun`
   rows are deleted rather than repointed. The thirteen host-effect rows remain, still pointing at
   `host_effect_apply`.
 - §4's discriminator: `publish_produced_tree` wrote the per-token answer ref unconditionally and now
