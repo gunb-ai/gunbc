@@ -2374,8 +2374,8 @@ enforces end to end.
    machinery §4b(2) says to leave as a declared row instead.
 
 23. *(reserved — gunbc#8864, this session's open shadow-census PR, lands the record-literal
-   actual-position row at this number. Cut A branches from `main` rather than stacking on it so
-   its corpus-regression CI actually runs, so the two lanes number past each other rather than
+   actual-position row at this number. gunbc#8879 branches from `main` rather than stacking on it
+   so its corpus-regression CI actually runs, so the two lanes number past each other rather than
    colliding on one integer a second time.)*
 
 24. **A type name declared in two modules resolves to whichever binding `lookup_binding_by_name`
@@ -2454,11 +2454,38 @@ enforces end to end.
    seam that is failing to make true ones, and stating only the first half would make the seam
    look stricter than it is.
 
-   DISTINGUISHING FACTS: measured in the same before/after dispatch as cut A's acceptance set,
-   on the same fixture file, so the silence is not a scoping artifact — a genuine kernel-vs-record
-   mismatch in the *same file* (`String` passed where `Rec` is declared) refuses in both arms,
-   located, with identical text. So the seam is reached and does judge; it just does not judge
-   record-against-record.
+   DISTINGUISHING FACTS, and the paired nonzero is what makes the zero mean anything: measured
+   in the same before/after dispatch as cut A's acceptance set, on the same fixture file, so the
+   silence is not a scoping artifact — a genuine kernel-vs-record mismatch in the *same file*
+   (`String` passed where `Rec` is declared) refuses in both arms, located, with identical text.
+   So the seam is reached, is executing, and does judge; it simply does not discriminate record
+   against record. Without that control, "no diagnostic appears" would be equally consistent with
+   the seam not running at this position at all, and the row would be dismissable.
+
+   THE REFUSAL IS ALSO ASYMMETRIC, measured on one file across two binaries (main, and gunbc#8873
+   at `e78c61c888`): `String` passed at a `Rec` formal refuses on both, while an alias of `Rec`
+   passed at a `String` formal is SILENT on both. So the seam's kernel-vs-record judgment runs in
+   one direction only. Recorded inside this row rather than as a fourth row, because one
+   observation of a neighbouring asymmetry is a distinguishing fact about this class, not an
+   independent class.
+
+   FOUND TWICE, INDEPENDENTLY, WHICH IS THE ONE FORM OF EVIDENCE AN AUTHOR CANNOT PRODUCE ALONE.
+   Reproduced by session still-carp-717 from a different direction and under a different
+   hypothesis — they were chasing the empty-record explanation for an unrelated failure, not
+   looking for this — with a fixture sharing no text with the one above: `type RevA { a: String }`
+   and `type RevB { b: Int }`, no alias relation between them, `consume_a(r: b)` compiling clean,
+   identical on both binaries, and two empty records substituting for each other as well. Their
+   arm carries the same `String`-at-a-record-formal control and it refuses there too
+   (`expected 'Product(RevA)', got 'Primitive(String)'`). Two lanes, two hypotheses, two fixtures,
+   one result.
+
+   SCOPE, sharpened by that second reproduction beyond what the first established. (1) It
+   reproduces in an ordinary NON-EXEMPT module, so it does not sit behind
+   `module_skips_direct_call_arg_check` and cut B — deleting that exemption — would not touch it;
+   this is measured, not expected. (2) The two records differ in field NAMES *and* field TYPES and
+   stand in no alias relation, so this is not the transparent-alias class: neither the withdrawn
+   cut A repair nor gunbc#8873 addresses it, and neither should be credited with closing it.
+   Shape-wise it is the gunbc#8865 coproduct-payload class arriving at a different seam.
 
    RUNG FOUND AT: **below the floor** on the source→`.dag`-acceptance path — accepted, silent,
    no diagnostic. The source→interpretation path is UNMEASURED here and is a separate row when
@@ -2515,6 +2542,67 @@ enforces end to end.
    NEXT TRIGGER: the equality arm first, because it is the one with no observation and therefore
    no frequency — a class whose deficit rate is zero by construction never ranks for climbing
    (§5's absorbing-fallback argument applied to a missing check rather than a widening one).
+
+27. **NEGATIVE RESULT: widening the resolve-seam alias peel breaks variant projection, and the
+   mechanism is unidentified after three refuted hypotheses** (opened 2026-08-22, session
+   proud-ant-819. This row exists because the change that caused it was WITHDRAWN — nothing in
+   `main` is broken by it — so it is recorded for the next person who reaches for the resolve seam,
+   not as an outstanding defect).
+
+   WHAT WAS ATTEMPTED. `v1.compiler.04_resolve` `is_transparent_primitive_alias_rhs` decides
+   transparency by asking whether the alias's base is a KERNEL type, which makes transparency a
+   property of the BASE rather than of the DECLARATION, so `type AliasRec = Rec` keeps a nominal
+   identity it never declared and the direct-call seam refuses the interchange. The attempted
+   repair replaced the kernel test with "the resolved structural node carries a non-empty authored
+   name". Six authored witnesses passed. CI over the corpus refused in three classes at once.
+
+   WHY IT IS THE WRONG SEAM, which is the transferable part. Resolve has THREE downstream
+   consumers and the attempt broke all three: the direct-call comparison (20 diagnostics,
+   `expected 'Product(Hash)', got 'Product(Fnv1a64Structural)'` — peeled on one side of the
+   comparison and not the other, and `type Hash = Fnv1a64Structural` is the alias behind 92 of the
+   115 relations the census was built on, so the repair turned its own headline population into a
+   NEW red); variant projection (18 diagnostics, below); and EMISSION (regen surface drift in
+   `extdeps_cargo_version.rs`, `extdeps_version_semver.rs`, `std_integer.rs`). A transparency
+   relation belongs at the COMPARISON, where leniency is meaningful — emission and variant
+   projection are not judgment surfaces and there is no coherent sense in which they should be
+   lenient. gunbc#8873 places it there and closes this defect: measured on one identical fixture,
+   `main` produces 5 diagnostics (4 alias false reds across record and coproduct kinds, both
+   directions, plus one genuine kernel-vs-record mismatch) and gunbc#8873 at `e78c61c888` produces
+   1 — the genuine one, same site, same text.
+
+   THE UNEXPLAINED CLASS. 18 diagnostics of the form `variant 'X' not found in type 'X'`, the two
+   names identical: `OllamaRuntime` (×2), `MtJadeRev1_0` (×6), `AcceptanceNodeReopensActiveFrontier`
+   (×6), `GoogleCloudInteractiveAuthenticationRequired` (×4).
+
+   REPRODUCTION, established by corpus subtraction rather than by an authored fixture:
+   `dag/gunbc/spark/serving_release.dag` compiled alone at module scope
+   (`--source-root dag --source-root src/v2 --entry <it>`) is rc=0 with 0 blocking diagnostics on
+   `main` and rc=1 with `variant 'OllamaRuntime' not found in type 'OllamaRuntime'` on the widened
+   binary. So the class is attributable to the change and reproduces WITHOUT whole-corpus context.
+   `dag/extdeps/ocp/mt_jade/subject.dag` does NOT reproduce at module scope in either arm, so that
+   instance needs a wider closure and the two are not the same reproduction.
+
+   THREE REFUTED HYPOTHESES, listed because knowing which explanations are dead is worth more to
+   the next reader than a fourth that merely sounds right. (1) *The base is an empty record.*
+   `type OllamaRuntime {}` and `type MtJadeRev1_0 {}` are empty records, and an empty record is
+   `NoConnective` with zero children — structurally indistinguishable from the childless leaf the
+   predicate keys on. REFUTED by its own fixture: an authored `type EmptyRec {}` /
+   `type AliasOfEmpty = EmptyRec` pair behaves exactly like a full-record pair (four mismatches
+   before, clean after) and produces no variant diagnostic in either arm. (2) *Asymmetric peeling
+   between the two call sites.* Consistent with class 1 but never measured, and it does not explain
+   a variant lookup failing. (3) *The kernel-versus-named axis is the discriminator.* The corpus
+   two-column pass agreed with it at 213 declarations with 0 counterexamples in either column —
+   and that agreement is exactly what made the change look safe, so the pass measured what the
+   predicate decides, not what its consumers do with the decision.
+
+   RUNG: not on the ladder — this is a property of a withdrawn change, not of `main`. Recorded as a
+   hazard for the seam.
+
+   NEXT TRIGGER, for anyone who reaches for the resolve peel: start from the module-scope
+   reproduction above, not from an authored fixture. Two independent authors wrote eleven
+   adversarial arms between them (six here, five in gunbc#8873) and ALL ELEVEN pass on the widened
+   binary, including a boundary control written specifically to catch over-peeling. The corpus was
+   the only instrument that detected any of this.
 
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
