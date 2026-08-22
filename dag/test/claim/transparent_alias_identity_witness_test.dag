@@ -40,6 +40,29 @@ fn transparent_alias_wrong_ground_source() -> String {
   "module aliasid.wrongground\n\ntype IntHandle = Int\n\nfn take_str(s: String) -> String {\n  s\n}\n\nfn pass_an_int_alias(i: IntHandle) -> String {\n  take_str(s: i)\n}\n"
 }
 
+// CORPUS-DERIVED SHAPES. The two sources below were not invented from this lane's hypothesis --
+// they come from gunbc#8879, which attempted the same semantics at the RESOLVE seam, carried six
+// enrolled witnesses green by execution including a discriminating RED and a destruction control,
+// and whose corpus run then reddened 38 diagnostics in shapes neither author had conceived. Both
+// of these were absent from that PR's six arms AND from this file's original five, and both were
+// measured RED on the pre-relation binary and green with it, so each is a climb in its own right
+// rather than a restatement of the first arm.
+//
+// An EMPTY RECORD is the dangerous one for this relation specifically: `type MtJadeRev1_0 {}` has
+// NoConnective and zero children, which is structurally indistinguishable from the childless leaf
+// transparent_alias_target_name keys on. If the relation could not tell an empty record apart from
+// an alias it would mint a bogus edge here.
+fn transparent_alias_empty_record_source() -> String {
+  "module aliasid.emptyrec\n\ntype MtJadeRev1_0 {}\n\ntype SpecRevision = MtJadeRev1_0\n\nfn consume_rev(r: MtJadeRev1_0) -> Int {\n  1\n}\n\nfn pass_alias_of_empty_record(s: SpecRevision) -> Int {\n  consume_rev(r: s)\n}\n"
+}
+
+// A VARIANT PROJECTION position, which every other arm in this file and every arm in gunbc#8879
+// missed -- all of them exercise the call-argument seam only. This one carries an alias-typed
+// value into a `match`, so it exercises a DIFFERENT consumer of the same relation.
+fn transparent_alias_variant_projection_source() -> String {
+  "module aliasid.variantproj\n\ntype Runtime = | Local\n\ntype RuntimeAlias = Runtime\n\nfn project(r: RuntimeAlias) -> Int {\n  match r {\n    Local => 1\n  }\n}\n\nfn consume_rt(r: Runtime) -> Int {\n  project(r: r)\n}\n"
+}
+
 // HARNESS CONTROLS FOR THE TWO REFUSAL ARMS. compile_dag_rust_emit_check returns false for
 // more than one reason -- a refused compile, but also a fixture the harness could not place or
 // read -- so a bare `!check(...)` is satisfiable by a broken harness. Each refusal arm below is
@@ -103,5 +126,28 @@ test fn w_alias_of_a_different_ground_type_still_refused_test() -> Bool {
     "src/aliasid_wrongground.rs",
     [],
     []
+  )
+}
+
+// CORPUS-DERIVED CLIMB 1 -- empty-record base. Measured on the pre-relation binary:
+// "expected 'Product(MtJadeRev1_0)', got 'Primitive(SpecRevision)'". Green with the relation.
+// This arm is the executing evidence that an empty record is not mistaken for an alias leaf.
+test fn w_alias_of_an_empty_record_conforms_test() -> Bool {
+  compile_dag_rust_emit_check(
+    transparent_alias_empty_record_source(),
+    "src/aliasid_emptyrec.rs",
+    ["MtJadeRev1_0"],
+    ["compile_error"]
+  )
+}
+
+// CORPUS-DERIVED CLIMB 2 -- variant projection, a consumer no other arm here exercises. Measured
+// on the pre-relation binary: "expected 'Primitive(RuntimeAlias)', got 'Coproduct(Runtime)'".
+test fn w_alias_at_a_variant_projection_position_test() -> Bool {
+  compile_dag_rust_emit_check(
+    transparent_alias_variant_projection_source(),
+    "src/aliasid_variantproj.rs",
+    ["Local"],
+    ["compile_error"]
   )
 }
