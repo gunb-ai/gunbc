@@ -1,5 +1,10 @@
 # Corpus-wide unconsumed-module census
 
+**Execution record:** the disposition of this population -- what was deleted, and the typed
+reason every held row survived -- is
+[`unconsumed-module-residue-disposition.md`](unconsumed-module-residue-disposition.md).
+This document stays the authority on how the population is derived.
+
 **Status: census only. Nothing is deleted by this document.** It exists to be reviewed
 before any uprooting, per the dispatch: *"337 is too many to delete on one session's
 judgment."*
