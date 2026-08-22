@@ -42787,7 +42787,11 @@ pub fn run_required_floor(
                 path,
             } => {
                 return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerUnrenderable reason={reason}                      offending={offending} diagnosis={path} — the ledger's grammar refused to                      render this run's evidence. Every row the fold produced is preserved at the                      diagnosis path, in a format the ledger reader refuses, so it cannot be cited                      as a ledger."
+                    "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerUnrenderable \
+                     reason={reason} offending={offending} diagnosis={path} — the ledger's \
+                     grammar refused to render this run's evidence. Every row the fold produced \
+                     is preserved at the diagnosis path, in a format the ledger reader refuses, \
+                     so it cannot be cited as a ledger."
                 ));
             }
         }
