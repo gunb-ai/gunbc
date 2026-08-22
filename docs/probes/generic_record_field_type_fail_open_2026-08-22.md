@@ -187,40 +187,45 @@ expected type is not a collection`. **A second finding, not a cost of the first*
 unreachable before, because nothing ever delivered a real type to it. Row (a) cannot land ahead of
 this, so this is where the next owner starts.
 
-### The `LexMatchThunk` row is NOT (a), (b) or (c) — refuted by source read plus execution
+### The `LexMatchThunk` row IS a generic-instantiation gap — and row (b) now has a minimal reproduction
 
-The `v2.compiler.tokenize` `apply` frontier row (7 occurrences) was proposed as possibly being
-row (b). It is not, and the declaration settles it in one line:
+**A withdrawn finding, kept because the mistake is the transferable part.** I first read
+`type LexMatchThunk { apply: fn(String) -> LexMatchResult }`, saw no type parameters, and concluded
+the frontier row was a fourth mechanism outside (a), (b) and (c). **That was wrong, and it was wrong
+by the exact move I had just criticised** — linking "the thunk is not generic" to "the row is not a
+generic-instantiation gap" by shared vocabulary. The thunk's own concreteness never enters the
+question. The generic carrier is the **algebra**:
 
 ```
-type LexMatchThunk {
-  apply: fn(String) -> LexMatchResult
-}
+std.compilers.lexing      type LexPatternFold<R> { ... delimited: fn(R, R, R) -> R }
+v2.compiler.tokenize      delimited: fn(open_r, body_r, close_r) { match open_r.apply(s) { ... } }
 ```
 
-**No type parameters, and `apply` is a concrete function type.** So `record_lit_instantiated_fields`
-never runs for it — row (a)'s repair could not reach it, which is exactly why it did not move — and
-there is no type-parameter-typed field for row (b) to be about.
+`open_r` is a lambda parameter whose **declared type is `R`**, a type variable, instantiated at
+`R = LexMatchThunk`. My three arms above omitted that variable, so they are the **control** arm, not
+a refutation.
 
-Three arms on the **baseline, unpatched** binary make the boundary sharp, and two of them were
-surprises:
+The discriminating pair, one variable, on the pristine baseline binary:
 
-| arm | result |
-|---|---|
-| `apply: fn(String) -> String`, body `fn(s) { [] }` | RC=1, `expected type is not a collection` — **correct refusal** |
-| `apply: fn(String) -> List<String>`, body `fn(s) { [] }` | RC=0, clean — **the arrow IS projected** |
-| `apply: fn(String) -> String`, body `fn(s) { s \|> no_such_method() }` | RC=1, `not found on receiver type 'Primitive(String)'` — **the parameter type DOES propagate** |
+| arm | carrier | result |
+|---|---|---|
+| `arm_a` | `type Fold { delimited: fn(Thunk, Thunk) -> String }` — **non-generic** | RC=0, clean |
+| `arm_b` | `type Fold<R> { delimited: fn(R, R) -> String }` at `Fold<Thunk>` | RC=1, `receiver type 'Primitive()' establishes no method surface` |
 
-Two consequences. **Row (c) is specific to the substituted path** — the non-generic path projects
-through the arrow correctly, so the function-type-instead-of-return-type expectation is produced by
-the substitution, not inherited from a general defect. And **the minimal non-generic reproduction
-does not reproduce the frontier row at all**: a lambda parameter bound under a concrete fn-typed
-field gets a real receiver type here. So whatever puts those 7 occurrences at `Primitive()` is
-narrower than the class name `a lambda parameter receiver whose type never propagates from the
-declared fn type it is bound under` suggests — the real sites bind the thunk through `LexRule` and
-nested constructions, and one of those layers is where the type is lost. That is a **fourth
-mechanism**, unowned, and the minimal arms above are the starting point for it rather than the
-class description.
+Same file, same thunk, same body, same `open_r.apply(...)` call. **The generic algebra is the whole
+difference**, and `arm_b` reproduces the frontier row's diagnostic verbatim.
+
+So the `apply` row belongs to **row (b)**, and (b) is bigger and better-founded than the six seams it
+was measured on: it now has a minimal reproduction, a named cause — *a type-parameter-typed position
+loses its type at instantiation*, whether that position is a **field value** (the six seams) or a
+**lambda parameter's declared type** (this row) — and a 7-occurrence frontier population. The
+earlier "fourth unowned mechanism" row is **withdrawn**, not held: it rested on a reproduction that
+dropped the variable.
+
+Two things this does **not** establish, kept separate on purpose. The 68 masked `E0599` sites are
+`E0308`s *behind* the mask rather than the 7 sites that *are* it, and they have not been shown to be
+one population. And the `object_store` rows share the `Primitive()` **key**, which is a shape, not a
+mechanism.
 
 ### Row (b) — type-parameter-typed field (`v: T`). OPEN.
 
