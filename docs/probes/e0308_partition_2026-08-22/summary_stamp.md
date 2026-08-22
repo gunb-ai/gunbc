@@ -1,5 +1,21 @@
 # E0308 repartition on current main (mechanism grain, M=1)
 
+## Completeness standing (reporting convention adopted 2026-08-22)
+
+```
+VISIBLE CANARY        coded rustc rows: 316 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
+                      canonical E0308 sites: 154
+DIAGNOSTIC COVERAGE   standing: PARTIAL
+  known censor        LexMatchThunk.apply / generic-instantiation failure (E0599 aborts before
+                      inference reaches the expressions behind it)
+  historical masked   ~68 canonical tokenize sites (2026-08-21 board, different ref)
+  current successor   UNMEASURED until the censor is removed
+```
+
+A bare row count with no coverage standing overstates what is known. **Do not add 68 to any board
+total** — different units (canonical sites vs coded rustc rows) and different tree states. When the
+censor is removed the board will RISE, and that is diagnostic completion, not regression.
+
 | field | value |
 |---|---|
 | git_sha | `967b5bc1b92ee66250e06a7870c132b48a16b80a` (requested `967b5bc1b92`; echoed from inside the remote dispatch and pinned by `PROBE_EXPECT_BASE_SHA`) |
