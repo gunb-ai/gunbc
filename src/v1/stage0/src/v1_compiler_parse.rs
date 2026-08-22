@@ -8047,25 +8047,24 @@ pub fn parse_file_fields(
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
         {
-            let bp = match base_path.clone() {
-                Some(e) => e.clone(),
-                None => make_expr_node(
-                    Rc::new(ExprData::ExprLiteral {
-                        value: Rc::new(LiteralValue::LitStr {
-                            value: "".to_string(),
-                        }),
-                    }),
-                    Rc::new(vec![]),
-                    None,
-                    no_span(),
-                ),
-            };
-            break Rc::new(TransportResult {
-                transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: None,
-            });
+            match base_path.clone() {
+                None => {
+                    break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("`transport file` declares no `path:` -- a file transport names the path it acts on, and there is nothing to substitute for it".to_string(), span.clone())),
+});
+                }
+                Some(bp) => {
+                    break Rc::new(TransportResult {
+                        transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: None,
+                    });
+                }
+            }
         } else {
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {

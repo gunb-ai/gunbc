@@ -3022,16 +3022,26 @@ fn parse_file_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportR
   parse_file_fields(tokens: tokens, ctx: ctx, base_path: none, verb: none)
 }
 
+// A `transport file` with no `path:` REFUSES rather than standing in an empty string literal.
+// The substitution that stood here was a fabricated plausible value (DESIGN §5), and its cost
+// was not merely a bad default: it collapsed two states into one node. "no path was declared"
+// and "the path was declared as the empty string" became byte-identical downstream, so no
+// consumer could tell them apart -- and both emitted a host write to "" with no diagnostic,
+// measured, while the interpreter realization of the SAME declaration refuses an empty path at
+// runtime ("file transport resolved to an empty path"). Refusing here makes the first state
+// unrepresentable rather than merely detected. The second state stays authorable and keeps its
+// existing answer: the rust handler emits the interpreter's own guard beside the path binding
+// (v1.compiler.emit_rust file_empty_path_guard), so an authored empty path refuses at run time.
 fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, verb: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
-    let bp = match base_path {
-      Present { value: e } => e
-      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
+    match base_path {
+      Absent => TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "`transport file` declares no `path:` -- a file transport names the path it acts on, and there is nothing to substitute for it", span: span) } }
+      Present { value: bp } =>
+        TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
     }
-    TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }

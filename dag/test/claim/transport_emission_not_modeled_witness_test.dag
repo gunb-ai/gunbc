@@ -39,6 +39,8 @@ data file_transport_source: String = "module tfx_file\nservice Fs \{\n  operatio
 
 data rest_and_shell_source: String = "module tfx_ok\nservice Sh \{\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n\}\n\nservice Net \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n\}\n"
 
+data pathless_transport_source: String = "module tfx_nopath\nservice Fs \{\n  operation Write \{\n    input \{ path: String, content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ \}\n  \}\n\}\n"
+
 data mixed_transport_source: String = "module tfx_mixed\nservice Mixed \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
 
 // The three discriminating REDs, one per FileEmissionRefusal arm the rust handler can meet. Each
@@ -72,6 +74,17 @@ test fn w_fully_declared_file_transport_operations_emit() -> Bool {
 
 test fn w_fully_declared_file_transport_module_is_clean_of_all_blocking_diagnostics() -> Bool {
   blocking_diagnostic_count(source: file_transport_source) == 0
+}
+
+// A `transport file` with no `path:` is refused at PARSE, so the state is unrepresentable rather
+// than caught downstream. The row asserts a blocking diagnostic AND ZERO of the emission class --
+// that pairing is what distinguishes "parse refused it" from "emission refused it", which a single
+// count could not. Before this change the parser substituted an empty string literal, so
+// `transport file \{ \}` and `transport file \{ path: "" \}` became the SAME node and both emitted a
+// host write against the empty path with no diagnostic at all (measured, not inferred).
+test fn w_pathless_file_transport_refuses_at_parse_not_emission() -> Bool {
+  blocking_diagnostic_count(source: pathless_transport_source) > 0
+    && not_modeled_blocking_count(source: pathless_transport_source) == 0
 }
 
 test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool {
