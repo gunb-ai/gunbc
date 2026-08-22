@@ -27,15 +27,24 @@ import extdeps.rustup { rustup_home_env_name, rustup_home_env_assignment }
 // instead of seven, with these controls pinning what that site produces. Its next-rung trigger is
 // the host_effect_apply migration the retained rows already name.
 //
-// THE SPLIT AND THE WHOLE MUST AGREE, and this is the assertion that makes a two-door authority
-// safe to offer at all. extdeps.tools.mkdir hands out a bare argument tail for callers whose
-// transport splits bin_path from args -- gunbc.devboot's WitnessBin.Run seam is one -- and a full
-// argv for callers that need the vector. If those two ever describe different commands, every
-// caller is correct and the corpus is not, and the divergence is invisible at both call shapes
-// because each one reads only its own half.
+// THE SPLIT AND THE WHOLE MUST AGREE. extdeps.tools.mkdir hands out a bare argument tail for
+// callers whose transport splits bin_path from args -- gunbc.devboot's WitnessBin.Run seam is one
+// -- and a full argv for callers that need the vector. If those two ever describe different
+// commands, every caller is correct and the corpus is not, and the divergence is invisible at both
+// call shapes because each one reads only its own half.
+//
+// THE SECOND OPERAND IS A LITERAL, AND THAT IS THE LOAD-BEARING HALF. The concat relation alone
+// restates the body of mkdir_parents_argv as it is written today, so on its own it is a change
+// detector rather than an oracle -- automate its expected side and it collapses to
+// measure() == measure(), which DESIGN section 5 names exactly. The literal is grounded outside
+// the implementation: /usr/bin/mkdir is the host path this module records and -p is the POSIX
+// spelling it cites. Together the two operands say something the body cannot make true by
+// construction -- that both doors expand to the cited command, not merely to each other.
 test fn the_mkdir_argument_tail_and_the_full_argv_describe_one_command() -> Bool {
   mkdir_parents_argv(path: "/srv/devboot/exchange") ==
     concat([mkdir_binary_path as String], mkdir_parents_args(path: "/srv/devboot/exchange"))
+    && mkdir_parents_argv(path: "/srv/devboot/exchange") ==
+      ["/usr/bin/mkdir", "-p", "/srv/devboot/exchange"]
 }
 
 // -p IS THE ENSURE, and it is the reason the six devboot sites may run repeatedly against a work
