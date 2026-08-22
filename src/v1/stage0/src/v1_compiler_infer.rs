@@ -5,7 +5,8 @@ use self::DescentSizeExpr::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
-pub use crate::std_algebra::AlgebraFieldTemplate;
+use crate::std_algebra::CollectionSizeEffect::*;
+pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::*;

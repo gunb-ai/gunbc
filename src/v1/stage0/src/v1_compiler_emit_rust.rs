@@ -6531,24 +6531,67 @@ pub fn collect_value_ref_names(
             ),
             _ => Rc::new(vec![]),
         };
+        let pattern_names = match (*crate::v1_std_core::arm_pattern(n.clone())).clone() {
+            MatchPattern::VariantPattern {
+                name: vn,
+                parent_enum: pe,
+                field_bindings: fbs,
+                ..
+            } => {
+                let parent = match pe.clone() {
+                    Some(p) => p.clone(),
+                    None => match v1_rt::map_get(&variant_to_enum, vn.clone()) {
+                        Some(p2) => p2.clone(),
+                        None => "".to_string(),
+                    },
+                };
+                v1_rt::concat(
+                    if (parent.clone() != "".to_string()) {
+                        Rc::new(vec![parent.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    },
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for fb in fbs.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_ref_names(
+                                    fb.clone(),
+                                    source_indices.clone(),
+                                    type_summaries.clone(),
+                                    variant_to_enum.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                )
+            }
+            _ => Rc::new(vec![]),
+        };
         let list_fields = v1_rt::concat(
             v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_value_ref_names(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                                variant_to_enum.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
+                v1_rt::concat(
+                    pattern_names.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_ref_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    type_summaries.clone(),
+                                    variant_to_enum.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                ),
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in n.params.clone().iter().cloned() {

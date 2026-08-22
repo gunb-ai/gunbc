@@ -73,6 +73,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::*;
 use crate::v1_std_core::StringPart::*;
 use crate::v1_std_core::UnaryOpKind::*;
+use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
@@ -90,7 +91,7 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
+    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
