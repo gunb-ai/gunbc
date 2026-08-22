@@ -2766,10 +2766,30 @@ enforces end to end.
    nosuchname_zzz` in a function body REFUSES in the same run, so undefined names are refused in
    general and these two positions are the exception.
 
-   A THIRD CANDIDATE, NAMED AS UNMEASURED RATHER THAN COUNTED. `resolve_transport_binding` passes a
-   transport's property values and children through `resolve_expr_types`, and `v1.compiler.infer`
-   touches `transport` only to test presence (`titem.transport != none`). That is the same shape and
-   it is NOT measured here — it needs a service fixture — so it is a candidate, not a member.
+   THE DENOMINATOR, ENUMERATED FROM THE INFERENCE SIDE RATHER THAN SAMPLED. Enumerating from the
+   resolve side does not work — `resolve_expr_types(` has ~40 call sites in `04_resolve` and most
+   are its own recursive descent — but inference's coverage of DECLARATION nodes is a small closed
+   set: which declaration kinds `v1.compiler.infer` descends into, and for each expression-bearing
+   field, whether it WALKS the expression or only TESTS ITS PRESENCE. Read out, that gives THREE
+   classes, not two:
+
+   *Walked, typed* — `fn` body against the declared return; `data` initializer against its
+   annotation. *Walked, UNTYPED* — transport `properties` (body/query/stdin among them) and the
+   `svc_auth_source` item property, both through `infer_expr(expected: none)`: an undefined name
+   DOES refuse there, and inhabitance has nothing to compare against, which is a different defect
+   with a different repair (thread the declared type, do not add a pass). *Never walked* — the two
+   confirmed members above, plus four rows flagged by structure and NOT counted as members here:
+   non-`svc_auth_source` item properties (`{ prop: p, diagnostics: [] }`, passed through), `uses`
+   resource config args (the scope is extended with the resource TYPE; the arg expressions are
+   untouched), service `exit`-entry status patterns (no arm in `04_infer` at all), and transport
+   `children` (`infer_transport_node` copies `children: t.children` unchanged while
+   `resolve_transport_binding` walks them). Full table:
+   `docs/probes/declared_type_inhabitance_position_census_2026-08-22/pass_coverage.md`.
+
+   THE SIGNATURE, which is what makes this a class rather than a list: a declaration node whose
+   expression child is read by resolve and reached by inference only through a presence test or a
+   passthrough. `param_node_default_value(n: param) != none` and `titem.transport != none` are the
+   same tell.
 
    WHY THE SECOND ARM IS THE FINDING AND THE FIRST IS NOT. At item 28's positions the reachability
    control REFUSES, which is what establishes the position is analysed and makes a passing kernel
@@ -2812,8 +2832,8 @@ enforces end to end.
    at a position whose declared type is in hand, so routing it through inference is the same
    judgment every other position already receives.
 
-   NEXT TRIGGER: (1) measure the transport candidate, so the class's membership is enumerated
-   rather than sampled; (2) a discriminating RED per member — the undefined-name arm at a parameter
+   NEXT TRIGGER: (1) fixture the four structurally-flagged rows to CONFIRM rather than to discover
+   — the denominator is closed by the read above, so this is verification and not a search; (2) a discriminating RED per member — the undefined-name arm at a parameter
    default and at a field default, each asserting a located refusal, with the accepted-default
    positive control beside it; (3) route the default expression through inference against the
    declared type, which makes both members ordinary consumers of item 28's obligation rather than
