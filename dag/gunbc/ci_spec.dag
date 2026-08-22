@@ -473,16 +473,39 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 // class, landing in an emitted argv rather than in prose. Both steps were unrunnable on main from
 // the day they landed.
 //
-// Hoisting the pairs into one roster is what makes the class checkable at all: the witness
-// test.claim.ci_run_step_target_resolution joins every row below against decl_facts and refuses
-// when the entry file does not exist OR exists without the named function.
+// Hoisting the pairs into one roster is what makes the class checkable at all: one population to
+// join against, instead of pairs scattered across call sites where two strings could disagree with
+// nothing in a position to notice.
 //
-// THE RUNG THIS REACHES IS MECHANICALLY PREVENTABLE, NOT STRUCTURAL. A wrong string is still
-// writable; safety depends on that witness staying enrolled and executing. NEXT-RUNG TRIGGER: the
-// pair is a String naming something the namespace already names, so the structural form is a
-// resolved symbol reference (a DeclarationRef the substrate resolves) with the entry path derived
-// from the module index rather than authored beside it. At that point a wrong target cannot be
-// written and the witness becomes a regression control rather than the wall.
+// NO CHECK ENFORCES THIS ROSTER TODAY, and that is stated plainly because an earlier revision of
+// this comment named one. It promised that `test.claim.ci_run_step_target_resolution` joined every
+// row against decl_facts -- a witness that was written, measured, and then REMOVED from this PR
+// along with a second attempt at an emit-time wall. Leaving that sentence would have been the
+// DESIGN section 3 stale-citation defect committed in the very comment that diagnoses it two
+// paragraphs above, and it had already misled one reviewer into reading coverage that does not
+// exist. What the roster buys today is single authority, not enforcement.
+//
+// WHY BOTH ATTEMPTS WERE WITHDRAWN, so the next person does not rebuild them: the question "does
+// file F declare symbol G" is answered by decl_facts, which walks POOL ROOTS -- directories,
+// recursively, ~3833 modules, ~8s. Measured by controlled A/B, an emit-time wall cost 180s across
+// 22 call sites and took SEVEN pre-existing witness claims below verdict, because two witness
+// modules render workflow steps and inherited the walk. The fast-lane ceiling is 5000ms, so the
+// binding constraint is not how many walks happen but that NO CORPUS WALK MAY BE REACHABLE FROM A
+// FAST-LANE CLAIM AT ALL -- one walk breaches it.
+//
+// THE WALL IS OWED, at the generated-artifact gate rather than at the argv crossing. That is a
+// re-scoping of the hazard, not a weaker wall: a bad argv built in memory by a witness harms
+// nothing, while a bad argv reaching a COMMITTED workflow is what CI then runs, and it is the route
+// both defects above actually took. The gate sits upstream of every emitter that produces a
+// committed artifact and already returns ArtifactGenerationRefused { reason }.
+//
+// SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
+// claimed the higher rung on the strength of the witness that is no longer here; with nothing
+// enforcing it, the honest rung is one step lower and the consolidation is a cost-of-error
+// reduction rather than a wall. NEXT-RUNG TRIGGER: the artifact-gate refusal above. The rung ABOVE
+// that -- structural -- is a resolved symbol reference (a DeclarationRef the substrate resolves)
+// with the entry path derived from the module index rather than authored beside it, at which point
+// a wrong target cannot be written at all.
 type GunbcRunStepTarget {
   entry: String
   function: String
