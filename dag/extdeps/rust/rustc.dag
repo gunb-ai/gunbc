@@ -1,0 +1,39 @@
+module extdeps.rustc
+
+import std.types { String, Bool, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/rustc/command-line-arguments.html"
+  }
+}
+
+data rustc_stdin_source_note: String = "rustc reads a crate from STANDARD INPUT when the input filename is `-`, which is the cited interface this operation binds. It matters here beyond convenience: the alternative is materializing a candidate's emitted source as a file inside the tree, and the batch executor builds its module index ONCE at startup, so a file appearing mid-run is invisible to that index at best and poisons later entries at worst. Feeding the text through stdin keeps a candidate a value rather than a tree mutation."
+
+data rustc_transport_shape_note: String = "THE SCRIPT IS A FIXED LITERAL WITH POSITIONAL PARAMETERS, WHICH IS THE PROPERTY THAT MATTERS, AND THE SIMPLER SPELLINGS WERE TRIED RATHER THAN ASSUMED AWAY (review 54507 flagged the shape). Source and edition arrive as $1 and $2 and are never spliced into the script body, so no candidate can escape a quote — the same discipline extdeps.shell already applies to its own multi-step operations (FilesAndSymlinksWithMode, FilesByNameSorted), which is the precedent this row follows rather than a new liberty.\n\nWHY EACH SHORTER FORM FAILS, MEASURED ON THIS HOST: rustc writes its temporaries BESIDE its output path, so `-o /dev/null` and `--emit=metadata=/dev/null` both fail with `could not create a temp dir` — and worse, they fail by printing an `error:` line, which an observer reading the diagnostic stream would have read as the CANDIDATE being rejected. A fixed output path under /tmp removes the temp dir but races concurrent scoring, which is the one thing a best-of-N harness does constantly. So a per-invocation directory is not decoration; it is what makes the observation attributable to the candidate.\n\nWHAT WOULD DISSOLVE IT: a modeled composition primitive over the shell surface — a pipe and a scoped temporary directory expressible as nodes — at which point this row is those nodes and the literal goes. No such primitive exists today, so this is the honest bottom transport rather than a routed-around one, and it is recorded here as an observation, not as a self-approved deferral."
+
+service rustc.Check {
+  operation CheckSourceText {
+    input { source: String, edition: String = "2021" }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) && printf '%s' \"$1\" | rustc --edition \"$2\" --crate-type lib --emit=metadata --out-dir \"$d\" -; rc=$?; rm -rf \"$d\"; exit $rc",
+        "sh", "{source}", "{edition}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not accept the source"
+    }
+  }
+}
