@@ -1,13 +1,27 @@
 module v2.extdeps.languages.rust
-import std.trait_derive_shape {
-  ReprDeriveClone,
-  ReprDeriveDebug,
-  ReprDeriveDeserialize,
-  ReprDerivePartialEq,
-  ReprDeriveOrd,
-  ReprDeriveSerialize
+import extdeps.languages.rust.capabilities {
+  RustCapability,
+  RustDebug,
+  RustClone,
+  RustCopy,
+  RustPartialEq,
+  RustEq,
+  RustPartialOrd,
+  RustOrd,
+  RustHash,
+  RustSerialize,
+  RustDeserialize,
+  RustAdd,
+  RustSub,
+  RustMul,
+  RustDiv,
+  RustRem,
+  RustNeg
 }
-import extdeps.external_authority { ExternalAuthority }
+
+import extdeps.external_authority {
+  ExternalAuthority
+}
 import extdeps.languages.rust.derive_contracts {
   RustSupplementalGenericBoundContractCoverageDisposition,
   RustVecSupplementalGenericBoundRow,
@@ -24,7 +38,9 @@ import extdeps.languages.rust.derive_contracts {
   serde_1_0_228_hash_set_deserialize_authority,
   serde_1_0_228_hash_set_serialize_authority
 }
-import v2.std.language_model { LanguageModel }
+import v2.std.language_model {
+  LanguageModel
+}
 import v2.std.grammar {
   StampClass,
   grammar_formal_terminal,
@@ -97,7 +113,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node_query {
+  node_positional_child_targets
+}
 import v2.std.grounding {
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
@@ -125,8 +143,11 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   PrimitiveOperationRef
 }
-import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
+import v2.std.compilers.coproduct_variant_shape {
+  coproduct_all_variants_nullary
+}
 import v2.std.compilers.target_model {
+  TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
@@ -221,11 +242,9 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundContractAuthority,
   TargetDeriveSupplementalGenericBoundRequirementAuthority,
   TargetDeriveSupplementalGenericBoundRequirementSet,
-  TargetDeriveTraitKey,
   TargetRepresentationParameterSlot,
   TargetCapabilityElementEligibility,
   TargetCapabilityEligibilityRow,
-  TargetCapabilityEligibilityTable,
   TargetCapabilityRequirement,
   target_collection_set_carrier_node,
   TargetCollectionReprBTreeSet,
@@ -238,12 +257,10 @@ import v2.std.compilers.target_model {
   target_derive_supplemental_generic_bound_contract_authority_insert,
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements,
   target_derive_supplemental_generic_bound_requirement_set_empty,
-  target_grounding_derive_trait_key,
   target_representation_choice_parameters_bundle_node,
   target_representation_choice_supplemental_generic_bound_contracts_bundle_node,
   target_representation_parameter_slot_empty,
   target_representation_parameter_slots_empty,
-  ReprGroundingDeriveTrait,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
   target_type_expr_surface_edge,
@@ -306,7 +323,9 @@ import v2.std.algebra {
   ordered_ring_node,
   ordered_ring_type_node
 }
-import v2.std.cardinality { Never }
+import v2.std.cardinality {
+  Never
+}
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
@@ -337,7 +356,9 @@ import v2.std.integer {
   uint128_interval_spec,
   uint_platform_interval_spec
 }
-import v2.std.text { String }
+import v2.std.text {
+  String
+}
 import extdeps.languages.rust.emit {
   rust_enum_derives,
   rust_enum_derives_copy,
@@ -1588,6 +1609,46 @@ fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentati
   )
 }
 
+data rust_capability_bridge_note: String = "THE SOLE AUTHORITY CONNECTING RUST'S CLOSED CAPABILITY ALPHABET TO THE OPEN INTERFACE KEY SPACE. Three declarations carry this concept and each has exactly one home: TargetCapabilityKey, the open Symbol brand that unrelated modules share, in v2.std.compilers.target_model; RustCapability, the closed alphabet that keeps rust_trait_derive_spelling total by exhaustive match, in extdeps.languages.rust.capabilities; and this bridge. WHY A BRIDGE RATHER THAN LITERALS: an earlier revision of this migration deleted it, because after parameterizing the std predicate on the carrier NOTHING CALLED IT -- the seed path speaks the alphabet end to end and v2 spelled its keys as caret literals directly. That reading was wrong and the deletion was the section 3 fork wearing the costume of a removed dead function: with no bridge, RustClone and the literal caret target_capability_clone corresponded ONLY BY MATCHING SPELLING, with no authority enforcing it and nothing that would refuse if they diverged. The correspondence is a fact and facts need one home. THE BRIDGE LIVES IN v2 rather than beside the alphabet because it names TargetCapabilityKey, and extdeps.languages.rust.capabilities is inside the src/v1 regen import closure, which cannot reach src/v2 -- see the closure invariant in std.trait_derive_shape trait_derive_shape_note. It is exhaustive over RustCapability with no wildcard, so a seventeenth capability is a hard diagnostic here rather than a silently unbridged key."
+
+fn rust_capability_key(c: RustCapability) -> TargetCapabilityKey {
+  match c {
+    RustDebug => ^target_capability_debug
+    RustClone => ^target_capability_clone
+    RustCopy => ^target_capability_copy
+    RustPartialEq => ^target_capability_partialeq
+    RustEq => ^target_capability_eq
+    RustPartialOrd => ^target_capability_partialord
+    RustOrd => ^target_capability_ord
+    RustHash => ^target_capability_hash
+    RustSerialize => ^target_capability_serialize
+    RustDeserialize => ^target_capability_deserialize
+    RustAdd => ^target_capability_add
+    RustSub => ^target_capability_sub
+    RustMul => ^target_capability_mul
+    RustDiv => ^target_capability_div
+    RustRem => ^target_capability_rem
+    RustNeg => ^target_capability_neg
+  }
+}
+
+fn rust_single_parameter_supplemental_generic_bound_requirements(
+  required_trait: TargetCapabilityKey,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+    key: ^target_collection_type_param_t,
+    value: map_insert(
+      m: target_derive_supplemental_generic_bound_requirement_set_empty(),
+      key: required_trait,
+      value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+        authority: authority
+      }
+    )
+  )
+}
+
 // A single required-parameter's requirement-set as it stands in an in-progress contract map,
 // defaulting to empty when the derive_trait has no entry yet (first row for that trait) --
 // the read half of the merge, so a second row for a derive_trait already carrying one
@@ -1612,10 +1673,10 @@ fn rust_collection_supplemental_generic_bound_requirement_set_for_param(
 // required traits is N rows in the shared derive_contracts.dag row list, never a bespoke
 // per-collection accumulator.
 fn rust_collection_supplemental_generic_bound_contracts_merge_row(
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
   row: RustVecSupplementalGenericBoundRow
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let key = target_grounding_derive_trait_key(derive_trait: row.derive_trait)
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let key = rust_capability_key(row.derive_trait)
   let existing_requirements = match map_lookup(m: contracts, key: key) {
     Present { value: contract } => contract.requirements
     Absent => target_derive_supplemental_generic_bound_contract_requirements_empty()
@@ -1626,7 +1687,7 @@ fn rust_collection_supplemental_generic_bound_contracts_merge_row(
   )
   let merged_set = map_insert(
     m: existing_set,
-    key: target_grounding_derive_trait_key(derive_trait: row.required),
+    key: rust_capability_key(row.required),
     value: TargetDeriveSupplementalGenericBoundRequirementAuthority { authority: row.authority }
   )
   let merged_requirements = map_insert(
@@ -1636,7 +1697,7 @@ fn rust_collection_supplemental_generic_bound_contracts_merge_row(
   )
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
     contracts: contracts,
-    derive_trait: row.derive_trait,
+    derive_trait: rust_capability_key(row.derive_trait),
     authority: row.authority,
     requirements: merged_requirements
   )
@@ -1647,7 +1708,7 @@ fn rust_collection_supplemental_generic_bound_contracts_merge_row(
 // (readable from both the regen pool and this tree); this fn only lifts them into the
 // target_model-typed contract map. Clone's requirement-free entry stays here because the shared
 // rows deliberately carry no Clone row (derive(Clone)'s conditional impl needs no supplement).
-fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let from_rows = fold_list(
     xs: rust_vec_freemonoid_supplemental_generic_bound_rows,
     empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
@@ -1657,7 +1718,7 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
   )
   target_derive_supplemental_generic_bound_contract_authority_insert(
     contracts: from_rows,
-    derive_trait: ReprDeriveClone,
+    derive_trait: rust_capability_key(RustClone),
     authority: im_15_1_0_vector_clone_impl_authority
   )
 }
@@ -1669,7 +1730,7 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
 // rust_collection_supplemental_generic_bound_contracts_merge_row exactly as
 // rust_vec_supplemental_generic_bound_contracts is, since Serialize and Deserialize each carry
 // two rows (Ord and Clone) that must merge into one requirement set rather than overwrite.
-fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let from_rows = fold_list(
     xs: rust_btree_set_supplemental_generic_bound_rows,
     empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
@@ -1679,31 +1740,31 @@ fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrai
   )
   target_derive_supplemental_generic_bound_contract_authority_insert(
     contracts: from_rows,
-    derive_trait: ReprDeriveClone,
+    derive_trait: rust_capability_key(RustClone),
     authority: im_15_1_0_ord_set_clone_impl_authority
   )
 }
 
-fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: ReprDeriveDebug,
+      derive_trait: rust_capability_key(RustDebug),
       authority: rust_1_93_hash_set_trait_implementations_authority
     )
   let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: debug_contract,
-      derive_trait: ReprDeriveClone,
+      derive_trait: rust_capability_key(RustClone),
       authority: rust_1_93_hash_set_trait_implementations_authority
     )
   target_derive_supplemental_generic_bound_contract_authority_insert(
     contracts: clone_contract,
-    derive_trait: ReprDeriveSerialize,
+    derive_trait: rust_capability_key(RustSerialize),
     authority: serde_1_0_228_hash_set_serialize_authority
   )
 }
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
   requirements: Set<TargetCapabilityRequirement>
   authority: ExternalAuthority
   coverage: RustSupplementalGenericBoundContractCoverageDisposition
@@ -1730,7 +1791,7 @@ fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
 
 data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupplementalGenericBoundContractCoverageBlocker> = [
   RustSupplementalGenericBoundContractCoverageBlocker {
-    derive_trait: ReprDerivePartialEq,
+    derive_trait: rust_capability_key(RustPartialEq),
     requirements: rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
       representation_parameter: ^target_collection_type_param_t
     ),
@@ -1738,7 +1799,7 @@ data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupple
     coverage: rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
   },
   RustSupplementalGenericBoundContractCoverageBlocker {
-    derive_trait: ReprDeriveDeserialize,
+    derive_trait: rust_capability_key(RustDeserialize),
     requirements: rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
       representation_parameter: ^target_collection_type_param_t
     ),

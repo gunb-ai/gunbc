@@ -1,0 +1,453 @@
+module test.claim.scm_image_witness
+
+// The durable repository image, executed. The claim under test is that a store survives the round
+// trip to text and back AS THE SAME PROGRAM, and that every way the text can lie REFUSES rather than
+// producing a plausible store.
+//
+// The identity claims here are the load-bearing ones. The image carries NO object identities -- see
+// gunbc.scm.image's header for why -- so what these witnesses establish is that identity survives
+// anyway, because it is re-derived from structure on load. A round trip that merely produced "some
+// store" would satisfy a weaker test; comparing the reconstructed PROGRAM through checkout is what
+// makes it a claim about meaning rather than about bytes.
+//
+// Every claim is paired with a discriminating control, and the controls are the point: a decoder
+// that refused unconditionally would pass all seven refusal claims, and a comparison that could not
+// say no would pass the round trip.
+
+import std.types { String, Bool, List, Int }
+
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  JsonObject,
+  JsonArray,
+  JsonString,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+  serialize_json,
+}
+import extdeps.languages.json.parse { parse_json }
+
+import v2.std.node {
+  Node,
+  Edge,
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
+  Symbol,
+  node_synthetic,
+  content_hash,
+  canonicalize_node_for_content_hash,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  object_id_eq,
+  store_node,
+  store_object_count,
+}
+import gunbc.scm.checkout {
+  Commit,
+  commit_of_root,
+  checkout,
+  CheckedOut,
+  CheckoutRefused,
+}
+import gunbc.scm.image {
+  ImageLoadOutcome,
+  ImageLoaded,
+  ImageRefused,
+  ImageRefusal,
+  ImageFormatUnrecognized,
+  ImageMemberMissing,
+  ImageMemberDuplicated,
+  ImageEdgeTargetUnresolved,
+  ImageRootUnresolved,
+  ImageUnknownConnectiveTag,
+  encode_image,
+  decode_image,
+}
+
+// ------------------------------------------------------------------------------------------------
+// Fixtures. Every name here is prefixed so it cannot collide corpus-wide: a top-level definition is
+// corpus-scoped and the resolver ADMITS duplicates while silently selecting one, so a generic
+// helper name is a live correctness hazard rather than a style question (#8719).
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn scm_image_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn scm_image_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named(name: ^alpha, target: scm_image_atom(identity: ^A)),
+      scm_image_named(name: ^beta, target: scm_image_atom(identity: ^B)),
+    ],
+  )
+}
+
+// A DIFFERENT program, used only to prove the comparison below can answer no.
+fn scm_image_other_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [scm_image_named(name: ^alpha, target: scm_image_atom(identity: ^A))],
+  )
+}
+
+// One atom referenced by TWO parents. Sharing is the property positions exist to preserve, so the
+// fixture that proves it must actually share.
+fn scm_image_shared_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named(name: ^left, target: scm_image_atom(identity: ^S)),
+      scm_image_named(name: ^right, target: scm_image_atom(identity: ^S)),
+    ],
+  )
+}
+
+type ScmImagePut {
+  store: ObjectStore
+  identity: ObjectId
+}
+
+fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
+  match store_node(store: store, n: n) {
+    Stored { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmImagePut { store: store, identity: i }
+  }
+}
+
+fn scm_image_encoded(n: Node) -> JsonValue {
+  let put = scm_image_put(store: empty_store(), n: n)
+  encode_image(store: put.store, root: put.identity)
+}
+
+// The reconstructed program compared on CONTENT IDENTITY, not on occurrence provenance. checkout
+// rebuilds with SyntheticOccurrence throughout, and the store deliberately does not preserve
+// occurrence identity, so asserting on it would assert the one property the model says must not
+// matter. The expectation is canonicalized for the same reason store_node canonicalizes: named-edge
+// order is not a fact this store preserves.
+fn scm_image_loads_as(loaded: ImageLoadOutcome, expected: Node) -> Bool {
+  match loaded {
+    ImageRefused { cause: _ } => false
+    ImageLoaded { store: store, root: root } =>
+      match checkout(store: store, commit: commit_of_root(root: root)) {
+        CheckoutRefused { cause: _ } => false
+        CheckedOut { program: program } =>
+          (content_hash(n: program).digest as String)
+            == (content_hash(n: canonicalize_node_for_content_hash(n: expected)).digest as String)
+      }
+  }
+}
+
+fn scm_image_refused(loaded: ImageLoadOutcome) -> Bool {
+  match loaded {
+    ImageRefused { cause: _ } => true
+    ImageLoaded { store: _, root: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The round trip.
+// ------------------------------------------------------------------------------------------------
+
+test fn scm_image_round_trips_to_the_same_program() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_image(v: scm_image_encoded(n: scm_image_program())),
+    expected: scm_image_program(),
+  )
+}
+
+// CONTROL for the claim above. Without this, a comparison that always answered true would pass.
+test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
+  !scm_image_loads_as(
+    loaded: decode_image(v: scm_image_encoded(n: scm_image_program())),
+    expected: scm_image_other_program(),
+  )
+}
+
+// THE TEXT IS THE POINT. Comparing JsonValue to JsonValue would never exercise serialize_json or
+// parse_json, so the durable artifact -- the bytes that actually reach a file -- would be untested.
+test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
+  let text = serialize_json(v: scm_image_encoded(n: scm_image_program()))
+  match parse_json(s: text) {
+    Absent => false
+    Present { value: reparsed } =>
+      scm_image_loads_as(loaded: decode_image(v: reparsed), expected: scm_image_program())
+  }
+}
+
+// SHARING IS MEASURED ON THE ENCODED FORM, AND THE FIRST VERSION OF THIS CLAIM WAS NOT.
+//
+// It asserted that the DECODED store held two objects. That observation is structurally incapable of
+// failing: decode routes every object through insert_from_structure, and insert_derived answers the
+// idempotent arm for a record it already holds, so an encoder that inlined the shared atom once per
+// parent would still decode to exactly two objects. The claim would have been green whether or not
+// sharing survived -- measuring the deduplicator rather than the encoding.
+//
+// Counting entries in the emitted `objects` array is the measurement that can go red: an expanding
+// encoder writes three, a sharing one writes two.
+fn scm_image_objects_member_count(acc: Int, m: JsonKeyValue) -> Int {
+  if m.key == "objects" {
+    match m.value {
+      JsonArray { elements: es } => count(es)
+      _ => acc
+    }
+  } else {
+    acc
+  }
+}
+
+fn scm_image_count_objects_member(members: List<JsonKeyValue>) -> Int {
+  fold(members, init: 0, f: fn(acc, m) { scm_image_objects_member_count(acc: acc, m: m) })
+}
+
+fn scm_image_encoded_object_count(v: JsonValue) -> Int {
+  scm_image_count_objects_member(members: scm_image_members(v: v))
+}
+
+test fn scm_image_preserves_sharing_rather_than_expanding_it() -> Bool {
+  scm_image_encoded_object_count(v: scm_image_encoded(n: scm_image_shared_program())) == 2
+}
+
+// CONTROL for the claim above: the counter must be able to report something other than 2, or the
+// assertion above is satisfied by a function that always answers 2. The two-atom program has three
+// distinct objects -- two unequal atoms and the root -- so this pins the counter to the encoding.
+test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool {
+  scm_image_encoded_object_count(v: scm_image_encoded(n: scm_image_program())) == 3
+}
+
+// ------------------------------------------------------------------------------------------------
+// The refusals. Each mutates ONE thing about an otherwise-valid image.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_members(v: JsonValue) -> List<JsonKeyValue> {
+  match v {
+    JsonObject { members: ms } => ms
+    _ => []
+  }
+}
+
+// FIELD ACCESS MOVED OUT OF THE LAMBDA, and the shape is load-bearing rather than indirection.
+// `filter(members, m => m.key != key)` refused here with `no field 'key' on type 'T'` -- the lambda
+// parameter stayed generic. Routing `m` through a typed parameter instead mirrors a spelling that
+// resolves elsewhere in the corpus (extdeps.github.effect `filter(paths, p => ...(path: p))`).
+//
+// THE MECHANISM IS NOT ESTABLISHED, and saying so is the point: extdeps.languages.json.parse
+// `json_object_members_named` uses the refused spelling over this VERY type and resolves, so neither
+// "field access cannot drive inference" nor "imported element types fail" survives contact with the
+// corpus. What is recorded here is the observation and the working alternative, not a rule -- a
+// confident mechanism written from one failure would be a fabricated explanation sitting in the
+// tree, and the next reader would plan against it.
+fn scm_image_key_differs(m: JsonKeyValue, key: String) -> Bool {
+  m.key != key
+}
+
+fn scm_image_drop_key(members: List<JsonKeyValue>, key: String) -> List<JsonKeyValue> {
+  filter(members, m => scm_image_key_differs(m: m, key: key))
+}
+
+fn scm_image_without(v: JsonValue, key: String) -> JsonValue {
+  json_object(members: scm_image_drop_key(members: scm_image_members(v: v), key: key))
+}
+
+fn scm_image_with(v: JsonValue, key: String, value: JsonValue) -> JsonValue {
+  json_object(
+    members: concat(
+      scm_image_drop_key(members: scm_image_members(v: v), key: key),
+      [json_kv(key: key, value: value)]
+    )
+  )
+}
+
+test fn scm_image_an_unrecognized_format_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_with(
+        v: scm_image_encoded(n: scm_image_program()),
+        key: "format",
+        value: json_string(s: "gunbc-scm-commit-closure-v99"),
+      )
+    )
+  )
+}
+
+test fn scm_image_a_missing_format_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(v: scm_image_without(v: scm_image_encoded(n: scm_image_program()), key: "format"))
+  )
+}
+
+test fn scm_image_a_missing_objects_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(v: scm_image_without(v: scm_image_encoded(n: scm_image_program()), key: "objects"))
+  )
+}
+
+// A DUPLICATED key is its own refusal and not a last-wins read. This is the arm a naive decoder
+// silently accepts while the file carries two different answers.
+test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
+  let encoded = scm_image_encoded(n: scm_image_program())
+  scm_image_refused(
+    loaded: decode_image(
+      v: json_object(
+        members: concat(scm_image_members(v: encoded), [json_kv(key: "root", value: json_string(s: "0"))])
+      )
+    )
+  )
+}
+
+test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_with(
+        v: scm_image_encoded(n: scm_image_program()),
+        key: "root",
+        value: json_string(s: "9999"),
+      )
+    )
+  )
+}
+
+// An edge naming a position that has not been decoded yet. Only earlier positions are in scope, so
+// this is the arm that makes back-references safe rather than merely conventional.
+test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "conj")),
+                        ]
+                      )
+                    ),
+                    json_kv(
+                      key: "children",
+                      value: json_array(
+                        elements: [
+                          json_object(
+                            members: [
+                              json_kv(key: "label", value: json_string(s: "named")),
+                              json_kv(key: "name", value: json_string(s: "alpha")),
+                              json_kv(key: "target", value: json_string(s: "1")),
+                            ]
+                          )
+                        ]
+                      )
+                    ),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_string(s: "0")),
+        ]
+      )
+    )
+  )
+}
+
+test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "not-a-connective")),
+                        ]
+                      )
+                    ),
+                    json_kv(key: "children", value: json_array(elements: [])),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_string(s: "0")),
+        ]
+      )
+    )
+  )
+}
+
+// CONTROL for every refusal above: the SAME hand-authored image shape, with nothing wrong with it,
+// must LOAD. Without this, a decoder that refused every hand-built object would pass the two
+// hand-authored refusal claims for the wrong reason -- they would be measuring "hand-authored"
+// rather than "malformed".
+test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_image(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "atom")),
+                          json_kv(key: "identity", value: json_string(s: "A")),
+                        ]
+                      )
+                    ),
+                    json_kv(key: "children", value: json_array(elements: [])),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_string(s: "0")),
+        ]
+      )
+    ),
+    expected: scm_image_atom(identity: ^A),
+  )
+}
