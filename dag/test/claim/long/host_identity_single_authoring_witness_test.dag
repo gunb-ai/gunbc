@@ -1,4 +1,4 @@
-module test.claim.host_identity_single_authoring_witness_test
+module test.claim.long.host_identity_single_authoring_witness_test
 
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -49,6 +49,32 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // AUTHORING SURFACE THAT A STRING LIST CANNOT BYPASS. That is a different and larger change than
 // deduplicating two declarations, and until it lands this class sits at mitigatable -- one module
 // is walled by an executing assertion and the rest of the corpus is review diligence.
+// WHERE THIS WITNESS EXECUTES, AND THE HONEST ANSWER IS NOWHERE IN CI — a declared rung drop
+// (DESIGN §4b(3)), stated on the carrier so it is not rediscovered by the next reader who takes the
+// green PR as evidence the assertion ran. It was authored in the fast lane, where it was
+// BUDGET-REFUSED and went UNDECIDED: the floor refused rather than passing an undecided row, which
+// is the fail-closed arm working. Moved here on the measurement recorded in gunbc.ci_layer_roots
+// (its own exclusion row), which is where the numbers live rather than duplicated in this block.
+//
+// BUT test/claim/long/ IS A HOME, NOT A RUNNER. Measured 2026-08-22: .github/workflows/ holds three
+// workflows (witnesses, fleet-converge, fleet-desired) and none invokes a long lane or a falsifier
+// cadence — DESIGN's CI entry already lists the falsifier cadence among what the floor cut left
+// unguarded. The floor's own counters say the same thing from the other side: declined_long=543
+// sites are DISCOVERED AND NEVER RUN. So this witness is counted, located, hand-runnable by the
+// recipe on its exclusion row, and executed by nothing on a cadence.
+//
+// PREVIOUS RUNG: mitigatable, and only ever that — one module walled by an executing assertion while
+// the rest of the corpus stayed review diligence. TEMPORARY RUNG: outside the ladder, because an
+// unexecuted check establishes nothing at all. REASON: a corpus-scale reflection cost with no lane
+// that both admits it and runs it. BOUNDED POPULATION: this file's two witnesses, and it joins an
+// existing population rather than opening one — the exclusion row above it covers sixteen more of
+// the same class. RESTORATION TRIGGER: a cadence that executes test/claim/long/, or the decl_facts
+// surface becoming cheap enough for per-PR discovery, at which point this file moves back and both
+// exclusion rows delete together.
+//
+// WHAT IS NOT CLAIMED: that moving it fixed anything. The deletion this witness was authored to
+// evidence still landed and is still correct; what changed is that the evidence no longer runs, and
+// saying so here is the difference between a declared drop and coverage by illusion (DESIGN §6).
 fn host_identity_data_declarations() -> List<DataDeclTypeFact> {
   filter(
     data_decl_type_facts(pool_roots: ["dag", "src/v2"]),
