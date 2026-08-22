@@ -19,15 +19,17 @@ not residue.
 | additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 79 | DistinctModuleCount |
 | reachable from those roots through imports **and qualified calls** | 3518 | DistinctModuleCount |
 | **unreachable on imports, qualified calls, entry rows and seed mirrors** | **298** | DistinctModuleCount |
-| — of those, **consumed by bare-symbol whole-pool reference** (§2 defect 6, re-scored 2026-08-22) | **91** | DistinctModuleCount |
-| **unreachable after the defect-6 re-score — the population as it now stands** | **207** | DistinctModuleCount |
+| — of those, **consumed by bare-symbol whole-pool reference** (§2 defects 6 and 7, re-scored 2026-08-22) | **93** | DistinctModuleCount |
+| **unreachable after the re-score — the population as it now stands** | **205** | DistinctModuleCount |
 
-**The 298 is an over-count by at least 91 modules — roughly 31% — and the correction is
+**The 298 is an over-count by at least 93 modules — roughly 31% — and the correction is
 concentrated in the batch this document proposed to delete first.** The number is stated in
 the headline table rather than a footnote because the headline number is the one anyone
-acts on. 207 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
+acts on. 205 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
 undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
-and what the re-score deliberately does *not* claim.
+and what the re-score deliberately does *not* claim. **The actionable residue list is 117,
+not 205** — see §4h, and note that 117 is what a deletion lane consumes, while 205 is the
+unresolved population.
 
 Every number in this document carries its unit, and two units are deliberately never
 interchangeable: a **DistinctFileCount** (how many files name a thing) and a
@@ -46,19 +48,30 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument: the universe it decodes, and the six defects found in building it
+## 2. Instrument: the universe it decodes, and the seven defects found in building it
 
-**One cause produced most of what follows, and it is worth stating once instead of six
+**One cause produced most of what follows, and it is worth stating once instead of seven
 times.** Every defect below except 1 and 4 has the same shape: *a conclusion was drawn
 without reading the surface that would settle it.* Defect 3 scored the accelerator family
 dead without reading qualified calls; defect 5 froze two `tools/` rows against a real
 re-add anchor without reading the `entry:` field surface, and ten more of that class turn
 out to be invoked (see the re-score below); defect 6 scored `module_refs` dead without
-reading bare-symbol resolution. The sequencing inversion in §5 is the same failure applied
+reading bare-symbol resolution; defect 7 scored `pr_digests` dead without reading variant
+constructors, in an instrument built to catch exactly that. The sequencing inversion in §5 is the same failure applied
 to a decision rather than a measurement. **In every instance the reasoning was locally
 valid and the missing surface was the whole of the error**, which is why "was this
 argument sound" is the wrong review question here and "which surface settles this, and did
 you read it" is the right one.
+
+**And the rule that catches all of it, which is stronger than any defect below:** *a
+control derived from the measurement it controls does not discriminate that measurement's
+blind spot.* Defect 7 was invisible to every counter this census produces — the reachable
+count and the CONSUMED-DECISIVE count both come from the instrument that had the defect, so
+they were structurally incapable of registering the case it could not see, and they read as
+reassurance *precisely because they stayed consistent*. What caught it was the **required
+floor**, an instrument that does not share the method: it refused a deletion with
+`unresolved type MergeReadinessVerdict`. A census's own numbers can never be its control;
+only an independent mechanism can.
 
 A corollary, because it governs how this document should be read rather than how it was
 built: **where a confidence label and an explicit standing disagree, the standing
@@ -189,7 +202,8 @@ class that was **observed, not anticipated**:
 **Each filter is reported with what it cost, because the intermediate values are what let
 a reader judge them:** the raw pass scored **98**, excluding qualified-tail and
 field/label identifiers took it to **93**, and the character-scanner string strip took it
-to **91**. A bare 91 would hide the fact that no single filter dominates — which is itself
+to **91**; defect 7's variant extraction and its three corrections then took it to **93**.
+A bare final number would hide the fact that no single filter dominates — which is itself
 evidence that none of them is a fudge factor tuned to a target.
 
 **Attribution is by unique ownership, which is what makes a hit decisive.** A bare symbol
@@ -198,10 +212,10 @@ symbol declared by several does not, and is never counted as consumption here.
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| **CONSUMED-DECISIVE** | **91** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
-| DEAD-CONSUMER-ONLY | 35 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue. **Deletes as a group or not at all**, see below |
-| AMBIGUOUS-SHARED-ONLY | 75 | named bare only via symbols several modules declare; no attribution possible |
-| STILL-UNCONSUMED | 96 | no bare reference on any surface |
+| **CONSUMED-DECISIVE** | **93** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
+| DEAD-CONSUMER-ONLY | 34 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue. **Deletes as a group or not at all**, see below |
+| AMBIGUOUS-SHARED-ONLY | 87 | named bare only via symbols several modules declare; no attribution possible |
+| STILL-UNCONSUMED | 83 | no bare reference on any surface |
 | MISSING-FILE | 1 | appendix row whose path no longer exists |
 
 Verified by hand-reading the reference site, not by trusting the count:
@@ -217,10 +231,10 @@ the six import the module or qualify the name.**
 | --- | --- | --- |
 | RESIDUE-EMPTY | 8 | **0** |
 | RESIDUE-UNMENTIONED | 67 | **13** |
-| RESIDUE-DOC-ONLY | 28 | 11 |
+| RESIDUE-DOC-ONLY | 28 | 12 |
 | FROZEN-PENDING-RE-ADD | 13 | 10 |
-| PROSE-NAMED | 79 | 34 |
-| CITED-AUTHORITY | 103 | 23 |
+| PROSE-NAMED | 79 | 36 |
+| CITED-AUTHORITY | 103 | 22 |
 
 **RESIDUE-UNMENTIONED is the row to read.** §3 calls it *"Delete. Highest-confidence
 residue"* and §5 sequences it as batch B2 on the grounds that it is *"least exposed to the
@@ -239,7 +253,7 @@ now*, by live witnesses — `tools.infer_semantics_witness_transport` is called 
 before them, the anchor was real and the conclusion was still wrong, because the instrument
 had not read the surface that settles it.
 
-**The ambiguity is a finding, not only instrument noise.** 75 modules are unresolvable
+**The ambiguity is a finding, not only instrument noise.** 87 modules are unresolvable
 because their symbols are not uniquely owned, and the distribution is not uniform:
 `extdeps_external_authority_anchor` is declared by **102 modules** (it is the boilerplate
 citation anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under
@@ -248,15 +262,45 @@ measures this class and reports it every run** — the floor prints
 `[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040 worst_scope=125`,
 so 72% of scopes carry at least one ambiguous bare name. That line is the corroborating
 instrument for this bucket, and it is independent of this census. What the ambiguity means
-for *this* document is narrow and worth stating plainly: those 75 rows are **unresolved,
+for *this* document is narrow and worth stating plainly: those 87 rows are **unresolved,
 not consumed** — they stay in the population, and no deletion should read their ambiguity
 as either evidence.
 
-**What this re-score does NOT claim.** Not that 207 is the true count: `DEAD-CONSUMER-ONLY`
+**What this re-score does NOT claim.** Not that 205 is the true count: `DEAD-CONSUMER-ONLY`
 and `AMBIGUOUS-SHARED-ONLY` are both unresolved rather than settled, the appendix rows were
 not individually re-read, and §6's `LowerBoundOnly` standing is unchanged and now applies to
-207. It claims one thing, and it is enough to block a deletion: **at least 91 of the 298
+205. It claims one thing, and it is enough to block a deletion: **at least 93 of the 298
 have a live caller.**
+
+7. **NEW — coproduct VARIANT CONSTRUCTORS are declared symbols, and declaration extraction
+   read only `fn`/`func`/`data`/`type`/`const`.** Defect 6 established that a bare symbol is
+   a reference; this is the same surface missed on its constructor half. `gunbc.pr_digests`
+   owns the type name `MergeReadinessVerdict` but its variants are `Ready` and `NotReady`,
+   and `gunbc.code_change_workflow` names `Ready` **bare, with no import**. Extraction that
+   stops at the `type` line does not own the variants, so `pr_digests` scored residue while
+   being consumed. **Found by an independent instrument — the required floor, refusing a
+   deletion with `unresolved type MergeReadinessVerdict` and `8x undefined variable Ready`
+   — not by reasoning about the census.** Re-scoring with variants moves this document's
+   population: CONSUMED-DECISIVE 91 → **93**, STILL-UNCONSUMED 96 → **83**, and the §4h
+   residue list 131 → **117**.
+
+   *Three further defects were found inside the fix itself, all by hand-verifying rows
+   before publishing the number, and each one produced a **false** consumption claim:*
+   (a) a **generic** type header (`type UpsertDecision<P>`) defeated variant extraction, so
+   `std.upsert_decision` did not own `Apply` and `gunbc.apply` looked uniquely to own it;
+   (b) a **multi-line variant record** truncated the scan region, so `llvm_ir` did not own
+   `Select` and `extdeps.transports.sql` looked to own it; (c) `operation Parse {` and
+   `operation Delete {` are **declarations in the flat service namespace**, and were being
+   read as references. Each created *false uniqueness*, which is the mechanism that turns a
+   collision into a confident wrong attribution. Filter costs across the whole re-score, so
+   a reader can price each: **98 → 93 → 91** (defect 6 filters), then **→ 93** with variants
+   and the three corrections above.
+
+   **Direction, and one row that went the other way.** At the population level this defect
+   can only move modules *out* of residue. At the *row* level it is not one-directional:
+   `extdeps.access.zanzibar` moved CONSUMED-DECISIVE → AMBIGUOUS, because counting variants
+   made a symbol it appeared to own uniquely into a shared one. Losing an attribution is a
+   correction too.
 
 **The universe the 298 is over.** Call surfaces decoded: `import` lines; fully-qualified
 `module.symbol` references (string- and annotation-stripped); argv `--entry` path literals;
@@ -452,18 +496,21 @@ census.
   guessing is how a second authority gets ratified. Raised for that author.
 
 **h. The list the cleanup directive actually points at is 131, not 298 — and two rows in
-it are not what their names say.** Combining the re-score's buckets: **96 STILL-UNCONSUMED
-(no bare reference on any surface) + 35 DEAD-CONSUMER-ONLY (named bare only from *inside*
-the population — §4a's island shape, which deletes as a group or not at all) = 131 modules
+it are not what their names say.** Combining the re-score's buckets: **83 STILL-UNCONSUMED
+(no bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside*
+the population — §4a's island shape, which deletes as a group or not at all) = 117 modules
 that are residue on all three decoded surfaces.** That is the defensible starting point for
-the operator's *"clean up anything without consumers"* arm. The other 167 are not: 91 have
-live callers, and 75 are unresolvable at identity grain and need a per-row read before
-anything touches them.
+the operator's *"clean up anything without consumers"* arm. The other 181 are not: 93 have
+live callers, and 87 are unresolvable at identity grain and need a per-row read before
+anything touches them. **The list was 131 before defect 7** — and the 14 that left it did
+*not* all become consumed: 2 did, and the rest moved to AMBIGUOUS, which means they are no
+longer provably unconsumed rather than proven consumed. That distinction is the whole
+reason the ambiguous bucket exists.
 
 Two observations from reading that population, neither of which the disposition classes
 capture:
 
-- **`v2.test.*` is a name, not an enrolment, and 22 of the 131 are the gap.** Floor
+- **`v2.test.*` is a name, not an enrolment, and 23 of the 117 are the gap.** Floor
   discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
   discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
   `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
