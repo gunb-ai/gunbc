@@ -68,6 +68,17 @@ echo "LOG_B64_BEGIN"; gzip -9 -c /tmp/keep/03_ingest.cargo.log | base64 -w200; e
 
 ## Preflight, before interpreting anything
 
+**Record whether the tree's stage0 mirrors are at their regen fixed point, because this probe
+compiles the MIRROR.** `curated_cargo_probe_one.sh` builds `gunbc` from `src/v1/stage0`, so the arm
+measures whatever the mirrors say — not what the `.dag` authority says — and the two are only the
+same thing at the fixed point. A **hand-resolved mirror is not a regen receipt**: during an
+integration the mirrors can legitimately be hand-brought to a consistent state *before* the true
+regen fixed point exists (the branch has to build before it can be regenerated). An arm taken on
+such a tree measures a compiler nobody's authority produced, and its result is not attributable to
+any `.dag` change. Check with `claim_executor --required-regen --source-root dag --source-root
+src/v2` and record the verdict beside the SHAs; if it refuses, say so in the report rather than
+reading the board.
+
 Source SHA, compiler identity beside it (rebuilt from the tree, not the baked image), and a healthy
 -pool positive control. For the mechanism controls that control is
 [`controls/algebra_genericity_pair.dag`](controls/algebra_genericity_pair.dag), and **what it is an
