@@ -2984,6 +2984,20 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // the defect visible, because the loss is the elimination that never happened, not the target's
 // spelling. A cast whose TARGET is itself optional is not this class: it re-types the carrier
 // with the absence intact, so it is left to validate_cast.
+//
+// WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
+// names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
+// was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
+// entirely. qualified_last_segment is the authority this file already uses for exactly this
+// question (nominal_call_arg_brand_mismatch, is_set_collection); asking it here is using the
+// existing one rather than minting a second.
+//
+// SCOPE, so this is not read as more than it is: this repairs ONE spelling comparison. The
+// wider fact that `T?` and `Optional<T>` are two carriers for one concept is untouched and
+// its remedy is upstream of this seam -- a `String?` field lost its optional marker at
+// pattern destructuring long before any comparison runs, so reconciling the two carriers
+// HERE would not clear those sites. That was measured and the repair withdrawn rather than
+// shipped on a plausible story.
 fn optional_cast_diags(
   source_inferred: InferredNode?,
   target_type: Node,
@@ -2994,7 +3008,8 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional || source_name == "Optional"
+      let source_is_optional = src_node.return_cardinality == CardOptional
+        || qualified_last_segment(name: source_name) == "Optional"
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(
