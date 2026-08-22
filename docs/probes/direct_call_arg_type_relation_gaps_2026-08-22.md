@@ -130,15 +130,48 @@ precondition. So a `T?` field expects `Product(T)` and admits the kernel's bare
 formal parameter both spellings interchange in-module and the cardinality is lost
 through an import.
 
-**And that inverts the reading of one of this document's own clean cells.** If
-`T?` is genuinely a kernel cardinality distinct from `v2.std.optional.Optional<T>`,
-then the same-module `T?` → `Optional<String>` parameter cell passing is not
-evidence of correctness — it is a candidate **false accept**, a leniency at the
-parameter position in the opposite direction from seam B's false refusal. This is
-named as a candidate and not as a finding: no cell here discriminates "the two
+**A false-accept candidate was raised against this document's own clean cell and
+has since been CLOSED — it is not a false accept.** The worry was that the
+same-module `T?` → `Optional<String>` parameter cell passing might be a leniency
+rather than evidence of correctness, because no cell here discriminated "the two
 types are the same at this position" from "the comparison at this position does not
-distinguish them." Closing it needs a construction-position control at a parameter
-position, which nobody has run.
+distinguish them." `crisp-crab-430` ran the missing control (same module, one file,
+three arms, spans verified against the function byte offsets):
+
+```
+type Holder3 { d: probe.falseaccept.Digest3? }
+fn takes_card(d: probe.falseaccept.Digest3?) -> Bool { true }
+
+takes_card(d: Present { .. })                      // CLEAN
+takes_card(d: v2.std.optional.Present { .. })      // REFUSED
+Holder3 { d: v2.std.optional.Present { .. } }      // REFUSED
+    type mismatch: expected 'Product(Digest3)', got 'Coproduct(Optional)'
+```
+
+**The relation is DIRECTIONAL, and this document's clean cell is its admitting
+direction.** All in-module, no import anywhere:
+
+| value | target | result |
+|---|---|---|
+| `T?` | `Optional<T>` formal | **CLEAN** — the cell above |
+| `Optional<T>` | `T?` formal | REFUSED |
+| `Optional<T>` | `T?` field | REFUSED |
+
+A comparison that could not tell the two apart would have admitted **both**
+directions; this one refuses one, so it demonstrably distinguishes them. The green
+cell is therefore sound, and the undistinguishing-comparison trap does not apply.
+
+**This also retires the position framing used above.** "Construction refuses,
+parameter admits" is wrong — the parameter position refuses too, in the same
+direction. The variable is **which way the value flows**, not where it sits; the
+construction cell and the parameter control agree with each other and differ from
+this document's cell on direction alone. Seam B is unaffected and still stands as
+written: it is the *admitting* direction failing across an import.
+
+What remains open, and is nobody's finding yet: whether the asymmetry is
+**intended** rather than incidental. A cardinality-annotated position accepting the
+kernel form and not the coproduct is a defensible shape, but a directional relation
+that no authority declares is where an unexamined leniency would live.
 
 ---
 
