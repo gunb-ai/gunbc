@@ -21,7 +21,10 @@ import v2.compiler.staged_front_end {
   FrontEndParse,
   FrontEndNormalize,
   FrontEndResolve,
-  run_front_end
+  FrontEndResolvedModule,
+  FrontEndBoundReached,
+  FrontEndRefused,
+  run_front_end_to
 }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }

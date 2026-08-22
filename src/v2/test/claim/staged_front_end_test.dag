@@ -2,17 +2,12 @@ module v2.test.claim.staged_front_end
 
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
-  FrontEndNormalize,
-  FrontEndParse,
   FrontEndRefused,
-  FrontEndResolve,
   FrontEndResolvedModule,
   FrontEndRun,
   FrontEndStage,
   FrontEndStagePassed,
   FrontEndStageRejected,
-  FrontEndStageStep,
-  FrontEndTokenize,
   front_end_stage_index,
   front_end_run_outcome,
   run_front_end,
@@ -115,4 +110,17 @@ test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> B
   }
 }
 
+data unbound_symbol_reason_note: String = "The floor property, pinned in the direction it should hold. An undeclared name in VALUE position must refuse at resolve, and it must refuse with the reason that names what went wrong rather than with any refusal at all — a stage that refuses for an unrelated cause would satisfy a looser assertion while the diagnostic vocabulary rotted. Only this direction is pinned: the sibling measurement, that an undeclared CALLEE passes resolve silently on the v2 path, is recorded in v2.test.claim.dag_acceptance frontier_arm_note as a dated measurement and is deliberately NOT asserted here, because a test that goes red when the compiler starts refusing the callee would be a defender for the gap rather than a check on it."
 
+fn first_refusal_reason(source: String) -> Symbol {
+  fold(run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
+    match step {
+      FrontEndStageRejected { stage: _, diagnostics: d } => d.head.reason
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
+  first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
+}
