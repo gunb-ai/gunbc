@@ -113,13 +113,16 @@ data ledger_unpublished_snapshot_wire: String = "unpublished"
 // decoder, and this is a deliberate departure from a sentence in the cited authority.
 //
 // `git_object_id_untagged_hex_note` says our own wires "stay family-prefixed
-// (<family>:<hex>, render/parse_git_object_id_wire)". THOSE TWO FUNCTIONS DO NOT EXIST -- the
-// note is a stale citation of the kind DESIGN §3 names, and following it would mean MINTING the
-// family-prefixed pair here, in a change whose subject is something else. So this wire reuses the
-// authority in both directions instead: `git_object_id_wire_hex` forward and
-// `git_object_id_from_untagged_hex` backward, the latter being the module's own decoder for text
-// git itself produced -- which is exactly what `GITHUB_SHA` is. Nothing is re-derived locally:
-// the width-to-family inference stays inside the authority that owns it.
+// (<family>:<hex>, render/parse_git_object_id_wire)". Those two functions exist -- in
+// `gunbc.merge_admission_subject`, a PRODUCT-layer module -- and that is the reason not to use
+// them here: a `v2.workflow` module would be taking a dependency on merge admission in order to
+// render a git object id, which is a worse coupling than using the extdeps authority the type
+// already belongs to. So this wire reuses that authority in both directions instead:
+// `git_object_id_wire_hex` forward and `git_object_id_from_untagged_hex` backward, the latter
+// being the module's own decoder for text git itself produced -- which is exactly what
+// `GITHUB_SHA` is. Nothing is re-derived locally: the width-to-family inference stays inside the
+// authority that owns it, and this wire's own format token already discriminates it, so the
+// family prefix would be carrying a distinction the header line makes anyway.
 fn render_repository_snapshot(snapshot: RepositorySnapshot) -> String {
   match snapshot {
     UnpublishedWorkingTree => ledger_unpublished_snapshot_wire
