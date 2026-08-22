@@ -2468,9 +2468,88 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
+/// A source root the stage0 self-compile closure may be built from.
+///
+/// The seed boundary is the reason this is a closed two-member vocabulary rather than a string:
+/// stage0 IS the v1 seed, so a root reaching into `src/v2` would make the seed depend on the
+/// successor it bootstraps toward. There is no `src/v2` variant to write, so that root set has no
+/// spelling — DESIGN §4b *structurally impossible*, replacing a validation that never existed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RegenSourceRoot {
+    /// The v1 seed tree — every `.dag` under it seeds the closure.
+    SeedV1,
+    /// The shared `.dag` corpus — reached only through imports from the seed.
+    DagCorpus,
+}
+
+impl RegenSourceRoot {
+    pub fn repo_relative_path(self) -> &'static str {
+        match self {
+            RegenSourceRoot::SeedV1 => "src/v1",
+            RegenSourceRoot::DagCorpus => "dag",
+        }
+    }
+}
+
+/// The stage0 self-compile root set: exactly two roots, in named roles.
+///
+/// Both invalid states the previous `Vec<String>` admitted are unwritable here. The empty set has
+/// no constructor, so `regen_input_sources`' "root list must not be empty" refusal is deleted
+/// rather than kept beside the proof (DESIGN §4b dissolution-on-climb); and the entry role is a
+/// field rather than `.first()`, so it cannot be decided by list order. Fields are private and
+/// `regen_source_roots` is the sole constructor, so a same-root or role-swapped pair is likewise
+/// unconstructable outside this module.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RegenSourceRoots {
+    entry: RegenSourceRoot,
+    imported: RegenSourceRoot,
+}
+
+impl RegenSourceRoots {
+    /// The root whose `.dag` files seed the closure whole.
+    pub fn entry(self) -> RegenSourceRoot {
+        self.entry
+    }
+
+    /// Both roots, in the order the module-path index is built over them.
+    pub fn all(self) -> [RegenSourceRoot; 2] {
+        [self.entry, self.imported]
+    }
+
+    pub fn repo_relative_paths(self) -> Vec<String> {
+        self.all()
+            .iter()
+            .map(|root| root.repo_relative_path().to_string())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod regen_source_root_tests {
+    use super::{regen_source_roots, RegenSourceRoot};
+
+    /// Positive control for the construction above. The discriminating RED is a compile error and
+    /// so cannot be enrolled as a running test: adding a third root, emptying the set, or naming
+    /// `src/v2` are all unwritable, which is the point. This asserts the surviving population and
+    /// the entry role so a silent widening of either would fail here.
+    #[test]
+    fn root_set_is_the_two_seed_admissible_roots_with_the_seed_as_entry() {
+        let roots = regen_source_roots();
+        assert_eq!(roots.entry(), RegenSourceRoot::SeedV1);
+        assert_eq!(
+            roots.all(),
+            [RegenSourceRoot::SeedV1, RegenSourceRoot::DagCorpus]
+        );
+        assert_eq!(roots.repo_relative_paths(), vec!["src/v1", "dag"]);
+    }
+}
+
 /// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
-pub fn regen_source_roots() -> Vec<String> {
-    vec!["src/v1".to_string(), "dag".to_string()]
+pub fn regen_source_roots() -> RegenSourceRoots {
+    RegenSourceRoots {
+        entry: RegenSourceRoot::SeedV1,
+        imported: RegenSourceRoot::DagCorpus,
+    }
 }
 
 /// Every `(repo-relative path, source text)` in the stage0 compile closure.
@@ -2480,15 +2559,17 @@ pub fn regen_source_roots() -> Vec<String> {
 pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
     let roots = regen_source_roots();
     let abs_roots: Vec<String> = roots
+        .all()
         .iter()
-        .map(|r| workspace.join(r).to_string_lossy().into_owned())
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     let index = build_module_path_index(&abs_roots);
-    let entry_root = workspace.join(
-        roots
-            .first()
-            .ok_or_else(|| "regen source root list must not be empty".to_string())?,
-    );
+    let entry_root = workspace.join(roots.entry().repo_relative_path());
     let mut entry_paths = Vec::new();
     collect_dag_files_result(&entry_root, &mut entry_paths)?;
 
