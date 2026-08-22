@@ -44,7 +44,7 @@ Carrier extracted per site as the type that gains or loses an `Rc` wrapper:
 
 | carrier | depths | sites |
 |---|---|---:|
-| **`Nat`/`Int`** (emits `i64` when the native alias fires, `Nat` when it does not) | **OUTER + TYPE-ARGUMENT** | **15** |
+| **`Nat`** (emits `i64` when the native alias fires, `Nat` when it does not) | **OUTER + TYPE-ARGUMENT** | **15** |
 | `LetBinding` | OUTER | 4 |
 | `Edge` | OUTER | 2 |
 | `DeriveGrammarRelationTokensProgress` | OUTER | 2 |
@@ -55,7 +55,7 @@ Carrier extracted per site as the type that gains or loses an `Rc` wrapper:
 | `Refined<Rc<Artifact>>`, `Refined<_>`, `MachineShapeWalkResult`, `AdmitExportsFold`, `SourceRefReadResult` | OUTER | 1 each |
 | `Vector<Rc<Token>>`, `HashMap<_, _>` | OUTER+CONTAINER | 1 each |
 
-**`Nat`/`Int` is the only cross-depth declaration** — 15 of 36 sites (42%), the largest carrier in
+**`Nat` is the only cross-depth declaration** — 15 of 36 sites (42%), the largest carrier in
 the cluster, spanning OUTER (4) and TYPE-ARGUMENT (11).
 
 **COLLECTION-ELEMENT is disjoint.** Every element-depth carrier (`PortReading`, `NarrowingReason`,
@@ -74,7 +74,7 @@ authority."* **That row is unreachable.** The only cross-depth declaration has *
 sites**, so no single-declaration perturbation can move all three depths — not because the
 hypothesis is false, but because no such X exists in this cluster.
 
-A `Nat`/`Int` perturbation adjudicates **OUTER vs TYPE-ARGUMENT and nothing else**. Element depth
+A `Nat` perturbation adjudicates **OUTER vs TYPE-ARGUMENT and nothing else**. Element depth
 needs a separate instrument, and this cluster does not contain one.
 
 ## Finding 3 — a confound *inside* the chosen declaration
@@ -102,11 +102,11 @@ Registered now, so no stray movement can be adjudicated after the fact.
 
 | observation | conclusion |
 |---|---|
-| both OUTER and TYPE-ARGUMENT `Nat`/`Int` sites move | outer and type-argument share one recursively consumed reference-layer authority |
+| both OUTER and TYPE-ARGUMENT `Nat` sites move | outer and type-argument share one recursively consumed reference-layer authority |
 | OUTER moves, TYPE-ARGUMENT does not | outer and nested are separate producer roots |
 | TYPE-ARGUMENT moves, OUTER does not | the recursive type renderer has its own producer; the top-level path differs |
 | sites change **direction** rather than resolving | the selected verdict is still wrong, or declaration and value consumers disagree |
-| **any ELEMENT site moves** | **REJECT** — no `Nat`/`Int` site exists at element depth, so element movement proves the intervention was not declaration-scoped |
+| **any ELEMENT site moves** | **REJECT** — no `Nat` site exists at element depth, so element movement proves the intervention was not declaration-scoped |
 | any non-R1 cluster moves | **REJECT** — more than one axis changed; not a valid discriminator |
 | the `Nat`-spelled sites (`v2_lens_cost.rs:312/315`) move differently from the `i64`-spelled ones | base realization was not held fixed — see Finding 3 |
 
@@ -155,7 +155,7 @@ residual difference, so the rule dropped **11**. It was caught only by self-test
 known pairs before reading any count off it. Testing the instrument on inputs whose answer you
 already know, before trusting its output, is the same discipline as an instrument control.
 
-**Findings 1 and 2 survive and strengthen.** `Nat`/`Int` remains the only cross-depth declaration —
+**Findings 1 and 2 survive and strengthen.** `Nat` remains the only cross-depth declaration —
 OUTER 4 + TYPE-ARGUMENT 8 = 12 sites, now 38% of true R1. Element depth remains fully disjoint
 (`PortReading` ×2, `NarrowingReason` ×2, `Finding`); `ComplexityLowering` left via the C
 reclassification. No X exists at all three depths.
@@ -166,7 +166,7 @@ reclassification. No X exists at all three depths.
 `Rc<i64>` vs `i64` where the numeric alias fires, `Rc<Nat>` vs `Nat` where it does not.
 
 **CALL: invariance HOLDS. The reference-layer decision does not consult base realization, and the
-fork is an orthogonal axis.** R1's `Nat`/`Int` subpopulation is a reference-layer problem *despite*
+fork is an orthogonal axis.** R1's `Nat` subpopulation is a reference-layer problem *despite*
 the fork, not because of it.
 
 **Grounds — the two decisions key on different things:**
@@ -197,7 +197,7 @@ That is the one way the call could be wrong, and it is named rather than left im
 
 ## Instrument design, given all of the above
 
-Perturb **(`Nat`/`Int`, natively-realizing `decl_file`)** — the alias-fired subset, which spans
+Perturb **(`Nat`, natively-realizing `decl_file`)** — the alias-fired subset, which spans
 OUTER 2 and TYPE-ARGUMENT 8 with one base realization held fixed.
 
 | observation | conclusion |
@@ -207,7 +207,7 @@ OUTER 2 and TYPE-ARGUMENT 8 with one base realization held fixed.
 | TYPE-ARGUMENT moves, OUTER does not | the recursive renderer has its own producer |
 | sites change direction rather than resolving | verdict still wrong, or declaration and value consumers disagree |
 | **`v2_lens_cost.rs:312/315` move** | **REJECT** — keyed on the name, not the pair; base realization was not held fixed |
-| **any ELEMENT site moves** | **REJECT** — no `Nat`/`Int` site exists at element depth |
+| **any ELEMENT site moves** | **REJECT** — no `Nat` site exists at element depth |
 | any non-R1 cluster moves | **REJECT** — more than one axis changed |
 
 ---
@@ -263,3 +263,95 @@ realization keyed on the pair — hold at every site. But the `Nat`-spelled and 
 be emitted by *different producers*, in which case the invariant delta shape is two producers
 independently applying one policy rather than one producer treating both alike. Same conclusion for
 the experiment; a different reason, and the trace distinguishes them.
+
+---
+
+## Correction — the carrier is `Nat` alone, and every assignment is now per-site
+
+Every earlier revision of this document named the cross-depth carrier `Nat`/`Int`. **`Int` has zero
+sites in R1.** The joint naming came from assigning some rows by *module ratio* — reading which of
+`Nat` or `Int` a module mostly used — and `smart-ram-730` refuted one such row by reading the raw
+block: `std_checked_arithmetic.rs:305` is `value: nat_magnitude(a.clone())`, whose field is declared
+`Nat` and whose `fn nat_magnitude(a: Int) -> Nat` takes `Int` only as a *parameter*. The ratio had
+made it an `Int` site.
+
+The rule that follows, and the reason this is a correction rather than an edit: **a module-level
+ratio is not evidence about a site, at either confidence level.** The row I had flagged as weakest
+(`std_measure.rs:488`) turned out correct; the row I had not doubted was the one that failed. So
+every `i64` row was re-derived from its raw cargo block plus the declaring `.dag` type:
+
+| site | emitted expression | declaring type | carrier |
+|---|---|---|---|
+| `std_checked_arithmetic.rs:305` | `value: nat_magnitude(a.clone())` | field `Nat`; `nat_magnitude` **returns** `Nat` | `Nat` |
+| `std_measure.rs:488` | `predecessor: predecessor.clone()` | `PositiveMeasureSuccessor { predecessor: Nat }` (`measure.dag:495`) | `Nat` |
+| `std_cache_interface.rs:652` | `recompute_saved: recompute.time` | time measure → `Measure<Time, _, Nat>` | `Nat` |
+| `std_cache_interface.rs:667` | `nanosecond_count(recompute.time)` | same | `Nat` |
+| `std_realization_measurement.rs:96` | `time: time.clone()` | `time: Measure<Time, S, Nat>` (`realization_measurement.dag:53`) | `Nat` |
+| `std_realization_schedule.rs:74` | `time: time.clone()` | `time: Measure<Time, S, Nat>` (`realization_schedule.dag:33`) | `Nat` |
+
+`std/measure.dag` is **not** safely `Nat` by ratio in any case — it carries
+`CelsiusDelta = Measure<…, Int>` and `PositiveMeasureCountNonPositive { observed: Int }`. The ratio
+agreed there by luck.
+
+A second correction, to a chain of my own: I had reported `cache_interface` reaching `Measure`
+through `CapacityValue<ByteSize>`. The raw block shows `recompute.time`, so it arrives through the
+**time** measure (`Nanosecond`), not `ByteSize`. Same carrier by a different mechanism — recorded
+because a stated chain that happens to reach the right answer is the one that gets reused.
+
+## Four `Measure` sites are EXCLUDED from the instrument — a documented emitter defect, not wrap policy
+
+Reading all ten together surfaced the same carrier disagreeing in **opposite directions** at one
+depth:
+
+| sites | expected | found | direction |
+|---|---|---|---|
+| `cache_interface` 652, 667 | `Rc<Measure<(), (), i64>>` | `Rc<Measure<(), (), Rc<i64>>>` | expected **un**wrapped, params **collapsed** |
+| `realization_measurement` 96, `realization_schedule` 74 | `Rc<Measure<(), S, Rc<i64>>>` | `Rc<Measure<(), S, i64>>` | expected **wrapped**, param `S` **retained** |
+
+This is **not** a non-confluence in the wrap policy. The two declarations differ in *spelling* —
+
+- `dag/std/cache_interface.dag:381` — `recompute_saved: Nanosecond` (**named alias** to an applied generic)
+- `dag/std/realization_schedule.dag:33` — `time: Measure<Time, S, Nat>` (**direct** applied generic)
+
+— and the collapse is an already-documented defect with a registered dissolution condition, at
+`dag/std/measure.dag:755`, verified in-tree:
+
+> `stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat>
+> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0
+> Measure-alias emitter preserves return types at data/fn sites.`
+
+`Measure<(), (), Nat>` is exactly the `cache_interface` shape.
+
+**Consequence for the instrument.** The `cache_interface` declared types came out of a *different and
+broken* emission path, so a perturbation on `Nat`'s `shared_types` membership will not move them the
+way it moves the direct-spelled sites. Admitting them would make any split movement ambiguous
+between the decision table's rows and this third cause — the confound-inside-the-candidate problem
+arriving from a new direction. They are therefore **excluded and registered here**, not silently
+dropped. `Nat`'s TYPE-ARGUMENT 8 is **4 clean** (`realization_*`) and **4 alias-contaminated**
+(`cache_interface`); the instrument runs **OUTER 4 against TYPE-ARGUMENT 4** — smaller, and
+homogeneous, which is the point.
+
+**One qualification on the alias reading.** The direct-spelled sites do not merely differ in
+spelling: they sit inside *generic functions* where `S` is a live parameter (`fn
+cost_account_measured<S>`, `fn cost_account_measured_from_time<S>`). `S` is retained there because
+`S` is genuinely in scope, not necessarily because the direct path preserves parameters better. The
+two paths differ on a second axis, and the trace should establish which of them it is distinguishing
+before the alias reading is treated as settled.
+
+**Scope beyond R1.** `realization_schedule:64` and `:83` were dropped from R1 by the erase-`Rc` rule
+as "type-param binding, `()` vs `S` vs `_`" and classified `D` — the same collapse signature seen
+from the other side. One documented defect is generating rows in at least two clusters, and the
+repartition vocabulary has no arm that names it. Reported to `eager-lark-892` as a repartition input.
+
+**Not claimed:** that the alias path *causes* the collapse. The evidence is the note plus a shape
+match on four rows; no measurement of mine establishes causation. The trace can confirm or refute it
+by showing which producer emitted each declaration — which is now a more valuable question than the
+original attribution one.
+
+## What survives unchanged
+
+`Nat` as the sole cross-depth carrier; TYPE-ARGUMENT reached via `Measure<…, Nat>`; the
+base-realization fork (Finding 3) sitting **inside `Nat` alone**, with `v2_lens_cost.rs:312/315` as
+same-declaration controls; element depth disjoint (Finding 1); the decision table's first row
+unreachable (Finding 2). `Nat`'s span is now OUTER 4 + TYPE-ARGUMENT 4 clean, one declaration, no
+ratio-derived rows anywhere in it.
