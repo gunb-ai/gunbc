@@ -185,7 +185,6 @@ pub fn code_point_is_indent(cp: i64) -> bool {
 
 pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>) -> bool {
     code_points
-        .clone()
         .iter()
         .cloned()
         .fold(previous.clone(), |acc: bool, cp: i64| {
@@ -285,7 +284,6 @@ pub fn module_root_subject(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
 ) -> Option<Rc<AnnotationSubject>> {
     subjects
-        .clone()
         .iter()
         .cloned()
         .fold(None, |acc: _, row: Rc<AnnotationSubject>| {
@@ -298,9 +296,10 @@ pub fn earliest_member_start_after(
     after: i64,
     fallback: i64,
 ) -> i64 {
-    subjects.clone().iter().cloned().fold(
-        fallback.clone(),
-        |best: i64, row: Rc<AnnotationSubject>| {
+    subjects
+        .iter()
+        .cloned()
+        .fold(fallback.clone(), |best: i64, row: Rc<AnnotationSubject>| {
             if ((row.span.clone().start.clone() > after.clone())
                 && (row.span.clone().start.clone() < best.clone()))
             {
@@ -308,8 +307,7 @@ pub fn earliest_member_start_after(
             } else {
                 best.clone()
             }
-        },
-    )
+        })
 }
 
 pub fn module_header_gap_subject(
@@ -357,7 +355,7 @@ pub fn annotation_subject_pick(
             contained: false,
             following: Some(mod_subject.clone()),
         }),
-        None => subjects.clone().iter().cloned().fold(
+        None => subjects.iter().cloned().fold(
             Rc::new(AnnotationSubjectPick {
                 contained: false,
                 following: None,
@@ -425,7 +423,7 @@ pub fn keyed_annotation_rows_agree(
     right: Rc<Vec<Rc<KeyedAnnotationRow>>>,
 ) -> bool {
     {
-        let walk = left.clone().iter().cloned().fold(
+        let walk = left.iter().cloned().fold(
             Rc::new(KeyedAnnotationRowWalk {
                 rest: right.clone(),
                 agreed: true,
@@ -624,7 +622,7 @@ pub fn attach_annotations(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
 ) -> Rc<AnnotationAttachmentResult> {
     {
-        let acc = captures.clone().iter().cloned().fold(
+        let acc = captures.iter().cloned().fold(
             Rc::new(AnnotationAttachAcc {
                 rows: Rc::new(vec![]),
                 refusals: Rc::new(vec![]),

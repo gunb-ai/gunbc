@@ -188,3 +188,67 @@ test fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
     string_contains(s: full, pattern: "\"cpu_weight\": \"")
 }
 
+
+// THE DISCRIMINATING PAIR FOR THE CONTROL-PLANE CHARGE'S TWO REFUSALS, AND WHY A SINGLE WITNESS
+// WOULD NOT HAVE CAUGHT WHAT THIS ONE CATCHES. host_allocation_verdict distinguishes an
+// OVERSUBSCRIBED host from an UNCHARGEABLE one, and gunbc.ci_runner_placement previously projected
+// both to false through host_allocation_conserves and rendered one string for the pair: "host
+// allocation over-committed ... exceeds host RAM". Both paths refuse, so the collapse read as
+// cautious -- but the two have OPPOSITE remedies. Over-committed means take capacity away;
+// unchargeable means go and measure the resident. Reporting the first when the second is true sends
+// the reader to shrink a pool that was never the problem.
+// A witness asserting only that an unmeasured claim refuses would have passed against the defect,
+// because the defective code also refused. The pair is what discriminates: each arm must produce
+// its OWN cause and must NOT produce the other's.
+fn control_plane_unmeasured_placement() -> FabricControlPlanePlacement {
+  ControlPlaneStaticPinned {
+    host: operator_host_srv1,
+    envelope: ControlPlaneEnvelopeUnmeasured {
+      cause: "witness fixture: the first-canary bundle has not been measured" as NonEmptyStr,
+    },
+  }
+}
+
+fn control_plane_oversized_placement() -> FabricControlPlanePlacement {
+  ControlPlaneStaticPinned {
+    host: operator_host_srv1,
+    envelope: ControlPlaneEnvelopeDeclared {
+      memory_max: byte_size(1099511627776),
+      provenance: "witness fixture: a terabyte, chosen to exceed any modeled host" as NonEmptyStr,
+    },
+  }
+}
+
+fn plan_reason_under(p: FabricControlPlanePlacement) -> String {
+  match runner_deployment_plan_under_placement(control_plane_placement: p) {
+    PlanUnsound { reason: r } => r
+    PlanDerived { hosts: _, fleet_concurrent_runs: _ } => ""
+  }
+}
+
+test fn an_unmeasured_control_plane_reports_unmeasured_and_not_over_commitment() -> Bool {
+  let r = plan_reason_under(p: control_plane_unmeasured_placement())
+  r.contains("unchargeable") && !r.contains("over-committed")
+}
+
+test fn an_oversized_control_plane_reports_over_commitment_and_not_unmeasured() -> Bool {
+  let r = plan_reason_under(p: control_plane_oversized_placement())
+  r.contains("over-committed") && !r.contains("unchargeable")
+}
+
+test fn the_unplaced_control_plane_still_derives_a_sound_plan() -> Bool {
+  plan_reason_under(p: ControlPlaneUnplaced) == ""
+}
+
+// THIS IS THE CONTROL, AND IT IS WRITTEN AS AN INEQUALITY ON PURPOSE. The two witnesses above each
+// assert a substring, and a substring assertion can pass for the wrong reason -- if some unrelated
+// edit made every refusal recite both words, both would still be green. What the collapsed code
+// actually did was emit ONE string for two causes, so the property that falsifies it directly is
+// that the two causes are DISTINGUISHABLE AT ALL. Under host_allocation_conserves these two reasons
+// were byte-identical and this witness returns false; it is the red that the pair above cannot be
+// green without, and it stays enrolled rather than retiring now that the arm is split (DESIGN 4b:
+// a climb dissolves the production machinery it obsoletes, never the evidence that the rung is real).
+test fn the_two_control_plane_refusals_do_not_share_one_reason() -> Bool {
+  plan_reason_under(p: control_plane_unmeasured_placement())
+    != plan_reason_under(p: control_plane_oversized_placement())
+}

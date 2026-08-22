@@ -93,8 +93,7 @@ pub fn frontier_row_well_formed(row: Rc<FrontierRow>) -> bool {
 }
 
 pub fn frontier_rows_well_formed(rows: Rc<Vec<Rc<FrontierRow>>>) -> bool {
-    rows.clone()
-        .iter()
+    rows.iter()
         .cloned()
         .fold(true, |acc: bool, row: Rc<FrontierRow>| {
             (acc && frontier_row_well_formed(row.clone()))
@@ -117,7 +116,7 @@ pub fn frontier_rows_to_keyed_rows(
 ) -> Rc<Vec<Rc<KeyedRow<Rc<FrontierSubject>, Rc<FrontierRow>>>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in rows.clone().iter().cloned() {
+        for row in rows.iter().cloned() {
             __result.push(Rc::new(KeyedRow {
                 row_key: row.subject.clone(),
                 value: row.clone(),
@@ -140,7 +139,7 @@ pub fn frontier_rows_keyed_roster_build(
 pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in rows.clone().iter().cloned() {
+        for row in rows.iter().cloned() {
             __result.push(frontier_subject_key(row.subject.clone()));
         }
         __result
@@ -156,7 +155,7 @@ pub fn concat_frontier_row_groups(
 ) -> Rc<Vec<Rc<FrontierRow>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for group in groups.clone().iter().cloned() {
+        for group in groups.iter().cloned() {
             __result.extend((*group.clone()).iter().cloned());
         }
         __result
@@ -174,7 +173,7 @@ pub fn fold_frontier_expiry(
     rows: Rc<Vec<Rc<FrontierRow>>>,
     present_decls: Rc<Vec<Rc<DeclarationRef>>>,
 ) -> FrontierExpiryReport {
-    rows.clone().iter().cloned().fold(
+    rows.iter().cloned().fold(
         FrontierExpiryReport {
             unbound_count: 0,
             pending_count: 0,

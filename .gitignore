@@ -114,6 +114,10 @@ out.txt
 !docs/plans/witness-subject-execution-audit.py
 !docs/probes/e0369_b1_operator_classify.py
 !docs/probes/floor_cut_name_resolution_partition.py
+!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/summarize.py
+!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/adjudicate.py
+!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/join_board.py
+!docs/probes/e0308_classify_sites.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/

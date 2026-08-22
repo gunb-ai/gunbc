@@ -43,6 +43,7 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
+pub use crate::v1_compiler_emit::unmodeled_file_transport_diagnostics;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
@@ -183,7 +184,7 @@ pub fn merge_occurrence_transports(
         index: Rc::new(OccurrenceIndex {
             entries: Rc::new({
                 let mut __result = Vec::new();
-                for transport in transports.clone().iter().cloned() {
+                for transport in transports.iter().cloned() {
                     __result.extend((*transport.index.clone().entries.clone()).iter().cloned());
                 }
                 __result
@@ -191,14 +192,14 @@ pub fn merge_occurrence_transports(
         }),
         declarations: Rc::new({
             let mut __result = Vec::new();
-            for transport in transports.clone().iter().cloned() {
+            for transport in transports.iter().cloned() {
                 __result.extend((*transport.declarations.clone()).iter().cloned());
             }
             __result
         }),
         references: Rc::new({
             let mut __result = Vec::new();
-            for transport in transports.clone().iter().cloned() {
+            for transport in transports.iter().cloned() {
                 __result.extend((*transport.references.clone()).iter().cloned());
             }
             __result
@@ -330,7 +331,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for proof in proofs.clone().iter().cloned() {
+        for proof in proofs.iter().cloned() {
             __result.extend(
                 (*Rc::new({
                     let mut __result = Vec::new();
@@ -439,11 +440,21 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 }
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
-    match artifact.target.clone() {
-        RenderTarget::Rust => emit_rust(typed.clone()),
-        RenderTarget::Python => emit_python(typed.clone()),
-        RenderTarget::Go => emit_go(typed.clone()),
-        RenderTarget::Dag => emit_dag_artifact(typed.clone()),
+    {
+        let unmodeled_transports =
+            unmodeled_file_transport_diagnostics(typed.clone(), artifact.target.clone());
+        if ((unmodeled_transports.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: unmodeled_transports.clone(),
+            });
+        }
+        match artifact.target.clone() {
+            RenderTarget::Rust => emit_rust(typed.clone()),
+            RenderTarget::Python => emit_python(typed.clone()),
+            RenderTarget::Go => emit_go(typed.clone()),
+            RenderTarget::Dag => emit_dag_artifact(typed.clone()),
+        }
     }
 }
 
@@ -597,7 +608,7 @@ pub fn dag_emit_ref_errors(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in order.clone().iter().cloned() {
+        for n in order.iter().cloned() {
             __result.extend(
                 (*dag_emit_check_node_refs(n.clone(), key_to_id.clone()))
                     .iter()
@@ -950,7 +961,7 @@ pub fn serialize_match_pattern(
                 ),
                 json_list(Rc::new({
                     let mut __result = Vec::new();
-                    for fb in field_bindings.clone().iter().cloned() {
+                    for fb in field_bindings.iter().cloned() {
                         __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
                     }
                     __result
@@ -1114,7 +1125,7 @@ pub fn serialize_method_semantics(
                 ),
                 json_list(Rc::new({
                     let mut __result = Vec::new();
-                    for p in op_params.clone().iter().cloned() {
+                    for p in op_params.iter().cloned() {
                         __result.push(serialize_param(
                             p.clone(),
                             source_indices.clone(),
@@ -1273,7 +1284,7 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
     match de.clone() {
         Some(evidence) => json_list(Rc::new({
             let mut __result = Vec::new();
-            for rel in evidence.clone().iter().cloned() {
+            for rel in evidence.iter().cloned() {
                 __result.push(serialize_sub_value_relation(rel.clone()));
             }
             __result
@@ -1373,7 +1384,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1411,7 +1422,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1446,7 +1457,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1479,7 +1490,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1498,7 +1509,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1515,7 +1526,7 @@ pub fn serialize_expr_data(
                                 "{\"kind\": \"ExprLambda\", \"params\": ".to_string(),
                                 json_list(Rc::new({
                                     let mut __result = Vec::new();
-                                    for p in params.clone().iter().cloned() {
+                                    for p in params.iter().cloned() {
                                         __result.push(json_quote(p.clone()));
                                     }
                                     __result
@@ -1525,7 +1536,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1545,7 +1556,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1575,7 +1586,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1597,7 +1608,7 @@ pub fn serialize_expr_data(
                         ),
                         json_list(Rc::new({
                             let mut __result = Vec::new();
-                            for c in ch.clone().iter().cloned() {
+                            for c in ch.iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                             }
                             __result
@@ -1614,7 +1625,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1630,7 +1641,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1646,7 +1657,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1662,7 +1673,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1678,7 +1689,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1694,7 +1705,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1710,7 +1721,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1726,7 +1737,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1742,7 +1753,7 @@ pub fn serialize_expr_data(
                     ),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for c in ch.clone().iter().cloned() {
+                        for c in ch.iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
                         }
                         __result
@@ -1960,7 +1971,7 @@ pub fn serialize_module_imports_json(
         } else {
             if {
                 let mut __all = true;
-                for imp in imports.clone().iter().cloned() {
+                for imp in imports.iter().cloned() {
                     if !((imp.params.clone().len() as i64) == 0) {
                         __all = false;
                         break;
@@ -1970,7 +1981,7 @@ pub fn serialize_module_imports_json(
             } {
                 json_list(Rc::new({
                     let mut __result = Vec::new();
-                    for imp in imports.clone().iter().cloned() {
+                    for imp in imports.iter().cloned() {
                         __result.push(serialize_import_node(imp.clone(), source_indices.clone()));
                     }
                     __result
@@ -2194,7 +2205,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
 pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     if {
         let mut __found = false;
-        for n in names.clone().iter().cloned() {
+        for n in names.iter().cloned() {
             if (n.clone() == ref_name.clone()) {
                 __found = true;
                 break;
@@ -2305,14 +2316,14 @@ pub fn emit_from_artifact_plan(
         });
         let all_files = Rc::new({
             let mut __result = Vec::new();
-            for r in results.clone().iter().cloned() {
+            for r in results.iter().cloned() {
                 __result.extend((*r.files.clone()).iter().cloned());
             }
             __result
         });
         let all_diags = Rc::new({
             let mut __result = Vec::new();
-            for r in results.clone().iter().cloned() {
+            for r in results.iter().cloned() {
                 __result.extend((*r.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -2325,7 +2336,7 @@ pub fn emit_from_artifact_plan(
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.clone().iter().cloned().fold(
+    parse_results.iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
@@ -2367,7 +2378,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     {
         let prepared = Rc::new({
             let mut __result = Vec::new();
-            for s in sources.clone().iter().cloned() {
+            for s in sources.iter().cloned() {
                 __result.push({
                     let artifact = tokenize_artifact(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
@@ -2381,11 +2392,11 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             }
             __result
         });
-        let intern_table = prepared.clone().iter().cloned().fold(
+        let intern_table = prepared.iter().cloned().fold(
             empty_intern_table(),
             |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
         );
-        let parsed = prepared.clone().iter().cloned().fold(
+        let parsed = prepared.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
                 module_inputs: Rc::new(vec![]),
@@ -2456,7 +2467,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let module_inputs = parsed.module_inputs.clone();
-        let source_indices = newline_indices.clone().iter().cloned().fold(
+        let source_indices = newline_indices.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
                 v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
@@ -2464,7 +2475,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         );
         let occurrence_transport = merge_occurrence_transports(Rc::new({
             let mut __result = Vec::new();
-            for input in module_inputs.clone().iter().cloned() {
+            for input in module_inputs.iter().cloned() {
                 __result.push(module_occurrence_input_transport(input.clone()));
             }
             __result
@@ -2510,7 +2521,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
     {
         let prepared = Rc::new({
             let mut __result = Vec::new();
-            for s in sources.clone().iter().cloned() {
+            for s in sources.iter().cloned() {
                 __result.push({
                     let artifact = tokenize_artifact(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
@@ -2524,11 +2535,11 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             }
             __result
         });
-        let intern_table = prepared.clone().iter().cloned().fold(
+        let intern_table = prepared.iter().cloned().fold(
             empty_intern_table(),
             |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
         );
-        let parsed = prepared.clone().iter().cloned().fold(
+        let parsed = prepared.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
                 module_inputs: Rc::new(vec![]),
@@ -2600,7 +2611,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
         Rc::new(CensusFillParse {
             modules: Rc::new({
                 let mut __result = Vec::new();
-                for input in module_inputs.clone().iter().cloned() {
+                for input in module_inputs.iter().cloned() {
                     __result.push(module_occurrence_input_node(input.clone()));
                 }
                 __result
@@ -2612,7 +2623,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             ),
             occurrence_transport: merge_occurrence_transports(Rc::new({
                 let mut __result = Vec::new();
-                for input in module_inputs.clone().iter().cloned() {
+                for input in module_inputs.iter().cloned() {
                     __result.push(module_occurrence_input_transport(input.clone()));
                 }
                 __result
@@ -2661,7 +2672,7 @@ pub fn interpreter_blocking_diagnostic_messages(
         let mut __result = Vec::new();
         for d in Rc::new({
             let mut __result = Vec::new();
-            for d in diagnostics.clone().iter().cloned() {
+            for d in diagnostics.iter().cloned() {
                 if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                     __result.push(d);
                 }
@@ -2701,14 +2712,17 @@ pub fn interpreter_blocking_diagnostic_messages(
     })
 }
 
-pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option<String> {
+pub fn stage0_self_compile_refusal_message(
+    subject: String,
+    result: Rc<PipelineResult>,
+) -> Option<String> {
     {
         let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
         if ((hard_messages.clone().len() as i64) > 0) {
             Some(v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        "v2 self-compile produced ".to_string(),
+                        v1_rt::concat(subject.clone(), " produced ".to_string()),
                         (hard_messages.clone().len() as i64).to_string(),
                     ),
                     " hard diagnostic(s):\n".to_string(),
@@ -2717,7 +2731,10 @@ pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option
             ))
         } else {
             if ((result.files.clone().len() as i64) == 0) {
-                Some("v2 self-compile emitted no files".to_string())
+                Some(v1_rt::concat(
+                    subject.clone(),
+                    " emitted no files".to_string(),
+                ))
             } else {
                 None
             }
@@ -2764,7 +2781,7 @@ pub fn compile_to_resolved_with_options(
                 newline_indices: newline_indices.clone(),
             }),
             Some(graph) => {
-                let source_indices = newline_indices.clone().iter().cloned().fold(
+                let source_indices = newline_indices.iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                     |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
@@ -2863,7 +2880,7 @@ pub fn emit_resolved_for_target(
             let emit_diags = emit_result.diagnostics.clone();
             let emit_errors = Rc::new({
                 let mut __result = Vec::new();
-                for d in emit_diags.clone().iter().cloned() {
+                for d in emit_diags.iter().cloned() {
                     if is_error_diagnostic(d.diagnostic.clone()) {
                         __result.push(d);
                     }

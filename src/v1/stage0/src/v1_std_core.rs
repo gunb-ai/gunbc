@@ -556,6 +556,15 @@ pub enum CompilerDiagnostic {
         container_leaf: String,
         span: Rc<SourceSpan>,
     },
+    TransportEmissionNotModeled {
+        transport_kind: String,
+        service: String,
+        operation: String,
+        declaring_module: String,
+        target: String,
+        missing_realization_fact: String,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -665,6 +674,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
     }
 }
 
@@ -707,6 +717,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
+    CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
 }
 }
 
@@ -1597,7 +1608,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         {
             if {
                 let mut __found = false;
-                for r in roles.clone().iter().cloned() {
+                for r in roles.iter().cloned() {
                     if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1618,7 +1629,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         {
             if {
                 let mut __found = false;
-                for r in roles.clone().iter().cloned() {
+                for r in roles.iter().cloned() {
                     if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1906,7 +1917,7 @@ pub fn collect_decl_ref_coords_from_list(
 ) -> Rc<Vec<Rc<DeclRefCoords>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for e in exprs.clone().iter().cloned() {
+        for e in exprs.iter().cloned() {
             __result.extend(
                 (*match decl_ref_coords_from_call_expr(e.clone(), source_indices.clone()) {
                     Some(coords) => Rc::new(vec![coords.clone()]),
@@ -2307,6 +2318,15 @@ pub fn transport_stdin_key() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn transport_verb_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "verb".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn transport_response_format_key() -> String {
     thread_local! {
         static CACHED: String = {
@@ -2541,7 +2561,12 @@ pub fn file_transport_node(
         let props = match verb.clone() {
             Some(verb_expr) => Rc::new(vec![
                 path_field.clone(),
-                make_field_init_node("verb".to_string(), verb_expr.clone(), no_span(), no_span()),
+                make_field_init_node(
+                    transport_verb_key(),
+                    verb_expr.clone(),
+                    no_span(),
+                    no_span(),
+                ),
             ]),
             None => Rc::new(vec![path_field.clone()]),
         };
@@ -2556,7 +2581,7 @@ pub fn find_property(
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
-        for p in props.clone().iter().cloned() {
+        for p in props.iter().cloned() {
             if (field_init_node_name_at(p.clone(), source_indices.clone()) == prop_name.clone()) {
                 __result.push(p);
             }
@@ -2686,6 +2711,17 @@ pub fn transport_base_path(
     find_property(
         t.properties.clone(),
         transport_path_key(),
+        source_indices.clone(),
+    )
+}
+
+pub fn transport_verb(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    find_property(
+        t.properties.clone(),
+        transport_verb_key(),
         source_indices.clone(),
     )
 }
@@ -4025,7 +4061,7 @@ pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
 }
 
 pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
-    tables.clone().iter().cloned().fold(
+    tables.iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
             let merged_allocator = occurrence_id_allocator_advance_to(
@@ -4060,7 +4096,6 @@ pub fn is_internable_token(shape: TokenShape) -> bool {
 
 pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> Rc<InternTable> {
     tokens
-        .clone()
         .iter()
         .cloned()
         .fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| {

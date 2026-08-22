@@ -232,7 +232,7 @@ pub fn merge_branch_usages(
     branches: Rc<Vec<Rc<UsageAccum>>>,
 ) -> Rc<UsageAccum> {
     {
-        let binding_merged = branches.clone().iter().cloned().fold(
+        let binding_merged = branches.iter().cloned().fold(
             base.bindings.clone(),
             |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
                 branch.touched.clone().iter().cloned().fold(
@@ -247,7 +247,7 @@ pub fn merge_branch_usages(
                 )
             },
         );
-        let touched_merged = branches.clone().iter().cloned().fold(
+        let touched_merged = branches.iter().cloned().fold(
             base.touched.clone(),
             |acc: Rc<Vec<String>>, branch: Rc<UsageAccum>| {
                 v1_rt::concat(acc, branch.touched.clone())
@@ -256,7 +256,7 @@ pub fn merge_branch_usages(
         let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
         let branch_fold_nodes = Rc::new({
             let mut __result = Vec::new();
-            for b in branches.clone().iter().cloned() {
+            for b in branches.iter().cloned() {
                 __result.extend(
                     (*Rc::new(
                         b.fold_call_nodes
@@ -381,7 +381,7 @@ pub fn walk_expr(
                             }
                             __result
                         });
-                        non_init.clone().iter().cloned().fold(
+                        non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
@@ -406,7 +406,7 @@ pub fn walk_expr(
                         let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
-                            for a in mc_args.clone().iter().cloned() {
+                            for a in mc_args.iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
                                     __result.push(a);
                                 }
@@ -444,14 +444,14 @@ pub fn walk_expr(
                         };
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
-                            for a in mc_args.clone().iter().cloned() {
+                            for a in mc_args.iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
                                     __result.push(a);
                                 }
                             }
                             __result
                         });
-                        let walked = non_init.clone().iter().cloned().fold(
+                        let walked = non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
@@ -469,7 +469,7 @@ pub fn walk_expr(
                 } else {
                     {
                         let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
-                        mc_args.clone().iter().cloned().fold(
+                        mc_args.iter().cloned().fold(
                             recv_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
@@ -485,7 +485,7 @@ pub fn walk_expr(
                 let seed = branch_seed(s_accum.clone());
                 let branch_accums = Rc::new({
                     let mut __result = Vec::new();
-                    for arm_node in arm_nodes.clone().iter().cloned() {
+                    for arm_node in arm_nodes.iter().cloned() {
                         __result.push(walk_expr(
                             seed.clone(),
                             arm_body(arm_node.clone()),
@@ -1243,33 +1243,34 @@ pub fn analyze_ownership(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OwnershipProof> {
     {
-        let initial = params.clone().iter().cloned().fold(
-            empty_usage_accum(),
-            |acc: Rc<UsageAccum>, p: Rc<Node>| {
-                let acc = v1_rt::take_owned(acc);
-                {
-                    let p_name = authored_name_at(si.clone(), p.clone());
-                    Rc::new(UsageAccum {
-                        bindings: v1_rt::rc_map_insert(
-                            acc.bindings,
-                            p_name.clone(),
-                            Rc::new(BindingUsage {
-                                name: p_name.clone(),
-                                binding_kind: None,
-                                consumers: Rc::new(vec![]),
-                            }),
-                        ),
-                        fold_call_nodes: acc.fold_call_nodes,
-                        touched: acc.touched,
-                    })
-                }
-            },
-        );
+        let initial =
+            params
+                .iter()
+                .cloned()
+                .fold(empty_usage_accum(), |acc: Rc<UsageAccum>, p: Rc<Node>| {
+                    let acc = v1_rt::take_owned(acc);
+                    {
+                        let p_name = authored_name_at(si.clone(), p.clone());
+                        Rc::new(UsageAccum {
+                            bindings: v1_rt::rc_map_insert(
+                                acc.bindings,
+                                p_name.clone(),
+                                Rc::new(BindingUsage {
+                                    name: p_name.clone(),
+                                    binding_kind: None,
+                                    consumers: Rc::new(vec![]),
+                                }),
+                            ),
+                            fold_call_nodes: acc.fold_call_nodes,
+                            touched: acc.touched,
+                        })
+                    }
+                });
         let result = walk_expr(initial.clone(), body.clone(), true, si.clone());
         let binding_list = Rc::new(v1_rt::map_values(&result.bindings.clone()));
         let decisions = Rc::new({
             let mut __result = Vec::new();
-            for usage in binding_list.clone().iter().cloned() {
+            for usage in binding_list.iter().cloned() {
                 __result.push(make_decision(usage.clone()));
             }
             __result

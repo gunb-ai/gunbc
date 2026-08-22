@@ -1,5 +1,6 @@
 module gunbc.runner_host_deploy
 
+import extdeps.tools.env { env_path_resolved_program }
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -121,7 +122,7 @@ fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
 fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
   ArgvCommand {
     argv: [
-      "env",
+      env_path_resolved_program as String,
       join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
       join(["CTRL_RUNNER_USER=", deploy.runner_user as String], ""),
       join(["CTRL_RUNNER_JOB_USER=", deploy.job_user as String], ""),

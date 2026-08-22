@@ -533,7 +533,7 @@ pub fn lookup_coproduct_common_field_node(
     {
         let found_in_all = {
             let mut __all = true;
-            for v in variants.clone().iter().cloned() {
+            for v in variants.iter().cloned() {
                 if !(has_child_named(v.clone(), field_name.clone(), source_indices.clone())) {
                     __all = false;
                     break;
@@ -969,7 +969,7 @@ pub fn lookup_structural_method(
                                         let templates = algebra_templates_for_profile(p.clone());
                                         Rc::new({
                                             let mut __result = Vec::new();
-                                            for t in templates.clone().iter().cloned() {
+                                            for t in templates.iter().cloned() {
                                                 if (t.name.clone() == method_name.clone()) {
                                                     __result.push(t);
                                                 }
@@ -1068,7 +1068,7 @@ pub fn declared_arg_types_for_method(
                     Rc::new(DeclaredArgContract::ContractKnown {
                         types: Rc::new({
                             let mut __result = Vec::new();
-                            for tp in non_receiver_templates.clone().iter().cloned() {
+                            for tp in non_receiver_templates.iter().cloned() {
                                 __result.push(
                                     instantiate_algebra_type(
                                         tp.clone(),

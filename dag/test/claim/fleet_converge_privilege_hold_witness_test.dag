@@ -11,8 +11,6 @@ import gunbc.fleet_converge_cli {
   converge_cli_expected_receipt_owner_name,
 }
 import gunbc.host_converge_slice1 {
-  host_converge_slice1_memory_max_converge_apply_suppressed,
-  host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed,
   host_converge_slice1_shadow_revert_script_matches_authority,
   host_converge_slice1_probe_unit,
   host_converge_slice1_cap_author_before_shadow_revert_enforced,
@@ -33,11 +31,14 @@ test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl
     && list_length(items: fleet_posix_ci_runner_sudo_grants()) >= 2
 }
 
-// Operator ruling 2026-08-13: converge must not re-apply MemoryMax via set-property.
-test fn witness_convergence_suppresses_memory_max_set_property() -> Bool {
-  host_converge_slice1_memory_max_converge_apply_suppressed
-    && host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed
-}
+// witness_convergence_suppresses_memory_max_set_property WAS HERE AND ITS DELETION IS THE POINT.
+// It read two `data ...: Bool = true` flags and asserted them, so it executed `true && true` and
+// could not have failed for any state of the tree — including the state the tree was actually in,
+// where the converge-side apply arm it claimed was suppressed was still wired and reachable.
+// The privilege hold it named is now enforced by the absence of that arm
+// (gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason, and the deleted
+// gunbc.host_converge_realize), so deleting this test removes a false guarantee rather than a
+// real one. A reviewer counting tests should read this as one fewer assertion and one more wall.
 
 // Residue removal uses systemctl revert (inverse of set-property), not a new set-property apply.
 test fn witness_control_shadow_revert_script_is_revert_not_set_property() -> Bool {
