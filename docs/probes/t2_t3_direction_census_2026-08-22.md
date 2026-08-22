@@ -310,3 +310,23 @@ lane does. A mechanism that survives an intervention is a durable asset even at 
 population of zero; one that fails it saves the next reader from believing it. Beyond that result
 there is no further investment here — no re-derivation on main, no repair design, and no
 counterfactual work against a population of zero.
+
+## Calibration at `2a2bd0ad` — PASSES
+
+The live probe re-run at the board's own sha reproduces the board, which the `90986d19` run did not:
+
+| quantity | live probe @ `2a2bd0ad` | board artifact @ `2a2bd0ad` |
+|---|---:|---:|
+| E0308 blocks | **199** | 199 |
+| both-direction positions | **4** | 4 |
+| `Rc<Vector<_>> <- String` | 19 | 19 |
+| `String <- Rc<Vector<_>>` | 7 | 7 |
+| `Rc<Vector<i64>> <- String` / reverse | 4 / 4 | 4 / 4 |
+
+`PROBE_EXIT=0`, empty dirty list, `TOTAL_MISMATCH_SITES=215` against the board's 235 distinct sites
+(this regex admits slightly fewer than the board's classifier; the quantity the intervention turns
+on agrees exactly).
+
+**P1's precondition is satisfied at this subject.** The earlier run's failure is now fully
+explained: the instrument was sound and the population at `90986d19` was empty, exactly as the local
+row-level check predicted. The intervention run at this sha is therefore interpretable.
