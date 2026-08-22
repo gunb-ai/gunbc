@@ -1,0 +1,46 @@
+module v2.test.claim.body_lowering.declaration_structure_preserved
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data declaration_structure_preserved_note: String = "THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, one node class on from the statement-form let, and they are written as invariants rather than as observations of the present frontier.\n\nA declaration's INTERIOR is not a body-producer subject. body_lower_is_metadata_preserved_emitted already preserves the OUTER declarations -- dag_surface_type_decl, dag_surface_data_decl, dag_surface_type_expr, dag_surface_qualified_name -- but the body-lowering fold is bottom-up over the whole module tree, so every node INSIDE an already-preserved declaration re-entered the production dispatch and fell to the unregistered-producer else arm. That is why a plain `type T = A { x: Int } | B` produced wrapper-retention diagnostics: dag_surface_type_variant, dag_surface_type_alias_rhs, dag_surface_field_decl_block and dag_surface_fn_type are TYPE SYNTAX, which has no Behavior to lower to at all. dag_surface_field_init is the one non-type member: it is a record literal's named field, and the expression it carries has ALREADY been lowered by the fold before the shell is reached, so preserving the shell preserves a lowered child -- unwrapping it, as its sibling dag_surface_arg is handled, would drop the field NAME.\n\nWHAT THIS DOES NOT DO: it does not touch admit_normalized_tree. The admission wall still refuses any root carrying wrapper-retention evidence; what changed is that structure stopped PRODUCING that evidence. The retained arm remains the counted frontier for a genuine body shape whose producer is unwritten, and the fourth claim is the standing control that it still fires."
+
+fn normalize_outcome(src: String) -> String {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => "PARSE_REFUSED"
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
+
+data coproduct_with_field_block_source: String = "module m.t\ntype T = A { x: Int } | B\nfn f() -> Int {\n  1\n}\n"
+
+data fn_type_alias_source: String = "module m.t\ntype F = fn(Int) -> Int\nfn f() -> Int {\n  1\n}\n"
+
+data record_literal_field_init_source: String = "module m.t\ntype R { a: Int }\ndata d: R = R { a: 1 }\nfn f() -> Int {\n  1\n}\n"
+
+// EVERY SOURCE CARRIES A FUNCTION, and that is not decoration. A module of
+// declarations alone refuses at normalize with namespace_graft_body_dissolved_refused
+// -- measured, not assumed -- so a declaration-only source would have asserted a
+// string that is false both before and after this repair: a row that cannot pass,
+// which is not a red. The `fn f() -> Int { 1 }` is the smallest body that gets the
+// module past the graft so the assertion is about retention and nothing else.
+test fn coproduct_declaration_interior_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: coproduct_with_field_block_source) == "ACCEPTED"
+}
+
+test fn fn_type_alias_interior_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: fn_type_alias_source) == "ACCEPTED"
+}
+
+test fn record_literal_field_init_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: record_literal_field_init_source) == "ACCEPTED"
+}

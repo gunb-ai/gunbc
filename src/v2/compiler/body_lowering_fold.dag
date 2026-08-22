@@ -444,6 +444,16 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_import_block)
 }
 
+data body_lowering_structure_shell_note: String = "THE SAME SHAPE AS #8828, ONE NODE CLASS OVER: a shell with no body to lower FROM ITS OWN NODE was arriving at the unregistered-producer arm, so 'this production has no body-producer yet' and 'this production is structure, not a body' were one state. The five identities below are declaration and literal STRUCTURE -- a coproduct variant, a type-alias right-hand side, a field-declaration block, an fn type, and a record literal's named field. Four of them are type syntax, which has no Behavior to lower to at all; the fifth carries an expression that the bottom-up fold has ALREADY lowered before this node is reached, so preserving the shell preserves a lowered child, never an unlowered one. Preserving is what body_lower_is_metadata_preserved_emitted already does for the OUTER declarations these sit inside (dag_surface_type_decl, dag_surface_data_decl) -- the classification was written per node and the fold reaches inside, so every interior of an already-preserved declaration re-entered the dispatch and fell to the else arm.\n\nRUNG: this is a scope correction to a classifier, not a climb. The retained arm remains the counted frontier for a body shape with no producer, and that is the discriminating control: an emitted identity in none of these lists still retains, so the arm is not widened into an absorbing accept. Next-rung trigger: the preserved/structure classification derived from the grammar's own productions (a nonterminal reachable from dag_production_type_decl without crossing dag_production_expr is type syntax by construction) rather than enumerated here beside them."
+
+fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_type_variant)
+    || (emitted == ^dag_surface_type_alias_rhs)
+    || (emitted == ^dag_surface_field_decl_block)
+    || (emitted == ^dag_surface_fn_type)
+    || (emitted == ^dag_surface_field_init)
+}
+
 fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
@@ -4260,6 +4270,8 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
+  } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
     outcome_accepted(value: shell)
