@@ -5,7 +5,7 @@ module extdeps.dpkg
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "manpages.debian.org/testing/dpkg/en.html"
+    locator: "manpages.debian.org/testing/dpkg/dpkg.1.en.html"
   }
 }
 

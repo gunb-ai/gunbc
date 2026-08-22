@@ -60,7 +60,7 @@ fn fixture_bundle_from_digest(digest: std.content_hash.Sha512Digest) -> gunbc.pa
       native_executable_digest: digest,
       toolchain: gunbc.package_delivery.CodexBuildToolchainReceipt {
         npm_cli_version: "10.9.8" as std.types.NonEmptyStr,
-        node_version: "0" as std.types.NonEmptyStr,
+        node_version: "v22.0.0" as std.types.NonEmptyStr,
       },
       protocol_schema_identity: id,
       receipt_identity: id,

@@ -10,10 +10,10 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data production_api_base: std.types.NonEmptyStr = "https://api.tcgplayer.com"
 
-data api_contract_version: std.types.NonEmptyStr = "0"
+data api_contract_version: std.types.NonEmptyStr = "v1.39.0"
 
 data structural_coverage_gap_versioned_paths: List<String> = [
-  "upstream resource paths accept an optional /[VERSION]/ prefix (current 0); the modeled",
+  "upstream resource paths accept an optional /[VERSION]/ prefix (current v1.39.0); the modeled",
   "transports use the unversioned form the reference documents as the base examples",
   "pin the prefix per-operation when a consumer needs version-locked behavior"
 ]

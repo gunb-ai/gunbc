@@ -5,7 +5,7 @@ module extdeps.apt
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "manpages.debian.org/testing/apt/en.html"
+    locator: "manpages.debian.org/testing/apt/apt.8.en.html"
   }
 }
 
@@ -36,7 +36,7 @@ data package_jq: std.types.NonEmptyStr = "jq"
 
 data apt_get_binary_path: std.types.NonEmptyStr = "/usr/bin/apt-get"
 
-data apt_man_url: std.types.NonEmptyStr = "https://manpages.debian.org/testing/apt/en.html"
+data apt_man_url: std.types.NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
 fn apt_install_argv(package: std.types.NonEmptyStr) -> List<String> {
   ["apt-get", "install", "--yes", package as String]

@@ -30,7 +30,7 @@ type GitHubRunnerRegistrationStatus
   = GitHubRunnerOnline
   | GitHubRunnerOffline
 
-data github_runner_registration_row_wire_note: String = "THE ORG RUNNERS ENDPOINT RETURNS id, name, status, busy, ephemeral, version, AND labels AS SEPARATE FIELDS. status IS online OR offline; busy IS its own boolean. version IS the runner software version string (the incident corpus pinned Actions Runner 0). None of these are folded into a single synthetic status enum."
+data github_runner_registration_row_wire_note: String = "THE ORG RUNNERS ENDPOINT RETURNS id, name, status, busy, ephemeral, version, AND labels AS SEPARATE FIELDS. status IS online OR offline; busy IS its own boolean. version IS the runner software version string (the incident corpus pinned Actions Runner v2.334.0). None of these are folded into a single synthetic status enum."
 
 type GitHubSelfHostedRunnerRegistration {
   id: std.nat.Nat

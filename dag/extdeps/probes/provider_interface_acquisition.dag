@@ -27,7 +27,7 @@ data provider_interface_acquisition_lockfile_package_entry_count: Int = 124
 data provider_interface_acquisition_lockfile_platform_gated_entry_count: Int = 13
 data provider_interface_acquisition_lockfile_install_script_count: Int = 0
 
-data provider_interface_acquisition_host_node_version: std.types.NonEmptyStr = "2" as std.types.NonEmptyStr
+data provider_interface_acquisition_host_node_version: std.types.NonEmptyStr = "v22.23.2" as std.types.NonEmptyStr
 data provider_interface_acquisition_host_npm_version: std.types.NonEmptyStr = "10.9.8" as std.types.NonEmptyStr
 
 data provider_interface_acquisition_cursor_sdk_package_name: std.types.NonEmptyStr = "@cursor/sdk" as std.types.NonEmptyStr

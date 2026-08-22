@@ -6,7 +6,7 @@ module extdeps.memory.macronix_mx25l25673g
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "www.mxic.com.tw/Lists/Datasheet/Attachments/9137/MX25L25673G, 3V, 256Mb, pdf"
+    locator: "www.mxic.com.tw/Lists/Datasheet/Attachments/9137/MX25L25673G, 3V, 256Mb, v1.9.pdf"
   }
 }
 

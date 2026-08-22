@@ -33,14 +33,14 @@ test fn witness_authority_serializes_with_structure() -> Bool {
 // A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus node-head presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   string_contains(
-    s: test.claim.long.roadmap_page_witness.authority_page_html(),
+    s: authority_page_html(),
     pattern: "requires all: v1-materialization-kernel, v1-emitter-fixed-point",
   )
 }
 
 fn empty_doc_html() -> String {
-  let empty = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
-  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page(doc: empty, merged: [])) {
+  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }

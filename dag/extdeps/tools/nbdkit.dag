@@ -4,7 +4,7 @@ module extdeps.tools.nbdkit
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "libguestfs.org/html"
+    locator: "libguestfs.org/nbdkit.1.html"
   }
 }
 

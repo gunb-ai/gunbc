@@ -5,7 +5,7 @@ module extdeps.storage.nbd
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "manpages.debian.org/bookworm/nbd-server/nbd-en.html",
+    locator: "manpages.debian.org/bookworm/nbd-server/nbd-server.5.en.html",
   }
 }
 

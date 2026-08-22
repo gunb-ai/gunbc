@@ -4,8 +4,8 @@ module test.claim.ollama_capability_witness_test
 data witness_gpt_oss_ref: extdeps.ollama.api.OllamaModelRef = ollama_gpt_oss_20b_model_ref
 
 data witness_v0_11_0_catalog_probe_release: extdeps.ollama.binary_release.OllamaBinaryRelease = extdeps.ollama.binary_release.OllamaBinaryRelease {
-  version: "0" as std.types.NonEmptyStr,
-  release_page: "https://github.com/ollama/ollama/releases/tag/0" as NonEmptyStr,
+  version: "v0.11.0" as std.types.NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr,
   architecture: OllamaLinuxArm64,
   variant: OllamaLinuxGenericCuda,
   archive_format: archive_format_tar_gzip,
@@ -102,7 +102,7 @@ test fn jetpack6_asset_name_differs_from_generic_cuda() -> Bool {
 
 test fn pinned_generic_download_locator_matches_release_page() -> Bool {
   let locator = ollama_binary_release_download_locator(binary_release: ollama_required_release) as String
-  locator == "https://github.com/ollama/ollama/releases/download/9/ollama-linux-arm64.tar.zst"
+  locator == "https://github.com/ollama/ollama/releases/download/v0.32.9/ollama-linux-arm64.tar.zst"
 }
 
 test fn jetpack5_release_refuses_gb10_platform_catalog() -> Bool {

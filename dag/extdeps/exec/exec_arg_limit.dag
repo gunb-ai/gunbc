@@ -4,7 +4,7 @@ module extdeps.exec.exec_arg_limit
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "man7.org/linux/man-pages/man2/html"
+    locator: "man7.org/linux/man-pages/man2/execve.2.html"
   }
 }
 

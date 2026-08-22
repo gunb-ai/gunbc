@@ -7,7 +7,7 @@ data runner_broker_progress_watchdog_provisioning_note: String = "PART OF PROVIS
 
 data runner_broker_progress_silence_bound_seconds: std.types.Duration = 600
 
-data runner_broker_progress_silence_bound_basis_note: String = "DERIVED, NOT TUNABLE: pinned Actions Runner 0 backs off on repeated message failures in tens of seconds, settling ~30-60s between retries. Ten minutes spans many expected retry envelopes while the incident wedges were silent 41 and 77 MINUTES — an order of magnitude past any healthy retry cadence. Do not treat this bound as a knob."
+data runner_broker_progress_silence_bound_basis_note: String = "DERIVED, NOT TUNABLE: pinned Actions Runner v2.334.0 backs off on repeated message failures in tens of seconds, settling ~30-60s between retries. Ten minutes spans many expected retry envelopes while the incident wedges were silent 41 and 77 MINUTES — an order of magnitude past any healthy retry cadence. Do not treat this bound as a knob."
 
 data runner_watchdog_arm_reachability_stale_seconds: std.types.Duration = 5
 

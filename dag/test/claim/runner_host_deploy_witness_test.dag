@@ -10,9 +10,9 @@ test fn srv4_docker_prereq_cites_official_repo() -> Bool {
 
 test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool {
   let s = runner_host_sccache_provision_script(arch: "aarch64", sha256: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8")
-  string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/0/sccache-0-aarch64-unknown-linux-musl.tar.gz")
+  string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
     && string_contains(s: s, pattern: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8  /tmp/sccache.tar.gz")
-    && string_contains(s: s, pattern: "/tmp/sccache-0-aarch64-unknown-linux-musl/sccache' /usr/local/bin/sccache")
+    && string_contains(s: s, pattern: "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' /usr/local/bin/sccache")
 }
 
 test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {

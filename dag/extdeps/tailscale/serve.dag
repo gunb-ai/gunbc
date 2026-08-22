@@ -15,12 +15,12 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // THE CONFIGURATION KEY, which this module previously did not carry. EnableBackground took a local port and nothing else, so two deployments on one node were indistinguishable to the model while being indistinguishable to tailscale for a different reason: a bare `serve --bg <port>` binds the DEFAULT HTTPS listener at the ROOT mount path, so the second one issued rebinds `/` from the first backend to the second. The model could not express the difference because it did not carry the thing tailscale actually keys on.\n\nThe upstream tells you what the key is by what `off` requires. Per tailscale.com/kb/1242, turning one mapping off is the original command with `off` appended, and 'in off commands, the <target> argument is optional, but all original flags are required' — so the identity is (listener port x mount path x service), not the backend. That is why the backend is a field here rather than the identity: two endpoints differing only in backend are the SAME endpoint being reassigned, which is exactly the collision.\n\nThe root mount is a distinct VARIANT rather than a path string of \"/\", because the upstream spells them differently — the root is the absence of --set-path, not --set-path=/ — and the docs do not state that --set-path=/ is accepted at all. Inventing that equivalence would be the same uncited capability claim this module is being corrected for.
 type TailscaleServeMount
   = ServeRootMount
-  | ServeSetPath { path: std.types.NonEmptyStr }
+  | ServeSetPath { path: NonEmptyStr }
 
 type TailscaleServeEndpoint {
-  https_port: std.types.Port
+  https_port: Port
   mount: TailscaleServeMount
-  backend: std.types.NonEmptyStr
+  backend: NonEmptyStr
 }
 
 fn tailscale_serve_mount_argv(mount: TailscaleServeMount) -> List<String> {
@@ -67,8 +67,8 @@ fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {
   }
 }
 
-fn json_unique_member_value(v: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue? {
-  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+fn json_unique_member_value(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } => Present { value: value }
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
@@ -76,15 +76,15 @@ fn json_unique_member_value(v: extdeps.languages.json.emit.JsonValue, key: Strin
   }
 }
 
-fn tailscale_status_handler_proxy(handler: extdeps.languages.json.emit.JsonValue) -> List<String> {
+fn tailscale_status_handler_proxy(handler: JsonValue) -> List<String> {
   match json_unique_member_value(v: handler, key: "Proxy") {
-    Present { value: extdeps.languages.json.emit.JsonString { value: proxy } } => [proxy]
+    Present { value: JsonString { value: proxy } } => [proxy]
     Present { value: _ } => []
     Absent => []
   }
 }
 
-fn tailscale_status_web_entry_proxies(entry: extdeps.languages.json.emit.JsonValue, mount: TailscaleServeMount) -> List<String> {
+fn tailscale_status_web_entry_proxies(entry: JsonValue, mount: TailscaleServeMount) -> List<String> {
   match json_unique_member_value(v: entry, key: "Handlers") {
     Present { value: handlers } =>
       match json_unique_member_value(v: handlers, key: tailscale_serve_mount_status_key(mount: mount)) {
@@ -95,7 +95,7 @@ fn tailscale_status_web_entry_proxies(entry: extdeps.languages.json.emit.JsonVal
   }
 }
 
-fn tailscale_status_web_proxies(web: extdeps.languages.json.emit.JsonValue, mount: TailscaleServeMount) -> List<String> {
+fn tailscale_status_web_proxies(web: JsonValue, mount: TailscaleServeMount) -> List<String> {
   match web {
     JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
     JsonNull => []
@@ -109,7 +109,7 @@ fn tailscale_status_web_proxies(web: extdeps.languages.json.emit.JsonValue, moun
 data serve_status_json_projection_note: String = "Tailscale documents `serve status --json` as the machine-readable status surface. For the legacy node Serve configuration used by srv1, Web.<dns:port>.Handlers.<mount>.Proxy names the currently routed backend. DNS is intentionally not treated as identity here: it is a map key derived by tailscaled and the owned endpoint is listener x mount. Duplicate or wrong-shaped members yield no proxy.\n\nThat sentence used to end 'which the blue/green selector refuses before mutation; they never select a plausible slot', citing srv1_blue_green_slot_selection. That selector was deleted with the blue/green pair on 2026-08-19, so the citation named a symbol that no longer resolves -- the DESIGN section 3 stale-citation class, in an extdeps module. The projection's own behaviour is unchanged: a wrong-shaped member still yields no proxy. What is gone is the consumer that acted on it, and this module states the upstream fact rather than who reads it. tailscale_serve_status_proxy_targets and tailscale_serve_status_json_argv now have no production consumer at all and are held open only by test.claim.tailscale_serve_status."
 
 fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleServeMount) -> List<String> {
-  match extdeps.languages.json.parse.parse_json(s: status_json) {
+  match parse_json(s: status_json) {
     Present { value: doc } =>
       match json_unique_member_value(v: doc, key: "Web") {
         Present { value: web } => tailscale_status_web_proxies(web: web, mount: mount)
@@ -121,7 +121,7 @@ fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleSer
 
 data serve_scoped_removal_capability_note: String = "SCOPED REMOVAL IS A VERSION-OBSERVED CAPABILITY, NOT A CONSTANT — and the constant it replaces was wrong. This module's consumer previously asserted that tailscale serve has no per-port removal and only a node-global reset, built a refusal arm on that premise, and cited nothing. The upstream documents scoped removal via `off`, and separately notes that the Serve CLI CHANGED in client 1.52 (review, 2026-07-30; tailscale.com/kb/1242).\\n\\nSo the capability is a fact about the client installed on a particular host at a particular time, which is why it is a function of an observed version rather than a row. The verdict is three-valued because an unobserved version is neither capable nor incapable, and collapsing that to either pole is what produced the false claim above. A consumer must refuse BEFORE mutating rather than after, because the failure this guards is a teardown that silently removes nothing and reports success.\\n\\nThe boundary is stated as the version the upstream itself names, not as a version this repo picked."
 
-data tailscale_scoped_serve_off_minimum: extdeps.version.semver.SemVerVersion = extdeps.version.semver.SemVerVersion {
+data tailscale_scoped_serve_off_minimum: SemVerVersion = SemVerVersion {
   major: 1,
   minor: 52,
   patch: 0,
@@ -130,21 +130,21 @@ data tailscale_scoped_serve_off_minimum: extdeps.version.semver.SemVerVersion = 
 }
 
 type TailscaleServeCapability
-  = ScopedRemovalSupported { observed: extdeps.version.semver.SemVerVersion }
-  | ScopedRemovalUnsupported { observed: extdeps.version.semver.SemVerVersion }
+  = ScopedRemovalSupported { observed: SemVerVersion }
+  | ScopedRemovalUnsupported { observed: SemVerVersion }
   | ScopedRemovalUnobserved { reason: String }
 
 // THE VERDICT CARRIES WHAT IT WAS COMPUTED FROM. A Bool capability cannot be re-derived when the boundary moves or the host is upgraded, and cannot say WHICH client it is describing — so the observed version rides on both decided arms and only the undecided arm carries prose.\n\nIt is a SemVerVersion rather than the version string tailscale prints, grounded on extdeps.version.semver, because an earlier draft of this row held both a display string and a parsed major/minor pair — two representations of one fact, free to disagree, which is the exact defect class this module is being repaired for. The label is a projection (semver_version_label), so there is nothing to keep in sync.\n\nComparison is semver_compare rather than a hand-written major/minor ladder, for the same reason: the ordering is already modeled, and a second ladder would be a second answer.
-fn tailscale_scoped_removal_capability(observed: extdeps.version.semver.SemVerVersion) -> TailscaleServeCapability {
-  match extdeps.version.semver.semver_compare(a: observed, b: tailscale_scoped_serve_off_minimum) {
+fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServeCapability {
+  match semver_compare(a: observed, b: tailscale_scoped_serve_off_minimum) {
     Less => ScopedRemovalUnsupported { observed: observed }
     Equal => ScopedRemovalSupported { observed: observed }
     Greater => ScopedRemovalSupported { observed: observed }
   }
 }
 
-fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> std.types.NonEmptyStr {
-  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as std.types.NonEmptyStr
+fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
 }
 
 // PER-DEVICE SERVE CONFIGURATION (tailscale.com/kb/1242): route identity is unique within one tailnet device's `serve` surface, not universe-wide. `node` is grounded on product.network_topology NetworkEndpoint with role TailscaleEndpoint — the fleet tailnet device rows in gunbc.fleet_intent_network (srv1_tailscale_endpoint, srv2_tailscale_endpoint, …), not a minted parallel identity. `service` names the upstream Serve CLI surface on that device.
@@ -152,7 +152,7 @@ type TailscaleServeService
   = | ServeCli
 
 type TailscaleServeScope {
-  node: product.network_topology.NetworkEndpoint
+  node: NetworkEndpoint
   service: TailscaleServeService
 }
 
@@ -165,7 +165,7 @@ fn tailscale_serve_service() -> TailscaleServeService {
   ServeCli
 }
 
-fn tailscale_serve_scope(node: product.network_topology.NetworkEndpoint) -> TailscaleServeScope {
+fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
   TailscaleServeScope { node: node, service: tailscale_serve_service() }
 }
 
@@ -177,7 +177,7 @@ fn tailscale_serve_route_subject(
 }
 
 // Scope identity keys on NetworkEndpoint.label only: fleet tailnet device rows are singleton authorities per label (gunbc.fleet_intent_network). If endpoint rows at the same label can diverge on host/address/role/locality, widen equality here before call sites depend on label alone.
-fn tailscale_network_endpoint_label_eq(a: product.network_topology.NetworkEndpoint, b: product.network_topology.NetworkEndpoint) -> Bool {
+fn tailscale_network_endpoint_label_eq(a: NetworkEndpoint, b: NetworkEndpoint) -> Bool {
   a.label == b.label
 }
 
@@ -199,13 +199,13 @@ fn tailscale_serve_route_key_of(subject: TailscaleServeRouteSubject) -> Tailscal
   tailscale_serve_route_key(endpoint: subject.endpoint)
 }
 
-fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> std.types.NonEmptyStr {
+fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
   tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: endpoint))
 }
 
 // THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
 type TailscaleServeRouteKey {
-  https_port: std.types.Port
+  https_port: Port
   mount: TailscaleServeMount
 }
 
@@ -235,7 +235,7 @@ fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRout
   a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
 }
 
-fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> std.types.NonEmptyStr {
+fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
   join(
     [
       to_string(key.https_port),
@@ -243,14 +243,14 @@ fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> std.types.Non
       tailscale_serve_mount_status_key(mount: key.mount),
     ],
     "",
-  ) as std.types.NonEmptyStr
+  ) as NonEmptyStr
 }
 
-fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> std.types.NonEmptyStr {
+fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
   endpoint.backend
 }
 
-fn tailscale_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
+fn tailscale_endpoint_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
   a == b
 }
 
@@ -262,24 +262,24 @@ fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpo
 }
 
 // KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
-data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = std.key_relation.KeyRelation {
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = KeyRelation {
   scope_of: tailscale_serve_route_scope_of,
   key_of: tailscale_serve_route_key_of,
   scope_eq: tailscale_serve_scope_eq,
   key_eq: tailscale_serve_route_key_eq,
 }
 
-fn tailscale_serve_route_endpoint_state_of(subject: TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
+fn tailscale_serve_route_endpoint_state_of(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
   tailscale_endpoint_state_of(endpoint: subject.endpoint)
 }
 
 fn tailscale_serve_route_subject_value_eq(a: TailscaleServeRouteSubject, b: TailscaleServeRouteSubject) -> Bool {
-  extdeps.tailscale.serve.tailscale_endpoint_value_eq(a: a.endpoint, b: b.endpoint)
+  tailscale_endpoint_value_eq(a: a.endpoint, b: b.endpoint)
 }
 
-data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, std.types.NonEmptyStr> = std.key_relation.KeyedResourceRelation {
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
   key: tailscale_serve_route_key_relation,
-  state: std.key_relation.StateRelation {
+  state: StateRelation {
     state_of: tailscale_serve_route_endpoint_state_of,
     state_eq: tailscale_endpoint_state_eq,
   },

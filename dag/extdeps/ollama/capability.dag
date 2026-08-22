@@ -32,7 +32,7 @@ fn ollama_semantic_version(major: std.nat.Nat, minor: std.nat.Nat, patch: std.na
 
 data ollama_gpt_oss_feature_introduction_floor: OllamaSemanticVersion = ollama_semantic_version(major: 0, minor: 11, patch: 0)
 
-data ollama_gpt_oss_feature_introduction_citation: std.types.NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/0" as std.types.NonEmptyStr
+data ollama_gpt_oss_feature_introduction_citation: std.types.NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/v0.11.0" as std.types.NonEmptyStr
 
 type OllamaModelSupportRow {
   model: extdeps.ollama.api.OllamaModelRef

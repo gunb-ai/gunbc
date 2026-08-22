@@ -569,7 +569,7 @@ fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
 // typed-argv edge already enforces, reused rather than re-spelled.
 fn portable_remote_word(raw: String) -> PortableRemoteWord? {
   if raw != "" && portable_remote_word_text_ok(text: raw, i: 0, len: length(raw)) {
-    Present { value: PortableRemoteWord { value: raw as std.types.NonEmptyStr } }
+    Present { value: PortableRemoteWord { value: raw as NonEmptyStr } }
   } else {
     none
   }
@@ -580,10 +580,10 @@ fn portable_remote_word(raw: String) -> PortableRemoteWord? {
 // by passing an empty list to this one.
 type PortableRemoteWords {
   first: PortableRemoteWord
-  more: std.types.List<PortableRemoteWord>
+  more: List<PortableRemoteWord>
 }
 
-fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
+fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
     match acc {
       Absent => none
@@ -595,9 +595,9 @@ fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
   })
   match admitted {
     Absent => none
-    Present { value: ws } => match v2.std.algebra.list_head(ws) {
+    Present { value: ws } => match list_head(ws) {
       HeadAbsent => none
-      HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+      HeadFound { value: h } => match list_tail(ws) {
         TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
         TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
@@ -605,7 +605,7 @@ fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
   }
 }
 
-fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<String> {
+fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))
 }
 
@@ -618,29 +618,29 @@ fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<S
 // It takes the sealed context and nothing a caller could widen: there is no
 // options parameter to prepend into, so the first-obtained-value hazard has no surface. Every option
 // is derived here from the context -- trust from the anchor, credential from the binding, ambient
-// suppression unconditionally -- and the principal is projected to an explicit extdeps.ssh.client_options.User option rather
+// suppression unconditionally -- and the principal is projected to an explicit User option rather
 // than joined into the destination, so the account being tested is a modeled field rather than text.
 fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
-) -> std.types.List<String> {
-  let config_suppression = extdeps.ssh.client_options.openssh_suppress_ambient_configuration_options()
+) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),
     concat(
       fleet_ssh_credential_options(binding: context.credential),
       [
-        extdeps.ssh.client_options.User { name: target.principal },
-        extdeps.ssh.client_options.BatchMode { enabled: true },
-        extdeps.ssh.client_options.ConnectTimeout { seconds: std.measure.second(count: 10) },
+        User { name: target.principal },
+        BatchMode { enabled: true },
+        ConnectTimeout { seconds: second(count: 10) },
       ],
     ),
   )
   concat(
     concat(
-      flat_map(config_suppression, o => extdeps.ssh.client_options.serialize_ssh_config_file_flag(option: o)),
-      extdeps.ssh.client_options.serialize_ssh_client_options(options: derived),
+      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+      serialize_ssh_client_options(options: derived),
     ),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
   )
