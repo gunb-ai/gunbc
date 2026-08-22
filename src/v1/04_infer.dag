@@ -2051,18 +2051,17 @@ fn coproduct_payload_where_parent_required(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  if formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional {
-    false
-  } else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
+  let either_optional = formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional
+  if either_optional || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
     false
   } else {
     let formal_name = authored_name_at(source_indices: source_indices, node: formal)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
     // `Optional` is the language's own cardinality carrier, not an ordinary coproduct: a `T` in an
     // `Optional<T>` position is the declared spelling, not a payload escape.
-    if formal_name == "" || actual_name == ""
-      || qualified_last_segment(name: formal_name) == "Optional"
-      || qualified_last_segment(name: actual_name) == "Optional" {
+    let either_is_optional_carrier = qualified_last_segment(name: formal_name) == "Optional" ||
+      qualified_last_segment(name: actual_name) == "Optional"
+    if formal_name == "" || actual_name == "" || either_is_optional_carrier {
       false
     } else if application_type_names_compatible(
         formal_name: formal_name,
@@ -2076,7 +2075,8 @@ fn coproduct_payload_where_parent_required(
         Present { value: decl } =>
           // A GENERIC coproduct is excluded: its payload positions can be type variables, so
           // "the actual is a payload type" is not decidable from the declaration alone.
-          if decl.connective != Disj || (decl.params |> count) > 0 || (decl.children |> count) == 0 {
+          let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
+          if decl_is_concrete_coproduct == false {
             false
           } else if has_child_named(
               n: decl,
