@@ -349,6 +349,16 @@ fn body_lower_is_metadata_preserved_emitted(emitted: v2.std.node.Symbol) -> Bool
     || (emitted == ^dag_surface_import_block)
 }
 
+data body_lowering_structure_shell_note: String = "THE SAME SHAPE AS #8828, ONE NODE CLASS OVER: a shell with no body to lower FROM ITS OWN NODE was arriving at the unregistered-producer arm, so 'this production has no body-producer yet' and 'this production is structure, not a body' were one state. The five identities below are declaration and literal STRUCTURE -- a coproduct variant, a type-alias right-hand side, a field-declaration block, an fn type, and a record literal's named field. Four of them are type syntax, which has no Behavior to lower to at all; the fifth carries an expression that the bottom-up fold has ALREADY lowered before this node is reached, so preserving the shell preserves a lowered child, never an unlowered one. Preserving is what body_lower_is_metadata_preserved_emitted already does for the OUTER declarations these sit inside (dag_surface_type_decl, dag_surface_data_decl) -- the classification was written per node and the fold reaches inside, so every interior of an already-preserved declaration re-entered the dispatch and fell to the else arm.\n\nFOLD ORDER IS THE LOAD-BEARING ASSUMPTION FOR dag_surface_field_init, AND FOR IT ALONE. The other four are safe by what they ARE -- type syntax with no Behavior to lower to. field_init is safe by WHEN this dispatch reaches it: normalize_node_ctx folds children first and passes the FOLDED node to body_lower_finish_for_normalize, so the expression is already lowered by the time the shell is preserved. There is a live path in that same function where dispatch sees an UNFOLDED node -- the deferred arm passes `folded: n` and does not fold children -- so adding field_init to body_lower_is_deferred_lower_at_normalize, or otherwise dispatching before the child fold, would preserve a shell around an UNLOWERED expression. NONE OF THE THREE WITNESSES WOULD CATCH THAT: their field values are the literal 1, which lowers to itself, so the reordered and the current fold produce the same tree for exactly those sources. Stated here rather than covered, because an assumption named in the carrier is worth more than a witness that does not actually cover it. RUNG: this is a scope correction to a classifier, not a climb. The retained arm remains the counted frontier for a body shape with no producer, and that is the discriminating control: an emitted identity in none of these lists still retains, so the arm is not widened into an absorbing accept. Next-rung trigger: the preserved/structure classification derived from the grammar's own productions (a nonterminal reachable from dag_production_type_decl without crossing dag_production_expr is type syntax by construction) rather than enumerated here beside them."
+
+fn body_lower_is_structure_preserved_emitted(emitted: v2.std.node.Symbol) -> Bool {
+  (emitted == ^dag_surface_type_variant)
+    || (emitted == ^dag_surface_type_alias_rhs)
+    || (emitted == ^dag_surface_field_decl_block)
+    || (emitted == ^dag_surface_fn_type)
+    || (emitted == ^dag_surface_field_init)
+}
+
 fn body_lower_param_ref_atom(source: v2.std.node.Node, identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_with_occurrence_id(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
@@ -4165,6 +4175,8 @@ fn body_lower_forward_row_apply(shell: v2.std.node.Node, emitted: v2.std.node.Sy
 
 fn body_lower_production_emitted(shell: v2.std.node.Node, emitted: v2.std.node.Symbol, fn_body_pass_through: Bool) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    v2.std.diagnostic.outcome_accepted(value: shell)
+  } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     v2.std.diagnostic.outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
     v2.std.diagnostic.outcome_accepted(value: shell)
