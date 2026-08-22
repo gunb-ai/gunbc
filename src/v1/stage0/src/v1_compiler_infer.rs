@@ -5030,7 +5030,7 @@ pub fn optional_cast_diags(
             let source_name = authored_name_at(source_indices.clone(), src_node.clone());
             let source_is_optional = ((src_node.return_cardinality.clone()
                 == Cardinality::CardOptional)
-                || (source_name.clone() == "Optional".to_string()));
+                || (qualified_last_segment(source_name.clone()) == "Optional".to_string()));
             let target_is_optional =
                 (target_type.return_cardinality.clone() == Cardinality::CardOptional);
             if (source_is_optional.clone() && !target_is_optional.clone()) {
