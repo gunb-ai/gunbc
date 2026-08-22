@@ -24,8 +24,18 @@ import gunbc.bare_name_identity_consumer_census {
 // reader mistakes for "the census is verified".
 //
 // What it DOES guard is the roster's internal consistency, at the two places the carrier's types
-// could not make a bad row unwritable. Both assertions have a reachable RED: each fails on a row an
-// author could plausibly write, and neither is satisfied by the roster merely existing.
+// could not make a bad row unwritable. Both assertions have a reachable RED, and the RED WAS RUN
+// rather than asserted: against a green control, planting a sibling claim on the one row whose
+// identity is UnavailableNoNodeAtSite flips the first assertion to false, and setting one row's
+// call_site_count to zero flips the second, both on a binary built from this tree (receipt:
+// docs/probes/bare-name-identity-consumer-census-2026-08-22.md). A claimed-but-unrun RED is the
+// specification-without-execution trap DESIGN section 5 names, and it is the one this file would be
+// most likely to fall into, since every assertion here is about the file next to it.
+//
+// THE SAME PROBE MEASURED ONE ASSERTION FAILING TO DISCRIMINATE, recorded rather than dropped: under
+// the zero-call-site mutant, derived_counts_bounded_by_roster STAYS TRUE. That is correct -- the
+// bound it checks is not violated by a zero -- and it is why that assertion is described below as
+// the weakest in the file rather than as a third guard.
 //
 // NO COUNT IS ASSERTED AGAINST A LITERAL. Every number here is a fold over the rows compared to
 // another fold over the same rows, so adding a row cannot make this file stale and cannot be

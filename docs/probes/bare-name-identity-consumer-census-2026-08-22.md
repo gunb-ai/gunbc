@@ -122,3 +122,23 @@ the omission. What the carrier does hold by construction: a row cannot claim ide
 without naming the expression that holds it, cannot claim inertness without carrying the constant
 body, and cannot omit reachability. **Next-rung trigger:** the roster is derived by a lens over the
 emitter's own `Node` tree instead of swept by hand.
+
+## The witnesses' RED was run, not claimed
+
+Every assertion in `bare_name_identity_consumer_census_test` is about the file beside it, which is
+exactly the shape that greens for free. So the REDs were executed against a green control, on a
+binary built from this tree:
+
+| | control | mutant |
+|---|---|---|
+| `sibling_claim_has_an_identity_to_feed_it` | `true` | **`false`** — sibling claimed on the one row whose identity is `UnavailableNoNodeAtSite` |
+| `member_has_at_least_one_call_site` | `true` | **`false`** — one row's `call_site_count` set to `0` |
+| `derived_counts_bounded_by_roster` | `true` | `true` — **does not discriminate** under the zero mutant |
+
+The third row is reported because it is the interesting one: that assertion is not violated by a
+zero, which is correct and is why it is the weakest guard in the file rather than a third one. The
+mutants were applied on the runner and reverted there; the tree was confirmed byte-identical
+afterwards.
+
+The six derived counts in the histogram above were read off the same binary
+(`12 / 55 / 11 / 8 / 9 / 6`), so the table is a transcription of an execution, not of a reading.
