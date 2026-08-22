@@ -13,10 +13,16 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { committed_slot_identities }
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
+  RunnerCapacityAction,
+  RunnerSlotAdd,
+  RunnerSlotChange,
+  RunnerSlotRemove,
+  RunnerIncarnationReplace,
   PlanReady,
   PlanRefused,
 }
@@ -77,6 +83,32 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
 // slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
 // slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
 // different populations.
+fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
+  fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match a {
+        RunnerSlotAdd { to: id } => concat(acc, [id.slot_index])
+        RunnerSlotChange { from: _, to: _ } => acc
+        RunnerSlotRemove { from: _ } => acc
+        RunnerIncarnationReplace { slot: _, cause: _ } => acc
+      }
+  )
+}
+
+// THIS ROW ASSERTS WHICH SLOTS ARE ADDED, AND IT USED TO ASSERT HOW MANY. The change is not
+// cosmetic: against the roster the planner consumes, the COUNTS are identical before and after the
+// repair this commit makes to addition_actions -- srv3 plans one either way, srv4 plans two -- while
+// the identities are completely different. The count-shaped version of this row passed the broken
+// planner and would have passed the fixed one, flickering at neither.
+//
+// WHAT THE BROKEN PLANNER ACTUALLY PROPOSED, measured: srv3 add 05, which is ALREADY REGISTERED,
+// while 03, the slot genuinely missing from the roster, was never planned at any width. That is the
+// dense-prefix comparison surviving in the subtraction after both populations had become sets, and
+// decoding the observation is what made it harmful -- a real roster has holes and a count cannot see
+// them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
+// its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 6,
@@ -85,9 +117,24 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 1
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
+      added_indices(actions: addition_actions(
+        host: operator_host_srv3, requested_width: 6,
+        observed: observed_prefix_from_roster(host: operator_host_srv3)
+      )) == [3]
+        && added_indices(actions: addition_actions(
+             host: operator_host_srv4, requested_width: 6,
+             observed: observed_prefix_from_roster(host: operator_host_srv4)
+           )) == [3, 6]
     PlanRefused { reason: _ } => false
+  }
+}
+
+fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  match observed_github_slot_identities(host: host, roster: organization_runner_roster_evidence()) {
+    GitHubSlotPopulationObserved { identities: ids } => ids
+    GitHubSlotPopulationUnreadable { reason: _ } => []
+    GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
+    GitHubSlotPopulationForeignRegistration { registration_name: _ } => []
   }
 }
 
@@ -107,14 +154,26 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // case that satisfies them all. And they assert IDENTITIES and counts of real actions, never a bare
 // length: a length cannot tell [6] from [7], so a planner producing the right NUMBER of the WRONG
 // slots would pass.
+// A DENSE PREFIX IS A LEGITIMATE FIXTURE HERE AND WAS AN ILLEGITIMATE PRODUCTION OBSERVATION, which
+// is the same shape appearing on both sides of the change. These rows exercise the addition
+// arithmetic directly and are entitled to hand it any population they like, including a hole-free
+// one. What was wrong was the PLANNER deriving that shape from a width instead of reading it.
+fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
+  fold(
+    committed_slot_identities(host: host),
+    init: [],
+    f: (acc, id) => if id.slot_index > n { acc } else { concat(acc, [id]) }
+  )
+}
+
 test fn the_additions_run_is_general_across_transitions() -> Bool {
   nat_range_inclusive(lo: 6, hi: 6) == [6]
     && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
     && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
     && nat_range_inclusive(lo: 6, hi: 5) == []
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 0).length() == 6
-    && addition_actions(host: operator_host_srv4, requested_width: 3, observed_width: 0).length() == 3
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 6).length() == 0
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 6
+    && addition_actions(host: operator_host_srv4, requested_width: 3, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 3
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 6)).length() == 0
 }
 
 // THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
@@ -143,8 +202,8 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
 // that discriminates.
 test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
-  addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 5).length() == 1
-    && addition_actions(host: operator_host_srv3, requested_width: 6, observed_width: 5).length() == 0
+  addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 5)).length() == 1
+    && addition_actions(host: operator_host_srv3, requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
@@ -159,8 +218,8 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
 }
 
 test fn satisfied_observed_width_plans_zero_additions() -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: 5, observed_width: 5).length() == 0
-    && addition_actions(host: operator_host_srv3, requested_width: 7, observed_width: 7).length() == 0
+  addition_actions(host: operator_host_srv3, requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
+    && addition_actions(host: operator_host_srv3, requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
 }
 
 fn population_is_refused(v: SlotPopulationVerdict) -> Bool {

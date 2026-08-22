@@ -283,19 +283,36 @@ fn desired_github_identities(host: HostIdentity, requested_width: Int) -> List<R
   )
 }
 
+// THE SUBTRACTION TAKES A SET, AND UNTIL THIS COMMIT IT TOOK A COUNT. The desired side has been an
+// exact identity set for a while; the difference against it was still `id.slot_index > observed_width`
+// -- a DENSE PREFIX comparison against a cardinal. That is correct only if the observed population is
+// always slots 1..n with no holes, which is the assumption this whole module has been dismantling.
+//
+// MAKING THE OBSERVATION HONEST IS WHAT MADE THIS HARMFUL. While the observed side was a synthesized
+// dense prefix the count DID describe a prefix, so the comparison was accidentally right. Decoding
+// the real roster produces holes -- against the corpus the planner consumes, srv3 and srv4 each hold
+// {01,02,04,05} with 03 missing -- and a count of 4 then means something the comparison cannot read.
+// Measured on srv3 before this fix: desired {01..05} minus "index > 4" planned an addition of 05,
+// WHICH IS ALREADY REGISTERED, and never planned 03, WHICH IS THE ONE ACTUALLY MISSING. Fail-closed
+// on the registration gate, but unable to converge, and proposing work against a live slot.
+//
+// THE COUNT IS UNCHANGED BY THE FIX AND THAT IS THE WHOLE WARNING. srv3 plans one addition before and
+// one after; srv4 plans two and two. Only the IDENTITIES differ. A witness asserting add COUNTS would
+// have passed both the broken and the repaired planner without flickering, which is why the rows for
+// this assert which slots are added rather than how many.
 fn addition_actions(
   host: HostIdentity,
   requested_width: Int,
-  observed_width: Int,
+  observed: List<RunnerSlotIdentity>,
 ) -> List<RunnerCapacityAction> {
   fold(
     desired_github_identities(host: host, requested_width: requested_width),
     init: [],
     f: (acc, id) =>
-      if id.slot_index > observed_width {
-        concat(acc, [RunnerSlotAdd { to: id }])
-      } else {
+      if identity_in_list(identity: id, members: observed) {
         acc
+      } else {
+        concat(acc, [RunnerSlotAdd { to: id }])
       }
   )
 }
@@ -481,7 +498,7 @@ fn plan_runner_capacity_host_against_observation(
                   observed_width: observed_width,
                   actions: concat(
                     repairs,
-                    addition_actions(host: host, requested_width: admitted, observed_width: observed_width)
+                    addition_actions(host: host, requested_width: admitted, observed: observed)
                   ),
                 }
               }
