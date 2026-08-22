@@ -43,8 +43,9 @@ data dissolution_census_cost_class_note: String = "unbound_dissolution_empty_lit
 // could not decide instead of reporting a bare false. A count would have said the same
 // thing about a different set.
 test fn census_verdict_is_answered_over_the_live_tree() -> Bool {
-  length(xs: dissolution_census_refused_keys(verdict: dissolution_census_verdict())) == 0
-    && match dissolution_census_verdict() {
+  let verdict = dissolution_census_verdict()
+  length(xs: dissolution_census_refused_keys(verdict: verdict)) == 0
+    && match verdict {
       DissolutionCensusAnswered { report: _ } => true
       DissolutionCensusRefused { undecided: _ } => false
     }
