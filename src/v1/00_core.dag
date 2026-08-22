@@ -172,6 +172,20 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: std.types.SourceSpan }
   | OccurrenceTransportViolation { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: std.types.SourceSpan }
+  | UseLineCandidateRefused { name: String, cause: UseLineCandidateRefusalCause, span: std.types.SourceSpan }
+
+// The three ways a use-line candidate can fail to reach a synthesized use-line.
+// They are separate arms rather than one counter because they are different
+// deficits with different repairs: a name the registry cannot resolve at all, a
+// name whose registry row points back at the consuming module, and a name whose
+// provider is known but whose export surface does not prove it. A single total
+// over the three would reproduce, one level up, exactly the state-space
+// conflation the split exists to remove -- and there is deliberately no residual
+// arm, because an "other" bucket is where the next uncounted class hides.
+type UseLineCandidateRefusalCause
+  = UseLineRegistryResolveFailed
+  | UseLineRegistryResolvesToSelf
+  | UseLineProviderExportProofUnproven
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -255,6 +269,14 @@ fn occurrence_transport_refusal_diagnostic_message(
   }
 }
 
+fn use_line_candidate_refusal_cause_message(c: UseLineCandidateRefusalCause) -> String {
+  match c {
+    UseLineRegistryResolveFailed => "the bare-name registry resolves it to no module"
+    UseLineRegistryResolvesToSelf => "the registry resolves it to the consuming module itself"
+    UseLineProviderExportProofUnproven => "its provider is known but does not prove the symbol in its transitive export surface"
+  }
+}
+
 fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
@@ -293,6 +315,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
       span: s
     } => s
     UnlistedImportUse { name: _, span: s } => s
+    UseLineCandidateRefused { name: _, cause: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
@@ -363,6 +386,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
         "]"
       )
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    UseLineCandidateRefused { name: n, cause: c, span: _ } => concat("use-line candidate '", n, "' refused: ", use_line_candidate_refusal_cause_message(c: c))
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
@@ -412,6 +436,7 @@ data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor f
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
+    UseLineCandidateRefused { name: _, cause: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
@@ -428,6 +453,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     UnlistedImportUse { name: _, span: _ } => false
+    UseLineCandidateRefused { name: _, cause: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
     _ => true
@@ -437,6 +463,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
+    UseLineCandidateRefused { name: _, cause: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>

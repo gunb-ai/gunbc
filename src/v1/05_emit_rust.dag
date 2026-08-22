@@ -2429,7 +2429,9 @@ fn emit_rust(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.emit_c
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  let module_emit_results = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  let module_files = module_emit_results |> map(r => r.file)
+  let use_line_refusals = module_emit_results |> flat_map(r => r.refusals)
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2465,7 +2467,7 @@ fn emit_rust(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.emit_c
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
-  v1.compiler.emit_core_support.EmitResult { files: files, diagnostics: [] }
+  v1.compiler.emit_core_support.EmitResult { files: files, diagnostics: use_line_refusals }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -2685,7 +2687,7 @@ fn emit_module(typed_module: v1.compiler.infer_items.TypedModule, registry: std.
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
   let module_index = build_module_index(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
 }
 
 fn build_module_export_sets(modules: std.types.List<v1.compiler.infer_items.TypedModule>) -> std.types.Map<String, std.types.Map<String, Bool>> {
@@ -3237,11 +3239,34 @@ fn reference_provider_module(name: String, registry: std.types.Map<String, v1.co
   }
 }
 
-fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted_type_names: std.types.List<String>, this_module_name: String, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, local_type_names: std.types.List<String>, already_imported_names: std.types.List<String>, export_sets: std.types.Map<String, std.types.Map<String, Bool>>, typed_modules: std.types.List<v1.compiler.infer_items.TypedModule>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, module_index: ModuleIndex) -> std.types.List<String> {
+// A candidate that is already bound or kernel-provided is NOT counted as refused:
+// it needs no use-line, which is a disposition rather than a deficit. Only the
+// three genuine failures are counted, each on its own cause.
+//
+// Both halves of one decision, returned together rather than recomputed by a
+// second reader: which candidates became use-lines, and which were refused and
+// why. Splitting them into two functions over the same inputs would fork the
+// candidate computation, and the refused half is only meaningful against the
+// exact population the emitted half was drawn from.
+type UseLineDispositions {
+  lines: std.types.List<String>
+  refusals: std.types.List<v1.std.core.ErrorNode>
+}
+
+type ModuleEmitResult {
+  file: v1.std.core.TextFile
+  refusals: std.types.List<v1.std.core.ErrorNode>
+}
+
+fn reference_derived_use_line_dispositions(items: std.types.List<v1.std.core.Node>, unlisted_type_names: std.types.List<String>, this_module_name: String, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, local_type_names: std.types.List<String>, already_imported_names: std.types.List<String>, export_sets: std.types.Map<String, std.types.Map<String, Bool>>, typed_modules: std.types.List<v1.compiler.infer_items.TypedModule>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, module_index: ModuleIndex) -> UseLineDispositions {
   {
     let module_source = match typed_modules |> filter(tm => v1.std.core.authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
       Absent => ""
+    }
+    let module_span = match typed_modules |> filter(tm => v1.std.core.authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
+      Present { value: tm } => tm.module.span
+      Absent => v1.std.core.no_span()
     }
     let value_names = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
     let type_surface_names = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info)))
@@ -3290,10 +3315,24 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
         && provider_proven_exports_symbol(name: leaf, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
       { [name] } else { [] }
     )
+    let use_line_refusals = candidates |> flat_map(name =>
+      let leaf = v1.std.core.qualified_last_segment(name: name)
+      let provider = reference_provider_module(name: name, registry: registry)
+      if v1.compiler.infer_types.emit_map_has(m: already, key: leaf) || is_kernel_type(name: leaf)
+        || is_known_variant(type_summaries: emit_info.type_summaries, name: leaf) {
+        []
+      } else if provider == "" {
+        [v1.std.core.make_error_node(diagnostic: v1.std.core.UseLineCandidateRefused { name: name, cause: v1.std.core.UseLineRegistryResolveFailed, span: module_span }, module_name: this_module_name)]
+      } else if provider == this_module_name {
+        [v1.std.core.make_error_node(diagnostic: v1.std.core.UseLineCandidateRefused { name: name, cause: v1.std.core.UseLineRegistryResolvesToSelf, span: module_span }, module_name: this_module_name)]
+      } else if !provider_proven_exports_symbol(name: leaf, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        [v1.std.core.make_error_node(diagnostic: v1.std.core.UseLineCandidateRefused { name: name, cause: v1.std.core.UseLineProviderExportProofUnproven, span: module_span }, module_name: this_module_name)]
+      } else { [] }
+    )
     let providers = v1.compiler.emit_core_support.unique_strings(items: unlisted
       |> map(name => reference_provider_module(name: name, registry: registry))
       |> filter(m => m != ""))
-    providers |> flat_map(provider =>
+    let emitted_use_lines = providers |> flat_map(provider =>
       let names = unlisted
         |> filter(name => reference_provider_module(name: name, registry: registry) == provider)
         |> map(name => v1.std.core.qualified_last_segment(name: name))
@@ -3311,10 +3350,11 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
       )
       concat(block_lines, fallback)
     )
+    UseLineDispositions { lines: emitted_use_lines, refusals: use_line_refusals }
   }
 }
 
-fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, shared_types: std.types.Set<String>, svc_module_map: std.types.Map<String, String>, data_items: std.types.Map<String, v1.std.core.Node>, export_sets: std.types.Map<String, std.types.Map<String, Bool>>, typed_modules: std.types.List<v1.compiler.infer_items.TypedModule>, module_index: ModuleIndex, unlisted_type_names: std.types.List<String>) -> v1.std.core.TextFile {
+fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, shared_types: std.types.Set<String>, svc_module_map: std.types.Map<String, String>, data_items: std.types.Map<String, v1.std.core.Node>, export_sets: std.types.Map<String, std.types.Map<String, Bool>>, typed_modules: std.types.List<v1.compiler.infer_items.TypedModule>, module_index: ModuleIndex, unlisted_type_names: std.types.List<String>) -> ModuleEmitResult {
   let m = typed_module.module
   let scope = v1.compiler.emit.module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -3357,7 +3397,7 @@ fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry:
     prelude_imported_names,
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
-  let reference_use_lines = reference_derived_use_lines(
+  let use_line_dispositions = reference_derived_use_line_dispositions(
       items: typed_module.items,
       unlisted_type_names: unlisted_type_names,
       this_module_name: v1.compiler.infer_env.authored_name(env: scope.type_env, node: m),
@@ -3370,6 +3410,7 @@ fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry:
       source_indices: scope.type_env.source_indices,
       module_index: module_index
     )
+  let reference_use_lines = use_line_dispositions.lines
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = v1.compiler.emit_core_support.module_to_filename(name: v1.compiler.infer_env.authored_name(env: scope.type_env, node: m))
@@ -3423,7 +3464,10 @@ fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry:
     "// Source module: ", v1.compiler.infer_env.authored_name(env: scope.type_env, node: m), "\n\n",
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
-  v1.std.core.TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
+  ModuleEmitResult {
+    file: v1.std.core.TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
+    refusals: use_line_dispositions.refusals
+  }
 }
 
 // Dotted-render class, USE-LIST position -- the single point every derived `use crate::<mod>::{..}`
