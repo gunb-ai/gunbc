@@ -1,0 +1,86 @@
+module test.claim.transparent_alias_direct_call_arg_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_advisory_rows,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A transparent alias -- `type X = Base` with no where-clause -- declares that X and Base
+// are one type. The direct-call argument seam refused the interchange anyway whenever Base
+// was a record or a coproduct, because the transparency test asked whether Base was a
+// KERNEL type rather than whether the declaration was an alias at all. Kernel and container
+// bases were already accepted, so the defect was invisible from the kernel side; it is
+// recorded here as a pair per alias kind so a future narrowing of the predicate reds on the
+// kinds it drops rather than on a count.
+//
+// The discriminating RED is transparent_alias_genuine_mismatch_still_refuses: a widened
+// transparency test that accepted everything would satisfy every other row in this file.
+// It is a permanent regression control, not a fixture to retire once the repair lands.
+//
+// The brand row is the other direction. Brand-ness is observed as an EMPTY authored
+// structural name on the resolved node, not by reading the where-clause, so a brand can
+// never satisfy the transparency test; the control proves the widened test did not sweep
+// brands up with aliases. It asserts the deferred-predicate ADVISORY rather than a refusal
+// because brands are not enforced at this seam in either direction -- that is a separate,
+// weaker rung recorded in the guarantee-recovery analysis, and this row pins only that the
+// brand survives resolution as a distinct type at all.
+
+fn alias_type_mismatch_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn alias_where_advisory_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_advisory_rows(rows: census_rows_of_class(rows: rows, wanted: "WhereRefinementUnenforced")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data record_alias_both_directions_source: String = "module alias_record\ntype Rec { value: Int }\ntype AliasRec = Rec\nfn takes_rec(r: Rec) -> Int { r.value }\nfn takes_alias(r: AliasRec) -> Int { r.value }\nfn fwd(x: AliasRec) -> Int { takes_rec(r: x) }\nfn rev(x: Rec) -> Int { takes_alias(r: x) }\n"
+
+data coproduct_alias_both_directions_source: String = "module alias_coproduct\ntype Sum = Leaf { n: Int } | Pair { a: Int, b: Int }\ntype AliasSum = Sum\nfn takes_sum(x: Sum) -> Int { 0 }\nfn takes_alias(x: AliasSum) -> Int { 0 }\nfn fwd(x: AliasSum) -> Int { takes_sum(x: x) }\nfn rev(x: Sum) -> Int { takes_alias(x: x) }\n"
+
+data kernel_alias_both_directions_source: String = "module alias_kernel\ntype AliasKernel = String\nfn takes_string(s: String) -> Int { 0 }\nfn takes_alias(s: AliasKernel) -> Int { 0 }\nfn fwd(x: AliasKernel) -> Int { takes_string(s: x) }\nfn rev(x: String) -> Int { takes_alias(s: x) }\n"
+
+data container_alias_both_directions_source: String = "module alias_container\ntype AliasList = List<Int>\nfn takes_list(xs: List<Int>) -> Int { xs |> count }\nfn takes_alias(xs: AliasList) -> Int { xs |> count }\nfn fwd(x: AliasList) -> Int { takes_list(xs: x) }\nfn rev(x: List<Int>) -> Int { takes_alias(xs: x) }\n"
+
+data genuine_mismatch_source: String = "module alias_genuine_mismatch\ntype Rec { value: Int }\ntype AliasKernel = String\nfn takes_rec(r: Rec) -> Int { r.value }\nfn bad(x: AliasKernel) -> Int { takes_rec(r: x) }\n"
+
+data brand_survives_resolution_source: String = "module alias_brand\ntype Branded = String where brand(\"Branded\")\nfn takes_brand(b: Branded) -> Int { 0 }\nfn base_into_brand(s: String) -> Int { takes_brand(b: s) }\n"
+
+test fn transparent_record_alias_admits_both_directions() -> Bool {
+  alias_type_mismatch_count(source: record_alias_both_directions_source) == 0
+}
+
+test fn transparent_coproduct_alias_admits_both_directions() -> Bool {
+  alias_type_mismatch_count(source: coproduct_alias_both_directions_source) == 0
+}
+
+test fn transparent_kernel_alias_admits_both_directions() -> Bool {
+  alias_type_mismatch_count(source: kernel_alias_both_directions_source) == 0
+}
+
+test fn transparent_container_alias_admits_both_directions() -> Bool {
+  alias_type_mismatch_count(source: container_alias_both_directions_source) == 0
+}
+
+test fn transparent_alias_genuine_mismatch_still_refuses() -> Bool {
+  alias_type_mismatch_count(source: genuine_mismatch_source) == 1
+}
+
+test fn brand_is_not_swept_up_as_a_transparent_alias() -> Bool {
+  alias_where_advisory_count(source: brand_survives_resolution_source) == 1
+}

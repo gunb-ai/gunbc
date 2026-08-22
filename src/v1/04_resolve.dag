@@ -126,9 +126,17 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
+// The transparency test reads BRAND-NESS off the resolved structural node, not off the
+// declaration's where-clause and not off the base's kind. A brand (`type X = Base where p`)
+// resolves to a structural node carrying an EMPTY authored name; a transparent alias
+// (`type X = Base`) resolves to one carrying Base's own authored name. Keying on
+// `is_kernel_type` instead made transparency a property of the BASE, so every alias over a
+// non-kernel base -- `type Hash = Fnv1a64Structural`, `type ParseTree = Node` -- kept a
+// nominal identity it never declared, and the direct-call argument seam then refused the
+// interchange the declaration authorises.
 fn is_transparent_primitive_alias_rhs(structural: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   structural.connective == NoConnective && structural.children |> count == 0
-    && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: structural))
+    && authored_name_at(source_indices: source_indices, node: structural) != ""
 }
 
 fn preserve_nominal_brand_on_resolve(

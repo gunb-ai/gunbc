@@ -204,7 +204,7 @@ pub fn is_transparent_primitive_alias_rhs(
 ) -> bool {
     (((structural.connective.clone() == Connective::NoConnective)
         && ((structural.children.clone().len() as i64) == 0))
-        && is_kernel_type(authored_name_at(source_indices.clone(), structural.clone())))
+        && (authored_name_at(source_indices.clone(), structural.clone()) != "".to_string()))
 }
 
 pub fn preserve_nominal_brand_on_resolve(
