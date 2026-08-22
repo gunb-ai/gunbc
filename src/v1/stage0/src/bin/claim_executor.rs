@@ -10380,6 +10380,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_cited_symbol_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
     let mut behavioral_receipt_plan_mode = false;
@@ -10410,6 +10411,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--required-cited-symbol" => {
+                required_cited_symbol_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -10611,42 +10615,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the cited-symbol census over the live corpus. Independent of every phase
-        // above: it reads the authored reference population, not this run's products.
-        eprintln!("required-ci: phase cited-symbol (every authored DeclarationRef resolves)");
-        match required_ci_cited_symbol_census(&source_roots) {
-            Ok(rows) if rows.is_empty() => match required_ci_cited_symbol_population(&source_roots) {
-                Ok(checked) => eprintln!(
-                    "required-ci: cited-symbol OK every authored reference resolves checked={checked}"
-                ),
-                // THE DENOMINATOR IS PART OF THE VERDICT, so failing to read it fails the phase.
-                // An empty report means "nothing refused"; it does not distinguish "everything
-                // resolved" from "nothing was checked", and reporting the first while unable to
-                // establish the second is the fabricated-plausible-output arm.
-                Err(e) => {
-                    eprintln!("required-ci: cited-symbol refused: population unreadable: {e}");
-                    phase_failures.push(format!("cited-symbol refused: population unreadable: {e}"));
-                }
-            },
-            Ok(rows) => {
-                for row in &rows {
-                    eprintln!("required-ci: cited-symbol REFUSED {row}");
-                }
-                eprintln!(
-                    "required-ci: cited-symbol FAIL {} authored reference(s) do not resolve — a \
-                     citation outlived what it names (DESIGN §3)",
-                    rows.len()
-                );
-                phase_failures.push(format!("cited-symbol ({} refusal(s))", rows.len()));
-            }
-            Err(e) => {
-                eprintln!("required-ci: cited-symbol refused: {e}");
-                phase_failures.push(format!("cited-symbol refused: {e}"));
-            }
-        }
-        ran.push("cited-symbol");
-
-        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10720,6 +10689,58 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             Err(e) => {
                 eprintln!("required-regen-fixed-point: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    //
+    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
+    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
+    // for. A census with a different subject gets its own named check instead: `--required-ci`
+    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
+    // quietly reinterpreted. Routing the same phase in under a different name would be the
+    // workaround this repository refuses; a distinct concern with its own check is the shape the
+    // ruling points at.
+    //
+    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
+    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
+    // reading the live corpus IS this census's subject -- relocating the witness moves it from
+    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
+    // cheaper opens that door.
+    //
+    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
+    // green -- the population it checked. An empty refusal list means both "every authored
+    // reference resolved" and "there were no references to check"; those are different states and
+    // only the first is coverage, so a population it cannot read FAILS rather than greening over
+    // an unknown denominator.
+    if required_cited_symbol_mode {
+        let rows = match cited_symbol_census(&source_roots) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if !rows.is_empty() {
+            for row in &rows {
+                eprintln!("cited-symbol: REFUSED {row}");
+            }
+            eprintln!(
+                "cited-symbol: FAIL {} authored reference(s) do not resolve — a citation outlived \
+                 what it names (DESIGN §3)",
+                rows.len()
+            );
+            return Err(ExitCode::from(1));
+        }
+        return match cited_symbol_population(&source_roots) {
+            Ok(checked) => {
+                eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("cited-symbol: refused: population unreadable: {e}");
                 Err(ExitCode::from(1))
             }
         };
@@ -20460,7 +20481,7 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 ///
 /// An empty refusal list is returned both when every reference resolves and when there are no
 /// references at all; those are different states and only the first is coverage.
-fn required_ci_cited_symbol_population(source_roots: &[String]) -> Result<i64, String> {
+fn cited_symbol_population(source_roots: &[String]) -> Result<i64, String> {
     let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
     match run_value(&ctx, "cited_symbol_production_reference_count") {
         Ok(Value::Int(n)) => Ok(n),
@@ -20495,7 +20516,7 @@ fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, 
     Ok((ctx, entry))
 }
 
-fn required_ci_cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
+fn cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
     let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
     match run_value(&ctx, "cited_symbol_unresolved_reference_report") {
         Ok(Value::List(rows)) => {

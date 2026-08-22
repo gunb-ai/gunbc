@@ -28,7 +28,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { floor_run_command }
+import gunbc.fabric_witness_run { cited_symbol_run_command, floor_run_command }
 import extdeps.exec.command { shell_command_render }
 import std.types { List, String, Int }
 
@@ -469,6 +469,114 @@ fn witness_floor_job() -> Job {
   }
 }
 
+// THE CITED-SYMBOL CENSUS IS A SECOND JOB, WHICH IS WHAT MAKES IT A SEPARATELY NAMED CHECK.
+//
+// A GitHub check-run is a JOB, not a step, so a census that is meant to be its own required check
+// cannot be a step inside the witnesses job -- it would report under that job's name and its
+// verdict would be indistinguishable from the floor's on the checks list.
+//
+// WHY IT IS NOT A FOURTH `--required-ci` PHASE. The operator narrowed that mode from eight phases
+// to three on 2026-08-21 (#8791). That ruling is about what one composed entry point is
+// responsible for, and this job does not touch it: `--required-ci` still runs exactly three
+// phases, and its invocation above is unchanged. Routing the same work back in under a different
+// name would be the workaround this repository refuses; a distinct subject with its own check is
+// the shape the ruling points at.
+//
+// WHY IT IS NOT A FLOOR CLAIM, which is structural rather than a preference: `run_required_floor`
+// declines any entry that reads the live tree (`DeclinedLiveTree`), and reading the live corpus IS
+// this census's subject. Relocating the witness moves it from `DeclinedLongModule` to
+// `DeclinedLiveTree` and never to `Planned`, so no amount of making it cheaper opens that route.
+//
+// THE COST OF A SECOND JOB, stated rather than hidden: it re-does checkout, toolchain and build.
+// The build is the same cargo invocation against the same self-hosted runner pool, so it is warm
+// in the ordinary case, and the census itself is ~2 minutes against a floor job of ~30. The two
+// jobs are independent by construction -- no `needs` edge -- so a red floor cannot silence this
+// census and a red census cannot silence the floor. That independence is the point: they answer
+// different questions and a reader must be able to see which one failed.
+fn cited_symbol_run_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "cd \"$ROOT\"\n",
+      concat(shell_command_render(command: cited_symbol_run_command()), "\n")
+    )
+  )
+}
+
+fn cited_symbol_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Cited-symbol census (every authored DeclarationRef resolves)" },
+    id: none,
+    run: cited_symbol_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn cited_symbol_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: witness_floor_checkout_step(),
+      role: CapabilityNeutral,
+      step_name: "Checkout",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: ProvidesCapability { capability: CargoCapability },
+      step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_build_step(),
+      role: ConsumesCapability { capability: CargoCapability },
+      step_name: "Build the witness fold",
+    },
+    WitnessFloorBoundStep {
+      step: cited_symbol_run_step(),
+      role: CapabilityNeutral,
+      step_name: "Cited-symbol census (every authored DeclarationRef resolves)",
+    },
+  ]
+}
+
+fn cited_symbol_step_annotations() -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: cited_symbol_bound_steps(),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn cited_symbol_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: cited_symbol_step_annotations()),
+  )
+}
+
+data cited_symbol_job_id: String = "cited-symbol"
+
+// 30 rather than the floor's 180. The census measured 1m39s-2m13s on a remote runner; a bound is
+// not derived from those, but it is chosen so that a wedged run reports within the same working
+// hour instead of holding a self-hosted runner for three hours to say nothing.
+fn cited_symbol_job() -> Job {
+  Job {
+    id: cited_symbol_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: cited_symbol_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 30,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
@@ -507,7 +615,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [witness_floor_job()]
+  jobs: [witness_floor_job(), cited_symbol_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.

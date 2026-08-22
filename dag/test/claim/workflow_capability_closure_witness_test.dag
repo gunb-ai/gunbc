@@ -10,7 +10,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import gunbc.witness_floor_workflow { witness_floor_capability_closure_holds }
+import gunbc.witness_floor_workflow { cited_symbol_capability_closure_holds, witness_floor_capability_closure_holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -90,4 +90,11 @@ test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool {
 // fact, one observed here and one enforced there.
 test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool {
   witness_floor_capability_closure_holds()
+}
+
+// THE SECOND LIVE JOB. The cited-symbol census is a separate check-run, so it is a separate job,
+// so it carries its own toolchain->build ordering and its own way to be broken. Asserting the
+// floor job closes says nothing about it: the two jobs share no steps, only a shape.
+test fn the_live_cited_symbol_job_closes_its_capabilities() -> Bool {
+  cited_symbol_capability_closure_holds()
 }
