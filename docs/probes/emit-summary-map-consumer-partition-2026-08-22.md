@@ -95,20 +95,47 @@ An identity-keyed summary map changes nothing at that hop until the table is key
 `emit_container` shape: keying on identity is not merely absent there, it is impossible without
 changing the signature.
 
-## The collision population, measured before any refusal
+## The collision population, at two grains
 
 The refusal a re-key would arm fires when two declarations **in one emitted closure** share a
-spelling. Corpus-wide upper bound, measured 2026-08-22 over every module-scope `type NAME`
-declaration under `dag/` and `src/`: **9474 declarations, 97 distinct names declared in two or more
-distinct files** (116 before same-file duplicates are removed). Specimens:
-`String` (`dag/std/string_type.dag`, `src/v2/std/text.dag`), `UriScheme` (`dag/extdeps/uri.dag`,
-`src/v2/std/network.dag`), `Token` (`src/v1/00_core.dag`, `src/v2/std/compilers/lexing.dag`).
+spelling. Both grains are carried, and kept apart: a per-closure map cannot be refuted by a
+corpus-wide count.
 
-**This is an upper bound and not the refusal population**, because no closure contains every file;
-and it is not a lower bound either, because it counts `type` declarations only and says nothing
-about the composite variant keys. The closure-grain number requires executing
-`build_emit_graph_info` over a real entry, and that measurement is what must precede landing a
-refusal.
+**Corpus-wide upper bound**, 2026-08-22, over every module-scope `type NAME` declaration under
+`dag/` and `src/`: **9474 declarations, 97 distinct names declared in two or more distinct files**
+(116 before same-file duplicates are removed). It bounds the refusal from above and is not the
+refusal population.
+
+**Closure grain**, taken by seeding the closure exactly as production discovery does — for the
+stage0 row, every `.dag` under `src/v1` plus the import closure through the module index over
+`src/v1` and `dag` (`v1_compiler.cli_run` `regen_input_sources`); for the entry rows, one entry plus
+its import closure:
+
+| closure | modules | type decls | colliding names |
+|---|---:|---:|---:|
+| stage0 regen (the seed emitting itself) | 128 | 974 | **1** |
+| `src/v2/compiler/00_compile.dag` | 152 | 1135 | **23** |
+| `src/v2/workflow/required_floor.dag` | 44 | 406 | **20** |
+| `dag/gunbc/design_document.dag` | 127 | 481 | 3 |
+
+**Instrument control.** The compiler's own resolver reports `resolved 6 sources` for this carrier's
+own entry; the walk independently counts 6 modules for it. So the walk is not measuring a different
+graph from the one the compiler builds.
+
+**The one collision in the seed's own emit closure is live and non-benign.** `Cardinality` is
+declared `Required | Optional` in `std.constructors` and `Required | CardOptional` in
+`v1.std.core` — two different unit-only enums under one key. The map's `variant_name_set` for
+`Cardinality` is whichever module the fold reached last, and `is_known_variant`,
+`derive_variant_to_enum` and `variant_belongs_to_enum` all answer from that one.
+
+**The twenty-plus in every v2 closure are the dual tree, not accidents.** `Int` (`std.integer` vs
+`v2.std.integer`), `Nat` (`std.nat` vs `v2.std.nat`), `List` (`std.types` vs `v2.std.collection`),
+`Bool`, `Unit`, `TerminationProof`, `RankingDimension`, `Compose`, plus the ten machine-width
+integer rows. DESIGN §3 already names this pair as the specimen where a bare-name rule realizes the
+wrong declaration. **They are refused as a body or not at all**, which is what makes the refusal
+downstream of the two-tree migration rather than a repair anyone can land ahead of it — and is
+exactly why the sweep precedes the refusal: landing it first would red the compiler's own closure
+against a population nobody had counted.
 
 ## What this means for the repair, stated as a size rather than a plan
 

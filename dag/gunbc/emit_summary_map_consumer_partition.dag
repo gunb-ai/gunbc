@@ -339,6 +339,23 @@ fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
   emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && consumer_use_is_terminal(c: c))
 }
 
+// THREE THINGS A LATER READER IS MOST LIKELY TO LOSE, kept here rather than in a hand-off message.
+//
+// FIRST, the severance is FOUR folds and not one, and the correction is directional: an earlier
+// read made this look like one fold storing a name where it could store an identity. It is three of
+// the summary's own fields plus the map key, and collect_type_node_import_surface_names returns a
+// List<String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
+// and larger shape of change than the other three.
+//
+// SECOND, is_known_variant is the sharpest row on the roster: it quantifies over the whole closure
+// deliberately, so it answers true MORE OFTEN the more collisions the map holds. That is not a
+// lookup bug, it is an instrument that inverts under load -- its confidence rises exactly as its
+// input degrades.
+//
+// THIRD, emit_typed_record_lit reaching rust_zero_value is not merely unkeyed but UNKEYABLE without
+// a signature change, which is what makes that row a PREREQUISITE for its consumer rather than a
+// peer of it. Same shape as emit_container, which is the useful pointer for whoever takes it.
+
 // WHERE THE IDENTITY WAS DISCARDED. Every spelling-only row above is severed at one of these folds,
 // and each fold holds the resolved node on the line it stores a name -- so the repair is upstream
 // and shared, not one campaign per consumer. holder_at_discard names the binding that is in scope
@@ -392,23 +409,105 @@ fn partition_severance_point_count() -> Int {
   emit_summary_map_severance_points |> count
 }
 
-// THE COLLISION POPULATION, MEASURED BEFORE ANY REFUSAL AND BOUNDED HONESTLY.
+// THE COLLISION POPULATION, MEASURED AT TWO GRAINS AND KEPT DISTINCT.
 //
 // The refusal a re-key would arm fires when two declarations in ONE EMITTED CLOSURE share a
-// spelling. That population is not measurable without running the emitter over a closure, so what
-// is carried here is the CORPUS-WIDE upper bound: distinct type names declared in more than one
-// file anywhere in the tree. It is an upper bound and not the refusal population, because no
-// closure contains every file -- and it is not a lower bound either, since the count is over `type`
-// declarations only and says nothing about the composite variant keys.
+// spelling. The corpus-wide figure is an UPPER BOUND and is not that population -- no closure
+// contains every file -- and it is not a lower bound either, since it counts `type` declarations
+// only and says nothing about the composite variant keys. The two grains are carried as separate
+// variants rather than one number precisely because a per-closure map cannot be refuted by a
+// corpus-wide count, and a reader without that sentence in front of them will read them as the
+// same fact.
 type CollisionPopulation
   = CorpusWideUpperBound { distinct_colliding_names: Int, total_type_declarations: Int, measurement: String, why_not_the_refusal_population: String }
-  | ClosureMeasured { closure_entry: String, distinct_colliding_names: Int, measurement: String }
+  | ClosureMeasured { closure_entry: String, modules_in_closure: Int, type_declarations: Int, distinct_colliding_names: Int, specimens: String }
 
-data emit_summary_map_collision_population: CollisionPopulation = CorpusWideUpperBound {
-  distinct_colliding_names: 97,
-  total_type_declarations: 9474,
-  measurement: "every module-scope `type NAME` declaration under dag/ and src/ on 2026-08-22, grouped by name, counting names declared in two or more DISTINCT files (116 before the same-file duplicates are removed)",
-  why_not_the_refusal_population: "the map is built per emitted closure, not per corpus, so this bounds the refusal from above; the closure-grain number requires executing build_emit_graph_info and is the measurement that must precede landing the refusal",
+// THE INSTRUMENT AND ITS CONTROL. The closure rows below were taken by seeding the closure exactly
+// as the production discovery does -- for the stage0 row, every .dag under src/v1 plus the import
+// closure through the module index over src/v1 and dag, which is `v1_compiler.cli_run`
+// `regen_input_sources`; for the entry rows, one entry plus its import closure. CONTROL: the
+// compiler's own resolver reports `resolved 6 sources` for this carrier's own entry, and the
+// instrument independently counts 6 modules for it, so the walk is not measuring a different graph
+// from the one the compiler builds.
+data emit_summary_map_collision_population: List<CollisionPopulation> = [
+  CorpusWideUpperBound {
+    distinct_colliding_names: 97,
+    total_type_declarations: 9474,
+    measurement: "every module-scope `type NAME` declaration under dag/ and src/ on 2026-08-22, grouped by name, counting names declared in two or more DISTINCT files (116 before same-file duplicates are removed)",
+    why_not_the_refusal_population: "the map is built per emitted closure, not per corpus, so this bounds the refusal from above and can neither confirm nor refute any closure row below",
+  },
+  ClosureMeasured {
+    closure_entry: "the stage0 regen closure -- every .dag under src/v1 plus its import closure, the population build_emit_graph_info folds when the seed emits itself",
+    modules_in_closure: 128,
+    type_declarations: 974,
+    distinct_colliding_names: 1,
+    specimens: "Cardinality, declared as Required | Optional in std.constructors and as Required | CardOptional in v1.std.core -- two DIFFERENT unit-only enums under one key, so the map's variant_name_set for Cardinality is whichever module the fold reached last, and is_known_variant, derive_variant_to_enum and variant_belongs_to_enum all answer from that one",
+  },
+  ClosureMeasured {
+    closure_entry: "src/v2/compiler/00_compile.dag",
+    modules_in_closure: 152,
+    type_declarations: 1135,
+    distinct_colliding_names: 23,
+    specimens: "the dual-tree homonyms DESIGN section 3 already names -- Int (std.integer vs v2.std.integer), Nat (std.nat vs v2.std.nat), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std vs v2.std.cardinality), Compose (std.machine_constraints vs v2.std.integer), plus the ten machine-width integer rows",
+  },
+  ClosureMeasured {
+    closure_entry: "src/v2/workflow/required_floor.dag",
+    modules_in_closure: 44,
+    type_declarations: 406,
+    distinct_colliding_names: 20,
+    specimens: "the same dual-tree family, minus Unit, TerminationProof and RankingDimension",
+  },
+  ClosureMeasured {
+    closure_entry: "dag/gunbc/design_document.dag",
+    modules_in_closure: 127,
+    type_declarations: 481,
+    distinct_colliding_names: 3,
+    specimens: "Bool, List and String -- the dag/std versus src/v2/std pairs only",
+  },
+]
+
+// WHAT THE CLOSURE ROWS SETTLE, AND IT IS THE SEQUENCING QUESTION RATHER THAN THE DESIGN ONE.
+// A refusal on collision would refuse ONE name in the seed's own emit closure and TWENTY-PLUS in
+// every v2 closure that spans both std trees. Those twenty are not accidents to be repaired one by
+// one: they are the two-tree migration, so the refusal is downstream of it, and landing the refusal
+// first would red the compiler's own closure on a population nobody had counted. That is the whole
+// reason the sweep precedes the refusal.
+// The single seed-closure collision (Cardinality) is the one a refusal could be sized against
+// today; the twenty-plus v2-closure collisions are the dag/std versus src/v2/std dual tree and are
+// refused as a body or not at all. Nothing here proposes either.
+
+// THE TIE BETWEEN THE TWO GRAINS, derived rather than asserted: a closure is a subset of the
+// corpus, so no closure row may report more colliding names than the corpus-wide bound. The two
+// numbers were taken by different walks over different populations, so this is a real consistency
+// check between them and not a restatement.
+fn collision_row_colliding_names(r: CollisionPopulation) -> Int {
+  match r {
+    CorpusWideUpperBound { distinct_colliding_names: n, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => n
+    ClosureMeasured { closure_entry: _, modules_in_closure: _, type_declarations: _, distinct_colliding_names: n, specimens: _ } => n
+  }
+}
+
+fn collision_row_is_closure_measured(r: CollisionPopulation) -> Bool {
+  match r {
+    ClosureMeasured { closure_entry: _, modules_in_closure: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
+    _ => false
+  }
+}
+
+fn corpus_wide_collision_upper_bound() -> Int {
+  emit_summary_map_collision_population
+    |> filter(r => !collision_row_is_closure_measured(r: r))
+    |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
+}
+
+fn largest_measured_closure_collision_count() -> Int {
+  emit_summary_map_collision_population
+    |> filter(r => collision_row_is_closure_measured(r: r))
+    |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
+}
+
+fn measured_closure_row_count() -> Int {
+  emit_summary_map_collision_population |> filter(r => collision_row_is_closure_measured(r: r)) |> count
 }
 
 // BASIS AND BLIND SPOT. The selector is mechanical, so it can be re-run: every expression in the v1
