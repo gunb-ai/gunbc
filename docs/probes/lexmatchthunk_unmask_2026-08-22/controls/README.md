@@ -33,3 +33,29 @@ the thunk. `v2.compiler.tokenize` `LexMatchThunk` is a concrete `fn(String) -> L
 always was; the receiver that arrives untyped is `open_r`, a parameter of the lambda initializing
 `delimited: fn(R, R, R) -> R` on the generic `v2.std.compilers.lexing` `LexPatternFold<R>`. A
 reproduction that drops the algebra drops the variable.
+
+## What this pair is the acceptance test FOR (corrected 2026-08-22, before any B-arm measurement)
+
+**`arm_b` is the TERMINAL red for the whole `(c) → (a) → (b)` chain, not a per-step red.** Measured
+by `calm-heron-887` on a tree with **(a) applied**: `arm_b` still refuses. So:
+
+- a red `arm_b` after (c), or after (a), is **EXPECTED** and is **not** a falsification of anything —
+  it means the chain is incomplete, not that the step failed;
+- `arm_b` going green is the **chain's completion signal**, and the trigger for the B arm;
+- `arm_a` staying clean throughout remains the harness check: if `arm_a` ever refuses, the harness
+  moved rather than the variable.
+
+**Why this correction is legitimate rather than a moved goalpost:** it fixes a *stated expectation*
+that had never been tested against the intermediate state — the pair had never been run against a
+tree carrying (a) when the instruction was written — and it is recorded **before** the measurement
+it governs. Nothing about the registered population, the prediction, or the join rule changes.
+
+**The failure mode it exists to prevent, in both directions:** reading a red `arm_b` after a correct
+(c)/(a) landing as the repair being ineffective; or weakening a correct control to make it green,
+which is the worse of the two because it destroys the terminal acceptance test for the entire chain.
+
+**Provenance of the correction:** `calm-heron-887` first ran this pair and reported `compiled 5
+files, 0 diagnostics` — a shell race (a trailing `&` bound to the whole and-chain, so the compile
+read a partially written module), which they diagnosed and disclosed themselves rather than filing
+it as a defect in the control. Re-run clean, `arm_b` refuses and `arm_a` is clean, as documented
+above.

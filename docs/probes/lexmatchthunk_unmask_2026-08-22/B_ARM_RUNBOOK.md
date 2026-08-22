@@ -70,6 +70,8 @@ echo "LOG_B64_BEGIN"; gzip -9 -c /tmp/keep/03_ingest.cargo.log | base64 -w200; e
 
 Source SHA, compiler identity beside it (rebuilt from the tree, not the baked image), and a healthy
 -pool positive control. For the mechanism controls that control is
-[`controls/algebra_genericity_pair.dag`](controls/algebra_genericity_pair.dag): after the repair
-`arm_b` must flip to clean **and `arm_a` must stay clean**. If `arm_a` ever refuses, the harness
-moved, not the variable.
+[`controls/algebra_genericity_pair.dag`](controls/algebra_genericity_pair.dag), and **what it is an
+acceptance test for is the whole `(c) → (a) → (b)` chain, not any single step** — measured with (a)
+applied, `arm_b` still refuses. So a red `arm_b` after (c) or after (a) is expected and falsifies
+nothing; **`arm_b` going green is the trigger for this runbook**, and `arm_a` staying clean
+throughout is the harness check. See [`controls/README.md`](controls/README.md).
