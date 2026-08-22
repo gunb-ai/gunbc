@@ -68,12 +68,27 @@ be larger than six rows and reported the check coming back empty.)
   different position than intended — a list ELEMENT inside a property value is not the property
   value.
 
-  **The three ACCEPTs may also not be three facts.** If no expression inside a `service`
-  declaration is inferred at all, they are one fact wearing three spellings, and counting them as
-  three members would inflate the class exactly as the map-key cell inflates a refusal count. That
-  is the open question, and it is being discriminated (an undefined name as the property value
-  DIRECTLY versus inside its list, against a function-body control known to refuse) rather than
-  guessed. Until it resolves, these rows stay FLAGGED.
+  **DISCRIMINATED, AND BOTH CANDIDATE EXPLANATIONS WERE WRONG.** The suspicion was that no
+  expression inside a `service` declaration is inferred at all, which would have made the three
+  ACCEPTs one fact wearing three spellings. Measured, one run:
+
+  | fixture | verdict |
+  |---|---|
+  | `transport shell { argv: nosuchname_zzz }` — undefined name AS the property value | **REFUSED** |
+  | `transport shell { argv: ["echo", nosuchname_zzz] }` — same name, one hop into its LIST | **ACCEPTED** |
+  | ordinary service, no undefined name | ACCEPTED |
+  | `let x = nosuchname_zzz` in a function body | REFUSED, `undefined variable 'nosuchname_zzz'` |
+  | ordinary function body | ACCEPTED |
+
+  So the service subtree IS inferred and the table's `walked` classification for transport
+  properties is CONFIRMED IN BOTH DIRECTIONS. The gap is one hop deeper and it is a position
+  nothing had named: **a LIST-LITERAL ELEMENT inside a walked transport property value is not
+  walked.** Every `transport shell { argv: [...] }` in the corpus carries that surface.
+
+  Note what it is NOT: a list element in a `data` initializer IS walked — `data xs: List<Rel> =
+  [nosuchname_zzz]` refuses in the census's own run. So this is specific to the transport property
+  value, not a general list-element hole, and the next question is structural: what node the argv
+  list is stored as, and which child `infer_property_values` actually descends into.
 
 - **Flagged by structure, not yet confirmed**: non-`svc_auth_source` item properties, `uses` config
   args, service exit-entry status patterns, transport children. None is counted as a member here.
