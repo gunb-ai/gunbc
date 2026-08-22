@@ -4,6 +4,9 @@ import std.content_hash { structural_content_hash }
 import v2.std.logic { Bool }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
+  RepositorySnapshot,
+  UnpublishedWorkingTree,
+  ledger_is_candidate_bound,
   ClaimTerminalRow,
   ExpectedRed,
   ExpectedToHold,
@@ -18,6 +21,9 @@ import v2.workflow.floor_terminal_ledger {
   claim_disposition
 }
 import v2.workflow.floor_terminal_ledger_wire {
+  SnapshotAdmitted,
+  SnapshotRefused,
+  admit_repository_snapshot_wire,
   LedgerRead,
   LedgerReadbackRow,
   LedgerRendered,
@@ -39,13 +45,26 @@ import v2.workflow.floor_terminal_ledger_wire {
 }
 import v2.workflow.required_floor { SafetyInterrupted }
 
+// THE FIXTURE'S SNAPSHOT IS BUILT THROUGH THE PRODUCTION ADMISSION, so a bad hex here degrades to
+// `UnpublishedWorkingTree` -- and `an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses`
+// asserts this binding IS candidate-bound, so the degradation fails a test instead of passing
+// silently. The alternative spelling, `git_object_id_from_untagged_hex(...) as GitObjectId` on the
+// absent arm, type-checks and RENDERS THE OPTIONAL WRAPPER -- the same trap this module refuses in
+// its parser, and it would have sat here unreachable until the day it was reached.
+fn fixture_snapshot(hex: String) -> RepositorySnapshot {
+  match admit_repository_snapshot_wire(wire: hex) {
+    SnapshotAdmitted { snapshot: s } => s
+    SnapshotRefused { offending: _ } => UnpublishedWorkingTree
+  }
+}
+
 fn ident(f: String) -> WitnessIdentity {
   WitnessIdentity { module_path: "test.claim.example", function: f }
 }
 
 fn binding() -> LedgerBinding {
   LedgerBinding {
-    repository_snapshot: structural_content_hash(digest: "0000000000000001"),
+    repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
     prepared_subject: structural_content_hash(digest: "0000000000000002"),
     roster_identity: structural_content_hash(digest: "0000000000000003")
   }
@@ -246,7 +265,7 @@ fn seed_row_of(row: ClaimTerminalRow) -> SeedLedgerRow {
 
 fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
   match render_ledger_from_seed(
-    repository_snapshot: "0000000000000001",
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     roster_identity: "0000000000000003",
     rows: map(rows, r => seed_row_of(row: r))
@@ -275,7 +294,7 @@ test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
     seed_disposition_wire: "failed"
   }
   match render_ledger_from_seed(
-    repository_snapshot: "0000000000000001",
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     roster_identity: "0000000000000003",
     rows: [honest, lying]
@@ -298,7 +317,7 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
     seed_disposition_wire: "passed"
   }
   match render_ledger_from_seed(
-    repository_snapshot: "0000000000000001",
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     roster_identity: "0000000000000003",
     rows: [futuristic]
@@ -325,7 +344,7 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
     seed_disposition_wire: "failed"
   }
   match render_ledger_from_seed(
-    repository_snapshot: "0000000000000001",
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     roster_identity: "0000000000000003",
     rows: [honest, other, lying]
@@ -336,6 +355,7 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
         && o == "test.claim.example.c"
         // every row survives: header + refusal line + three rows
         && d.split(delimiter: "\n").length() == 5
+        && d.split(delimiter: "\t3").length() == 2
         && d.split(delimiter: "test.claim.example.a").length() == 2
         && d.split(delimiter: "test.claim.example.b").length() == 2
         && d.split(delimiter: "test.claim.example.c").length() == 3
@@ -352,4 +372,71 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
              LedgerUnreadable { reason: pr, at: _ } => pr == "ledger-format-unrecognized"
            }
   }
+}
+
+// A ROW CARRYING A NEWLINE CANNOT FORGE THE DIAGNOSIS'S LINE STRUCTURE UNDETECTED.
+//
+// Nothing parses this file, so the victim would be a person: a row whose detail carries a
+// newline appears as two lines, and one crafted to carry `#refused …` after that newline would
+// show a diagnostician a refusal reason nobody wrote. The refusal line states how many rows
+// follow it, so observed-lines against stated-count is a self-check written by the same fold
+// that writes the rows -- the forgery is visible without escaping the bytes a diagnostician
+// needs to see raw.
+test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let forger = SeedLedgerRow {
+    qualified: "test.claim.example.c",
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: "innocent\n#refused\tfabricated-reason\ttest.claim.example.a\t1",
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: [honest, forger]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: d } =>
+      // the refusal line says 2 rows follow
+      d.split(delimiter: "\t2").length() == 2
+      // but header + refusal + 2 rows would be 4 lines, and the forged newline makes 5
+      && d.split(delimiter: "\n").length() == 5
+      // so a reader comparing stated rows to observed lines sees the discrepancy
+      && d.split(delimiter: "\n").length() != 4
+  }
+}
+
+// AN UNPUBLISHED SNAPSHOT IS A SHAPE, NOT A MAGIC STRING, and an unrecognised one REFUSES rather
+// than being read as unpublished -- a typo'd commit id must not silently downgrade
+// candidate-bound evidence to unbound evidence.
+test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> Bool {
+  let rows = [seed_row_of(row: passing_row(f: "a"))]
+  let unpublished = match render_ledger_from_seed(
+    repository_snapshot: "unpublished",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: rows
+  ) {
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
+    LedgerRendered { text: t } => t.split(delimiter: "unpublished").length() == 2
+  }
+  let garbage = match render_ledger_from_seed(
+    repository_snapshot: "not-a-commit",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: rows
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
+      r == "seed-repository-snapshot-unrecognized" && o == "not-a-commit"
+  }
+  unpublished && garbage
+    && ledger_is_candidate_bound(binding: binding())
+    && !ledger_is_candidate_bound(binding: LedgerBinding {
+         repository_snapshot: UnpublishedWorkingTree,
+         prepared_subject: structural_content_hash(digest: "0000000000000002"),
+         roster_identity: structural_content_hash(digest: "0000000000000003")
+       })
 }

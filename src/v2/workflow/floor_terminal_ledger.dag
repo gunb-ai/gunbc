@@ -2,6 +2,7 @@ module v2.workflow.floor_terminal_ledger
 
 import v2.std.integer { Int }
 import std.content_hash { Fnv1a64Structural }
+import extdeps.git.object_store { GitObjectId }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -112,10 +113,48 @@ type ClaimTerminalRow {
 // `std.content_hash` `Fnv1a64Structural` -- the structural family member DESIGN names, not a bare
 // `String`. A `String` digest admits any text at all and cannot be compared against anything else
 // in the corpus that hashes, which is the hollow-carrier shape.
+// A LOCAL RUN HAS NO CANDIDATE, AND THAT IS AN EVIDENTIAL FACT RATHER THAN A FORMATTING ONE.
+//
+// The completed claim this ledger exists to support is "witness W terminated in candidate C". A
+// run with no published commit has no C, so its ledger is NOT candidate-bound and must not be
+// citable as though it were. Rendering the seed's `"local"` into a commit-shaped field would be
+// the state-space conflation trap in its smallest disguise: a consumer asking "is this
+// candidate-bound?" would have to string-compare a magic value, and the day someone spells it
+// differently the answer silently flips.
+//
+// So it is an ARM. `GitObjectId` cannot represent "no commit" -- that is the type doing its job
+// -- and the absence gets its own case, which makes an unbound ledger unmistakable from the
+// shape instead of by convention.
+//
+// The type is `GitObjectId` and NOT a freshly minted repository-ref type. One exists, it is
+// cited to the upstream authority with validating constructors that enforce family, length and
+// lowercase syntax, and v2 already binds artifacts to it -- `v2.compiler.self_host`
+// `frontier_probe_types` carries `source_commit` and `source_tree` as `GitObjectId` for exactly
+// this purpose. Minting a `RepositoryRef` beside it would be the §3 nicknaming violation
+// committed inside a change whose subject is single authority.
+type RepositorySnapshot
+  = PublishedCommit { commit: GitObjectId }
+  | UnpublishedWorkingTree
+
+// THE REF AND THE DIGEST ARE TWO FACTS, NOT ONE, so they are two fields. The ref says WHICH
+// commit a human opens; the prepared-subject digest says WHAT was actually admitted, and they
+// diverge on every run this floor performs, because preparation declines sites. A binding that
+// carried only one of them would answer only half of "which candidate is this evidence for".
+//
+// `repository_snapshot` could not have been an `Fnv1a64Structural` even if we had wanted it to
+// be: that carrier is `String where lower_hex_16`, so a 40-hex commit id REFUSES AT
+// CONSTRUCTION. The corpus settled this before the question was asked.
 type LedgerBinding {
-  repository_snapshot: Fnv1a64Structural
+  repository_snapshot: RepositorySnapshot
   prepared_subject: Fnv1a64Structural
   roster_identity: Fnv1a64Structural
+}
+
+fn ledger_is_candidate_bound(binding: LedgerBinding) -> Bool {
+  match binding.repository_snapshot {
+    PublishedCommit { commit: _ } => true
+    UnpublishedWorkingTree => false
+  }
 }
 
 type TerminalLedger {

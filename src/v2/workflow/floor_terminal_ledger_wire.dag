@@ -1,5 +1,10 @@
 module v2.workflow.floor_terminal_ledger_wire
 
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_wire_hex
+}
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -12,6 +17,9 @@ import v2.std.algebra { list_append }
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
+  PublishedCommit,
+  RepositorySnapshot,
+  UnpublishedWorkingTree,
   BudgetRefusedBeforeVerdict,
   ClaimAttemptTerminal,
   ClaimDisposition,
@@ -94,6 +102,46 @@ data ledger_wire_footer_tag: String = "#end"
 // being cited as a ledger has no spelling, instead of being forbidden by a rule someone must
 // remember. The floor still goes non-green; nothing here mints a receipt.
 data ledger_partial_format: String = "gunbc-terminal-ledger-partial/1"
+
+// THE UNPUBLISHED TOKEN IS DECLARED HERE, and an unrecognised snapshot field REFUSES rather than
+// being read as unpublished. "anything I could not decode is a local run" would be the absorbing
+// fallback: a typo'd commit id would silently downgrade a candidate-bound ledger to an unbound
+// one, which is the direction that loses evidence quietly.
+data ledger_unpublished_snapshot_wire: String = "unpublished"
+
+// THE SNAPSHOT IS RENDERED AS BARE LOWERCASE HEX, decoded back through git's own untagged
+// decoder, and this is a deliberate departure from a sentence in the cited authority.
+//
+// `git_object_id_untagged_hex_note` says our own wires "stay family-prefixed
+// (<family>:<hex>, render/parse_git_object_id_wire)". THOSE TWO FUNCTIONS DO NOT EXIST -- the
+// note is a stale citation of the kind DESIGN §3 names, and following it would mean MINTING the
+// family-prefixed pair here, in a change whose subject is something else. So this wire reuses the
+// authority in both directions instead: `git_object_id_wire_hex` forward and
+// `git_object_id_from_untagged_hex` backward, the latter being the module's own decoder for text
+// git itself produced -- which is exactly what `GITHUB_SHA` is. Nothing is re-derived locally:
+// the width-to-family inference stays inside the authority that owns it.
+fn render_repository_snapshot(snapshot: RepositorySnapshot) -> String {
+  match snapshot {
+    UnpublishedWorkingTree => ledger_unpublished_snapshot_wire
+    PublishedCommit { commit: c } => git_object_id_wire_hex(oid: c) as String
+  }
+}
+
+type RepositorySnapshotAdmission
+  = SnapshotAdmitted { snapshot: RepositorySnapshot }
+  | SnapshotRefused { offending: String }
+
+fn admit_repository_snapshot_wire(wire: String) -> RepositorySnapshotAdmission {
+  if wire == ledger_unpublished_snapshot_wire {
+    SnapshotAdmitted { snapshot: UnpublishedWorkingTree }
+  } else {
+    match git_object_id_from_untagged_hex(hex: wire) {
+      Absent => SnapshotRefused { offending: wire }
+      Present { value: oid } =>
+        SnapshotAdmitted { snapshot: PublishedCommit { commit: oid } }
+    }
+  }
+}
 
 fn ledger_wire_separator() -> String {
   "\t"
@@ -217,7 +265,7 @@ fn ledger_rows_digest(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
 fn render_header(binding: LedgerBinding) -> String {
   ledger_wire_join(fields: [
     ledger_wire_format,
-    binding.repository_snapshot.digest,
+    render_repository_snapshot(snapshot: binding.repository_snapshot),
     binding.prepared_subject.digest,
     binding.roster_identity.digest
   ])
@@ -262,8 +310,27 @@ fn render_partial_header(repository_snapshot: String, prepared_subject: String, 
   ])
 }
 
-fn render_partial_refusal_line(reason: Symbol, offending: String) -> String {
-  ledger_wire_join(fields: [ledger_partial_refusal_tag, reason as String, offending])
+// THE REFUSAL LINE STATES HOW MANY ROWS FOLLOW IT, and that number is the diagnosis's own
+// self-check.
+//
+// A raw TAB breaks a field, which is exactly what a diagnostician must see. A raw NEWLINE is a
+// different risk: it breaks the LINE STRUCTURE the human reader is relying on. One row carrying
+// a newline appears as two, and a row carrying `#refused …` after a newline would show a reader
+// a refusal reason the sender never wrote. Nothing parses this file, so the victim is a person
+// rather than a program -- and a person is precisely who it is for.
+//
+// Escaping the newline would sanitize the evidence and make this a second representation of the
+// row. Stating the count does not: a reader comparing the stated count against the lines they
+// observe detects the forgery, the same construction as `rows recovered vs lines read` in the
+// parser -- a self-check that cannot disagree with itself, because the number is written by the
+// same fold that writes the rows.
+fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int) -> String {
+  ledger_wire_join(fields: [
+    ledger_partial_refusal_tag,
+    reason as String,
+    offending,
+    row_count as String
+  ])
 }
 
 fn render_typed_diagnosis(
@@ -276,11 +343,11 @@ fn render_typed_diagnosis(
     lines: list_append(
       left: [
         render_partial_header(
-          repository_snapshot: binding.repository_snapshot.digest,
+          repository_snapshot: render_repository_snapshot(snapshot: binding.repository_snapshot),
           prepared_subject: binding.prepared_subject.digest,
           roster_identity: binding.roster_identity.digest
         ),
-        render_partial_refusal_line(reason: reason, offending: offending)
+        render_partial_refusal_line(reason: reason, offending: offending, row_count: rows.length())
       ],
       right: map(rows, r => render_row(row: r))
     )
@@ -313,7 +380,7 @@ fn seed_diagnosis_of(
           prepared_subject: prepared_subject,
           roster_identity: roster_identity
         ),
-        render_partial_refusal_line(reason: reason, offending: offending)
+        render_partial_refusal_line(reason: reason, offending: offending, row_count: rows.length())
       ],
       right: map(rows, r => render_seed_row_raw(row: r))
     )
@@ -692,6 +759,7 @@ fn render_ledger_from_seed(
   roster_identity: String,
   rows: List<SeedLedgerRow>,
 ) -> LedgerRender {
+  let snapshot_admission = admit_repository_snapshot_wire(wire: repository_snapshot)
   let admissions = map(rows, r => admit_seed_row(row: r))
   let admitted = flat_map(admissions, a => match a {
     SeedRowRefused { reason: _, offending: _ } => []
@@ -701,6 +769,21 @@ fn render_ledger_from_seed(
     SeedRowRefused { reason: reason, offending: offending } => [SeedRowRefused { reason: reason, offending: offending }]
     SeedRowAdmitted { row: _ } => []
   })
+  match snapshot_admission {
+    SnapshotRefused { offending: offending } =>
+      LedgerUnrenderable {
+        reason: "seed-repository-snapshot-unrecognized",
+        offending: offending,
+        diagnosis: seed_diagnosis_of(
+          repository_snapshot: offending,
+          prepared_subject: prepared_subject,
+          roster_identity: roster_identity,
+          rows: rows,
+          reason: "seed-repository-snapshot-unrecognized",
+          offending: offending
+        )
+      }
+    SnapshotAdmitted { snapshot: _ } =>
   match refusals.first() {
     Present { value: first_refusal } =>
       match first_refusal {
@@ -771,5 +854,6 @@ fn render_ledger_from_seed(
             )
           }
       }
+  }
   }
 }
