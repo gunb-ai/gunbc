@@ -1074,6 +1074,45 @@ mod process_workspace_root_tests {
         );
     }
 
+    /// THE CONTROL'S OWN CONTROL. `corpus_type_judgment_census` refuses when the planted control
+    /// folds to nothing, which is the arm that keeps a broken instrument from reporting zero — so
+    /// what the plant actually reports has to be asserted somewhere, or the refusal is guarding a
+    /// value nobody has ever looked at.
+    ///
+    /// It asserts the row's CONTENT, not merely that a row exists: an assertion satisfied by any
+    /// nonempty output would pass on a fold that lost the class name or misfiled the severity,
+    /// which are two of the three things the plant is there to discriminate.
+    #[test]
+    fn corpus_judgment_control_reports_a_named_blocking_row() {
+        let rows = super::corpus_judgment_control_rows();
+        assert_eq!(rows.len(), 1, "the plant is one diagnostic: {rows:?}");
+        assert_eq!(rows[0].class, "InternalError");
+        assert_eq!(rows[0].count, 1);
+        assert_eq!(
+            rows[0].severity,
+            super::CorpusJudgmentSeverity::Blocking,
+            "an InternalError is blocking under the severity policy; a control that folded to \
+             Advisory or Unclassified would mean the classification, not the corpus, changed"
+        );
+    }
+
+    /// THE DISCRIMINATING RED for the anti-zero refusal, at the one arm reachable without
+    /// mutating the instrument: an empty subject refuses instead of measuring zero diagnostics
+    /// over zero modules. The other two refusal arms (`NoResolvedGraph`,
+    /// `ControlFoldReportedNothing`) are not executed here and are not claimed as covered.
+    #[test]
+    fn corpus_type_judgment_refuses_an_empty_subject_instead_of_reporting_zero() {
+        let empty_root = std::env::temp_dir().join("gunbc-corpus-judgment-empty-subject");
+        std::fs::create_dir_all(&empty_root).expect("create empty source root");
+        let roots = vec![empty_root.to_string_lossy().to_string()];
+        let err = super::corpus_type_judgment_census(&roots, &[])
+            .expect_err("an empty corpus must refuse, never measure");
+        assert!(
+            err.contains("cause=SubjectUnassembled"),
+            "the refusal must name its cause: {err}"
+        );
+    }
+
     #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
