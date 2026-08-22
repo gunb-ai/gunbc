@@ -2921,6 +2921,25 @@ enforces end to end.
    NOT CLAIMED: that any argv in the corpus is currently wrong. No instrument can answer that
    today, which is the row's point. It records a blindness, not a defect count.
 
+   THE TERMINAL RULE, RATIFIED 2026-08-22, AND ITS HARD PREREQUISITE. The trigger above says
+   "resolve through the ordinary path"; that is necessary and, on its own, not safe, because the
+   ordinary path currently CHOOSES among competing authorities instead of refusing. The corrected
+   terminal sentence is: **a transport argv expression is lowered only from an exact, uniquely
+   resolved and typechecked semantic expression — zero candidates refuse, multiple candidates
+   refuse naming every authority, and no authored token is ever emitted as a fallback.** The
+   materializer's forbidden arm is stated explicitly because it is the arm that produced this row:
+   *resolution failed or was ambiguous → emit the authored token as text* is the silent-wrong-
+   output behaviour measured above, and reaching it through a REPAIRED resolver would be worse
+   than today's blindness, not better, because the fallback would then wear a resolution step.
+
+   So this row does not land alone. It stacks behind the callable-ambiguity repair (the row
+   immediately following, carried by gunbc#8943): one program, two reviewable cuts, inseparable in
+   merge order — the resolver wall merges and turns main green FIRST, then this cut retargets onto
+   main, receives its first real CI run, and merges. Kept as two diffs so that a red is
+   attributable to exactly one population: ordinary-call ambiguities newly EXPOSED by the wall, or
+   transport expressions newly RESOLVED by this cut. One monolithic diff would make every red
+   ambiguous between them, which is a poor shape for a change whose entire subject is ambiguity.
+
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
