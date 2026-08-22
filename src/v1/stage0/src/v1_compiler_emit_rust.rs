@@ -144,13 +144,13 @@ pub use crate::v1_std_core::{
     import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
     let_body, let_value, make_arg_node, make_error_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    qualified_module_prefix, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    method_arg_nodes, method_receiver, module_imports, no_span, param_node_default_value,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, qualified_module_prefix,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
@@ -3998,7 +3998,7 @@ pub fn module_defines_local_coproduct_wire_contract_type(
 ) -> bool {
     {
         let mut __found = false;
-        for item in crate::v1_std_core::module_items.iter().cloned() {
+        for item in module_items.clone().iter().cloned() {
             if (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                 || is_type_alias_item(item.clone(), source_indices.clone()))
                 || is_type_decl_item(item.clone(), source_indices.clone()))
@@ -4023,7 +4023,7 @@ pub fn is_coproduct_wire_contract_row(
         false
     } else {
         if module_defines_local_coproduct_wire_contract_type(
-            crate::v1_std_core::module_items,
+            module_items.clone(),
             source_indices.clone(),
         ) {
             false
@@ -4108,10 +4108,10 @@ pub fn emit_coproduct_wire_contract_validations(
                 let mut __result = Vec::new();
                 for item in Rc::new({
                     let mut __result = Vec::new();
-                    for item in crate::v1_std_core::module_items.iter().cloned() {
+                    for item in module_items.clone().iter().cloned() {
                         if is_coproduct_wire_contract_row(
                             item.clone(),
-                            crate::v1_std_core::module_items,
+                            module_items.clone(),
                             imports.clone(),
                             source_indices.clone(),
                         ) {
@@ -4154,10 +4154,10 @@ pub fn resolve_local_coproduct_wire_policy(
     {
         let contracts = Rc::new({
             let mut __result = Vec::new();
-            for item in crate::v1_std_core::module_items.iter().cloned() {
+            for item in module_items.clone().iter().cloned() {
                 if (is_coproduct_wire_contract_row(
                     item.clone(),
-                    crate::v1_std_core::module_items,
+                    module_items.clone(),
                     imports.clone(),
                     source_indices.clone(),
                 ) && coproduct_wire_contract_targets(
@@ -12083,7 +12083,7 @@ pub fn emit_typed_item(
                 emit_info.clone(),
                 wire_contract_item.clone(),
                 data_items.clone(),
-                crate::v1_std_core::module_items,
+                module_items.clone(),
                 imports.clone(),
             )
         } else {
@@ -12919,7 +12919,7 @@ pub fn emit_type_def_from_connective(
                             let serde_policy = match resolve_local_coproduct_wire_policy(
                                 item_text.clone(),
                                 all_unit_variants.clone(),
-                                crate::v1_std_core::module_items,
+                                module_items.clone(),
                                 imports.clone(),
                                 env.source_indices.clone(),
                             ) {

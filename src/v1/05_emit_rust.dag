@@ -1855,7 +1855,7 @@ fn data_item_type_is_coproduct_wire_contract(item: v1.std.core.Node, imports: st
 }
 
 fn module_defines_local_coproduct_wire_contract_type(module_items: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.module_items
+  module_items
     |> any(item =>
       (
         v1.compiler.emit_core_support.is_type_def_item(item: item)
@@ -1869,7 +1869,7 @@ fn module_defines_local_coproduct_wire_contract_type(module_items: std.types.Lis
 fn is_coproduct_wire_contract_row(item: v1.std.core.Node, module_items: std.types.List<v1.std.core.Node>, imports: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   if !v1.compiler.emit_core_support.is_data_def_item(item: item) {
     false
-  } else if module_defines_local_coproduct_wire_contract_type(module_items: v1.std.core.module_items, source_indices: source_indices) {
+  } else if module_defines_local_coproduct_wire_contract_type(module_items: module_items, source_indices: source_indices) {
     false
   } else if !data_item_type_is_coproduct_wire_contract(item: item, imports: imports, source_indices: source_indices) {
     false
@@ -1905,8 +1905,8 @@ fn emit_coproduct_wire_contract_validations(module_items: std.types.List<v1.std.
   if local_coproduct_names |> count == 0 {
     ""
   } else {
-    v1.std.core.module_items
-      |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices))
+    module_items
+      |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices))
       |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
       |> filter(text => text != "")
       |> join(separator: "\n")
@@ -1914,8 +1914,8 @@ fn emit_coproduct_wire_contract_validations(module_items: std.types.List<v1.std.
 }
 
 fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: std.types.List<v1.std.core.Node>, imports: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> RustEnumWireSerde? {
-  let contracts = v1.std.core.module_items
-    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
+  let contracts = module_items
+    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
   if contracts |> count == 0 {
     none
   } else if contracts |> count == 1 {
@@ -4951,7 +4951,7 @@ fn emit_typed_item(item: v1.std.core.Node, module_name: String, registry: std.ty
   let qualified_name = concat(module_name, ".", v1.compiler.infer_env.authored_name(env: env, node: item))
   let item_text = v1.compiler.infer_env.authored_name(env: env, node: item)
   if v1.compiler.emit_core_support.is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: v1.std.core.module_items, imports: imports)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if v1.compiler.emit_core_support.is_type_alias_item(item: item, source_indices: env.source_indices) {
 
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
@@ -5311,7 +5311,7 @@ fn emit_type_def_from_connective(item: v1.std.core.Node, recursive_types: std.ty
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
-    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: v1.std.core.module_items, imports: imports, source_indices: env.source_indices) {
+    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
       Present { value: local_policy } => local_policy
       Absent =>
         if all_unit_variants {
