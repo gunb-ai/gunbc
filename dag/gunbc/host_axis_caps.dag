@@ -25,7 +25,6 @@ import gunbc.host_converge {
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_lifecycle { runner_slot_unit_name }
-import gunbc.live_deploy.operations { systemctl_daemon_reload_command, privileged_command }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd {
   MemoryMax,
@@ -33,8 +32,21 @@ import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_high_property,
 }
-import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
+import extdeps.systemd.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_revert_memory_caps_argv,
+}
 import std.measure { byte_size_count }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_with_redir_to_file,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected, None }
 
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
@@ -87,11 +99,66 @@ fn desired_cap_member(dropin_path: NonEmptyStr, property: NonEmptyStr, bytes_val
   }
 }
 
+// Runtime shell is a MODELED BASH PROGRAM here, not a String built by join. Every
+// executed statement in this module is a bash grammar tree (v2.extdeps.languages.bash_build)
+// serialized once at the foreign-executor edge through v2.workflow.bash_command_fold_serialize
+// — so word quoting is the serializer's structural job (POSIX single-quote, cited at
+// extdeps.posix.shell_command_language) instead of an apostrophe an author remembered to type,
+// and a shape the grammar cannot express REFUSES with a poison marker rather than emitting a
+// hand-spelled fallback (DESIGN §5). The statement JOIN is the grammar's too
+// (bash_fold_serialize_stmts_semi), so sequencing is not workflow-code concatenation either.
+data host_axis_caps_bash_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ host-axis cap script intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming deploy/converge step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
+fn cap_script_from_stmts(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => host_axis_caps_bash_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => host_axis_caps_bash_emit_refused_poison
+  }
+}
+
+fn cap_lit_words(words: List<String>) -> List<Node> {
+  map(words, w => bash_build_word_lit(text: w))
+}
+
+fn cap_command_intent(words: List<String>) -> Node {
+  bash_build_command_with_words(words: cap_lit_words(words: words))
+}
+
+fn cap_privileged_command_intent(argv: List<String>) -> Node {
+  cap_command_intent(words: concat(["sudo", "-n"], argv))
+}
+
+fn cap_write_content_intent(content: String, path: Node) -> Node {
+  bash_build_with_redir_to_file(
+    inner: cap_command_intent(words: ["printf", "%s", content]),
+    path: path,
+  )
+}
+
+fn cap_upsert_stmts(m: CapMember) -> List<Node> {
+  [
+    cap_write_content_intent(
+      content: m.content,
+      path: bash_build_word_lit(text: m.dropin_path as String),
+    ),
+    cap_command_intent(words: systemctl_daemon_reload_argv()),
+  ]
+}
+
+// WHAT THIS RENDERS IS READ BY A HUMAN, NOT RUN BY CONVERGE — and that changed on 2026-08-21
+// rather than always having been true. Its execution consumer was
+// gunbc.host_converge_realize's PerSlotMemoryCap arm, which is deleted; its remaining production
+// consumer is gunbc.fleet_converge_plan cap_apply_line, which renders these lines into plan.txt
+// for review and deliberately does NOT emit them into apply.sh
+// (fleet_converge_cap_apply_shell_note). The drop-in writes themselves are deploy-principal
+// authority. The rendering is still built as a modeled bash program rather than joined text,
+// because a line an operator may copy is a line that must be correct to copy.
 fn cap_upsert_script(m: CapMember) -> String {
-  join([
-    "printf '%s' '", m.content, "' > ", m.dropin_path as String, "\n",
-    "systemctl daemon-reload\n",
-  ], "")
+  cap_script_from_stmts(stmts: cap_upsert_stmts(m: m))
 }
 
 fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember, CapMemberAt> {
@@ -195,12 +262,13 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
-fn runner_memory_cap_author_script() -> String {
-  join([
-    cap_upsert_script(m: derived_runner_memory_max_cap_member()),
-    cap_upsert_script(m: derived_runner_memory_high_cap_member()),
-  ], "")
-}
+// runner_memory_cap_author_script AND runner_memory_cap_author_stmts WERE HERE. They rendered
+// both derived drop-ins as one converge-side authoring script, and after the converge apply arm
+// was deleted (2026-08-21) their only remaining readers were witnesses. Production code whose
+// only consumer is a test asserting it exists is not covered, it is unowned, so they are deleted
+// rather than kept for the witnesses' sake. The deploy-side authoring
+// (deploy_runner_memory_cap_author_script, which the live_deploy apply really emits) is
+// untouched, and the per-member cap_upsert_script survives for the plan.txt rendering below.
 
 fn cap_observed_contains_derived_member(observed: List<CapMember>, derived: CapMember) -> Bool {
   fold(observed, init: false, f: (acc, o) =>
@@ -243,30 +311,57 @@ fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
   )
 }
 
-fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: String) -> String {
-  join([
-    "printf '%s' '", m.content, "' > \"$_gunbc_stage/", stage_name, "\"\n",
-    "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as String, "\n",
-  ], "")
+// The staged path is a WORD, not a spelled-out quotation: variable reference and literal
+// suffix are two parts of one concat word, so nothing here decides how "$_gunbc_stage" is
+// quoted — the grammar does, at both the redirection target and the install argument, from
+// the same word.
+fn deploy_cap_stage_path_word(stage_name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: "_gunbc_stage"),
+    bash_build_word_lit(text: concat("/", stage_name)),
+  ])
+}
+
+fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {
+  [
+    cap_write_content_intent(
+      content: m.content,
+      path: deploy_cap_stage_path_word(stage_name: stage_name),
+    ),
+    bash_build_command_with_words(words: concat(
+      cap_lit_words(words: ["sudo", "-n", "install", "-m", "0644"]),
+      [
+        deploy_cap_stage_path_word(stage_name: stage_name),
+        bash_build_word_lit(text: m.dropin_path as String),
+      ],
+    )),
+  ]
+}
+
+fn deploy_runner_memory_cap_author_stmts() -> List<Node> {
+  concat(
+    concat(
+      deploy_cap_upsert_staged_stmts(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
+      deploy_cap_upsert_staged_stmts(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
+    ),
+    [cap_privileged_command_intent(argv: systemctl_daemon_reload_argv())],
+  )
 }
 
 fn deploy_runner_memory_cap_author_script() -> String {
-  join([
-    deploy_cap_upsert_staged_lines(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
-    deploy_cap_upsert_staged_lines(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
-    systemctl_daemon_reload_command(privileged: true),
-    "\n",
-  ], "")
+  cap_script_from_stmts(stmts: deploy_runner_memory_cap_author_stmts())
 }
 
-fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> String {
-  concat(privileged_command(argv: systemctl_revert_memory_caps_argv(unit: u.unit)), "\n")
+fn deploy_control_shadow_revert_stmt(u: ControlShadowUnit) -> Node {
+  cap_privileged_command_intent(argv: systemctl_revert_memory_caps_argv(unit: u.unit))
+}
+
+fn deploy_memory_cap_shadow_revert_stmts(units: List<NonEmptyStr>) -> List<Node> {
+  map(units, unit => deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: unit)))
 }
 
 fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
-  fold(units, init: "", f: (acc, unit) =>
-    concat(acc, deploy_control_shadow_revert_line(u: control_shadow_unit(unit: unit)))
-  )
+  cap_script_from_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
@@ -276,7 +371,14 @@ fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
 
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
 fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
-  concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
+  cap_script_from_stmts(stmts: deploy_memory_cap_apply_stmts_ordered(units: units))
+}
+
+fn deploy_memory_cap_apply_stmts_ordered(units: List<NonEmptyStr>) -> List<Node> {
+  concat(
+    deploy_runner_memory_cap_author_stmts(),
+    deploy_memory_cap_shadow_revert_stmts(units: units),
+  )
 }
 
 // Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
@@ -286,9 +388,11 @@ fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: L
 
 // Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
 fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<NonEmptyStr>) -> Bool {
-  let author = deploy_runner_memory_cap_author_script()
-  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
-  list_length(items: units) > 0 && script == concat(author, reverts)
+  let ordered = cap_script_from_stmts(stmts: concat(
+    deploy_runner_memory_cap_author_stmts(),
+    deploy_memory_cap_shadow_revert_stmts(units: units),
+  ))
+  list_length(items: units) > 0 && script == ordered
 }
 
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.

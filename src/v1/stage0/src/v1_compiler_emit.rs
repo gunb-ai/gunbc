@@ -80,6 +80,7 @@ pub use crate::v1_compiler_languages::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
+use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -105,16 +106,16 @@ pub use crate::v1_std_core::{
     foreach_collection, foreach_variable_at, if_condition, if_else_branch, if_then_branch,
     index_base, index_expr, is_compiler_error, is_file_transport, is_local_transport,
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, local_transport_node, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, operation_modifier_name,
+    let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
     unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
+    FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
+    Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2205,7 +2206,6 @@ pub fn emit_unified_transport_dispatch(
     render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
     render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_file: impl Fn(String, i64) -> String + Clone,
     render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
@@ -2225,7 +2225,7 @@ pub fn emit_unified_transport_dispatch(
             )
         } else {
             if is_file_transport(transport.clone(), source_indices.clone()) {
-                render_file(op_name.clone(), depth.clone())
+                emit_unmodeled_file_transport_refusal(op_name.clone(), target.clone())
             } else {
                 if is_local_transport(transport.clone(), source_indices.clone()) {
                     render_local(op_name.clone(), depth.clone())
@@ -4189,6 +4189,147 @@ pub fn emit_error_expr(message: String, target: RenderTarget) -> String {
         let spec = language_spec(target.clone());
         apply_type_template1(spec.error_expr_template.clone(), msg.clone())
     }
+}
+
+pub fn render_target_name(target: RenderTarget) -> String {
+    match target.clone() {
+        RenderTarget::Rust => "rust".to_string(),
+        RenderTarget::Python => "python".to_string(),
+        RenderTarget::Go => "go".to_string(),
+        RenderTarget::Dag => "dag".to_string(),
+    }
+}
+
+pub fn unmodeled_file_transport_missing_fact() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "the file transport dispatch supplies only the operation name and an indent depth; emitting this operation requires the declared verb, the resolved path template, the operation input bindings, the payload/content input, the declared output type, and the failure/effect semantics".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_file_transport_after_dispatch_precedence(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if is_rest_transport(t.clone(), source_indices.clone()) {
+        false
+    } else {
+        if is_shell_transport(t.clone()) {
+            false
+        } else {
+            is_file_transport(t.clone(), source_indices.clone())
+        }
+    }
+}
+
+pub fn unmodeled_file_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name = authored_name(env.clone(), tm.module.clone());
+        let service_name = authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let t = effective_operation_transport(op_node.clone(), fallback.clone());
+                        if is_file_transport_after_dispatch_precedence(t.clone(), si.clone()) {
+                            Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                    transport_kind: "file".to_string(),
+                                    service: service_name.clone(),
+                                    operation: authored_name(env.clone(), op_node.clone()),
+                                    declaring_module: module_name.clone(),
+                                    target: render_target_name(target.clone()),
+                                    missing_realization_fact: unmodeled_file_transport_missing_fact(
+                                    ),
+                                    span: op_node.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_file_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in typed.modules.clone().iter().cloned() {
+            __result.extend(
+                (*Rc::new({
+                    let mut __result = Vec::new();
+                    for item in Rc::new({
+                        let mut __result = Vec::new();
+                        for item in tm.items.clone().iter().cloned() {
+                            if is_service_item(item.clone()) {
+                                __result.push(item);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.extend(
+                            (*unmodeled_file_transport_operation_diagnostics(
+                                tm.clone(),
+                                item.clone(),
+                                target.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "file transport emission is not modeled for operation '".to_string(),
+                            op_name.clone(),
+                        ),
+                        "' (target ".to_string(),
+                    ),
+                    render_target_name(target.clone()),
+                ),
+                ") -- ".to_string(),
+            ),
+            unmodeled_file_transport_missing_fact(),
+        ),
+        target.clone(),
+    )
 }
 
 pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {

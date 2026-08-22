@@ -1,0 +1,452 @@
+module test.claim.quarantine_probe_disposition_witness_test
+
+import gunbc.quarantine_probe_disposition {
+  QuarantineProbeHolder,
+  FloorExpectedRedHeld,
+  RouteGapHeldNoVerdict,
+  NeverRunDeclinedByHomePolicy,
+  NeverRunDeclinedByLiveTreeRead,
+  NeverRunPathExcluded,
+  QuarantineProbeSubject,
+  QuarantineProbeHoldingFacts,
+  QuarantineProbeDisposition,
+  HeldByExactlyOne,
+  QuarantineProbeNowPassing,
+  QuarantineProbeHeldByMoreThanOne,
+  quarantine_probe_disposition,
+  quarantine_probe_disposition_holds,
+  quarantine_probe_dispositions_all_hold,
+  quarantine_probe_admissions,
+  quarantine_probe_identity
+}
+import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import v2.workflow.required_floor { long_home_prefixes }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.algebra { Cons, Empty, fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// THE LIVE JOIN plus its discriminating controls. The model is in
+// gunbc.quarantine_probe_disposition; this file supplies the four populations from the
+// authorities that own them and asserts that every live quarantine probe derives EXACTLY ONE
+// holding disposition.
+//
+// NO `live_tree_disposition` DECLARATION HERE, AND THAT IS DELIBERATE RATHER THAN AN OMISSION.
+// This witness reads the live tree twice (the module-declaration index, and each admission
+// entry's own declaration), so declaring SubstrateInputsOnly would be false. Declaring
+// ReadsLiveTree would be true and would make the required floor DECLINE this witness -- the
+// guard would then never execute, and a green main would mean nothing about it, which is the
+// exact failure this lane exists to expose. Undeclared is the honest position that the floor
+// still executes: the floor's own decline scan (`witness_file_from_source`) fires only on an
+// explicit ReadsLiveTree declaration, while affected-set selection treats undeclared as
+// live-reading and fail-closed. Both consumers get a true answer from the same silence.
+data quarantine_probe_disposition_witness_note: String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
+
+fn witness_pool_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// THE ENTRY-PATH -> AUTHORED-MODULE JOIN, from the same declaration the floor reads.
+//
+// A path-shaped guess is NOT available here and the corpus proves it: the admission entry
+// src/v2/test/claim/manual/english_emit_add_test.dag declares module v2.test.manual.english_emit_add,
+// dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
+// declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
+// path would silently miss the roster this fold joins against, and a miss reads as an alarm.
+fn module_for_entry(facts: List<ModuleDeclarationFact>, entry: String) -> String {
+  fold_list(
+    xs: facts,
+    empty: "",
+    cons: fn(acc, fact) { if fact.path == entry { fact.module } else { acc } }
+  )
+}
+
+// THE LIVE-TREE DECLINE FACT, read from the entry file itself.
+//
+// THIS IS A RE-DERIVATION OF A FACT THE PRODUCER OWNS, AND THE FORK IS FORCED RATHER THAN
+// CHOSEN. The floor computes it in Rust because it must decide whether to load a module BEFORE
+// loading it -- the same bootstrap constraint that makes the path-exclusion list unreadable from
+// .dag. This witness has no such constraint, so it reads the same declaration through the
+// substrate. The two computations could diverge, and A DIVERGENCE IS UNDETECTABLE FROM INSIDE
+// THIS FOLD: nothing here observes the floor's own classification. The strongest control
+// available is one anchored point, and it is asserted below
+// (`the_live_tree_declined_row_is_the_one_the_floor_declines`): the single live row this arm
+// classifies must be the row the floor really declines, checked against a named run rather than
+// against this fold's own answer. One anchored point is not proof of agreement; it is better
+// than none, and it is named as such.
+//
+// The required floor declines every site in a file whose source carries a `data` line naming
+// both LiveTreeDisposition and ReadsLiveTree -- `witness_file_from_source` in cli_run.rs, a
+// column-zero text scan in which UNDECLARED MEANS EXECUTES. That is not the same predicate as
+// `reads_live_tree_effective` (which also derives from effect reach and treats undeclared as
+// live-reading); the floor does not consult that one, and the Rust file records the pair as a
+// section 3 defect it deliberately does not fix. This witness reads the declaration the floor
+// reads, so it tracks the arm that actually fires; when the floor's copy is deleted (its own
+// deletion trigger, staged in v2.workflow.required_floor), this derivation and the arm it feeds
+// dissolve together with it.
+fn entry_declares_reads_live_tree(entry: String) -> Bool {
+  let source = filesystem_read(path: entry).content
+  source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
+}
+
+fn live_tree_declined_entries(rows: List<ExplicitWitnessAdmission>) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: Empty {},
+    cons: fn(acc, row) {
+      if entry_declares_reads_live_tree(entry: row.witness.entry) {
+        Cons { head: row.witness.entry, tail: acc }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn subject_for_admission(
+  facts: List<ModuleDeclarationFact>,
+  row: ExplicitWitnessAdmission
+) -> QuarantineProbeSubject {
+  QuarantineProbeSubject {
+    module: module_for_entry(facts: facts, entry: row.witness.entry),
+    entry: row.witness.entry,
+    function: row.witness.function
+  }
+}
+
+fn live_quarantine_probe_subjects() -> List<QuarantineProbeSubject> {
+  let facts = module_declaration_facts_live(pool_roots: witness_pool_roots())
+  fold_list(
+    xs: quarantine_probe_admissions(rows: explicit_witness_admissions),
+    empty: Empty {},
+    cons: fn(acc, row) { Cons { head: subject_for_admission(facts: facts, row: row), tail: acc } }
+  )
+}
+
+fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: floor_expected_red_roster(),
+    route_gap_roster: floor_route_gap_roster(),
+    home_prefixes: long_home_prefixes(),
+    live_tree_declined_entries: live_tree_declined_entries(
+      rows: quarantine_probe_admissions(rows: explicit_witness_admissions)
+    ),
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+// THE LIVE CLAIM. Every QuarantineProbeExpectRed admission derives exactly one holder.
+//
+// PATH EXCLUSIONS ARE PASSED EMPTY, and the two facts that makes true are different. The arm's
+// live inhabitant count is measured ZERO at 967b5bc1b92; its inhabitant count IN PRODUCTION is
+// UNMEASURED, because the floor's exclusion list is a Rust literal that no .dag caller can read
+// -- and cannot become one, since that list decides which modules enter the prepared subject
+// and so cannot be evaluated from inside it. Mirroring the literal here would be a second
+// representation that drifts silently. Unmeasured and zero are different states, and this guard
+// exists to refuse exactly that conflation, so it does not commit it in its own witness.
+test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
+  quarantine_probe_dispositions_all_hold(
+    subjects: live_quarantine_probe_subjects(),
+    facts: live_quarantine_probe_facts()
+  )
+}
+
+// THE LIVE CLAIM IS NOT VACUOUS, PROVEN BY MUTATION RATHER THAN ASSERTED. Each of the four
+// supplied populations is dropped in turn and the live claim must go RED, then the unmutated
+// fold must go green. Without this, a fold that answered "held" for everything -- or a join that
+// silently matched nothing -- would pass the live claim exactly as it does now. Measured on
+// 967b5bc1b92: dropping the expected-red roster unholds 5 probes, the route-gap roster 6, the
+// home prefixes 7, the live-tree entries 1. The path-exclusion axis is not mutated here because
+// it holds nothing live to lose; its derivation is exercised by the fixture control above, which
+// is the honest split between an arm with no inhabitants and an arm with no test.
+test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
+  let subjects = live_quarantine_probe_subjects()
+  !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
+    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
+    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_home_prefixes())
+    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_live_tree())
+    && quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
+}
+
+fn probe_no_strings() -> List<String> {
+  Empty {}
+}
+
+fn live_facts_without_expected_red() -> QuarantineProbeHoldingFacts {
+  let f = live_quarantine_probe_facts()
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: probe_no_strings(),
+    route_gap_roster: f.route_gap_roster,
+    home_prefixes: f.home_prefixes,
+    live_tree_declined_entries: f.live_tree_declined_entries,
+    path_exclusion_substrings: f.path_exclusion_substrings
+  }
+}
+
+fn live_facts_without_route_gap() -> QuarantineProbeHoldingFacts {
+  let f = live_quarantine_probe_facts()
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: f.expected_red_roster,
+    route_gap_roster: probe_no_strings(),
+    home_prefixes: f.home_prefixes,
+    live_tree_declined_entries: f.live_tree_declined_entries,
+    path_exclusion_substrings: f.path_exclusion_substrings
+  }
+}
+
+fn live_facts_without_home_prefixes() -> QuarantineProbeHoldingFacts {
+  let f = live_quarantine_probe_facts()
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: f.expected_red_roster,
+    route_gap_roster: f.route_gap_roster,
+    home_prefixes: probe_no_strings(),
+    live_tree_declined_entries: f.live_tree_declined_entries,
+    path_exclusion_substrings: f.path_exclusion_substrings
+  }
+}
+
+fn live_facts_without_live_tree() -> QuarantineProbeHoldingFacts {
+  let f = live_quarantine_probe_facts()
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: f.expected_red_roster,
+    route_gap_roster: f.route_gap_roster,
+    home_prefixes: f.home_prefixes,
+    live_tree_declined_entries: probe_no_strings(),
+    path_exclusion_substrings: f.path_exclusion_substrings
+  }
+}
+
+data probe_fixture_module: String = "test.claim.synthetic_quarantine_probe_witness"
+data probe_fixture_entry: String = "dag/test/claim/synthetic_quarantine_probe_witness_test.dag"
+data probe_fixture_function: String = "synthetic_probe_holds"
+
+fn probe_fixture_subject() -> QuarantineProbeSubject {
+  QuarantineProbeSubject {
+    module: probe_fixture_module,
+    entry: probe_fixture_entry,
+    function: probe_fixture_function
+  }
+}
+
+fn probe_fixture_identity() -> String {
+  quarantine_probe_identity(module: probe_fixture_module, function: probe_fixture_function)
+}
+
+fn probe_fixture_no_facts() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn facts_with_expected_red() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn facts_with_route_gap() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn facts_with_home_prefix() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Cons { head: "test.claim.synthetic_", tail: Empty {} },
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn facts_with_live_tree_decline() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Cons { head: probe_fixture_entry, tail: Empty {} },
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn facts_with_path_exclusion() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Cons { head: "test/claim/synthetic_", tail: Empty {} }
+  }
+}
+
+fn facts_with_two_holders() -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
+    route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+}
+
+fn disposition_is_held_by(disposition: QuarantineProbeDisposition, expected: QuarantineProbeHolder) -> Bool {
+  match disposition {
+    HeldByExactlyOne { identity: i, holder: h } => quarantine_probe_holder_eq(a: h, b: expected)
+    QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
+    QuarantineProbeHeldByMoreThanOne { identity: i, holders: hs } => false
+  }
+}
+
+fn quarantine_probe_holder_eq(a: QuarantineProbeHolder, b: QuarantineProbeHolder) -> Bool {
+  match a {
+    FloorExpectedRedHeld => match b {
+      FloorExpectedRedHeld => true
+      _ => false
+    }
+    RouteGapHeldNoVerdict => match b {
+      RouteGapHeldNoVerdict => true
+      _ => false
+    }
+    NeverRunDeclinedByHomePolicy { matched_prefix: pa } => match b {
+      NeverRunDeclinedByHomePolicy { matched_prefix: pb } => pa == pb
+      _ => false
+    }
+    NeverRunDeclinedByLiveTreeRead { entry: ea } => match b {
+      NeverRunDeclinedByLiveTreeRead { entry: eb } => ea == eb
+      _ => false
+    }
+    NeverRunPathExcluded { matched_substring: sa } => match b {
+      NeverRunPathExcluded { matched_substring: sb } => sa == sb
+      _ => false
+    }
+  }
+}
+
+fn disposition_is_now_passing(disposition: QuarantineProbeDisposition) -> Bool {
+  match disposition {
+    HeldByExactlyOne { identity: i, holder: h } => false
+    QuarantineProbeNowPassing { identity: i, entry: e, function: f } => i == probe_fixture_identity()
+    QuarantineProbeHeldByMoreThanOne { identity: i, holders: hs } => false
+  }
+}
+
+fn disposition_is_held_by_more_than_one(disposition: QuarantineProbeDisposition) -> Bool {
+  match disposition {
+    HeldByExactlyOne { identity: i, holder: h } => false
+    QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
+    QuarantineProbeHeldByMoreThanOne { identity: i, holders: hs } => true
+  }
+}
+
+fn fixture_disposition(facts: QuarantineProbeHoldingFacts) -> QuarantineProbeDisposition {
+  quarantine_probe_disposition(subject: probe_fixture_subject(), facts: facts)
+}
+
+// THE POSITIVE CONTROL, ONE ARM AT A TIME. Each holder in isolation derives HeldByExactlyOne and
+// carries the holder it found -- including NeverRunPathExcluded, whose derivation is exercised here even
+// though no live row inhabits it, and NeverRunDeclinedByLiveTreeRead. An arm with no live inhabitant is
+// not an unexercised arm.
+test fn each_holder_alone_derives_exactly_one_disposition() -> Bool {
+  disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
+    && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_route_gap()), expected: RouteGapHeldNoVerdict {})
+    && disposition_is_held_by(
+      disposition: fixture_disposition(facts: facts_with_home_prefix()),
+      expected: NeverRunDeclinedByHomePolicy { matched_prefix: "test.claim.synthetic_" }
+    )
+    && disposition_is_held_by(
+      disposition: fixture_disposition(facts: facts_with_live_tree_decline()),
+      expected: NeverRunDeclinedByLiveTreeRead { entry: probe_fixture_entry }
+    )
+    && disposition_is_held_by(
+      disposition: fixture_disposition(facts: facts_with_path_exclusion()),
+      expected: NeverRunPathExcluded { matched_substring: "test/claim/synthetic_" }
+    )
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE WHOLE POINT OF THE LANE. A probe no mechanism holds
+// derives the ALARM and does NOT hold. There is no accepting arm for this state anywhere in the
+// model, so a corpus in this condition cannot be made green by classification -- only by
+// deleting the admission row or by giving it a mechanism that really holds it.
+test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> Bool {
+  disposition_is_now_passing(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
+    && !quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
+    && !quarantine_probe_dispositions_all_hold(
+      subjects: Cons { head: probe_fixture_subject(), tail: Empty {} },
+      facts: probe_fixture_no_facts()
+    )
+}
+
+// TWO MECHANISMS FOR ONE OBLIGATION REFUSES, and refusing is the ruled-correct answer rather
+// than a false positive: two authorities for one fact means someone has to decide which one
+// actually holds it. No live row exercises this today, so the control is what keeps the arm
+// real.
+test fn a_probe_held_by_two_mechanisms_refuses() -> Bool {
+  disposition_is_held_by_more_than_one(disposition: fixture_disposition(facts: facts_with_two_holders()))
+    && !quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: facts_with_two_holders()))
+}
+
+// THE JOIN IS ON EXACT IDENTITY, NOT CONTAINMENT. A roster row whose name merely CONTAINS the
+// probe's identity does not hold it. Without this, a rename or a near-miss would read as
+// covered, which is the substring weakness the exact-admission authority was built to remove.
+test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Bool {
+  let near_miss = QuarantineProbeHoldingFacts {
+    expected_red_roster: Cons { head: concat(probe_fixture_identity(), "_extra"), tail: Empty {} },
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {}
+  }
+  disposition_is_now_passing(disposition: fixture_disposition(facts: near_miss))
+    && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
+}
+
+// THE ANCHORED AGREEMENT POINT WITH THE PRODUCER. legacy_test_behavior_unclassified_frontier_is_zero
+// is the one live row this witness classifies NeverRunDeclinedByLiveTreeRead, and the floor
+// really does decline it: main run 32553487573 (sha 967b5bc1b92) reports
+// `offered=11812 routed=10439 declined_long=543 declined_live=830`, and 10439 + 543 + 830 =
+// 11812 exactly, so the three arms partition the offered sites and the declined population is
+// real rather than inferred. Run directly, the witness FAILS (claim_batch, cpu=183ms) -- so it
+// is a live red control, not a stale row, and the reading that would have deleted it was the
+// destructive one. This test asserts the classification half, which is the half this fold owns;
+// the run receipt above is the producer half and is prose because no .dag consumer can read a
+// workflow log.
+test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> Bool {
+  let facts = live_quarantine_probe_facts()
+  let subject = QuarantineProbeSubject {
+    module: "test.claim.legacy_test_behavior_disposition_acceptance_test",
+    entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
+    function: "legacy_test_behavior_unclassified_frontier_is_zero"
+  }
+  disposition_is_held_by(
+    disposition: quarantine_probe_disposition(subject: subject, facts: facts),
+    expected: NeverRunDeclinedByLiveTreeRead {
+      entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
+    }
+  )
+}
+
+// THE LIVE-TREE DERIVATION IS DISCRIMINATING, not a predicate that answers the same way for
+// everything: the entry that declares ReadsLiveTree reads true, and a sibling admission entry
+// that does not declare it reads false. Both are live files, so this control also fails if the
+// read itself stops working.
+test fn the_live_tree_declaration_read_discriminates() -> Bool {
+  entry_declares_reads_live_tree(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
+    && !entry_declares_reads_live_tree(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
+}
