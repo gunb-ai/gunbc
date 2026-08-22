@@ -70,8 +70,8 @@ fn world_room_count(w: World) -> std.integer.Int { length(w.rooms) }
 fn find_room(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
-      Present { value: found } => v2.std.optional.Present { value: found }
-      Absent => if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
+      Present { value: found } => Present { value: found }
+      Absent => if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
     })
 }
 
@@ -180,32 +180,32 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply
 // compare-and-swap discipline exists for.
 fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
-    Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: r } }
+    Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
     Absent =>
       match hunk {
         KeyedDiffAddedHunk { hunk_key: key, to: to } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetAlreadyPresent { identity: key } } }
+            Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetAlreadyPresent { identity: key } } }
             Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
           }
         KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
               if space_eq(a: current.space, b: from) {
                 ApplyAcc { rooms: without_identity(rooms: acc.rooms, identity: key), refusal: none }
               } else {
-                ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantBaseChanged { identity: key } } }
+                ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
               }
           }
         KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
               if space_eq(a: current.space, b: from) {
                 ApplyAcc { rooms: replace_identity(rooms: acc.rooms, identity: key, space: to), refusal: none }
               } else {
-                ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantBaseChanged { identity: key } } }
+                ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
               }
           }
       }

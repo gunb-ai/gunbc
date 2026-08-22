@@ -515,17 +515,17 @@ fn wall_position(w: ShellWall) -> std.integer.Int {
 
 fn shared_wall_region(a: ShellWall, b: ShellWall) -> WallOverlap? {
   if wall_runs_north_south(w: a) != wall_runs_north_south(w: b) {
-    none
+    v2.std.optional.Absent
   } else {
     if wall_position(w: a) != wall_position(w: b) {
-      none
+      v2.std.optional.Absent
     } else {
       let low = max_of(a: a.low, b: b.low)
       let high = min_of(a: a.high, b: b.high)
       let along_low = max_of(a: wall_along_low(w: a), b: wall_along_low(w: b))
       let along_high = min_of(a: wall_along_high(w: a), b: wall_along_high(w: b))
       if low >= high || along_low >= along_high {
-        none
+        v2.std.optional.Absent
       } else {
         v2.std.optional.Present {
           value: WallOverlap {
@@ -586,25 +586,25 @@ fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
   match acc.refusal {
     Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
     Absent =>
-      let conflict = fold(acc.admitted, init: none, f: (found, other) =>
+      let conflict = fold(acc.admitted, init: v2.std.optional.Absent, f: (found, other) =>
         match found {
           Present { value: r } => v2.std.optional.Present { value: r }
           Absent =>
             match spaces_interpenetrate(a: other, b: s) {
               OrthogonalRefused { cause: c } => v2.std.optional.Present { value: c }
               OrthogonalReady { value: overlaps } =>
-                if overlaps { v2.std.optional.Present { value: SpacesInterpenetrate } } else { none }
+                if overlaps { v2.std.optional.Present { value: SpacesInterpenetrate } } else { v2.std.optional.Absent }
             }
         })
       match conflict {
         Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
-        Absent => ComplexAccum { admitted: concat([s], acc.admitted), refusal: none }
+        Absent => ComplexAccum { admitted: concat([s], acc.admitted), refusal: v2.std.optional.Absent }
       }
   }
 }
 
 fn space_complex(spaces: List<EnclosedSpace>) -> std.orthogonal_geometry.OrthogonalConstruction<SpaceComplex> {
-  let acc = fold(spaces, init: ComplexAccum { admitted: [], refusal: none }, f: (a, s) => admit_space(acc: a, s: s))
+  let acc = fold(spaces, init: ComplexAccum { admitted: [], refusal: v2.std.optional.Absent }, f: (a, s) => admit_space(acc: a, s: s))
   match acc.refusal {
     Present { value: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
     Absent => std.orthogonal_geometry.OrthogonalReady { value: SpaceComplex { spaces: spaces } }
