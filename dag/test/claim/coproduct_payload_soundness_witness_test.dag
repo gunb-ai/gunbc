@@ -36,8 +36,14 @@ module test.claim.coproduct_payload_soundness_witness_test
 // WHAT IS ASSERTED. compile_dag_rust_emit_check must REFUSE the fixture below: placing a variant's
 // payload where the variant's own type is declared must be a located, blocking type diagnostic, not
 // a program that compiles and dies at its first match. The witness returns false today, which is why
-// it is enrolled through gunbc.explicit_witness_admission as an expecting-red probe rather than
-// asserted green here.
+// it is enrolled as an expecting-red identity rather than asserted green here.
+//
+// ENROLLED IN TWO PLACES, AND THEY ARE NOT THE SAME FACT -- I got this wrong on the first attempt
+// and the floor caught it. `v2.workflow.floor_expected_red` is what GATES the required floor: an
+// identity there still executes and its outcome is still asserted, but a failure counts as
+// agreement. `gunbc.explicit_witness_admission` DOCUMENTS the red and its dissolution and, per the
+// ruling recorded at floor_expected_red_chunk_13, does not itself gate the floor. Enrolling only in
+// the second is what reds a build.
 //
 // THE POSITIVE CONTROL IS NOT OPTIONAL AND IS NOT COSMETIC. Without it, a compiler that refused
 // EVERY record literal would satisfy the claim above. The control asserts that the correct spelling
