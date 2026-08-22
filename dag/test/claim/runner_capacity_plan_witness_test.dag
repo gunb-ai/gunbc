@@ -39,6 +39,7 @@ import gunbc.runner_capacity_plan {
   ObservedGitHubSlotPopulation,
   GitHubSlotPopulationObserved,
   GitHubSlotPopulationUnreadable,
+  GitHubSlotPopulationDuplicateRegistration,
   GitHubSlotPopulationForeignRegistration,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -362,6 +363,29 @@ test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
   ) {
     GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
     GitHubSlotPopulationUnreadable { reason: _ } => false
+    GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
     GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
   }
+}
+
+// A POPULATION IS A SET AND A FOLD OVER A LIST IS NOT ONE UNLESS IT SAYS SO. Two registrations
+// decoding to the same identity -- reachable on GitHub after a re-register -- would otherwise count
+// twice, and the count is exactly what addition_actions derives additions from. So a duplicate
+// inflates the observed width and plans one fewer addition than convergence needs: the same
+// over-counting this whole change removes, arriving by a second route. The control below it is the
+// same roster with the duplicate collapsed, which must NOT refuse.
+test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_set() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
+}
+
+test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
 }

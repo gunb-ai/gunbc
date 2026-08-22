@@ -24,8 +24,10 @@ import gunbc.fleet_runner_connectivity {
   SlotConnectivityUnknown,
 }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
+  identity_in_list,
   host_github_slot_count,
   host_fabric_slot_count,
   runner_slot_membership,
@@ -38,7 +40,7 @@ import gunbc.runner_slot_allocation {
   SlotServesFabricExecution,
 }
 
-data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. The desired GitHub population is the host's committed exact members filtered by GitHub purpose, so a fabric execution member anywhere in the index range is simply not in it and this plan can never add one. Additions are the desired members not represented by the current observed-side approximation, which is still a dense local prefix rather than a decoded roster — that approximation is the remaining rung, recorded in slot_enumeration_narrow_class_note. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
+data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. The desired GitHub population is the host's committed exact members filtered by GitHub purpose, so a fabric execution member anywhere in the index range is simply not in it and this plan can never add one. Additions are the desired members not represented by the OBSERVED GitHub population, which is now DECODED FROM THE ROSTER by observed_github_slot_identities rather than synthesized as a dense local prefix — the previous form measured local systemd incarnations and handed them to a check about GitHub registrations, two populations behind one name. The remaining rung is one layer further out and is a different fact: organization_runner_roster_evidence is a declared Scaffold returning the pinned 2026-08-06 incident corpus, so the decode is real and total while the observation it decodes is still a constant. Recorded in slot_enumeration_narrow_class_note. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
 type RunnerCapacityAction
   = RunnerSlotAdd { to: RunnerSlotIdentity }
@@ -123,7 +125,14 @@ type ObservedGitHubSlotPopulation
   = GitHubSlotPopulationObserved { identities: List<RunnerSlotIdentity> }
   | GitHubSlotPopulationUnreadable { reason: String }
   | GitHubSlotPopulationForeignRegistration { registration_name: NonEmptyStr }
+  | GitHubSlotPopulationDuplicateRegistration { slot: RunnerSlotIdentity }
 
+// A POPULATION IS A SET, AND A FOLD OVER A LIST IS NOT ONE UNLESS IT SAYS SO. Two registrations
+// decoding to the same identity would otherwise count twice, and the count is what addition_actions
+// derives additions from -- so a duplicate inflates the observed width and plans one fewer addition
+// than convergence needs. That is the same over-counting failure this decode was written to remove,
+// arriving by a second route. GitHub can hold two registrations under one name after a re-register,
+// so this is a reachable state rather than a hypothetical.
 fn accumulate_decoded_registration(
   host: HostIdentity,
   acc: ObservedGitHubSlotPopulation,
@@ -131,6 +140,8 @@ fn accumulate_decoded_registration(
 ) -> ObservedGitHubSlotPopulation {
   match acc {
     GitHubSlotPopulationUnreadable { reason: r } => GitHubSlotPopulationUnreadable { reason: r }
+    GitHubSlotPopulationDuplicateRegistration { slot: d } =>
+      GitHubSlotPopulationDuplicateRegistration { slot: d }
     GitHubSlotPopulationForeignRegistration { registration_name: n } =>
       GitHubSlotPopulationForeignRegistration { registration_name: n }
     GitHubSlotPopulationObserved { identities: ids } =>
@@ -139,7 +150,11 @@ fn accumulate_decoded_registration(
           GitHubSlotPopulationForeignRegistration { registration_name: n }
         RegistrationNamesCommittedSlot { slot: slot } =>
           if (slot.host as String) == (host as String) {
-            GitHubSlotPopulationObserved { identities: concat(ids, [slot]) }
+            if identity_in_list(identity: slot, members: ids) {
+              GitHubSlotPopulationDuplicateRegistration { slot: slot }
+            } else {
+              GitHubSlotPopulationObserved { identities: concat(ids, [slot]) }
+            }
           } else {
             GitHubSlotPopulationObserved { identities: ids }
           }
@@ -408,6 +423,10 @@ fn plan_runner_capacity_host(
     GitHubSlotPopulationUnreadable { reason: r } =>
       HostCapacityPlanRefused {
         reason: join(["runner roster read unavailable, refusing to plan against an observation that could not be taken: ", r], "")
+      }
+    GitHubSlotPopulationDuplicateRegistration { slot: d } =>
+      HostCapacityPlanRefused {
+        reason: join(["the organization holds more than one self-hosted runner registration decoding to slot ", runner_slot_instance_name(slot: d), ", so the observed population is not a set and its count would over-state the slots actually held"], "")
       }
     GitHubSlotPopulationForeignRegistration { registration_name: n } =>
       HostCapacityPlanRefused {
