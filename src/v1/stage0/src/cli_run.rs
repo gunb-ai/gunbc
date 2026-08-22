@@ -4667,6 +4667,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
+        CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4732,6 +4733,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         // histogram feeds is a list of spellings to declare a row for, and every
         // refusal of one leaf would otherwise aggregate into a single row.
         CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
+        // The NAME is the qualified operation, not the transport kind: the burn-down this
+        // histogram feeds is the list of operations awaiting a realization handler, and keying
+        // on "file" would aggregate every one of them into a single row.
+        CompilerDiagnostic::TransportEmissionNotModeled {
+            service, operation, ..
+        } => format!("{service}.{operation}"),
     };
     (class.to_string(), name)
 }
