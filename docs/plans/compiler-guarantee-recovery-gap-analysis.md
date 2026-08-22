@@ -238,7 +238,8 @@ were priced out one at a time. Independent review corrected it, and the correcte
 **three distinct failure modes**, each with its own receipt:
 
 1. **The implementation never matched the specification, even while the specification was
-   live.** `module_skips_direct_call_arg_check` (the `v2.*`/`v1.compiler.*` exemption) dates
+   live.** `module_skips_direct_call_arg_check` (the `v2.*` exemption; it also skipped
+   `v1.compiler.*` until cut A, gunbc#8873, deleted that arm as dead) dates
    to **2026-06-08** (`a13fb57b149`, first `-S` occurrence) — eight days *before* the
    2026-06-16 bankruptcy. The gaps predate the loss of the document that named them.
 2. **The status ledger overstated completeness.** The recovered
@@ -341,7 +342,7 @@ grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 | Claim (THESIS.md) | Today | Receipt | §5 class |
 |---|---|---|---|
 | Type mismatches caught at compile time | **UNENFORCED** (return position, `data` annotation, generic instantiation) | `fn f() -> Int { "not an int" }` typechecks — probed by execution, PR #7481; argument position *is* checked | wall after grounding |
-| …in compiler source | **UNENFORCED by exemption** | `v1.compiler.infer` `module_skips_direct_call_arg_check` — skips `v2.*` and `v1.compiler.*` | wall now |
+| …in compiler source | **UNENFORCED by exemption** | `v1.compiler.infer` `module_skips_direct_call_arg_check` — skips `v2.*` (the `v1.compiler.*` arm was deleted as dead by cut A, gunbc#8873); the deletion of the remaining arm is gunbc#8924, CLOSED and held indefinitely by decision | wall now |
 | Field typos | **PARTIAL** — concrete types checked; through a type variable, not | `v1.compiler.infer` mints `TypeVariable { id: "field_of_type_var" }` instead of refusing | wall after grounding |
 | Application arity / call shape (missing, extra, misspelled-label args) | **fail-open by construction of the walk** | `v1.compiler.infer` `direct_call_arg_mismatch_diags` is *formal-driven*: per formal it seeks a same-named arg, else falls back to the **positional** arg at the same index (a misspelled label silently binds by position if the type fits), and `Absent => []` (missing arg → no diagnostic); extra args are never visited. The `ArityMismatch` diagnostic is **type-constructor** arity ("expects N *type* arguments"), not invocation arity — invocation arity has no compile diagnostic; #6896's wall is runtime-only | wall now |
 | Non-exhaustive matches | **PARTIAL — one confirmed silent arm** | resolved coproducts have exhaustiveness machinery; but `v1.compiler.infer_patterns` `lookup_variant_in_type` / `lookup_field_in_variant` both have `PatternLookupBlocked => node_lookup_failed(diagnostics: [])` — a blocked scrutinee lookup fails with **zero diagnostics** and the pattern types as `error_type` (`PatternDynamic`, by contrast, does diagnose at these sites). "Exhaustiveness not established" is treated as success-adjacent, not refused | wall after grounding |
@@ -578,7 +579,7 @@ What did not happen is the generic mechanism, or the rest of the dimensions movi
 
 | Dimension | Declared today | Carried on bindings | Enforced |
 |---|---|---|---|
-| Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*`/`v1.compiler.*` exempt |
+| Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*` exempt |
 | Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED in v1** — thesis-era status was "Partial, 421 violations, non-blocking"; **walled in v2 for loops** (`v2.std.cardinality` bound measure) |
 | Cardinality / multiplicity | `v2.std.refinement` (+ scoped lattice plan `gunbc.plans.cardinality_refinement`) | No | **RepresentableButForgeable** — see §4/§4b; operator re-directed 2026-07-04 |
 | Ownership | `src/v1/ownership.dag`, `src/v2/lens/ownership.dag` | No — still a separate pass | **Partial**, plus a known latent fail-open (Rc wrap) |
@@ -2990,7 +2991,7 @@ corrected by the seventh-pass verdict: the exemption skips the argument-TYPE jud
 whose false positives are the four measured representation gaps — the label wall never
 gated it, and #7519's wall already runs exemption-free). Once
 `argument-type-compatibility-grounding` and `declared-conformance-grounding` land, rerun
-exemption-free over `v2.*`/`v1.compiler.*`, classify every failure fresh, fix relation or
+exemption-free over `v2.*` (the `v1.compiler.*` arm is already gone), classify every failure fresh, fix relation or
 source, delete; the unsourced 104 is neither a blocker nor a promise.
 
 **Stage 6b — the acceptance door, split mechanism-then-activation (seventh-pass verdict;
