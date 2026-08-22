@@ -7,7 +7,20 @@ module test.claim.dissolution_census_mechanism_witness_test
 // extdeps fan-in it concatenates. The breadth-preserving half stays the
 // irreducible census in dag/test/claim/long/dissolution_census_witness_test.dag.
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { bound_dissolution, unbound_dissolution }
+import std.dissolution { bound_dissolution, unbound_dissolution, retires_dissolution, dissolution_is_bound }
+import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigger }
+import extdeps.linux.usb_gadget { configfs_op_render_dissolution_trigger }
+import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
+import extdeps.cache.sccache { sccache_install_dissolution_trigger }
+import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
+import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
+import gunbc.dissolution_observation {
+  DissolutionCensusAnswered,
+  DissolutionCensusRefused,
+  dissolution_census_verdict_for,
+}
+import v2.std.decl_index { decl_facts }
+import v2.lens.module_graph { module_declaration_facts_live }
 import std.roster_frontier { FrontierRow, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }
 
 fn planted_bound_ref() -> DeclarationRef {
@@ -47,6 +60,113 @@ test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
   let base = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
   let probed = fold_frontier_expiry(rows: planted_rows(), present_decls: probes)
   probed.unbound_count == base.unbound_count
+}
+
+fn planted_retires_ref() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "planted_retires_target")
+}
+
+fn planted_retires_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: planted_retires_ref(),
+      reason: "planted fixture row: retirement-by-disappearance mechanism coverage",
+      dissolution: retires_dissolution(ref: planted_retires_ref()),
+    ),
+  ]
+}
+
+// THE DISCRIMINATING PAIR, AND IT RUNS THE OPPOSITE WAY FROM ITS SIBLING ABOVE.
+// A forward trigger is discharged by supplying its declaration; a retirement trigger is
+// discharged by withholding it. Both directions are asserted here, so an implementation
+// that answered `present` for both shapes — the pre-change behaviour — fails this test,
+// and so does one that answered `absent` for both.
+test fn a_retirement_trigger_is_pending_while_its_declaration_is_present() -> Bool {
+  let present = fold_frontier_expiry(rows: planted_retires_rows(), present_decls: [planted_retires_ref()])
+  present.pending_count == 1
+    && present.fired_still_present_count == 0
+    && present.unbound_count == 0
+    && frontier_expiry_clean(report: present)
+}
+
+test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
+  let gone = fold_frontier_expiry(
+    rows: planted_retires_rows(),
+    present_decls: [decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint")],
+  )
+  gone.fired_still_present_count == 1
+    && gone.pending_count == 0
+    && !frontier_expiry_clean(report: gone)
+}
+
+// THE PRODUCTION CONSUMERS. Three live retirement obligations whose condition was a
+// description string until this change and is now a trigger the fold can answer.
+// `dissolution_is_bound` was FALSE for all three before the migration, which is what
+// makes this an executing before/after rather than a restatement of the constructor.
+test fn migrated_production_retirement_conditions_are_bound() -> Bool {
+  dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
+    && dissolution_is_bound(condition: configfs_op_render_dissolution_trigger)
+    && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
+    && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
+    && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
+    && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
+}
+
+// THE LIVE DISCRIMINATOR, AND IT IS DELIBERATELY NOT A COUNT.
+//
+// Once `present_decls` is real, the two trigger arms read the population in OPPOSITE
+// directions, so a wrong or partial population mass-fires one of them while
+// mass-silencing the other — and any assertion phrased as a total is satisfied by both
+// mistakes. The pair below is phrased at identity grain instead: one subject KNOWN to be
+// present and one KNOWN to be absent, asserted in opposite directions IN THE SAME RUN
+// against the same resolver answer. A population that lost the tree fails the first; a
+// population that fabricated it fails the second.
+//
+// The pool is the purpose-built fixture rather than a production directory: the subject
+// under test is the RESOLVER's behaviour, and scanning production to establish it prices
+// the mechanism at that directory's breadth — the cost-shape defect DESIGN §6 names.
+// Measured rather than assumed: pointed at `dag/std` this row was BUDGET-REFUSED at
+// 5510ms against the floor's 5000ms deadline and went undecided, which is a worse
+// outcome than a failure because nothing then claims it is broken.
+data live_discriminator_pool_roots: List<String> = ["dag/test/fixture/dissolution_live_discriminator"]
+
+fn live_discriminator_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "present_subject_row"),
+      reason: "live discriminator: subject known present, so its retirement is PENDING",
+      dissolution: retires_dissolution(
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "present_subject_declaration",
+        ),
+      ),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "absent_subject_row"),
+      reason: "live discriminator: subject known absent, so its arrival is PENDING",
+      dissolution: bound_dissolution(
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "absent_subject_declaration",
+        ),
+      ),
+    ),
+  ]
+}
+
+test fn opposite_trigger_directions_agree_on_one_live_population() -> Bool {
+  match dissolution_census_verdict_for(
+    rows: live_discriminator_rows(),
+    facts: decl_facts(pool_roots: live_discriminator_pool_roots),
+    modules: module_declaration_facts_live(pool_roots: live_discriminator_pool_roots),
+  ) {
+    DissolutionCensusRefused { undecided: _ } => false
+    DissolutionCensusAnswered { report: r } =>
+      r.pending_count == 2
+        && r.fired_still_present_count == 0
+        && r.unbound_count == 0
+  }
 }
 
 fn w_unbound_dissolution_empty_literal_red() -> Bool {

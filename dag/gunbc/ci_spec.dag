@@ -165,14 +165,12 @@ data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_flo
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
-data live_deploy_apply_entry: String = "dag/gunbc/live_deploy/apply.dag"
-data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
 
 data gunbc_ci_deploy_srv1_stage: DeployStage = {
   id: "deploy_dashboard_srv1",
   step_name: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)",
-  entry: live_deploy_apply_entry,
-  function: live_deploy_apply_srv1_wet_function,
+  entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
+  function: gunbc_ci_live_deploy_apply_srv1_target.function,
   needs: ["ci"],
   access: ci_deploy_srv1_access,
   runner: gunbc_ci_deploy_srv1_runner_spec(),
@@ -245,7 +243,7 @@ data gunbc_ci_floor_batch_clamp_params: List<RunnableBatchClamp> = [
   gunbc_ci_floor_positional_clamp(overhead_seconds: 125, per_unit_ms: 0),
 ]
 
-data gunbc_ci_compile_clean_clamp_note: String = "COMPILE-CLEAN LEG CLAMP (prelude coverage, first slice): discharges the compile-clean portion of gunbc_ci_floor_batch_clamp_note FOLLOW-UP ROW (a) — the eager compile-clean install ran OUTSIDE every batch budget and could only red at the step cap, which is how a 15m32s green gate grew past 49 minutes across #7398/#7438 with nothing naming the growth (typecheck-perf investigation, PR #7490). Same shape as the batch clamps: clamp_ms = overhead_seconds*1000 + closure_units * per_unit_ms, where closure_units is the compiled closure's MODULE COUNT — a runtime fact of the scope disposition (whole-tree ~2725 today, affected-set proportional to the diff), so the clamp re-denominates with scope exactly as batch clamps re-denominate with the affected set. Over-clamp is FLOOR-COMPILE-CLEAN-OVER-BUDGET: a typed, located walk refusal (admission grain — the compile receipt's ok is untouched, per the signed admission/verdict split in gunbc_ci_floor_batch_wall_budget_note); never a rerun, never a widen. RED-control hook GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS lowers the computed clamp (min), never raises. GROWTH DETECTION at row grain is NOT this clamp's job (the family margin ruling, 2026-07-25): per-row 2x drift against dated basis rows rides gunbc.witness_row_cost's comparator over dag/gunbc/compile_clean_cost_basis.tsv — the pass + module_typecheck rows of target/floor-compile-clean-cost-receipt.tsv, basis rows citing arm64 fleet run ids only, BasisAbsent counted until seeded from a cited run's own receipt FILE (the #7475 seeding pattern; an empty basis must count loudly, never read as no-drift). SEEDING SOURCE CORRECTED: this clause used to name the [compile-clean-cost] log lines, because the receipt file had no way off the runner and every row was mirrored into the step log to compensate — ~1,690 lines per floor run, and the same shape cost 8,614 more on the disclosure receipt. The ci job now uploads the receipts as the floor-receipts artifact (gunbc.ci_workflow ci_floor_receipts_upload_step), so seeding downloads the TSV instead of scraping a log, and the writers no longer mirror their bodies. The log lines are GONE, not merely deprecated: a seeding attempt that greps a run log for them will find nothing, which is why this clause is corrected rather than left to rot. BASIS OF THE CONSTANTS (worker-sized, 2026-07-31, from run 30602520347 @ 0ecb898, host srv1-01 arm64, post-#7490 fixes): whole-tree pass 258s over the ~1648-unit whole-tree entry closure (units = the leg's compiled closure module count, receipted by the first [compile-clean-cost] execution — NOT the ~2725-file module index, which overcounts by pool files outside every entry closure) = ~157ms/unit observed; per_unit_ms 320 is ~2x that rate, funding a full 2x fleet-spread host on top of the observed wall (the family margin ruling: a breach means content grew, never which host answered; pre-fix completing runs spread ~1.8x across hosts) — the batch family's 1000ms coefficient carries 1.4-1.7x the same way; overhead 60s covers the closure-size-independent tail (census fill parse ~13s fleet + governor arm). Whole-tree clamp = 60s + 1648*320ms = ~587s (~2.3x the observed 258s fleet wall). MECHANISM RECEIPTS (local x86, logic-not-cost host): green e2e via gunbc_ci_plan_artifact_plan — pass 310127ms/1648 units, WithinBudget, 1204 module rows, drift basis_absent=1205 counted, exit 0 (run at the pre-resize 200ms sizing; the arm proof is arithmetic-independent and the formula is witness-pinned at the final constants); RED control via GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS=1 receipted beside it. DISPATCH: operator direction this session ('can we add the budget gating ... i suggest we share that model' — briansrls, 2026-07-31). OPERATOR SIGNATURE (briansrls, 2026-07-31): the worker-sized constants are affirmed as proposed — overhead_seconds 60, per_unit_ms 320 ('the clamp constants you chose are fine, please proceed') — so the refusal arm is signed-live per the family raise discipline; TIGHTENING may still land by ordinary receipt note, and the first fleet observations should tighten per_unit_ms toward the measured rate."
+data gunbc_ci_compile_clean_clamp_note: String = "COMPILE-CLEAN LEG CLAMP (prelude coverage, first slice): discharges the compile-clean portion of gunbc_ci_floor_batch_clamp_note FOLLOW-UP ROW (a) — the eager compile-clean install ran OUTSIDE every batch budget and could only red at the step cap, which is how a 15m32s green gate grew past 49 minutes across #7398/#7438 with nothing naming the growth (typecheck-perf investigation, PR #7490). Same shape as the batch clamps: clamp_ms = overhead_seconds*1000 + closure_units * per_unit_ms, where closure_units is the compiled closure's MODULE COUNT — a runtime fact of the scope disposition (whole-tree ~2725 today, affected-set proportional to the diff), so the clamp re-denominates with scope exactly as batch clamps re-denominate with the affected set. Over-clamp is FLOOR-COMPILE-CLEAN-OVER-BUDGET: a typed, located walk refusal (admission grain — the compile receipt's ok is untouched, per the signed admission/verdict split in gunbc_ci_floor_batch_wall_budget_note); never a rerun, never a widen. RED-control hook GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS lowers the computed clamp (min), never raises. GROWTH DETECTION at row grain is NOT this clamp's job (the family margin ruling, 2026-07-25): per-row 2x drift against dated basis rows rides gunbc.witness_row_cost's comparator over dag/gunbc/compile_clean_cost_basis.tsv — the pass + module_typecheck rows of target/floor-compile-clean-cost-receipt.tsv, basis rows citing arm64 fleet run ids only, BasisAbsent counted until seeded from a cited run's own receipt FILE (the #7475 seeding pattern; an empty basis must count loudly, never read as no-drift). SEEDING SOURCE CORRECTED: this clause used to name the [compile-clean-cost] log lines, because the receipt file had no way off the runner and every row was mirrored into the step log to compensate — ~1,690 lines per floor run, and the same shape cost 8,614 more on the disclosure receipt. THAT REPLACEMENT ROUTE IS NOW GONE TOO, which is the correction this clause carries: it used to say the ci job uploads the receipts as the floor-receipts artifact via gunbc.ci_workflow ci_floor_receipts_upload_step, so seeding downloads the TSV instead of scraping a log. No live workflow carries that step -- it died with ci.yml in the floor cut. TRANSPORT IS NOW PARTIAL RATHER THAN ABSENT, and this clause is written at that grain because the coarser claim went stale within a day: gunbc#8875 (2026-08-22) added an upload to witnesses.yml, so a required-floor-receipts artifact DOES leave the runner today. It carries required_floor_disposition.tsv, expected_red_roster_join.tsv and long_home_storage_agreement.tsv -- the DISPOSITION receipts -- and none of the cost receipts this note names. So the gap is no longer the absence of any transport; it is that the transport which exists carries a different population, and a reader who sees an artifact on a green run must not infer that these receipts are in it. So this note deliberately retired the log route in favour of an artifact route that was then deleted underneath it, and both of its named routes are inoperative. THE PRODUCER IS UNREACHABLE ON THE NAMED INVOCATION AS WELL, so restoring transport alone would not seed anything: install_floor_compile_clean_receipt's claim_executor caller sits below the required_floor_mode early return, and the only path that could reach it under required CI is the consume_floor_compile_clean_gate_verdict builtin, whose live .dag caller sits in dag/tools/dag_compile_clean_transport -- reached by compile-clean witnesses that are themselves ROUTE-GAPPED and never arrive at their subject. Measured on the certified main run: zero compile-clean-cost markers. NO BASIS MAY BE INFERRED FROM THE AGGREGATE LOG OR FABRICATED FROM AN ABSENT RECEIPT -- an empty basis must count loudly, exactly as this note already requires of BasisAbsent, and that requirement is what forbids papering over the gap while it stands, and the writers no longer mirror their bodies. The log lines are GONE, not merely deprecated: a seeding attempt that greps a run log for them will find nothing, which is why this clause is corrected rather than left to rot. BASIS OF THE CONSTANTS (worker-sized, 2026-07-31, from run 30602520347 @ 0ecb898, host srv1-01 arm64, post-#7490 fixes): whole-tree pass 258s over the ~1648-unit whole-tree entry closure (units = the leg's compiled closure module count, receipted by the first [compile-clean-cost] execution — NOT the ~2725-file module index, which overcounts by pool files outside every entry closure) = ~157ms/unit observed; per_unit_ms 320 is ~2x that rate, funding a full 2x fleet-spread host on top of the observed wall (the family margin ruling: a breach means content grew, never which host answered; pre-fix completing runs spread ~1.8x across hosts) — the batch family's 1000ms coefficient carries 1.4-1.7x the same way; overhead 60s covers the closure-size-independent tail (census fill parse ~13s fleet + governor arm). Whole-tree clamp = 60s + 1648*320ms = ~587s (~2.3x the observed 258s fleet wall). MECHANISM RECEIPTS (local x86, logic-not-cost host): green e2e via gunbc_ci_plan_artifact_plan — pass 310127ms/1648 units, WithinBudget, 1204 module rows, drift basis_absent=1205 counted, exit 0 (run at the pre-resize 200ms sizing; the arm proof is arithmetic-independent and the formula is witness-pinned at the final constants); RED control via GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS=1 receipted beside it. DISPATCH: operator direction this session ('can we add the budget gating ... i suggest we share that model' — briansrls, 2026-07-31). OPERATOR SIGNATURE (briansrls, 2026-07-31): the worker-sized constants are affirmed as proposed — overhead_seconds 60, per_unit_ms 320 ('the clamp constants you chose are fine, please proceed') — so the refusal arm is signed-live per the family raise discipline; TIGHTENING may still land by ordinary receipt note, and the first fleet observations should tighten per_unit_ms toward the measured rate."
 
 data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp {
   overhead: second(count: 60),
@@ -454,8 +452,6 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 // TasksMax, pids.max, pids.current, ancestor limit, observer slot membership) via the
 // typed read seams only. workflow_dispatch-gated at the job, so it never rides PR or
 // push events; the printed return value IS the typed receipt.
-data gunbc_ci_srv1_tasks_observation_entry: String = "dag/gunbc/srv1_tasks_preapply_observation.dag"
-data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_preapply_wet"
 
 // Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09):
 // on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
@@ -466,11 +462,207 @@ data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_prea
 // from=none arm. Hosts follow the ref; no host is contacted here.
 
 
+// EVERY `gunbc run` STEP THIS SPEC EMITS NAMES ITS TARGET HERE, AND NOWHERE ELSE.
+//
+// The pair was previously two string literals at each call site, and that shape cost a real
+// defect: a merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing
+// the paths from the module names, and produced `dag/gunbc/spark/grant_install.dag` (a file that
+// has never existed at any commit) and `dag/gunbc/spark/serving_durability.dag` (a file that
+// exists but does not define the named function, and does not import the module that does).
+// Nothing refused, because a path in a string is not a symbol -- the DESIGN section 3 stale-citation
+// class, landing in an emitted argv rather than in prose. Both steps were unrunnable on main from
+// the day they landed.
+//
+// Hoisting the pairs into one roster is what makes the class checkable at all: one population to
+// join against, instead of pairs scattered across call sites where two strings could disagree with
+// nothing in a position to notice.
+//
+// NO CHECK ENFORCES THIS ROSTER TODAY, and that is stated plainly because an earlier revision of
+// this comment named one. It promised that `test.claim.ci_run_step_target_resolution` joined every
+// row against decl_facts -- a witness that was written, measured, and then REMOVED from this PR
+// along with a second attempt at an emit-time wall. Leaving that sentence would have been the
+// DESIGN section 3 stale-citation defect committed in the very comment that diagnoses it two
+// paragraphs above, and it had already misled one reviewer into reading coverage that does not
+// exist. What the roster buys today is single authority, not enforcement.
+//
+// WHY BOTH ATTEMPTS WERE WITHDRAWN, so the next person does not rebuild them: the question "does
+// file F declare symbol G" is answered by decl_facts, which walks POOL ROOTS -- directories,
+// recursively, ~3833 modules, ~8s. Measured by controlled A/B, an emit-time wall cost 180s across
+// 22 call sites and took SEVEN pre-existing witness claims below verdict, because two witness
+// modules render workflow steps and inherited the walk. The fast-lane ceiling is 5000ms, so the
+// binding constraint is not how many walks happen but that NO CORPUS WALK MAY BE REACHABLE FROM A
+// FAST-LANE CLAIM AT ALL -- one walk breaches it.
+//
+// THE WALL IS OWED, at the generated-artifact gate rather than at the argv crossing. That is a
+// re-scoping of the hazard, not a weaker wall: a bad argv built in memory by a witness harms
+// nothing, while a bad argv reaching a COMMITTED workflow is what CI then runs, and it is the route
+// both defects above actually took. The gate sits upstream of every emitter that produces a
+// committed artifact and already returns ArtifactGenerationRefused { reason }.
+//
+// SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
+// claimed the higher rung on the strength of the witness that is no longer here; with nothing
+// enforcing it, the honest rung is one step lower and the consolidation is a cost-of-error
+// reduction rather than a wall. NEXT-RUNG TRIGGER: the artifact-gate refusal above. The rung ABOVE
+// that -- structural -- is a resolved symbol reference (a DeclarationRef the substrate resolves)
+// with the entry path derived from the module index rather than authored beside it, at which point
+// a wrong target cannot be written at all.
+type GunbcRunStepTarget {
+  entry: String
+  function: String
+}
+
+data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host_reach_identity_probe.dag",
+  function: "probe_fleet_reach_wet",
+}
+
+data gunbc_ci_multi_principal_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_multi_principal_probe.dag",
+  function: "fleet_multi_principal_probe_wet",
+}
+
+data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_plan_wet",
+}
+
+data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_apply_wet",
+}
+
+data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_reboot_probe.dag",
+  function: "spark_serving_reboot_ci_wet",
+}
+
+data gunbc_ci_spark_serving_durability_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_durability_transaction.dag",
+  function: "spark_serving_durability_ci_wet",
+}
+
+data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/managed_grant_install.dag",
+  function: "spark_grant_install_ci_wet",
+}
+
+data gunbc_ci_spark_serving_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_observe.dag",
+  function: "spark_serving_observe_ci_wet",
+}
+
+data gunbc_ci_spark_serving_converge_slice_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
+  function: "spark_serving_converge_slice_ci_wet",
+}
+
+data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_receipt_collector.dag",
+  function: "collect_fleet_convergence_wet",
+}
+
+data gunbc_ci_fleet_host_key_scan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+  function: "fleet_host_key_scan_wet",
+}
+
+data gunbc_ci_fleet_host_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+  function: "fleet_host_key_enroll_wet",
+}
+
+data gunbc_ci_probe_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_probe_identity_observe.dag",
+  function: "fleet_probe_identity_observe_wet",
+}
+
+data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+  function: "fleet_authorized_key_self_enroll_wet",
+}
+
+data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "live_deploy_apply_srv1_wet",
+}
+
+data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
+  function: "observe_srv1_tasks_preapply_wet",
+}
+
+data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/tools/generated_artifact_gate.dag",
+  function: "main_wet",
+}
+
+data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/repo_local_git_config.dag",
+  function: "converge",
+}
+
+data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/tools/ci_heal_dispatch.dag",
+  function: "main",
+}
+
+// The roster the witness folds. A step whose target is not in this list is not covered, which is
+// why the targets are declared here rather than inline: a new call site that re-inlines a literal
+// pair is outside the join and the wall would not see it.
+//
+// THIS LIST IS ITSELF A HAND-MAINTAINED PARALLEL ENUMERATION, and naming only the inline hole
+// above understated the denominator problem. There are TWO ways a target escapes this roster,
+// and they need different mechanisms:
+//
+//   1. a `gunbc run` step spelling a literal entry/function pair inline, never declared as a
+//      target at all -- invisible to any enumeration of declarations, because the pair is not a
+//      declaration. Only a check over the emitted steps can see it.
+//   2. a twentieth `data ..._target: GunbcRunStepTarget` declared correctly and simply NOT ADDED
+//      HERE. It looks completely correct at its declaration site and silently under-reports on
+//      anything that folds this list.
+//
+// The second is the open-denominator class this repository has already named and priced:
+// `std.primitives` `primitive_contract_roster_note` records the identical shape over
+// *_contract rows, its silent under-reporting, and its dissolution -- derive the roster by
+// enumerating the declarations once declaration introspection lands.
+//
+// That dissolution condition is SATISFIED for this roster: `decl_facts` is a registered builtin
+// callable from ordinary `.dag`, so the nineteen can be derived by enumerating every
+// module-scope `data` of type `GunbcRunStepTarget` in this module instead of being retyped
+// here. Doing so costs nothing extra to any consumer that already walks decl_facts, and it
+// turns a fold over "the rows someone remembered to list" into a fold over "the rows that
+// exist". Until that lands, hole 2 is open and this list is diligence, not a denominator.
+//
+// Counted at authoring: 19 declarations, 19 entries. That equality is the thing nothing checks.
+fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
+  [
+    gunbc_ci_fleet_reach_probe_target,
+    gunbc_ci_multi_principal_probe_target,
+    gunbc_ci_fleet_converge_plan_target,
+    gunbc_ci_fleet_converge_apply_target,
+    gunbc_ci_spark_serving_reboot_target,
+    gunbc_ci_spark_serving_durability_target,
+    gunbc_ci_spark_grant_install_target,
+    gunbc_ci_spark_serving_observe_target,
+    gunbc_ci_spark_serving_converge_slice_target,
+    gunbc_ci_collect_fleet_convergence_target,
+    gunbc_ci_fleet_host_key_scan_target,
+    gunbc_ci_fleet_host_key_enroll_target,
+    gunbc_ci_probe_identity_observe_target,
+    gunbc_ci_authorized_key_enroll_target,
+    gunbc_ci_live_deploy_apply_srv1_target,
+    gunbc_ci_srv1_tasks_observation_target,
+    gunbc_ci_heal_regen_target,
+    gunbc_ci_heal_repo_local_git_config_target,
+    gunbc_ci_heal_dispatch_target
+  ]
+}
+
 fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/host_reach_identity_probe.dag",
-    function: "probe_fleet_reach_wet",
+    entry: gunbc_ci_fleet_reach_probe_target.entry,
+    function: gunbc_ci_fleet_reach_probe_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-reach-probe-receipt.txt"
   )
@@ -486,8 +678,8 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_multi_principal_probe.dag",
-    function: "fleet_multi_principal_probe_wet",
+    entry: gunbc_ci_multi_principal_probe_target.entry,
+    function: gunbc_ci_multi_principal_probe_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
   )
@@ -748,8 +940,8 @@ data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_converge_plan_cli.dag",
-    function: "fleet_converge_plan_wet",
+    entry: gunbc_ci_fleet_converge_plan_target.entry,
+    function: gunbc_ci_fleet_converge_plan_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -779,8 +971,8 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_converge_plan_cli.dag",
-    function: "fleet_converge_apply_wet",
+    entry: gunbc_ci_fleet_converge_apply_target.entry,
+    function: gunbc_ci_fleet_converge_apply_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -791,8 +983,8 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 fn gunbc_ci_spark_serving_reboot_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark/serving_reboot_probe.dag",
-    function: "spark_serving_reboot_ci_wet",
+    entry: gunbc_ci_spark_serving_reboot_target.entry,
+    function: gunbc_ci_spark_serving_reboot_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-reboot-receipt.txt"
   )
@@ -801,8 +993,8 @@ fn gunbc_ci_spark_serving_reboot_invoke() -> String {
 fn gunbc_ci_spark_serving_durability_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark/serving_durability.dag",
-    function: "spark_serving_durability_ci_wet",
+    entry: gunbc_ci_spark_serving_durability_target.entry,
+    function: gunbc_ci_spark_serving_durability_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-durability-receipt.txt"
   )
@@ -812,8 +1004,8 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark/grant_install.dag",
-    function: "spark_grant_install_ci_wet",
+    entry: gunbc_ci_spark_grant_install_target.entry,
+    function: gunbc_ci_spark_grant_install_target.function,
     claim_run: false,
     receipt_rel: "target/spark-grant-install-receipt.txt"
   )
@@ -823,8 +1015,8 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark/serving_observe.dag",
-    function: "spark_serving_observe_ci_wet",
+    entry: gunbc_ci_spark_serving_observe_target.entry,
+    function: gunbc_ci_spark_serving_observe_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-observe-ci-receipt.txt"
   )
@@ -833,8 +1025,8 @@ fn gunbc_ci_spark_serving_observe_invoke() -> String {
 fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
-    function: "spark_serving_converge_slice_ci_wet",
+    entry: gunbc_ci_spark_serving_converge_slice_target.entry,
+    function: gunbc_ci_spark_serving_converge_slice_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-converge-slice-wet-receipt.txt"
   )
@@ -850,8 +1042,8 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_receipt_collector.dag",
-    function: "collect_fleet_convergence_wet",
+    entry: gunbc_ci_collect_fleet_convergence_target.entry,
+    function: gunbc_ci_collect_fleet_convergence_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-converge-collect-receipt.txt"
   )
@@ -864,8 +1056,8 @@ fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
 fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-    function: "fleet_host_key_scan_wet",
+    entry: gunbc_ci_fleet_host_key_scan_target.entry,
+    function: gunbc_ci_fleet_host_key_scan_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-host-key-scan-receipt.txt"
   )
@@ -876,8 +1068,8 @@ fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
 fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-    function: "fleet_host_key_enroll_wet",
+    entry: gunbc_ci_fleet_host_key_enroll_target.entry,
+    function: gunbc_ci_fleet_host_key_enroll_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
   )
@@ -888,8 +1080,8 @@ fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
 fn gunbc_ci_probe_identity_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_probe_identity_observe.dag",
-    function: "fleet_probe_identity_observe_wet",
+    entry: gunbc_ci_probe_identity_observe_target.entry,
+    function: gunbc_ci_probe_identity_observe_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-probe-identity-observe-receipt.txt"
   )
@@ -900,8 +1092,8 @@ fn gunbc_ci_probe_identity_observe_invoke() -> String {
 fn gunbc_ci_authorized_key_enroll_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-    function: "fleet_authorized_key_self_enroll_wet",
+    entry: gunbc_ci_authorized_key_enroll_target.entry,
+    function: gunbc_ci_authorized_key_enroll_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-authorized-key-enroll-receipt.txt"
   )
@@ -946,8 +1138,8 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_srv1_tasks_observation_entry,
-    function: gunbc_ci_srv1_tasks_observation_function,
+    entry: gunbc_ci_srv1_tasks_observation_target.entry,
+    function: gunbc_ci_srv1_tasks_observation_target.function,
     claim_run: false,
     receipt_rel: "target/srv1-tasks-preapply-receipt.txt"
   )
@@ -963,24 +1155,20 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-data ci_heal_generated_artifact_gate_entry: String = "dag/tools/generated_artifact_gate.dag"
 
-data ci_heal_generated_artifact_regen_function: String = "main_wet"
 
 data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold — a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing — the loop terminates in one heal. That fixed point is the enforced contract of generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point (committed bytes == artifact_generate), so a non-terminating heal loop is unwritable while that witness stays green."
 
 fn gunbc_ci_heal_regen_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: ci_heal_generated_artifact_gate_entry,
-    function: ci_heal_generated_artifact_regen_function,
+    entry: gunbc_ci_heal_regen_target.entry,
+    function: gunbc_ci_heal_regen_target.function,
     claim_run: false,
     receipt_rel: none
   )
 }
 
-data ci_heal_repo_local_git_config_entry: String = "dag/gunbc/repo_local_git_config.dag"
-data ci_heal_repo_local_git_config_function: String = "converge"
 
 data ci_heal_repo_local_git_config_note: String = "Immediately after the release gunbc binary is unpacked, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact rows govern the remedy merge rather than dying as unresolved conflicts. Ordering is after unpack (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (that step's git merge is the first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent: already-converged checkouts are a no-op."
 
@@ -989,15 +1177,13 @@ data ci_heal_repo_local_git_config_note: String = "Immediately after the release
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: ci_heal_repo_local_git_config_entry,
-    function: ci_heal_repo_local_git_config_function,
+    entry: gunbc_ci_heal_repo_local_git_config_target.entry,
+    function: gunbc_ci_heal_repo_local_git_config_target.function,
     claim_run: false,
     receipt_rel: none
   )
 }
 
-data ci_heal_dispatch_entry: String = "dag/tools/ci_heal_dispatch.dag"
-data ci_heal_dispatch_function: String = "main"
 
 fn gunbc_ci_heal_dispatch_invoke() -> String {
   gunbc_run_invocation_script_with_env(
@@ -1006,8 +1192,8 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
       EnvSet { name: "GUNBC_HEAL_BRANCH_REF", value: "\"$\{{ github.head_ref || github.ref_name \}}\"" }
     ],
     source_roots: witness_layer_roots,
-    entry: ci_heal_dispatch_entry,
-    function: ci_heal_dispatch_function,
+    entry: gunbc_ci_heal_dispatch_target.entry,
+    function: gunbc_ci_heal_dispatch_target.function,
     claim_run: false
   )
 }

@@ -1,16 +1,18 @@
 module test.claim.workflow_capability_closure_witness
 
 import std.types { Bool, List }
-import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
-  ProvidesCapability,
-  ConsumesCapability,
-  CapabilityNeutral,
+  capability_neutral,
+  provides_only,
+  consumes_only,
+  StepCapabilityRole,
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import gunbc.witness_floor_workflow { witness_floor_capability_closure_holds }
+import gunbc.witness_floor_workflow { cited_symbol_capability_closure_holds, witness_floor_capability_closure_holds }
+import gunbc.fleet_converge_workflow { fleet_converge_build_job_capability_closure_holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,14 +28,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // represented it as a perfectly valid workflow, because by the time these are Steps a job that
 // needs a toolchain and a job that has one look the same.
 data deploy_yml_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: CapabilityNeutral },
+  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
   CapabilityAnnotatedStep {
     step_name: "Build the deploy binary",
-    role: ConsumesCapability { capability: CargoCapability },
+    role: consumes_only(capabilities: [CargoCapability]),
   },
-  CapabilityAnnotatedStep { step_name: "Materialize the pinned provider runtime", role: CapabilityNeutral },
-  CapabilityAnnotatedStep { step_name: "Deploy the dashboard to srv1", role: CapabilityNeutral },
-  CapabilityAnnotatedStep { step_name: "Advance the admitted fleet revision", role: CapabilityNeutral },
+  CapabilityAnnotatedStep { step_name: "Materialize the pinned provider runtime", role: capability_neutral },
+  CapabilityAnnotatedStep { step_name: "Deploy the dashboard to srv1", role: capability_neutral },
+  CapabilityAnnotatedStep { step_name: "Advance the admitted fleet revision", role: capability_neutral },
 ]
 
 // THE RED. This shape must refuse.
@@ -45,16 +47,16 @@ test fn a_job_consuming_cargo_with_no_provider_refuses() -> Bool {
 // would pass it. This is witnesses.yml's live shape -- setup-rust-toolchain provides, the build
 // step consumes -- and it must be admitted.
 data witnesses_yml_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: CapabilityNeutral },
+  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
   CapabilityAnnotatedStep {
     step_name: "Install Rust toolchain",
-    role: ProvidesCapability { capability: CargoCapability },
+    role: provides_only(capabilities: [CargoCapability]),
   },
   CapabilityAnnotatedStep {
     step_name: "Build the witness fold",
-    role: ConsumesCapability { capability: CargoCapability },
+    role: consumes_only(capabilities: [CargoCapability]),
   },
-  CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: CapabilityNeutral },
+  CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: capability_neutral },
 ]
 
 test fn a_job_providing_before_consuming_is_admitted() -> Bool {
@@ -66,14 +68,14 @@ test fn a_job_providing_before_consuming_is_admitted() -> Bool {
 // deploy.yml was: the cargo invocation resolves nothing, because the provider has not run yet.
 // Ordering is the content of the claim, so it gets its own witness.
 data provider_after_consumer_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: CapabilityNeutral },
+  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
   CapabilityAnnotatedStep {
     step_name: "Build the deploy binary",
-    role: ConsumesCapability { capability: CargoCapability },
+    role: consumes_only(capabilities: [CargoCapability]),
   },
   CapabilityAnnotatedStep {
     step_name: "Install Rust toolchain",
-    role: ProvidesCapability { capability: CargoCapability },
+    role: provides_only(capabilities: [CargoCapability]),
   },
 ]
 
@@ -90,4 +92,75 @@ test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool {
 // fact, one observed here and one enforced there.
 test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool {
   witness_floor_capability_closure_holds()
+}
+
+// A STEP CANNOT SATISFY ITS OWN REQUIREMENT. New claim, new witness.
+//
+// The role became a record carrying both lists, which makes a step declaring provides AND consumes
+// expressible for the first time. If provides were granted before consumes was checked, such a step
+// would always close -- the vacuous answer, and exactly the shape a careless fold produces. So the
+// fold checks consumes against what PRECEDING steps provided, then grants.
+data self_satisfying_step: List<CapabilityAnnotatedStep> = [
+  CapabilityAnnotatedStep {
+    step_name: "Pretends to provide what it needs",
+    role: StepCapabilityRole {
+      provides: [CargoCapability],
+      consumes: [CargoCapability],
+    },
+  },
+]
+
+test fn a_step_cannot_satisfy_its_own_requirement() -> Bool {
+  capability_closure_is_closed(v: workflow_job_capability_closure(steps: self_satisfying_step)) == false
+}
+
+// MULTI-CAPABILITY PROVISION, the case that forced the record model: one action installs several
+// tools and later steps consume different ones. A singular-capability carrier could not express
+// this without either a false Neutral or a lie about what the action installs.
+data multi_capability_job: List<CapabilityAnnotatedStep> = [
+  CapabilityAnnotatedStep {
+    step_name: "Setup Rust",
+    role: provides_only(capabilities: [CargoCapability, RustcCapability]),
+  },
+  CapabilityAnnotatedStep {
+    step_name: "Derive native-cache root",
+    role: consumes_only(capabilities: [RustcCapability]),
+  },
+  CapabilityAnnotatedStep {
+    step_name: "Build",
+    role: consumes_only(capabilities: [CargoCapability]),
+  },
+]
+
+test fn one_step_can_provide_several_capabilities() -> Bool {
+  capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_job))
+}
+
+// ...and the discriminator for it: a consumer of a capability the provider does NOT install must
+// still refuse, so "provides a list" is not read as "provides everything".
+data multi_capability_missing_one: List<CapabilityAnnotatedStep> = [
+  CapabilityAnnotatedStep {
+    step_name: "Setup Rust",
+    role: provides_only(capabilities: [CargoCapability, RustcCapability]),
+  },
+  CapabilityAnnotatedStep {
+    step_name: "Format check",
+    role: consumes_only(capabilities: [RustfmtCapability]),
+  },
+]
+
+test fn a_capability_outside_the_provided_list_still_refuses() -> Bool {
+  capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_missing_one)) == false
+}
+
+// THE LIVE FLEET-CONVERGE JOB, the second real consumer.
+test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool {
+  fleet_converge_build_job_capability_closure_holds()
+}
+
+// THE SECOND LIVE JOB. The cited-symbol census is a separate check-run, so it is a separate job,
+// so it carries its own toolchain->build ordering and its own way to be broken. Asserting the
+// floor job closes says nothing about it: the two jobs share no steps, only a shape.
+test fn the_live_cited_symbol_job_closes_its_capabilities() -> Bool {
+  cited_symbol_capability_closure_holds()
 }

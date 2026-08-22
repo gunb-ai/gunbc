@@ -1,5 +1,6 @@
 module gunbc.roadmap_dispatch_actuator
 
+import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import v2.std.optional { Present }
 import std.content_hash { content_hash_atom }
@@ -1141,6 +1142,20 @@ fn codex_spawn_argv(
   )
 }
 
+// `dashboard_instance_provider_executable` answers `FilePath?` -- the committed lock placement may
+// not be realized on a host, which is exactly what
+// `dashboard_instance_provider_executable_refusal_detail` exists to say -- and the argv builder below
+// reached it with `as String`, which does not eliminate the absence: an unrealized placement spawned
+// a process whose program argument was the literal text `Absent`. The compiler now refuses that
+// cast. The absent arm carries the existing refusal detail, so the spawn fails naming the host and
+// the unrealized placement rather than naming a program nobody wrote.
+fn codex_spawn_program_for_instance(instance: HostDashboardInstance) -> String {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Present { value: executable } => executable as String
+    Absent => dashboard_instance_provider_executable_refusal_detail(instance: instance)
+  }
+}
+
 fn codex_spawn_argv_for_instance(
   instance: HostDashboardInstance,
   effort: ReasoningEffort,
@@ -1152,7 +1167,7 @@ fn codex_spawn_argv_for_instance(
       environment: instance.execution_environment,
       cap: EnvironmentBindingCapability,
     ),
-    program: dashboard_instance_provider_executable(instance: instance) as String,
+    program: codex_spawn_program_for_instance(instance: instance),
     codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
@@ -1180,7 +1195,7 @@ fn dispatch_provider_inner_argv(
     ClaudeCodeProvider =>
       DispatchProviderInnerArgvReady {
         argv: concat(
-          ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+          [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
             session_uuid: session_uuid,
@@ -1292,7 +1307,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   tmux_spawn_inner_argv(
     session_name: session_name,
     worktree_path: worktree_path,
-    inner_argv: concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    inner_argv: concat([env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
   )
 }
 

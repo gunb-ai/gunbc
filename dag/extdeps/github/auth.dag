@@ -43,18 +43,42 @@ data structural_coverage_gap_github_token_metadata_verification: List<CoverageCl
   }
 ]
 
-func github_token() -> GitHubAuthToken
+// A TOKEN READ IS AN OBSERVATION, AND MAY FIND NOTHING. `env_credential` answers `token: Secret?`
+// because the environment variable it reads may be unset; this func used to reach the secret with a
+// cast, so an unset GITHUB_TOKEN produced a `GitHubAuthToken` whose secret was the literal text
+// `Absent` -- a forged credential indistinguishable from a real one at every later boundary.
+//
+// The absence is answered here rather than carried further, so `GitHubAuthToken.token` KEEPS its
+// non-optional `Secret`: a value of that type still means a token was actually read. The refusal
+// names the variable, because "no token" and "the wrong variable" are different problems for the
+// caller and only the second is fixable by editing the auth source.
+type GitHubAuthTokenRead
+  = GitHubAuthTokenObserved { token: GitHubAuthToken }
+  | GitHubAuthTokenUnavailable { variable: NonEmptyStr }
+
+func github_token() -> GitHubAuthTokenRead
 {
   cred = match default_github_auth_source.credential_source {
     EnvVar { name } => env_credential(env_var: name as NonEmptyStr)
   }
-  return {
-    token: cred.token,
-    scopes: match default_github_auth_source.token_metadata {
-      DeclaredGitHubTokenMetadata { scopes, expires_at } => scopes
-    },
-    expires_at: match default_github_auth_source.token_metadata {
-      DeclaredGitHubTokenMetadata { scopes, expires_at } => expires_at
-    }
+  return match cred.token {
+    Absent =>
+      GitHubAuthTokenUnavailable {
+        variable: match default_github_auth_source.credential_source {
+          EnvVar { name } => name as NonEmptyStr
+        }
+      }
+    Present { value: secret } =>
+      GitHubAuthTokenObserved {
+        token: {
+          token: secret,
+          scopes: match default_github_auth_source.token_metadata {
+            DeclaredGitHubTokenMetadata { scopes, expires_at } => scopes
+          },
+          expires_at: match default_github_auth_source.token_metadata {
+            DeclaredGitHubTokenMetadata { scopes, expires_at } => expires_at
+          }
+        }
+      }
   }
 }

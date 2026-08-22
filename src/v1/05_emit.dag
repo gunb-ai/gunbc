@@ -2,7 +2,7 @@ module v1.compiler.emit
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
-  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
@@ -21,7 +21,7 @@ import v1.std.core {
   binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base,
   index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call,
   expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
-  is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier,
+  is_file_transport, is_local_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
   Connective, Conj, Disj, NoConnective, Arrow, CardOptional
 }
@@ -30,7 +30,7 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLo
 
 import std.induction { InductiveField, SubValueUnknown }
 
-import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
+import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
 import std.types { is_container_type }
 
@@ -936,12 +936,11 @@ fn emit_unified_transport_dispatch(
   target: RenderTarget,
   render_rest: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
   render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
-  render_file: fn(String, Int) -> String,
   render_local: fn(String, Int) -> String
 ) -> String {
   if is_rest_transport(t: transport, source_indices: source_indices) { render_rest(op_name, transport, depth, source_indices) }
   else if is_shell_transport(t: transport) { render_shell(op_name, transport, depth, source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { render_file(op_name, depth) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { emit_unmodeled_file_transport_refusal(op_name: op_name, target: target) }
   else if is_local_transport(t: transport, source_indices: source_indices) { render_local(op_name, depth) }
   else { emit_error_expr(message: "unrecognized transport kind", target: target) }
 }
@@ -1736,6 +1735,291 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
   let spec = language_spec(target: target)
   apply_type_template1(template: spec.error_expr_template, arg0: msg)
+}
+
+// `transport file` HAS an emitted realization for the rust target, and none for any other.
+//
+// HISTORY, kept because it names what this must not become. Three per-target renderers (Rust
+// emit_file_call, Python emit_py_file_call, Go emit_go_file_call) each fabricated
+// `read(base_path + "/" + op_name)` for EVERY operation, so a declared Write emitted a read of a
+// path the declaration never named, dropped its `content` argument, and returned a String against
+// a declared bool. That was DESIGN §5's fabricated plausible output -- below the ladder, not a
+// low rung on it -- and #8858 replaced all three with one typed, located, counted refusal. The
+// root it named was SEMANTIC INFORMATION LOSS AT THE DISPATCH BOUNDARY: the dispatch handed the
+// renderer an operation name and an indent depth, so no renderer could read `path:` or `verb:`
+// however it was written.
+//
+// THE NEXT-RUNG TRIGGER #8858 DECLARED HAS FIRED. Its text was "this class climbs when a real
+// consumer needs a file transport emitted", and the consumer is the self-host path itself:
+// `src/v2/compiler/source_authority.dag` imports extdeps.filesystem.filesystem_io, so the
+// `03_ingest` closure -- the module the self-host emission boards are taken on -- carries five
+// file-transport operations and emitted NO artifact at all while the wall was total. The trigger
+// also said what closing it may NOT be, and this closure obeys that: threading the path alone
+// does not close it, and a fourth per-target renderer is not the shape.
+//
+// WHAT IS BUILT, and why it is not a fourth renderer. The declaration's facts are read ONCE, by
+// file_emission_refusal below, into a closed FileEmissionRefusal vocabulary: the verb, whether
+// the path renders, whether a write's payload input exists, and whether every declared output key
+// names a modeled channel. That single predicate is consumed by BOTH the wall that mints the
+// diagnostic AND the rust renderer, so an operation is emitted exactly when nothing about it was
+// refused -- there is no second opinion for the two to disagree on. The rust rendering itself
+// (emit_file_call, in v1.compiler.emit_rust) is the one realization handler bound to that shape;
+// python, go and dag have no handler and are refused by target, per operation, with a cause that
+// says so rather than a shrug.
+//
+// THE CHANNELS ARE THE INTERPRETER'S CHANNELS. is_modeled_file_output_channel enumerates exactly
+// the keys v1_interpreter map_file_outputs answers, and the rust renderer's per-channel
+// expressions are the emitted image of that map. Emission and interpretation are one decision
+// procedure run in two directions (DESIGN §4); a channel modeled on one side and not the other is
+// a behavioral fork, which is why the refusal counts an unmodeled output key rather than emitting
+// a plausible zero for it.
+//
+// emit_unmodeled_file_transport_refusal below is the FLOOR beneath the wall, in the generic
+// dispatch arm. It is unreachable for rust while file_emission_refusal and the renderer agree,
+// and is still required: is_local_transport is DEFINED as "not rest, not shell, not file", so
+// deleting the file arm would route a file transport into render_local and fabricate a direct
+// function call by omission.
+//
+// NEXT-RUNG TRIGGER (DESIGN §4b(2)): the remaining refusals are FileTargetNotModeled for python
+// and go. They climb when a consumer needs a file transport emitted for one of those targets; the
+// work is then one more realization handler bound to the same FileEmissionRefusal-clean shape,
+// never a re-fork of the predicate. The rung this class now sits at is per-path and per-target,
+// and citing the rust path while python and go stay silent would be the inflation §4b(1) names.
+//
+// The interpreter realization (v1_interpreter dispatch_file) is unaffected and remains the
+// oracle: it reads the same declaration, substituting the path template and dispatching on
+// `verb`. Nothing here changes an interpreted effect.
+fn render_target_name(target: RenderTarget) -> String {
+  match target {
+    Rust   => "rust"
+    Python => "python"
+    Go     => "go"
+    Dag    => "dag"
+  }
+}
+
+// Mirrors emit_unified_transport_dispatch's precedence rather than testing is_file_transport
+// alone: the dispatch tries rest, then shell, then file, so a transport carrying more than one key
+// is emitted by the FIRST arm that claims it. Asking only "is it file?" would refuse an operation
+// the dispatch would in fact have emitted as rest or shell -- two authorities for one ordering,
+// agreeing today by coincidence rather than by construction (DESIGN §3).
+fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if is_rest_transport(t: t, source_indices: source_indices) { false }
+  else if is_shell_transport(t: t) { false }
+  else { is_file_transport(t: t, source_indices: source_indices) }
+}
+
+// Moved here from v1.compiler.emit_rust so that the file-transport REFUSAL PREDICATE and the
+// Rust RENDERER read the operation's output contract through one reader rather than two that
+// happen to agree (DESIGN §3). A refusal computed from a different view of the return type than
+// the renderer consumes is the way this wall would go quietly wrong: it would admit an operation
+// the renderer cannot in fact express, and the emitted output -- not a diagnostic -- would carry
+// the deficit.
+fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
+    Present { value: prop } => match field_init_node_value(n: prop).expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      _ => none
+    }
+    Absent => none
+  }
+}
+
+fn unwrap_single_field_product(n: Node) -> Node {
+  let is_product = is_product_type(n: n)
+  if is_product && n.ident_span == none && n.children |> count == 1 {
+    match n.children |> first {
+      Present { value: field_node } => resolved_type(n: field_node)
+      Absent => n
+    }
+  } else { n }
+}
+
+// The closed vocabulary of reasons a declared `transport file` operation cannot be emitted. It is
+// a coproduct rather than a free String because the set is DECIDABLE from the declaration: every
+// arm below is a fact the emitter reads off the operation, so a cause outside this list is a
+// modelling gap that must be added here, not a message someone writes at a call site.
+type FileEmissionRefusal
+  = FileTargetNotModeled { target_name: String }
+  | FileVerbNotModeled { verb: String }
+  | FilePathNotStaticallyRenderable
+  | FileWriteMissingContentInput { verb: String }
+  | FileOutputKeyNotModeled { key: String }
+  | FileOutputShapeNotModeled
+
+fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
+  match refusal {
+    FileTargetNotModeled { target_name: t } =>
+      concat("file transport emission is modeled for the rust target only; target '", t,
+        "' has no file realization handler, so no operation carrying `transport file` is emitted for it")
+    FileVerbNotModeled { verb: v } =>
+      concat("file transport verb '", v,
+        "' is not a modeled action -- the modeled verbs are delete, list and write_owner_only, and an absent verb means write when the operation declares a `content` input and read otherwise")
+    FilePathNotStaticallyRenderable =>
+      "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering"
+    FileWriteMissingContentInput { verb: v } =>
+      concat("file transport verb '", v,
+        "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent")
+    FileOutputKeyNotModeled { key: k } =>
+      concat("file transport output key '", k,
+        "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content")
+    FileOutputShapeNotModeled =>
+      "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering"
+  }
+}
+
+data file_transport_verb_delete: String = "delete"
+data file_transport_verb_list: String = "list"
+data file_transport_verb_write_owner_only: String = "write_owner_only"
+
+fn file_transport_declared_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match transport_verb(t: t, source_indices: source_indices) {
+    Present { value: v } => match v.expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      _ => none
+    }
+    Absent => none
+  }
+}
+
+fn file_operation_has_content_input(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.params |> any(p => param_node_name_at(n: p, source_indices: source_indices) == "content")
+}
+
+// The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
+// Emission and interpretation are one decision procedure run in two directions (DESIGN §4), so
+// this list is the emitted side of that map and diverging from it is a behavioral fork.
+fn is_modeled_file_output_channel(key: String) -> Bool {
+  key == "write_success" || key == "success" || key == "bytes_written" || key == "bytes"
+    || key == "byte_count" || key == "path" || key == "error" || key == "content"
+}
+
+// The output FIELDS the emitted realization must answer for, read off the operation's declared
+// return type without unwrapping. The wall and the rust renderer both read the channels through
+// this pair, so "which key does this field carry" is decided once. Unwrapping a single-field
+// product here would lose the field's `from` key -- the shape a `from` key is most often
+// authored on -- and the renderer would silently answer the default channel for it.
+fn file_output_channel_fields(op_node: Node) -> List<Node> {
+  let rt = resolved_type(n: op_node)
+  if is_product_type(n: rt) { rt.children } else { [] }
+}
+
+fn file_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Present { value: k } => k
+    Absent => authored_name_at(source_indices: source_indices, node: ch)
+  }
+}
+
+fn file_operation_output_channels(op_node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  file_output_channel_fields(op_node: op_node)
+    |> map(ch => file_output_channel_of_field(ch: ch, source_indices: source_indices))
+}
+
+fn file_transport_path_is_renderable(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match transport_base_path(t: t, source_indices: source_indices) {
+    Present { value: p } => match p.expr_data {
+      ExprLiteral { value: LitStr { value: _ } } => true
+      ExprStringInterp => true
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn file_emission_verb_refusal(op_node: Node, verb: String?, source_indices: Map<String, NewlineIndex>) -> FileEmissionRefusal? {
+  match verb {
+    Present { value: v } =>
+      if v == file_transport_verb_delete || v == file_transport_verb_list {
+        none
+      } else if v == file_transport_verb_write_owner_only {
+        if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { none }
+        else { Present { value: FileWriteMissingContentInput { verb: v } } }
+      } else {
+        Present { value: FileVerbNotModeled { verb: v } }
+      }
+    Absent => none
+  }
+}
+
+// ONE predicate, consumed by both the wall (which mints the diagnostic) and the Rust renderer
+// (which refuses to emit anything the wall would have refused). Absent means every fact the
+// emitted realization needs is present in the declaration.
+fn file_emission_refusal(op_node: Node, t: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> FileEmissionRefusal? {
+  match target {
+    Rust => {
+      if !file_transport_path_is_renderable(t: t, source_indices: source_indices) {
+        Present { value: FilePathNotStaticallyRenderable }
+      } else {
+        let verb = file_transport_declared_verb(t: t, source_indices: source_indices)
+        let verb_refusal = file_emission_verb_refusal(op_node: op_node, verb: verb, source_indices: source_indices)
+        match verb_refusal {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            if !is_product_type(n: resolved_type(n: op_node)) {
+              Present { value: FileOutputShapeNotModeled }
+            } else {
+              let unmodeled = file_operation_output_channels(op_node: op_node, source_indices: source_indices)
+                |> filter(k => !is_modeled_file_output_channel(key: k))
+              match unmodeled |> first {
+                Present { value: k } => Present { value: FileOutputKeyNotModeled { key: k } }
+                Absent => none
+              }
+            }
+        }
+      }
+    }
+    _ => Present { value: FileTargetNotModeled { target_name: render_target_name(target: target) } }
+  }
+}
+
+fn unmodeled_file_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget) -> List<ErrorNode> {
+  let env = tm.type_env
+  let si = env.source_indices
+  let module_name = authored_name(env: env, node: tm.module)
+  let service_name = authored_name(env: env, node: item)
+  let fallback = service_fallback_transport(item: item)
+  item.children |> flat_map(op_node => {
+    let t = effective_operation_transport(op_node: op_node, fallback: fallback)
+    if is_file_transport_after_dispatch_precedence(t: t, source_indices: si) {
+      match file_emission_refusal(op_node: op_node, t: t, target: target, source_indices: si) {
+        Present { value: refusal } => [make_error_node(
+          diagnostic: TransportEmissionNotModeled {
+            transport_kind: "file",
+            service: service_name,
+            operation: authored_name(env: env, node: op_node),
+            declaring_module: module_name,
+            target: render_target_name(target: target),
+            missing_realization_fact: file_emission_refusal_fact(refusal: refusal),
+            span: op_node.span
+          },
+          module_name: module_name)]
+        Absent => []
+      }
+    } else { [] }
+  })
+}
+
+fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => is_service_item(item: item))
+      |> flat_map(item => unmodeled_file_transport_operation_diagnostics(tm: tm, item: item, target: target))
+  )
+}
+
+fn emit_unmodeled_file_transport_refusal_with_cause(op_name: String, target: RenderTarget, refusal: FileEmissionRefusal) -> String {
+  emit_error_expr(
+    message: concat(
+      "file transport emission is not modeled for operation '", op_name, "' (target ",
+      render_target_name(target: target), ") -- ", file_emission_refusal_fact(refusal: refusal)),
+    target: target)
+}
+
+fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+  emit_unmodeled_file_transport_refusal_with_cause(
+    op_name: op_name, target: target,
+    refusal: FileTargetNotModeled { target_name: render_target_name(target: target) })
 }
 
 fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {

@@ -15,7 +15,7 @@
 // REPRESENTATION DIVERGENCE (deliberate, and narrow): its one consumer today is the
 // 03_normalize row, whose narrow lib re-exports `Int` without using it in a typed position, so
 // the checkpoint
-// scalar rendering (rust_scalar_checkpoint_render_base, Int -> i64) is sufficient here and
+// scalar rendering (rust_scalar_checkpoint_reference_base, Int -> i64) is sufficient here and
 // keeps the bridge free of the Nat coproduct. If a consumer ever uses Int in a typed position
 // this alias is wrong and must be grounded on the real GroupCompletion pair construction.
 //

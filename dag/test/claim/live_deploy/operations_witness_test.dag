@@ -135,8 +135,16 @@ test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
+// WHAT THE `_command_matches_transport` WITNESSES BELOW ACTUALLY PIN, since the name promises
+// more than one assertion can carry. They compare the emitted TEXT against the argv rows, and
+// the `_argv_matches_transport_row` witnesses above compare those same argv rows against the
+// materialized transport. Neither reaches the transport from the text alone; chained, they do.
+// Stated because this one was a transcribed literal until it went red in CI, and a transcribed
+// expectation under a "matches transport" name is the worst of both — it looks like coherence
+// and asserts a byte string nobody derived.
 test fn witness_dpkg_status_command_matches_transport() -> Bool {
-  dpkg_status_command(package: package_tailscale) == "dpkg -s tailscale"
+  dpkg_status_command(package: package_tailscale)
+    == quoted_command(argv: dpkg_status_argv(package: package_tailscale))
 }
 
 test fn witness_apt_install_command_matches_transport() -> Bool {

@@ -444,6 +444,16 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_import_block)
 }
 
+data body_lowering_structure_shell_note: String = "THE SAME SHAPE AS #8828, ONE NODE CLASS OVER: a shell with no body to lower FROM ITS OWN NODE was arriving at the unregistered-producer arm, so 'this production has no body-producer yet' and 'this production is structure, not a body' were one state. The five identities below are declaration and literal STRUCTURE -- a coproduct variant, a type-alias right-hand side, a field-declaration block, an fn type, and a record literal's named field. Four of them are type syntax, which has no Behavior to lower to at all; the fifth carries an expression that the bottom-up fold has ALREADY lowered before this node is reached, so preserving the shell preserves a lowered child, never an unlowered one. Preserving is what body_lower_is_metadata_preserved_emitted already does for the OUTER declarations these sit inside (dag_surface_type_decl, dag_surface_data_decl) -- the classification was written per node and the fold reaches inside, so every interior of an already-preserved declaration re-entered the dispatch and fell to the else arm.\n\nFOLD ORDER IS THE LOAD-BEARING ASSUMPTION FOR dag_surface_field_init, AND FOR IT ALONE. The other four are safe by what they ARE -- type syntax with no Behavior to lower to. field_init is safe by WHEN this dispatch reaches it: normalize_node_ctx folds children first and passes the FOLDED node to body_lower_finish_for_normalize, so the expression is already lowered by the time the shell is preserved. There is a live path in that same function where dispatch sees an UNFOLDED node -- the deferred arm passes `folded: n` and does not fold children -- so adding field_init to body_lower_is_deferred_lower_at_normalize, or otherwise dispatching before the child fold, would preserve a shell around an UNLOWERED expression. NONE OF THE THREE WITNESSES WOULD CATCH THAT: their field values are the literal 1, which lowers to itself, so the reordered and the current fold produce the same tree for exactly those sources. Stated here rather than covered, because an assumption named in the carrier is worth more than a witness that does not actually cover it. RUNG: this is a scope correction to a classifier, not a climb. The retained arm remains the counted frontier for a body shape with no producer, and that is the discriminating control: an emitted identity in none of these lists still retains, so the arm is not widened into an absorbing accept. Next-rung trigger: the preserved/structure classification derived from the grammar's own productions (a nonterminal reachable from dag_production_type_decl without crossing dag_production_expr is type syntax by construction) rather than enumerated here beside them."
+
+fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_type_variant)
+    || (emitted == ^dag_surface_type_alias_rhs)
+    || (emitted == ^dag_surface_field_decl_block)
+    || (emitted == ^dag_surface_fn_type)
+    || (emitted == ^dag_surface_field_init)
+}
+
 fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
@@ -1481,6 +1491,8 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
           body_lower_loop_expr(shell: node)
         } else if emitted == ^dag_surface_let_expr {
           body_lower_let_expr(shell: node)
+        } else if emitted == ^dag_surface_stmt_seq {
+          body_lower_stmt_seq(shell: node)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -1592,6 +1604,21 @@ fn body_lower_body_subtree_lower_from_binary(captured: Node) -> Outcome<Optional
 }
 
 fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_statement_spine(captured: captured) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: bound, diagnostics: bd } =>
+      match bound {
+        Present { value: lowered } =>
+          outcome_with_diagnostics(
+            value: optional_present(value: lowered),
+            diagnostics: bd
+          )
+        Absent => body_lower_body_subtree_lower_rest(captured: captured)
+      }
+  }
+}
+
+fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_try_body_lowered(node: captured) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: found, diagnostics: _ } =>
@@ -3336,6 +3363,29 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
+// TWO REFUSALS, TWO CAUSES. This function had ONE reason standing over two
+// states whose remedies differ, and that conflation is what made the
+// boundary-4 door read as a malformed-input defect for as long as it did:
+//
+//   - a let node with NO captured child is malformed, and unsupported_form is
+//     the honest cause;
+//   - a WELL-FORMED statement-form let reaching here alone is not malformed at
+//     all. Its body is its enclosing statement spine's remainder, which this
+//     node cannot see, so the absence reported by body_lower_try_let_in_from_captured
+//     is "not lowerable FROM HERE", not "not lowerable".
+//
+// The statement form is lowered at dag_surface_stmt_seq, where both halves of
+// the Bind are visible (body_lower_stmt_spine). Reaching this arm therefore
+// means a statement-form let was met outside a statement spine, and the
+// diagnostic now says so rather than accusing the source of being malformed.
+//
+// This is #8801's split (FoldCallStepFormUnresolved vs FoldCallStepShapeInvalid)
+// on the neighbouring form. It is spelled as two reasons rather than as a
+// four-state coproduct with a two-state projection because there is exactly
+// ONE consumer of this result and it does not branch on the distinction --
+// only the diagnostic does. A coproduct whose sole consumer immediately
+// collapses it would be a second representation of a fact the reason symbol
+// already carries.
 fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -3351,10 +3401,243 @@ fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
               Accepted { value: lowered, diagnostics: d }
             Absent =>
               outcome_rejected(
-                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_let_body_not_reachable_from_node,
+                  n: shell
+                )
               )
           }
       }
+  }
+}
+
+// STATEMENT-FORM LET: THE BIND WHOSE BODY IS NOT INSIDE THE LET NODE.
+//
+// dag_grammar_let_expr is a CHOICE of two alternatives: `let n = e in e`,
+// which carries its own body, and `let n [: T] = e`, which does not. The
+// second is the ordinary statement form the corpus is written in, and its
+// body is the REMAINDER OF THE ENCLOSING STATEMENT SEQUENCE -- a sibling of
+// the let, not a descendant of it.
+//
+// body_lower_let_expr is handed the let node alone, so for the statement form
+// it is being asked a question its input cannot answer: it looks for the `in`
+// atom, does not find one, and reports the absence as unsupported_form. That
+// is the boundary-4 door-holder on the compiler's own closure, measured
+// through the transaction's diagnostic ledger.
+//
+// So the lowering belongs HERE, at dag_surface_stmt_seq, which is the only
+// node from which both halves of the Bind are reachable. The spine the parser
+// produces for a statement repeat is right-nested:
+//
+//   stmt_seq.captured = Conj
+//     grammar_sequence_left_node_projection  -> stmt
+//     grammar_sequence_right_node_projection -> Conj (the same shape, or empty)
+//
+// (executed against the real grammar, not inferred from the production rows).
+// A let-headed spine becomes lower_bind(key, value, <the rest lowered>); the
+// last statement in a spine is the block's value and lowers as it always has.
+// The `in` form is untouched: it still carries its own body and still lowers
+// through body_lower_let_expr, so this ADDS the missing case rather than
+// forking the one that works.
+fn body_lower_stmt_spine_head_optional(spine: Node) -> Optional<Node> {
+  match find_named_child(root: spine, name: ^grammar_sequence_left_node_projection) {
+    Accepted { value: head, diagnostics: _ } => optional_present(value: head)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn body_lower_stmt_spine_rest_optional(spine: Node) -> Optional<Node> {
+  match find_named_child(root: spine, name: ^grammar_sequence_right_node_projection) {
+    Accepted { value: rest, diagnostics: _ } => optional_present(value: rest)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+// The captured child of a stmt shell, ONLY when it is a let production in the
+// statement form. An `in`-form let returns Absent here and keeps its existing
+// path; so does any other statement.
+fn body_lower_statement_let_captured_optional(stmt: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: stmt) {
+    Absent => optional_absent()
+    Present { value: inner } =>
+      match parse_production_emitted_identity_optional(node: inner) {
+        Absent => optional_absent()
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_let_expr {
+            match body_lower_unwrap_captured(shell: inner) {
+              Absent => optional_absent()
+              Present { value: captured } =>
+                match body_lower_let_in_body_capture_optional(captured: captured) {
+                  Present { value: _ } => optional_absent()
+                  Absent => optional_present(value: captured)
+                }
+            }
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+// The value is whatever follows the FIRST `=` on the let's own spine, which
+// is the same navigation body_lower_let_in_value_capture_optional performs
+// once its `in` prefix search has run. It is written separately rather than
+// reused because that function's first move is to locate the prefix BEFORE
+// the `in`, and there is no `in` here -- reusing it would mean relying on
+// what its search happens to return in a case it was not written for.
+fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Absent => optional_absent()
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: spine) {
+        Absent => optional_absent()
+        Present { value: right } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            Present { value: id } =>
+              if id == ^dag_token_eq {
+                optional_present(value: right)
+              } else {
+                body_lower_let_statement_value_optional(captured: right)
+              }
+            Absent => body_lower_let_statement_value_optional(captured: right)
+          }
+      }
+  }
+}
+
+// A bound value is an ordinary expression, so it lowers as one. The operand
+// path is tried first because a literal or a plain reference has a settled
+// operand form; anything else is a real expression and goes through the same
+// fold every other expression does.
+fn body_lower_bound_value(node: Node) -> Outcome<Node> {
+  match body_lower_arm_operand_resolved_optional(arm: node) {
+    Present { value: operand } => outcome_accepted(value: operand)
+    Absent => body_lower_fold(node: node)
+  }
+}
+
+fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_statement_spine_headless,
+          n: spine
+        )
+      )
+    Present { value: head } =>
+      match body_lower_stmt_spine_rest_optional(spine: spine) {
+        Absent => body_lower_fold(node: head)
+        Present { value: rest } =>
+          match body_lower_stmt_spine_head_optional(spine: rest) {
+            Absent => body_lower_fold(node: head)
+            Present { value: _ } =>
+              match body_lower_statement_let_captured_optional(stmt: head) {
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_statement_precedes_without_binding,
+                      n: head
+                    )
+                  )
+                Present { value: let_captured } =>
+                  match body_lower_let_in_key_binding_optional(captured: let_captured) {
+                    Absent =>
+                      outcome_rejected(
+                        d: body_lower_diagnostic(
+                          reason: ^body_lowering_reason_let_binding_name_absent,
+                          n: head
+                        )
+                      )
+                    Present { value: key } =>
+                      match body_lower_let_statement_value_optional(captured: let_captured) {
+                        Absent =>
+                          outcome_rejected(
+                            d: body_lower_diagnostic(
+                              reason: ^body_lowering_reason_let_bound_value_absent,
+                              n: head
+                            )
+                          )
+                        Present { value: value_capture } =>
+                          bind_outcome(
+                            o: body_lower_bound_value(node: value_capture),
+                            f: fn(value) {
+                              bind_outcome(
+                                o: body_lower_stmt_spine(spine: rest),
+                                f: fn(body) {
+                                  outcome_accepted(
+                                    value: lower_bind(
+                                      key_binding: body_lower_type_atom_node(sym: key),
+                                      value: value,
+                                      body_binding: body
+                                    )
+                                  )
+                                }
+                              )
+                            }
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE GUARD IS THE WHOLE OVERLAP STORY. A statement spine is taken over by
+// the Bind lowering ONLY when it is headed by a statement-form let AND has a
+// following statement -- exactly the case that has no lowering today. Every
+// other spine keeps the path it already had, so this cannot re-route a body
+// that already lowers.
+fn body_lower_stmt_spine_is_let_headed(spine: Node) -> Bool {
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Absent => false
+    Present { value: head } =>
+      match body_lower_stmt_spine_rest_optional(spine: spine) {
+        Absent => false
+        Present { value: rest } =>
+          match body_lower_stmt_spine_head_optional(spine: rest) {
+            Absent => false
+            Present { value: _ } =>
+              match body_lower_statement_let_captured_optional(stmt: head) {
+                Absent => false
+                Present { value: _ } => true
+              }
+          }
+      }
+  }
+}
+
+// The fn-body walker's entry into the same lowering. body_lower_fold reaches
+// a stmt_seq node directly; this path is handed the fn_body and has to find
+// the spine first. Both end in body_lower_stmt_spine, so there is one
+// statement-sequence authority and not two.
+fn body_lower_try_statement_spine(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt_seq) {
+    ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
+    ParseSubtreeFound { captured: spine } =>
+      if body_lower_stmt_spine_is_let_headed(spine: spine) {
+        bind_outcome(
+          o: body_lower_stmt_spine(spine: spine),
+          f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
+        )
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+  }
+}
+
+fn body_lower_stmt_seq(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_statement_spine_headless,
+          n: shell
+        )
+      )
+    Present { value: captured } => body_lower_stmt_spine(spine: captured)
   }
 }
 
@@ -3987,6 +4270,8 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
+  } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
     outcome_accepted(value: shell)

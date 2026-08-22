@@ -82,8 +82,43 @@ type ObjectStore sole_constructor {
 }
 
 // How many objects a store holds, without naming how it holds them.
+// ONE LABELLED CHILD, and one place that says how a StoredEdge becomes one.
+//
+// Both identity assemblies below built this list with concat-at-end inside a fold, which copies the
+// whole accumulator per child -- the quadratic accumulator shape DESIGN section 6's bare-minimum-cost
+// rule says is ALWAYS fixed regardless of the realized n. Edge counts per record are small, and that
+// is exactly the "n is small here" argument the rule rejects: n is not a time-stable fact, and this
+// module's own consumers already re-enter it once per node of a whole program.
+//
+// It is a named function rather than an inline lambda because a lambda whose parameter type must be
+// inferred from a field access has refused in this corpus with `no field ... on type 'T'`; routing
+// the element through a typed parameter is the spelling that resolves.
+fn labeled_child_of_stored(stored: StoredEdge) -> LabeledChildHash {
+  LabeledChildHash { label: stored.label, hash: stored.target }
+}
+
+fn labeled_children_of_stored(children: List<StoredEdge>) -> List<LabeledChildHash> {
+  map(children, s => labeled_child_of_stored(stored: s))
+}
+
 fn store_object_count(store: ObjectStore) -> Int {
   length(store.objects)
+}
+
+// THE OBJECTS IN DEPENDENCY ORDER: children before every parent that references them.
+//
+// This is an INTERFACE fact, not a representation leak, and the distinction is what keeps the
+// sole_constructor boundary above honest. A consumer that read `.objects` would be naming the
+// carrier's shape and would break when the dissolve-on above swaps in a keyed collection; a
+// consumer that asks for dependency order is asking for something the store can always answer,
+// by construction here and by a topological walk under any later representation.
+//
+// The order is not incidental. store_node recurses into an edge's target before insert_derived
+// appends the parent, so a record is appended only after every record it references. Persistence
+// depends on that: an image whose edges point at EARLIER positions can be decoded in one forward
+// pass with no forward references to resolve and no identities to trust.
+fn store_records_in_dependency_order(store: ObjectStore) -> List<ObjectRecord> {
+  store.objects
 }
 
 fn empty_store() -> ObjectStore {
@@ -231,6 +266,16 @@ type StoreEdgeAcc {
 // re-enters store_node for each child, and each call canonicalizes its own subject. Canonicalizing
 // only at the root would leave the identical defect one level down.
 //
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, then handed to insert_from_structure -- which
+// is the SAME assembly this function used to spell out inline. Collapsing the two removes a second
+// copy of the identity rule (DESIGN section 3): there is now one place that turns a kind plus
+// ordered children into a stored record, and store_node and the decoder are both its callers rather
+// than two spellings that agree until one is edited.
+//
+// The reverse is load-bearing and must land exactly once. These children feed
+// content_hash_of_children, so dropping it or doubling it changes every derived ObjectId silently
+// and leaves objects unreachable by the identity they were stored under.
+//
 // THE IDENTITY IS ASSEMBLED FROM CHILD IDENTITIES ALREADY IN HAND, NOT BY RE-WALKING. An earlier
 // revision ended this function with `content_hash(n: canonical)`, which walks the entire subtree a
 // second time -- once by the recursion that stored the children, once by the hash. On a chain that
@@ -264,7 +309,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
             Stored { store: child_store, identity: child_identity } =>
               StoreEdgeAcc {
                 store: child_store,
-                edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child_identity }]),
+                edges: concat([StoredEdge { label: edge.label, target: child_identity }], acc.edges),
                 collision: none,
               }
           }
@@ -274,20 +319,49 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
   match acc.collision {
     Present { value: collision } => collision
     Absent =>
-      insert_derived(
-        store: acc.store,
-        record: ObjectRecord {
-          identity: content_hash_of_children(
-            kind: canonical.kind,
-            children: fold(acc.edges, init: [], f: fn(labeled, stored) {
-              concat(labeled, [LabeledChildHash { label: stored.label, hash: stored.target }])
-            }),
-          ),
-          kind: canonical.kind,
-          children: acc.edges,
-        },
-      )
+      insert_from_structure(store: acc.store, kind: canonical.kind, children: reverse(acc.edges))
   }
+}
+
+// THE SECOND PRODUCER, AND WHY IT DERIVES RATHER THAN TRUSTS.
+//
+// store_node is the producer for a Node in hand. A DECODER has no Node -- materializing one would
+// expand every shared subgraph once per reference, which is the exponential blowup content
+// addressing exists to avoid -- but it does have a kind and the already-derived identities of the
+// children it references. That is exactly the input content_hash_of_children consumes, so the
+// identity is assembled from child identities already in hand, by the SAME fold store_node uses and
+// v2.std.node owns. No digest is read from the decoder's input and no hash rule is written here.
+//
+// This is what lets the image carry no identities at all. A caller cannot use this to forge, because
+// it cannot supply an identity: the only thing it chooses is structure, and the identity follows
+// from that structure by the one authority. Supplying a dishonest STRUCTURE is possible and is not
+// forgery -- it names a different program, honestly identified.
+//
+// WHAT IS DELIBERATELY NOT DONE HERE: this does not re-canonicalize the child order. store_node
+// canonicalizes its Node first, so every record this store ever emitted is already canonical and a
+// well-formed image round-trips exactly. An image whose named edges were hand-permuted therefore
+// decodes to a DIFFERENT identity rather than being normalized back. That is honest -- the identity
+// still describes what the image presents -- but it is a real boundary, and closing it by sorting
+// labeled children here would mint a second canonicalization authority beside
+// canonicalize_node_for_content_hash, which is the fork the identity comment above refuses.
+// dissolve-on: canonicalization exposed over labeled children in v2.std.node, callable without a
+// Node in hand; this function then routes through it.
+fn insert_from_structure(
+  store: ObjectStore,
+  kind: NodeKind,
+  children: List<StoredEdge>
+) -> StoreOutcome {
+  insert_derived(
+    store: store,
+    record: ObjectRecord {
+      identity: content_hash_of_children(
+        kind: kind,
+        children: labeled_children_of_stored(children: children),
+      ),
+      kind: kind,
+      children: children,
+    },
+  )
 }
 
 // ================================================================================================

@@ -21,7 +21,6 @@ import gunbc.build_cache_instance {
   BuildCacheServerPlacement,
   ServerPlacementUnknown,
 }
-import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data build_cache_endpoint_observation_authority_disposition: Disposition = SingleAuthority
 
@@ -29,6 +28,14 @@ data build_cache_endpoint_observation_authority_disposition: Disposition = Singl
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
 // memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
 // with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
+//
+// CORRECTED 2026-08-21: THE ENDPOINT-OWNER WALK LANDED, AND IT DID NOT LAND HERE. gunbc.build_cache_endpoint_observe
+// decodes the endpoint owner, path state and observation currency, and gunbc.host_effect_realize drives it
+// per effect. What this surface still cannot do is reach it, and the reason is its own signature rather
+// than a missing implementation: it takes a HostIdentity and answers for the whole fleet, so there is no
+// HostEffectTransport in scope to read anything through. Its remaining honest arm is therefore the
+// unavailable one, and the dissolve-on below is unchanged and now precise — a HostEffectTransport
+// obtainable FROM a HostIdentity is exactly what it waits on. Its only consumers today are witnesses.
 
 fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEndpointObservation {
   let instance = ci_cache_instance(host: host)
@@ -37,7 +44,7 @@ fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEn
       EndpointObservationUnavailable {
         instance: instance,
         reason: ProcTableUnreadable {
-          detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as NonEmptyStr,
+          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache_endpoint_observe, driven from gunbc.host_effect_realize where a HostEffectTransport exists" as NonEmptyStr,
         },
       }
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
@@ -65,20 +72,6 @@ fn build_cache_ci_placement_observation(host: HostIdentity) -> BuildCacheServerP
   )
 }
 
-fn build_cache_ci_endpoint_unavailable_count(hosts: List<HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match build_cache_ci_endpoint_observation(host: h) {
-        EndpointObservationUnavailable { instance: _, reason: _ } => true
-        _ => false
-      },
-  ).length()
-}
-
-fn build_cache_ci_endpoint_fleet_unavailable_count() -> Int {
-  build_cache_ci_endpoint_unavailable_count(hosts: fleet_subsumption_hosts)
-}
 
 fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
   filter(
