@@ -143,42 +143,50 @@ afterwards.
 The six derived counts in the histogram above were read off the same binary
 (`12 / 55 / 11 / 8 / 9 / 6`), so the table is a transcription of an execution, not of a reading.
 
-## A production specimen for the `derive_variant_to_enum` row, and what it does and does not show
+## A production specimen for the `derive_variant_to_enum` row — and the correction it took
 
-`crisp-crab-430` (namespace-cut lane) supplied one. Recorded with its subjects separated, because
-the mechanism and the artifact were observed on **different trees** and only the first is on main.
+`crisp-crab-430` (namespace-cut lane) supplied one. This section was rewritten twice as the account
+was falsified; what follows is the settled version, with the retractions kept because a reader who
+finds only the conclusion will re-derive the errors.
 
-**Verified here, at this HEAD:** `Connective` is declared twice — `v1.compiler.core`
+**What holds, and it is a corpus property.** `Connective` is declared twice — `v1.compiler.core`
 (`Conj | Disj | NoConnective | Arrow`) and `v2.std.node`
 (`Atom | Conj | Disj | Arrow | Cardinality | Instantiation`) — and **both declare `Conj` and
-`Disj`**. So the two summaries collapse to one entry in the bare-keyed map *before*
-`derive_variant_to_enum` runs; the fold sees a single `Connective`, maps `Conj`/`Disj` to it
-unambiguously, and **the sentinel it exists to write for exactly this case is never written**. The
-ambiguity wall cannot fire because the collision was destroyed one layer up — in the
-`add_emit_item_summary` row. This is a strictly stronger reach claim than the collision count the
-row previously carried, and it is upgraded in the carrier.
+`Disj`**. *If the two are in one pool*, they collapse to one entry in the bare-keyed map before
+`derive_variant_to_enum` runs, the fold sees a single `Connective`, and the sentinel it exists to
+write is never written. The ambiguity wall cannot fire because the collision was destroyed one layer
+up, in the `add_emit_item_summary` row.
 
-**Not reproduced here:** the reported artifact — a spurious `pub use crate::v2_std_node::{Connective,
-Edge, NamedEdgeTargetLookup, Node}` in the committed `v1_compiler_infer` mirror. At this HEAD that
-mirror imports **nothing** from `v2_std_node`, and the cited line is a different statement. The
-specimen belongs to the namespace-cut envelope. That does not weaken the mechanism; it locates the
-artifact, and citing it as a main-tree defect would have been the wrong-subject error.
+**Retracted: that the collapse is realized at this HEAD.** No standard invocation on main puts the
+two in one pool — regen resolves `src/v1` + `dag` (`cli_run.rs` `regen_source_roots`), the required
+floor resolves `dag` + `src/v2`. Neither holds both.
 
-**Why it fires there and not here — and an earlier revision of this paragraph mis-located it.** It is
-*not* a second branch of use-line synthesis: `reference_derived_use_lines` has exactly one call site,
-and `reference_use_lines_representation_invariant_note` records the import-gated fork as already
-deleted (when the gate went, both arms called it with byte-identical arguments and the conditional
-collapsed). Imports enter as a **suppression list** — the function drops any candidate already in
-`already_imported_names` — and `v1.compiler.infer` imports `Connective` from `v1.std.core`, so on
-main the name is suppressed and no line is synthesized. Delete the import and the suppression is
-gone, the candidate survives, and the module the synthesized line names is read from the registry the
-collapse has already pointed at `v2.std.node`. **The registry is equally wrong on main; the import
-was not making it right, it was making it silent** — the deficit's frequency zeroed by construction,
-which is this census's own framing rather than an aside. Established from the function's control flow
-and the import line, not by executing either arm.
+**Retracted: the suppression account.** This document previously argued that imports keep main quiet
+by populating `already_imported_names`. That reading of the filter is correct and is **not** the
+reason: the falsifier this receipt offered — *find one affected mirror whose name is not in its main
+import list* — was run, and **all 26 are that one**. The decisive evidence is a positive control:
+main emits `use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}`, so the synthesis
+path runs on main and **answers correctly**. Nothing suppressed it; only one `Connective` was in the
+pool.
+
+**The settled account is co-residency**, and on the namespace-cut branch it is caused by `src/v2`
+being added to `regen_source_roots`. Worth flagging to whoever owns that branch: this tree records
+that root list as a standing invariant in the other direction — *"src/v2 is not a regen root and
+never will be, because stage0 IS the v1 seed and a seed that reached into src/v2 would depend on the
+successor it bootstraps toward"* — so the unmasking mechanism is itself a seed-closure violation, not
+a neutral configuration difference.
+
+**Reach therefore rests on the collision half, which is unaffected.** `Refused` (three coproducts)
+and `Unknown` (three more) are co-resident in `dag` + `src/v2`, the pool the floor resolves on every
+PR, so the sentinel *is* written and *is* read back as a bare name there.
+
+**The corollary is larger than the specimen.** Whether this fold sees one entry or two is a function
+of the **invocation**, not of the module graph — so every identity answer downstream of the map is
+invocation-relative. That is the finding worth carrying out of this exchange, and it belongs to
+`crisp-bat-769`, who reached it from the pool side.
 
 **One negative result carried from that lane, because it prevents a wrong generalisation:**
-`NamedEdgeTargetLookup` and `Edge` in that same use-line are **not** explained by this mechanism —
+`NamedEdgeTargetLookup` and `Edge` in the same use-line are **not** explained by this mechanism —
 `Absent` is declared by six modules so the wall genuinely fires for it, and `Edge` is a record that
 cannot reach the variant arm at all. One emitted use-line, at least two distinct causes. The census
 claims this row for `Connective` only.
@@ -187,4 +195,3 @@ claims this row for `Connective` only.
 itself deliver the refusal, because `derive_variant_to_enum` **scans** the whole map rather than
 looking one entry up. A better key hands it two entries where it had one; it still has to be taught
 that two entries sharing a spelling is the refusing case. A scan is not repaired by a key.
-
