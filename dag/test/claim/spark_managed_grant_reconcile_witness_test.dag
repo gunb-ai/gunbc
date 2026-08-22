@@ -209,8 +209,12 @@ test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() ->
 // intended, and the second one lying about which axis it failed on.
 //
 // Rendering the line from `spark_managed_grant_sudoers_command` makes it agree with the model on
-// spelling BY CONSTRUCTION, which is right here precisely because spelling is the ordering
-// witness's subject and not this test's. What it still discriminates is its own axis: drop the
+// spelling BY CONSTRUCTION -- normally the thing that disqualifies a fixture, since one that agrees
+// by construction cannot falsify what it renders from. It is right here because the spelling axis
+// is OWNED BY ANOTHER TEST in this file, `the_modeled_linger_command_is_byte_equal_to_the_line_the
+// _hosts_hold`, which pins the modeled command against a line measured on srv5 and srv6. This test
+// owns only the entry-splitting axis. Do not "fix" this back into a hand-spelled literal: that
+// silently restores the two-axis failure and makes a parse test fail for a spelling reason. What it still discriminates is its own axis: drop the
 // comma split and the line reads as one command, neither grant matches, and the install set is 2
 // rather than 0.
 fn spark_grant_line_naming_every_grant_on_one_line() -> String {
