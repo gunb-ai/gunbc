@@ -2762,6 +2762,24 @@ enforces end to end.
    `live_tree_disposition` was authored. `required_floor`'s own header says exactly this and
    stages the arm for deletion at the root.
 
+   THE MIS-DECLARATION IS LOAD-BEARING, NOT INCIDENTAL — AND ITS RECURRENCE IS THE SECOND
+   FINDING. Two files declare `SubstrateInputsOnly` while calling `compile_dag_diagnostic_census`:
+   `test.claim.match_exhaustiveness_coproduct_witness` and, from 2026-08-22,
+   `test.claim.direct_call_argument_type_witness`. `gunbc.compile_diagnostic_census`'s own
+   live-tree note already adjudicated that exact pairing as a mis-declaration when it caught
+   `transport_script_wall_compile_red_test` doing it. Either both files are mis-declared or that
+   note is wrong; they cannot both be right. **First consequence: that pairing is currently the
+   only reason ANY census-compiling probe executes at all.** So if the note is right, correcting
+   the two declarations takes the executing population of this harness to ZERO rather than to
+   correct — the repair and the coverage point in opposite directions, which is precisely why the
+   arm deletion must precede the relabelling and not follow it. **Second consequence, and it is
+   about the mechanism rather than the files: the second specimen was authored AFTER the
+   adjudication that named the class.** Nothing refused it, nothing flagged it, and the author had
+   no reason to know — an adjudication that does not prevent its own recurrence is a note, not a
+   wall. So this sub-class sits at *mitigatable* on the evidence, and the existence of the
+   adjudicating note is not evidence that anything holds. Neither consequence is adjudicated here:
+   both belong to the arm's owner, and per the ownership finding below there is not one.
+
    POPULATION, with its denominator and its unreconciled residue stated rather than smoothed.
    Measured on main 2026-08-22: 129 non-long witness files declare `ReadsLiveTree`, carrying 850
    identities by `grep -c '^test fn'`; the floor's own run 32553487573 reports
