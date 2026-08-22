@@ -1,0 +1,44 @@
+module extdeps.tools.tar
+
+import std.types { String, NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/tar/manual/tar.html"
+  }
+}
+
+// GNU TAR, NOT POSIX pax-format tar, and the distinction decides whether this module is correct on a
+// given host: --strip-components is a GNU extension that the POSIX utility does not specify. A host
+// shipping bsdtar answers the same request with different spellings, and that would be its own
+// authority rather than a widened flag list here.
+// PATH-RESOLVED PROGRAM NAME, DELIBERATELY, AND NOT A DECLINE TO SAY WHICH BINARY. An absolute path
+// is a CLAIM ABOUT AN OBSERVED FILESYSTEM: extdeps.tools.mkdir and extdeps.tools.chmod record theirs
+// because a sudoers NOPASSWD rule names those commands by path on hosts this repository provisions,
+// which is an observation with a consumer. This repository has made no such observation for the
+// hosts these commands run on -- fleet members, runner images, a BMC -- so writing one here would
+// replace a vague spelling with a confident false host fact, which is the fabrication DESIGN section
+// 5 forbids rather than an improvement on it. The name is resolved by the target's own PATH, and
+// that is what the previous hand-spelled call sites did too: this conversion changes WHERE the
+// spelling lives, not WHICH program runs.
+data tar_program: NonEmptyStr = "tar"
+
+// EXTRACT NAMES ITS DESTINATION AND ITS STRIP DEPTH, both as parameters. `xf` is extract-from-file;
+// -C changes directory BEFORE extracting, so the archive's paths are interpreted relative to the
+// destination rather than to wherever the process happened to be standing; --strip-components drops
+// the leading path components a release tarball wraps its tree in. The depth is an Int rather than a
+// pre-spelled flag string because it is a number the caller knows, not a token it should remember.
+fn tar_extract_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
+  argv_command(
+    program: tar_program,
+    arguments: [
+      "xf", archive,
+      "-C", into_directory,
+      concat("--strip-components=", to_string(strip_components)),
+    ],
+  )
+}

@@ -8,6 +8,7 @@ import gunbc.build_cache_instance {
 }
 import extdeps.cache.sccache { SccacheServerTcpPort, SccacheServerUnixSocket }
 import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { rm_force_command }
 
 data build_cache_endpoint_path_scope_disposition: Disposition = SingleAuthority
 
@@ -126,7 +127,7 @@ fn stale_socket_unlink_command(admission: StaleSocketUnlinkAdmission) -> StaleSo
       match i.endpoint {
         SccacheServerUnixSocket { path: p } =>
           StaleSocketUnlinkCommandReady {
-            command: ArgvCommand { argv: ["rm", "-f", p as String] },
+            command: rm_force_command(path: p as String),
           }
         SccacheServerTcpPort { port: _ } =>
           StaleSocketUnlinkCommandRefused {

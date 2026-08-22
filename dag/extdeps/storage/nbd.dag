@@ -6,7 +6,7 @@ import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -54,10 +54,15 @@ fn nbd_server_config_text(export: NbdExport) -> String {
   )
 }
 
+// PATH-RESOLVED, AND HERE THE REASON IS SHARPER THAN ELSEWHERE: these run on a BMC, a machine whose
+// filesystem this repository has never read. An absolute path would be a guess whose failure mode is
+// a hard spawn error on hardware nobody can watch, so the spelling stays exactly what the call sites
+// used before this conversion and the fact that we do not know the path is left visible.
+data nbd_server_program: NonEmptyStr = "nbd-server"
+data nbd_client_program: NonEmptyStr = "nbd-client"
+
 fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
-    argv: ["nbd-server", "-C", config_path as String],
-  }
+  argv_command(program: nbd_server_program, arguments: ["-C", config_path as String])
 }
 
 type NbdClientAttach {
@@ -68,19 +73,17 @@ type NbdClientAttach {
 }
 
 fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
-  ArgvCommand {
-    argv: [
-      "nbd-client",
+  argv_command(
+    program: nbd_client_program,
+    arguments: [
       "-N", attach.export_name as String,
       attach.server as String,
       to_string(attach.port),
       attach.device as String,
     ],
-  }
+  )
 }
 
 fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
-    argv: ["nbd-client", "-d", device as String],
-  }
+  argv_command(program: nbd_client_program, arguments: ["-d", device as String])
 }

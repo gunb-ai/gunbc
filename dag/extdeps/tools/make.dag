@@ -1,39 +1,17 @@
-module extdeps.tools.sed
+module extdeps.tools.make
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.tools { CliTool, SourceCoreutils }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.gnu.org/software/sed/manual/sed.html"
+    locator: "www.gnu.org/software/make/manual/make.html"
   }
 }
 
-data sed_cli_tool: CliTool = CliTool {
-  name: "sed",
-  min_version: none,
-  installable_via: [SourceCoreutils],
-}
-
-service sed.Sed {
-  operation InPlaceSubstitute {
-    input { expression: NonEmptyStr, path: NonEmptyStr }
-    output { success: Bool from "exit_success" }
-    transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
-    exit {
-      0 => Unit
-      nonzero => String "sed -i failed"
-    }
-  }
-}
-
-// The same in-place substitution the service operation above declares, addressed as an ArgvCommand
-// for the callers that run a sequence of commands rather than one modeled operation. Both spell
-// -i in exactly one place: here.
 // PATH-RESOLVED PROGRAM NAME, DELIBERATELY, AND NOT A DECLINE TO SAY WHICH BINARY. An absolute path
 // is a CLAIM ABOUT AN OBSERVED FILESYSTEM: extdeps.tools.mkdir and extdeps.tools.chmod record theirs
 // because a sudoers NOPASSWD rule names those commands by path on hosts this repository provisions,
@@ -43,8 +21,13 @@ service sed.Sed {
 // 5 forbids rather than an improvement on it. The name is resolved by the target's own PATH, and
 // that is what the previous hand-spelled call sites did too: this conversion changes WHERE the
 // spelling lives, not WHICH program runs.
-data sed_program: NonEmptyStr = "sed"
+data make_program: NonEmptyStr = "make"
 
-fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
-  argv_command(program: sed_program, arguments: ["-i", expression, path])
+// -C IS PART OF THE OPERATION, THE REST IS THE CALLER'S. Which directory the build runs in is a fact
+// this builder owns, because getting it from the ambient working directory is how a build silently
+// operates on the wrong tree. Everything after it -- targets, and the variable assignments GNU make
+// takes as ordinary operands -- is the caller's own request, which this module has no authority to
+// enumerate: a builder that tried would be modeling every Makefile in the world.
+fn make_command(directory: String, arguments: List<String>) -> ArgvCommand {
+  argv_command(program: make_program, arguments: append(["-C", directory], items: arguments))
 }

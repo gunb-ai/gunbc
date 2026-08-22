@@ -1,0 +1,47 @@
+module extdeps.languages.bash.invocation
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/bash/manual/bash.html"
+  }
+}
+
+// BASH IS NOT `sh`, AND THE CALLER PICKED IT DELIBERATELY. extdeps.posix.shell_command_language
+// posix_sh_program_command runs a program against the POSIX specification; this runs one against GNU
+// Bash, whose grammar is a superset. A site using `[[`, arrays, `local`, or process substitution is
+// making a Bash-specific request, and silently routing it through /bin/sh -- which on some hosts IS
+// bash and on others is dash -- is how a script that works on one host fails on the next. The two
+// builders exist separately so that choice is recorded rather than inherited from the host.
+//
+// The subject this cites is declared at extdeps.languages.bash.subject; this module is one surface
+// over it (an invocation shape), not a second Bash.
+// PATH-RESOLVED PROGRAM NAME, DELIBERATELY, AND NOT A DECLINE TO SAY WHICH BINARY. An absolute path
+// is a CLAIM ABOUT AN OBSERVED FILESYSTEM: extdeps.tools.mkdir and extdeps.tools.chmod record theirs
+// because a sudoers NOPASSWD rule names those commands by path on hosts this repository provisions,
+// which is an observation with a consumer. This repository has made no such observation for the
+// hosts these commands run on -- fleet members, runner images, a BMC -- so writing one here would
+// replace a vague spelling with a confident false host fact, which is the fabrication DESIGN section
+// 5 forbids rather than an improvement on it. The name is resolved by the target's own PATH, and
+// that is what the previous hand-spelled call sites did too: this conversion changes WHERE the
+// spelling lives, not WHICH program runs.
+data bash_program_name: NonEmptyStr = "bash"
+
+// Same residual-class standing as the POSIX sibling: the script TEXT is modeling debt owned by the
+// shell -> dag lane, and this builder is not a route for spelling a program's argv inside a string.
+// One call site at the seal: gunbc.fleet_converge_plan_cli's locked apply script.
+fn bash_program_command(script: String) -> ArgvCommand {
+  argv_command(program: bash_program_name, arguments: ["-c", script])
+}
+
+// A SCRIPT FILE IS NOT A SCRIPT STRING. `bash <path>` reads the program from a file, so nothing
+// about the text passes through this repository's own quoting at all -- which is why this form has
+// no residual-class standing beside the one above: there is no embedded program here, only a path.
+fn bash_script_argv(script_path: String) -> List<String> {
+  [bash_program_name as String, script_path]
+}

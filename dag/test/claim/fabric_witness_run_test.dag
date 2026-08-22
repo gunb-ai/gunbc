@@ -241,7 +241,7 @@ test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
 // THE COMMAND. Derived facts, not restatements.
 
 test fn floor_argv_carries_every_declared_source_root() -> Bool {
-  let argv = floor_run_command().argv
+  let argv = argv_words(command: floor_run_command())
   all(witness_layer_roots, r => any(argv, a => a == r))
     && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
@@ -284,7 +284,7 @@ test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
 // witness in favour of construction would have dropped the one clause that caught it, so the
 // clause is carried here rather than lost with its old carrier.
 test fn fabric_command_names_the_consolidated_mode() -> Bool {
-  let argv = floor_run_command().argv
+  let argv = argv_words(command: floor_run_command())
   any(argv, a => a == "--required-ci") && !any(argv, a => a == "--required-floor")
 }
 

@@ -1,0 +1,37 @@
+module extdeps.posix.test_utility
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/test.html"
+  }
+}
+
+// THE STANDALONE UTILITY, NOT THE SHELL BUILTIN, and that is why this module exists at all rather
+// than the question being answered by a shell fragment. Every shell also implements `test` as a
+// builtin, so a caller that reaches for a shell to ask it pays for a shell parse and inherits that
+// shell's own quoting rules. Spawning the utility asks the same question of a real program with a
+// real argv, which is exactly what this repository's ArgvCommand carrier is for.
+// PATH-RESOLVED PROGRAM NAME, DELIBERATELY, AND NOT A DECLINE TO SAY WHICH BINARY. An absolute path
+// is a CLAIM ABOUT AN OBSERVED FILESYSTEM: extdeps.tools.mkdir and extdeps.tools.chmod record theirs
+// because a sudoers NOPASSWD rule names those commands by path on hosts this repository provisions,
+// which is an observation with a consumer. This repository has made no such observation for the
+// hosts these commands run on -- fleet members, runner images, a BMC -- so writing one here would
+// replace a vague spelling with a confident false host fact, which is the fabrication DESIGN section
+// 5 forbids rather than an improvement on it. The name is resolved by the target's own PATH, and
+// that is what the previous hand-spelled call sites did too: this conversion changes WHERE the
+// spelling lives, not WHICH program runs.
+data test_program: NonEmptyStr = "test"
+
+// -f IS "EXISTS AND IS A REGULAR FILE", which is a stronger claim than -e ("exists"): a directory, a
+// socket or a dangling symlink at that path answers false here and true under -e. The two are not
+// interchangeable and this builder commits to the one its callers mean -- a unit file that turned
+// out to be a directory is not present, it is broken.
+fn test_regular_file_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-f", path])
+}

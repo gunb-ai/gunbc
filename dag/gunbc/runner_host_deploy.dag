@@ -1,7 +1,11 @@
 module gunbc.runner_host_deploy
 
 import std.types { NonEmptyStr, String, Int, List }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
+import extdeps.sudo.elevation { sudo_preserve_environment_command }
+import extdeps.languages.bash.invocation { bash_script_argv }
+import extdeps.systemd.systemctl { systemctl_enable_now_command }
+import v2.std.orchestration { EnvSet }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps {
@@ -117,17 +121,24 @@ fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
   }
 }
 
+// FIVE JOINED "NAME=value" STRINGS BECOME FIVE MODELED BINDINGS. The joins were not merely verbose:
+// a value carrying an `=` or a space was indistinguishable from a second binding once flattened, and
+// nothing in the old shape could tell them apart. The invocation is now three composed facts --
+// the environment (extdeps.tools.env), the elevation that must preserve it (extdeps.sudo.elevation
+// -E), and the script the elevated shell runs (extdeps.languages.bash.invocation) -- each owned by
+// the authority that knows its spelling.
 fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
-    argv: [
-      "env",
-      join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
-      join(["CTRL_RUNNER_USER=", deploy.runner_user as String], ""),
-      join(["CTRL_RUNNER_JOB_USER=", deploy.job_user as String], ""),
-      join(["CTRL_RUNNER_APP_PEM_SRC=", pem_src_path as String], ""),
-      "sudo", "-E", "bash", installer_path as String,
+  env_prefixed_command(
+    bindings: [
+      EnvSet { name: "CTRL_RUNNER_HOST_LABEL", value: deploy.host_label as String },
+      EnvSet { name: "CTRL_RUNNER_USER", value: deploy.runner_user as String },
+      EnvSet { name: "CTRL_RUNNER_JOB_USER", value: deploy.job_user as String },
+      EnvSet { name: "CTRL_RUNNER_APP_PEM_SRC", value: pem_src_path as String },
     ],
-  }
+    command: sudo_preserve_environment_command(
+      command: bash_script_argv(script_path: installer_path as String),
+    ),
+  )
 }
 
 fn runner_host_installer_command(
@@ -167,12 +178,9 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
 }
 
 fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
-  ArgvCommand {
-    argv: append(
-      ["sudo", "systemctl", "enable", "--now"],
-      items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
-    ),
-  }
+  systemctl_enable_now_command(
+    units: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
+  )
 }
 
 data runner_enable_command_deleted_note: String = "runner_enable_command USED TO LIVE HERE and is deleted rather than deprecated. It took a RunnerHostAdmission and returned an enable command, so a host that was merely ENROLLED could be activated — no managed cache endpoint, no compile pool, nothing about where the first cache-miss compile would put its server. That is the path every host in this fleet was actually activated through, and it produced four different broken states: srv1 stranded in a retired slot, srv2 and srv3 runner-owned in active ones, srv4 trapped behind a stale socket.\n\nActivation now lives in gunbc.runner_activation and consumes a readiness receipt. This module keeps MATERIALIZATION — the installer command, the slot names, the argv builder — because writing a slot's files cannot spawn a cache server; only letting it accept work can. runner_enable_command_argv stays exported precisely because it is the inert half: an ArgvCommand value with no admission attached, which the activation module wraps in its own wall.\n\nDeprecating instead of deleting would have left the readiness-blind constructor in the namespace, and a wall with a door beside it is a sign."

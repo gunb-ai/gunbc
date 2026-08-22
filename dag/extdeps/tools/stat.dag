@@ -3,6 +3,7 @@ module extdeps.tools.stat
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -29,4 +30,25 @@ fn stat_owner_user_argv(path: String) -> List<String> {
 
 fn stat_owner_group_argv(path: String) -> List<String> {
   [stat_binary_path as String, "-c", "%g", path]
+}
+
+// %U IS THE OWNER'S NAME, %u IS THE OWNER'S NUMERIC UID, and the pair above answers the numeric
+// question. They are not two spellings of one probe: a receipt line naming "briansrls" and a
+// comparison against uid 1000 need different tokens, and a caller that reached for the wrong one
+// would get a plausible answer of the wrong kind. This builder is the name form, which is what a
+// human-readable ownership receipt wants.
+fn stat_owner_user_name_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%U", path])
+}
+
+// %F IS THE HUMAN-READABLE FILE TYPE ("socket", "directory", "regular file") and %i is the inode
+// number. Both take `--` before the operand: a path beginning with a dash would otherwise be read as
+// an option, and these two are the probes whose operand comes from observed host state rather than
+// from a literal, which is exactly where that can happen.
+fn stat_file_type_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%F", "--", path])
+}
+
+fn stat_inode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }

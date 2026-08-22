@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { list_append }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,4 +54,23 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
     bin_path: sudo_binary_path as String,
     args: list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
+}
+
+// -E PRESERVES THE INVOKING ENVIRONMENT, and it is a SEPARATE row from sudo_elevate rather than a
+// flag on it, because the two make different security claims: the default drops the caller's
+// environment, and -E carries it across the privilege boundary. A caller that needs variables set
+// before sudo to survive it must say so; a caller that does not must not silently get it.
+//
+// IT DOES NOT ADD -n, AND THAT IS PRESERVED RATHER THAN CHOSEN. Its one caller
+// (gunbc.runner_host_deploy) emits an operator-run installer command that has always been able to
+// prompt on a tty. Adding non-interactive refusal here would be a live behaviour change shipped
+// inside an argv refactor, which is exactly what this lane refuses to do silently; if that command
+// should fail instead of prompting, that is its own change with its own witness.
+data sudo_preserve_environment_flag: NonEmptyStr = "-E"
+
+fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
+  )
 }

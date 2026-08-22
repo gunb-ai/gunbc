@@ -7,6 +7,12 @@ import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.chmod { chmod_set_mode_command }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.fleet_converge_plan {
@@ -59,7 +65,7 @@ func observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["hostname", "-s"] },
+    command: hostname_short_read_command(),
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } =>
@@ -86,7 +92,7 @@ func observe_timer_members_wet() -> List<TimerRetirementMember>
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
     process_outcome_admitted(outcome: run_shell_command_capture(
-      command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
+      command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
       transport: LocalExec,
     ))
   )
@@ -144,7 +150,7 @@ func fleet_converge_plan_wet() -> ProcessExit
             rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
           )
           let mkdir = run_shell_commands(
-            commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
+            commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
             transport: LocalExec,
           )
           match mkdir {
@@ -186,9 +192,9 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
+                    chmod_set_mode_command(mode: "0755", path: fleet_converge_plan_apply_shell_path),
+                    cat_command(path: fleet_converge_plan_body_path),
+                    cat_command(path: fleet_converge_plan_content_hash_path),
                   ],
                   transport: LocalExec,
                 )
@@ -281,17 +287,13 @@ func fleet_converge_apply_wet() -> ProcessExit
               } else {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand {
-                      argv: [
-                        "bash",
-                        "-c",
-                        fleet_converge_locked_apply_script(
-                          prior_generation: prior_generation,
-                          planned_generation: planned_generation,
-                          apply_shell_path: fleet_converge_plan_apply_shell_path,
-                        ),
-                      ],
-                    },
+                    bash_program_command(
+                      script: fleet_converge_locked_apply_script(
+                        prior_generation: prior_generation,
+                        planned_generation: planned_generation,
+                        apply_shell_path: fleet_converge_plan_apply_shell_path,
+                      ),
+                    ),
                   ],
                   transport: LocalExec,
                 )
