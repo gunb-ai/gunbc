@@ -142,7 +142,12 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   resolve_func_sigs, flatten_parent_envs,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
+  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
+  callable_identity_label, callable_candidate_labels,
+  DerivedCalleeSig, DerivedFromSig, NoDerivableSig,
+  NoDerivableSigReason, DerivationSigUnresolved, DerivationSigAmbiguous,
+  func_sig_for_derivation
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -180,7 +185,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
+  lookup_in_scope, lookup_func_sig,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -3508,7 +3513,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       ))
                   }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-              ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+              ambiguous_reference_refusal(name: name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
             FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
@@ -3675,12 +3680,21 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
       match call_sig_lookup {
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-        ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+        ambiguous_reference_refusal(name: func_name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
       _ =>
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
-      let sig = func_sig_if_resolved(lookup: call_sig_lookup)
+      let sig = match call_sig_lookup {
+        FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
+        FuncSigUnresolved => Absent
+        // UNREACHABLE, AND SPELLED ANYWAY. The enclosing match refuses FuncSigAmbiguous before
+        // this body runs, so the collapse cannot happen here -- but the arm is written out
+        // instead of wildcarded so that a new FuncSigLookup arm is a compile error at this seam
+        // rather than a silent Absent, which is exactly how the deleted func_sig_if_resolved
+        // came to erase the ambiguity in the first place.
+        FuncSigAmbiguous { candidates: _ } => Absent
+      }
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -5792,8 +5806,8 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -5806,12 +5820,12 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -5824,7 +5838,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     _ => ctx.per_field_vars
   }
@@ -5960,14 +5974,14 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
               classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
             Absent => none
           }
-        Absent => none
+        NoDerivableSig { reason: _ } => none
       }
       match from_provenance {
         Present { value: _ } => from_provenance
@@ -6227,14 +6241,14 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-                Present { value: sig } =>
+              let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+                DerivedFromSig { sig: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
                       classify_call_via_provenance(call: arg_expr, param_map: param_map, ctx: ctx)
                     Absent => none
                   }
-                Absent => none
+                NoDerivableSig { reason: _ } => none
               }
               match from_provenance {
                 Present { value: prov_rel } => prov_rel
@@ -6550,11 +6564,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-            Present { value: sig } =>
+          match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+            DerivedFromSig { sig: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
-            Absent => none
+            NoDerivableSig { reason: _ } => none
           }
         _ => none
       }
@@ -7158,15 +7172,15 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
-    Present { value: sig } =>
+  let base = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
+    DerivedFromSig { sig: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
           let first_pname = param_node_name_at(n: first_p, source_indices: source_indices)
           if first_pname != "" { map_insert(empty_map(), first_pname, recv) } else { empty_map() }
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
   fold(mc_args, init: base, f: (acc, arg_node) =>
     match arg_name_at(n: arg_node, source_indices: source_indices) {
@@ -7177,8 +7191,8 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-    Present { value: sig } =>
+  match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+    DerivedFromSig { sig: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
           fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
@@ -7207,7 +7221,7 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
           )
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
 }
 
@@ -7428,8 +7442,8 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
             let call_args = call_args_by_name(call: body, source_indices: type_env.source_indices)
@@ -7455,7 +7469,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
               }
             )
           } else { acc }
-        Absent => acc
+        NoDerivableSig { reason: _ } => acc
       }
     ExprMatch =>
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>

@@ -50,7 +50,9 @@ import v1.compiler.infer_emit_info {
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
+  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
+  parent_closure_callable_candidates, decide_callable_candidates
 }
 
 import v1.compiler.infer_service {
@@ -80,23 +82,117 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
   }
 }
 
-fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
-  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
-    FuncSigUnresolved
+// A REGISTERED BUILTIN IS A CANDIDATE, NOT A FALLBACK.
+//
+// This is half of gap-analysis row 30. `map_get` names two callables -- the builtin (contract at
+// `std.primitives` `map_get_contract`, returning Optional<V>) and `v2.std.collection.map_get`
+// (returning Outcome<Optional<V>>) -- and which one a bare call meant was decided by whether the
+// consumer's TRANSITIVE IMPORT CLOSURE happened to reach the declaration. One unrelated import
+// edge added to `extdeps.git` moved two unrelated modules' closures and silently re-typechecked
+// three untouched files. Making the builtin a candidate is what lets the collision be SEEN;
+// nothing here ranks it above or below a declaration, because any ranking answers the question
+// silently and the ranking is not the defect -- answering at all is.
+//
+// ALGEBRA METHOD TEMPLATE NAMES ARE NOT COLLECTED, preserving the census precedence law stated
+// below: `filter`/`any`/`contains` and their siblings belong to the known-method bridge in the
+// ExprCall arm, so admitting them here would make every module that declares one refuse its own
+// callers over a collision the bridge already resolves by receiver.
+//
+// The candidate carries a sig built from the registry's RETURN TYPE with an empty parameter
+// list, which is all the registry holds. That sig is never handed to a consumer -- see
+// `decide_callable_candidates` on why a lone builtin answers Unresolved -- it exists so the
+// candidate is one type with one shape rather than a special case threaded past the decision.
+fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
+  if algebra_method_template_name(name: name) {
+    []
   } else {
-    match lookup_resolved_sig(env: func_env, name: name) {
-      FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
-      FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-      FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+    match infer_builtin_call_type(name: name) {
+      Present { value: builtin_return } =>
+        [CallableCandidate {
+          identity: BuiltinCallable { primitive_name: name },
+          sig: ResolvedFuncSig {
+            name: name,
+            params: [],
+            inferred: builtin_return,
+            is_async: false,
+            output_provenance: [],
+            variant_provenance: empty_map()
+          },
+          is_builtin: true
+        }]
+      Absent => []
     }
   }
 }
 
-fn func_sig_if_resolved(lookup: FuncSigLookup) -> ResolvedFuncSig? {
-  match lookup {
-    FuncSigResolved { sig: sig } => Present { value: sig }
-    FuncSigUnresolved => Absent
-    FuncSigAmbiguous { candidates: _ } => Absent
+// COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
+//
+// THE LEVELS, and they are lexical scope rather than precedence between authorities. This
+// distinction is the whole difference between a correctness wall and a corpus-wide
+// false-positive storm, so it is stated before the code:
+//
+//   level 0 -- THE MODULE'S OWN DECLARATION (`func_env.local`). A module declaring a name and
+//              calling it is an explicit scope relation the author wrote. It wins, and it is not
+//              a candidate in any decision. (Body-scope binders -- let, match binders, fn and
+//              lambda parameters -- shadow even this, one seam up, in
+//              `body_shadow_aware_func_sig`.)
+//   level 1 -- THE IMPORT CLOSURE AND THE BUILTIN SURFACE, TOGETHER. Both are visible to this
+//              module without the author naming either at the call, so two answers here are two
+//              answers at ONE level and nothing ranks them. This is the level the row-30
+//              collision lives at, and collecting it whole is what this cut adds.
+//   level 2 -- THE CORPUS-WIDE BARE-NAME CENSUS (`func_sig_from_global_bare`), consulted only
+//              when level 1 answered nothing at all. It is strictly outside the module's own
+//              visibility -- it resolves names the author never imported -- and it runs its own
+//              0/1/many decision internally over the referencing module's containment chain.
+//
+// ORDER-INDEPENDENCE: within level 1 the answer is a function of the candidate SET. Import
+// order, parent-list order, map insertion order, and whether a module was reached through one
+// path or several change which order the candidates are collected in and cannot change the
+// verdict, because the verdict is taken on the population and a position is read only after the
+// count has proven the population is a singleton.
+fn callable_lookup_over_candidates(
+  func_env: ResolvedFuncEnv,
+  type_env: TypeEnv,
+  name: String
+) -> FuncSigLookup {
+  match map_get(func_env.local, name) {
+    Present { value: sig } => FuncSigResolved { sig: sig }
+    Absent =>
+      let admissible = concat(
+        parent_closure_callable_candidates(env: func_env, name: name),
+        builtin_callable_candidates(name: name)
+      )
+      match decide_callable_candidates(candidates: admissible) {
+        FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+        FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved =>
+          if (admissible |> count) == 0 {
+            func_sig_from_global_bare(type_env: type_env, name: name)
+          } else {
+            FuncSigUnresolved
+          }
+      }
+  }
+}
+
+fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
+  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+    FuncSigUnresolved
+  } else {
+    if name_resolution_policy_is_namespace_only() {
+      callable_lookup_over_candidates(func_env: func_env, type_env: type_env, name: name)
+    } else {
+      // ImportScoped is the legacy resolver, kept byte-for-byte until the compatibility
+      // bankruptcy step deletes the policy fork (namespace-unique-on-chain operational plan,
+      // step 11). It is not the production path -- the host bracket defaults to namespace-only
+      // -- and widening the candidate set under it would change the very answers that arm
+      // exists to reproduce.
+      match lookup_resolved_sig(env: func_env, name: name) {
+        FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+        FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+      }
+    }
   }
 }
 

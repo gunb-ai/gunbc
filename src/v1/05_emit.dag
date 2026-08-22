@@ -36,7 +36,10 @@ import std.types { is_container_type }
 
 import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
 
-import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+import v1.compiler.infer_sigs {
+  ResolvedFuncSig, ResolvedFuncEnv,
+  DerivedCalleeSig, DerivedFromSig, NoDerivableSig, func_sig_for_derivation
+}
 
 import v1.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -44,7 +47,7 @@ import v1.compiler.infer_items {
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 
-import v1.compiler.infer_lookup { lookup_func_sig, func_sig_if_resolved }
+import v1.compiler.infer_lookup { lookup_func_sig }
 
 import v1.compiler.infer {
   InferScope,
@@ -298,8 +301,21 @@ fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
   map_get(registry, name)
 }
 
+// THE ARM IS NAMED HERE RATHER THAN IN A SHARED PROJECTION THAT FORGETS IT.
+//
+// `order_typed_call_args` is the only consumer: it reorders NAMED actuals into declared
+// parameter order and leaves the argument list untouched when there is no one signature to order
+// against. An ambiguous callee has no such signature -- and cannot reach emit in an `Accepted`
+// program, because the ExprCall decision seam refuses it -- so the answer is the same as the
+// unresolved case and the two are written as separate arms rather than collapsed by a projection
+// that returns `Absent` for both.
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig? {
-  func_sig_if_resolved(lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
+  match func_sig_for_derivation(
+    lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name)
+  ) {
+    DerivedFromSig { sig: sig } => Present { value: sig }
+    NoDerivableSig { reason: _ } => Absent
+  }
 }
 
 fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
