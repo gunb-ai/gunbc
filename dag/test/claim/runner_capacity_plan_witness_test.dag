@@ -1,11 +1,11 @@
 module test.claim.runner_capacity_plan_witness
 
 import std.logic { Bool }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_capacity_plan {
-  desired_slot_indices,
-  addition_slot_indices,
+  parse_positive_width,
+  desired_github_identities,
   reconcile_slot_population,
   SlotPopulationVerdict,
   SlotPopulationReconciled,
@@ -76,29 +76,59 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // ENROLLED REGRESSION CONTROL FOR THE EMPTY-OBSERVATION NARROW
 // (gunbc.runner_capacity_plan slot_enumeration_narrow_class_note).
 //
-// These two are a PAIR and neither is meaningful alone. Before the enumerator was derived,
-// desired_slot_indices(6) returned five indices and widening srv4 from 5 to 6 returned zero
-// actions. The srv4 row is the one that FLIPPED: it was false and is now true, so it goes red
-// again the moment an enumeration stops being able to express a width.
+// IT ASSERTS THE PRODUCTION PATH, NOT A HELPER. An earlier revision of this row asserted
+// desired_slot_indices and addition_slot_indices directly; the set-difference planner removed the
+// last consumer of both, so those rows would have been testing functions nothing runs -- coverage
+// by illusion, one rung up from the blindness they were enrolled to prevent. They are deleted and
+// this asserts nat_range_inclusive, which committed_slot_identities really consumes, and
+// addition_actions, which the planner really calls.
 //
-// THE srv3 ROW IS HERE BECAUSE IT DID NOT FLIP, WHICH IS THE TRAP. Widening srv3 from 5 to 6
-// planned zero additions before this change and plans zero additions after it, for entirely
-// different reasons -- first because the bucket could not spell 6, now because slot 06 is a
-// compute-fabric slot withheld from the GitHub plan. Enrolled alone it would have stayed green
-// straight through the defect AND the fix while silently changing meaning, which is precisely the
-// shape that let this class survive. It is only a check when read against the srv4 row beside it:
-// same width transition, same index, different purpose, different answer.
-test fn a_requested_width_is_always_enumerable_and_purpose_gates_the_plan() -> Bool {
-  desired_slot_indices(width: 6).length() == 6
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 5).length() == 1
+// THE TRANSITIONS ARE A SET BECAUSE ONE OF THEM IS NOT A CHECK. A row asserting only the 5-to-6
+// widening would go green against a planner that special-cased slot 6 -- the bucket rebuilt under a
+// new name. Asking for three different spans, including one from zero, leaves no single special
+// case that satisfies them all. And they assert IDENTITIES and counts of real actions, never a bare
+// length: a length cannot tell [6] from [7], so a planner producing the right NUMBER of the WRONG
+// slots would pass.
+test fn the_additions_run_is_general_across_transitions() -> Bool {
+  nat_range_inclusive(lo: 6, hi: 6) == [6]
+    && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
+    && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
+    && nat_range_inclusive(lo: 6, hi: 5) == []
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 0).length() == 6
+    && addition_actions(host: operator_host_srv4, requested_width: 3, observed_width: 0).length() == 3
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 6).length() == 0
+}
+
+// THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
+// count-and-dense-prefix form could not express. srv3 commits 6 with srv3-06 carved out, so its
+// desired GitHub identities are exactly {01..05} -- five members out of a six-wide host, with the
+// gap at the top today. srv4 has no carve and desires all six. If a fabric member ever lands
+// mid-range this row is what refuses to enumerate through it.
+test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
+  desired_github_identities(host: operator_host_srv3, requested_width: 6).length() == 5
+    && desired_github_identities(host: operator_host_srv4, requested_width: 6).length() == 6
+    && desired_github_identities(host: operator_host_srv3, requested_width: 5).length() == 5
+    && desired_github_identities(host: operator_host_srv1, requested_width: 5).length() == 5
+}
+
+// THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. srv4 at 5-to-6 is the
+// measurement that FLIPPED: before this change it planned zero additions because the enumerator
+// could not spell a width of six, and it plans one now. It goes red again the moment a planner
+// stops being able to express a transition.
+//
+// srv3 AT THE SAME TRANSITION DID NOT FLIP, AND THAT IS WHY IT IS ENROLLED. It planned zero
+// additions before this change and plans zero after -- first because the bucket could not spell 6,
+// now because srv3-06 is the fabric member and is not in the desired GitHub set. Same value, same
+// transition, same index, entirely different mechanism. Enrolled alone it would have stayed green
+// straight through the defect AND the fix while silently changing meaning, which is the shape that
+// let this class survive four days on a declared provisioning target. It is only a check when read
+// against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
+// that discriminates.
+test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
+  addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 5).length() == 1
     && addition_actions(host: operator_host_srv3, requested_width: 6, observed_width: 5).length() == 0
 }
 
-// WIDTH MOVED TO 6 SO THIS ROW STILL REACHES ITS OWN SUBJECT. The admission ceiling now derives
-// from the committed width, so a request for 7 is refused BEFORE the roster is ever consulted --
-// the plan would come back Ready with zero actions and this row would have been asserting the width
-// wall while claiming to assert the roster wall. At the committed width admission passes and the
-// unavailable roster is genuinely what refuses.
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(
     srv3_width: 6,
@@ -122,24 +152,6 @@ fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
   }
 }
 
-// THE ENUMERATOR IS A GENERAL POPULATION MODEL, NOT A SPECIAL CASE FOR SLOT 6, AND THESE TWO ROWS
-// ARE A PAIR FOR THAT REASON. Asserting only the 5-to-6 transition would go green against an
-// enumerator that hardcoded "if the gap is slot 6, add slot 6" -- the bucket rebuilt under a new
-// name, which is exactly the shape this change removed. The 5-to-7 row is what makes that
-// impossible: no single special case satisfies both.
-//
-// THEY ASSERT THE INDICES AND NOT THE COUNT. A length check cannot tell [6] from [7], so a run
-// that produced the right NUMBER of the WRONG slots would pass while planning work against slots
-// that are not the ones missing. This is the enumerator's own claim, taken below the host-policy
-// clamp deliberately: what a host may do with the run is purpose's business, but the run itself
-// must be a correct run of naturals for every transition.
-test fn the_additions_run_is_general_across_transitions() -> Bool {
-  addition_slot_indices(observed_width: 5, requested_width: 6) == [6]
-    && addition_slot_indices(observed_width: 5, requested_width: 7) == [6, 7]
-    && addition_slot_indices(observed_width: 0, requested_width: 3) == [1, 2, 3]
-    && addition_slot_indices(observed_width: 5, requested_width: 5) == []
-    && addition_slot_indices(observed_width: 6, requested_width: 5) == []
-}
 
 fn srv3_slot(i: Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: i }
@@ -183,4 +195,39 @@ test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() 
       host: operator_host_srv1,
       observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
     ))
+}
+
+fn width_parses_to(value: String, expected: Int) -> Bool {
+  match parse_positive_width(value: value) {
+    Absent => false
+    Present { value: n } => n == expected
+  }
+}
+
+fn width_refuses(value: String) -> Bool {
+  match parse_positive_width(value: value) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE COMMITTED WIDTH MUST BE SPELLABLE AT THE ENTRY POINT THAT ACTUATES IT, and before this change
+// it was not: parse_positive_width recognized "7", "5" and "0" and nothing else, so gunbc.apply
+// could not request the six that srv3 and srv4 are committed to. Every repair in this module was
+// unreachable from the only caller that drives it.
+//
+// "6" IS THE ROW THAT WOULD HAVE BEEN RED. The others are here so that a future bucket cannot pass:
+// a parser that enumerated {5,6,7} would satisfy the six alone. Zero and negatives refuse because
+// the function is named for a POSITIVE width and its caller reports "must be a positive integer" --
+// an accepted zero made that message false at the layer that printed it.
+test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
+  width_parses_to(value: "6", expected: 6)
+    && width_parses_to(value: "5", expected: 5)
+    && width_parses_to(value: "7", expected: 7)
+    && width_parses_to(value: "1", expected: 1)
+    && width_parses_to(value: "12", expected: 12)
+    && width_refuses(value: "0")
+    && width_refuses(value: "-3")
+    && width_refuses(value: "")
+    && width_refuses(value: "six")
 }
