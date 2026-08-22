@@ -809,6 +809,26 @@ fn fleet_converge_generation_observation(
 // host that has never applied is at.
 data fleet_converge_first_generation: Int = 0
 
+// WHAT THE ABSENT ARM DOES, AND THE GAP IT LEAVES — stated because a reader would otherwise
+// assume it is as safe as the other two. GenerationStoreAbsent PROCEEDS, at the first
+// generation. So removing the store on a host is a supported way to pass the staleness compare:
+// a deleted store and a host that has never applied are the same observation, and the guard
+// cannot tell them apart.
+//
+// This is NOT a case of evidence that exists and was not consulted. Nothing currently modelled
+// separates the two histories. Filesystem.Read yields success and content, so absence carries no
+// history. The store's directory is created out of band and must already exist for any commit to
+// have succeeded, so its presence is evidence about provisioning, not about a prior apply. The
+// lock file is created by the flock in the guard itself, so it exists on a first run too. Every
+// candidate the site offers is present in both worlds.
+//
+// The residual is therefore a REAL bypass with no detector, not a rung this code declined to
+// climb, and it is bounded to a principal who can already write /var/lib/gunbc — the same
+// principal the apply runs as. It closes by CONSTRUCTION rather than by detection: provision the
+// store WITH the first generation, so that a host which has applied and a host which has not both
+// have a readable store, absence stops being a legitimate state, and GenerationStoreAbsent
+// becomes a third refusal beside GenerationUnobserved. Until that lands, the arm below is the
+// honest reading of what the host can actually be asked.
 type GenerationAdmission
   = GenerationAdmitted { generation: Int }
   | GenerationAdmissionRefused { reason: String }
