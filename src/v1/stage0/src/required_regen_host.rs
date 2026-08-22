@@ -872,7 +872,7 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// nearest candidates, `gunbc.stage0_rust_source_lifecycle_scaffold`
 /// `classified_residue_disjoint_holds` and the generated/hand disposition joins beside it, are
 /// scoped to top-level stage0 paths and cannot see a subdirectory file).
-fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, String>, String> {
+fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
     let mut shadows = BTreeMap::new();
     for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
         let dir = stage0_src.join(dir_name);
@@ -881,13 +881,18 @@ fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Str
         }
         collect_dir_shadows(&dir, dir_name, &mut shadows)?;
     }
+    // Sorted so the refusal text is a function of the collision, not of the roster's authoring
+    // order: two clones must print the same remedy for the same tree.
+    for homes in shadows.values_mut() {
+        homes.sort();
+    }
     Ok(shadows)
 }
 
 fn collect_dir_shadows(
     dir: &Path,
     home: &str,
-    shadows: &mut BTreeMap<String, String>,
+    shadows: &mut BTreeMap<String, Vec<String>>,
 ) -> Result<(), String> {
     for entry in fs::read_dir(dir).map_err(|e| format!("read dir {}: {e}", dir.display()))? {
         let entry = entry.map_err(|e| format!("read dir entry under {}: {e}", dir.display()))?;
@@ -898,7 +903,15 @@ fn collect_dir_shadows(
         }
         if let Some(basename) = path.file_name().and_then(|n| n.to_str()) {
             if is_compared_generated_basename(basename) {
-                shadows.insert(basename.to_string(), home.to_string());
+                // EVERY HOME, NOT THE LAST ONE SEEN. `insert` here was last-write-wins, so one
+                // basename hand-authored under two hand-maintained directories -- `mod.rs` being
+                // the obvious candidate -- refused while naming only one of them, sending the
+                // author to the wrong file. Authority for the list shape:
+                // `v2.workflow.required_regen` `EmittedNotCommittedShadowsHandMaintained`.
+                let homes = shadows.entry(basename.to_string()).or_default();
+                if !homes.iter().any(|h| h == home) {
+                    homes.push(home.to_string());
+                }
             }
         }
     }
@@ -908,7 +921,7 @@ fn collect_dir_shadows(
 fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
-    hand_dir_shadows: &BTreeMap<String, String>,
+    hand_dir_shadows: &BTreeMap<String, Vec<String>>,
 ) -> Option<String> {
     if committed.is_empty() {
         return Some("refusal: committed generated population is empty".to_string());
@@ -925,9 +938,10 @@ fn validate_compared_populations(
             continue;
         }
         match hand_dir_shadows.get(name.as_str()) {
-            Some(home) => {
-                shadowing_hand_maintained.push(format!("{name} (hand-maintained under {home})"))
-            }
+            Some(homes) => shadowing_hand_maintained.push(format!(
+                "{name} (hand-maintained under {})",
+                homes.join(", ")
+            )),
             None => emitted_not_committed.push(name.clone()),
         }
     }

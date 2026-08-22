@@ -39,7 +39,7 @@ type RegenSurfaceOutcome
   | CommittedNotEmitted { relative_path: String }
   | EmittedNotCommittedShadowsHandMaintained {
       relative_path: String
-      hand_maintained_home: String
+      hand_maintained_homes: List<String>
     }
 
 type HandMaintainedOutcome
@@ -151,7 +151,7 @@ fn collect_byte_drift_paths(
     SurfaceDrifted { relative_path: path } => Cons { head: path, tail: acc }
     EmittedNotCommitted { relative_path: _ } => acc
     CommittedNotEmitted { relative_path: _ } => acc
-    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_home: _ } => acc
+    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -164,7 +164,7 @@ fn collect_emitted_not_committed_paths(
     SurfaceDrifted { relative_path: _ } => acc
     EmittedNotCommitted { relative_path: path } => Cons { head: path, tail: acc }
     CommittedNotEmitted { relative_path: _ } => acc
-    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_home: _ } => acc
+    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -177,7 +177,7 @@ fn collect_committed_not_emitted_paths(
     SurfaceDrifted { relative_path: _ } => acc
     EmittedNotCommitted { relative_path: _ } => acc
     CommittedNotEmitted { relative_path: path } => Cons { head: path, tail: acc }
-    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_home: _ } => acc
+    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -191,9 +191,26 @@ fn hand_is_unverifiable(o: HandMaintainedOutcome) -> Bool {
   }
 }
 
-// The shadowing paths are kept as "path (hand-maintained under DIR)" so the refusal names both
-// halves of the collision: an author cannot act on the basename alone, because the whole point is
-// that ONE basename addresses two different files.
+// EVERY HOME, NOT THE LAST ONE SEEN. The homes are a LIST because one basename can be
+// hand-authored under more than one hand-maintained directory — `mod.rs` is the obvious
+// candidate, being the name most likely to appear in two module directories at once. A carrier
+// holding a single home would make the extra ones unrepresentable, so the host's map would have
+// resolved the collision by last-write-wins and the refusal would name ONE directory while
+// silently dropping the others. That refusal still fires and still launders nothing, but it
+// sends an author to the wrong file — which is the failure this whole variant exists to prevent,
+// one notch quieter (finding: smart-ram-730 on #8867).
+//
+// The entry renders as "path (hand-maintained under A, B)" so the refusal names both halves of
+// the collision: an author cannot act on the basename alone, because the whole point is that ONE
+// basename addresses several different files.
+fn render_homes(acc: String, home: String) -> String {
+  if acc == "" {
+    home
+  } else {
+    concat(acc, concat(", ", home))
+  }
+}
+
 fn collect_shadowing_entries(
   acc: List<String>,
   o: RegenSurfaceOutcome
@@ -204,9 +221,18 @@ fn collect_shadowing_entries(
     CommittedNotEmitted { relative_path: _ } => acc
     EmittedNotCommittedShadowsHandMaintained {
       relative_path: path,
-      hand_maintained_home: home
+      hand_maintained_homes: homes
     } => Cons {
-      head: concat(path, concat(" (hand-maintained under ", concat(home, ")"))),
+      head: concat(
+        path,
+        concat(
+          " (hand-maintained under ",
+          concat(
+            fold_list(xs: homes, empty: "", cons: fn(a, h) { render_homes(acc: a, home: h) }),
+            ")"
+          )
+        )
+      ),
       tail: acc
     }
     SurfaceMatches { relative_path: _ } => acc

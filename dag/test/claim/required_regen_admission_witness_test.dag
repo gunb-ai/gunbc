@@ -216,18 +216,24 @@ test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool
       EmittedNotCommitted { relative_path: "brand_new_surface.rs" },
       EmittedNotCommittedShadowsHandMaintained {
         relative_path: "shared_fill.rs",
-        hand_maintained_home: "cli_run"
+        hand_maintained_homes: ["cli_run"]
+      },
+      EmittedNotCommittedShadowsHandMaintained {
+        relative_path: "mod.rs",
+        hand_maintained_homes: ["cli_run", "module_path_index"]
       }
     ],
     hand_outcomes: [],
     authority_digest: "fnv1a64:deadbeefdeadbeef",
-    planned_surfaces: 3,
-    executed_surfaces: 3
+    planned_surfaces: 4,
+    executed_surfaces: 4
   ) {
     RequiredRegenSyncRefused { refusals } =>
       (refusals |> any(r => match r {
         MirrorMissingShadowsHandMaintainedSource { entries } =>
           (entries |> any(e => e == "shared_fill.rs (hand-maintained under cli_run)"))
+            && (entries |> any(e =>
+              e == "mod.rs (hand-maintained under cli_run, module_path_index)"))
             && !(entries |> any(e => e == "brand_new_surface.rs"))
         _ => false
       }))
