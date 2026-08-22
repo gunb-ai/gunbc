@@ -9,6 +9,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::InferredNode::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     arg_value, arm_body, authored_name_at, expr_call_func_at, expr_method_name_at,
@@ -16,7 +17,9 @@ pub use crate::v1_std_core::{
     if_condition, if_else_branch, if_then_branch, lambda_body, lambda_param_names_at, let_body,
     let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
 };
-pub use crate::v1_std_core::{Cardinality, ExprData, NewlineIndex, Node, VarBindingKind};
+pub use crate::v1_std_core::{
+    Cardinality, ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

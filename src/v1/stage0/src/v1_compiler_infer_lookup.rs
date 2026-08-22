@@ -15,12 +15,13 @@ pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, global_bare_policy_candidate,
     lookup_binding_by_name, lookup_binding_by_name_local, lookup_type_for, qualified_all_but_last,
     qualify_borrowed_type_names, symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::OpEntry;

@@ -6493,6 +6493,75 @@ match summary_lookup.clone() {
     }
 }
 
+pub fn collect_pattern_parent_enums(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*crate::v1_std_core::arm_pattern(n.clone())).clone() {
+            MatchPattern::VariantPattern {
+                parent_enum: pe,
+                field_bindings: fbs,
+                ..
+            } => v1_rt::concat(
+                match pe.clone() {
+                    Some(p) => {
+                        if (p.clone() != "".to_string()) {
+                            Rc::new(vec![p.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                    None => Rc::new(vec![]),
+                },
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for fb in fbs.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_pattern_parent_enums(fb.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        let kids = v1_rt::concat(
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_pattern_parent_enums(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_pattern_parent_enums(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            match n.body.clone() {
+                Some(b) => collect_pattern_parent_enums(b.clone(), source_indices.clone()),
+                None => Rc::new(vec![]),
+            },
+        );
+        v1_rt::concat(here.clone(), kids.clone())
+    })
+}
+
 pub fn collect_value_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -6531,24 +6600,67 @@ pub fn collect_value_ref_names(
             ),
             _ => Rc::new(vec![]),
         };
+        let pattern_names = match (*crate::v1_std_core::arm_pattern(n.clone())).clone() {
+            MatchPattern::VariantPattern {
+                name: vn,
+                parent_enum: pe,
+                field_bindings: fbs,
+                ..
+            } => {
+                let parent = match pe.clone() {
+                    Some(p) => p.clone(),
+                    None => match v1_rt::map_get(&variant_to_enum, vn.clone()) {
+                        Some(p2) => p2.clone(),
+                        None => "".to_string(),
+                    },
+                };
+                v1_rt::concat(
+                    if (parent.clone() != "".to_string()) {
+                        Rc::new(vec![parent.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    },
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for fb in fbs.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_ref_names(
+                                    fb.clone(),
+                                    source_indices.clone(),
+                                    type_summaries.clone(),
+                                    variant_to_enum.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                )
+            }
+            _ => Rc::new(vec![]),
+        };
         let list_fields = v1_rt::concat(
             v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_value_ref_names(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                                variant_to_enum.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
+                v1_rt::concat(
+                    pattern_names.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_value_ref_names(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                    type_summaries.clone(),
+                                    variant_to_enum.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                ),
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in n.params.clone().iter().cloned() {
@@ -7601,6 +7713,18 @@ if (vn.clone() == "".to_string()) {
             }
             __result
         });
+        let pattern_established_parents =
+            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for item in items.clone().iter().cloned() {
+                    __result.extend(
+                        (*collect_pattern_parent_enums(item.clone(), source_indices.clone()))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }));
         let emitter_attested_anon_heads =
             crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                 let mut __result = Vec::new();
@@ -7637,21 +7761,34 @@ if (vn.clone() == "".to_string()) {
                 .iter()
                 .cloned()
                 {
-                    if (reference_derived_candidate_authored(
-                        module_source.clone(),
-                        name.clone(),
-                        emit_info.type_summaries.clone(),
-                        emit_info.variant_to_enum.clone(),
-                    ) || {
+                    if if {
                         let mut __found = false;
-                        for h in emitter_attested_anon_heads.clone().iter().cloned() {
-                            if (h.clone() == name.clone()) {
+                        for p in pattern_established_parents.clone().iter().cloned() {
+                            if (p.clone() == name.clone()) {
                                 __found = true;
                                 break;
                             }
                         }
                         __found
-                    }) {
+                    } {
+                        true
+                    } else {
+                        (reference_derived_candidate_authored(
+                            module_source.clone(),
+                            name.clone(),
+                            emit_info.type_summaries.clone(),
+                            emit_info.variant_to_enum.clone(),
+                        ) || {
+                            let mut __found = false;
+                            for h in emitter_attested_anon_heads.clone().iter().cloned() {
+                                if (h.clone() == name.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        })
+                    } {
                         __result.push(name);
                     }
                 }

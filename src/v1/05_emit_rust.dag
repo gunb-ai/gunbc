@@ -2889,6 +2889,28 @@ fn collect_items_field_import_surface_names(items: std.types.List<v1.std.core.No
   ))
 }
 
+fn collect_pattern_parent_enums(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+  let here = match v1.std.core.arm_pattern(n: n) {
+    v1.std.core.VariantPattern { name: _, parent_enum: pe, field_bindings: fbs } =>
+      concat(
+        match pe {
+          Present { value: p } => if p != "" { [p] } else { [] }
+          Absent => []
+        },
+        fbs |> flat_map(fb => collect_pattern_parent_enums(n: fb, source_indices: source_indices))
+      )
+    _ => []
+  }
+  let kids = concat(
+    concat(
+      n.children |> flat_map(c => collect_pattern_parent_enums(n: c, source_indices: source_indices)),
+      n.params |> flat_map(c => collect_pattern_parent_enums(n: c, source_indices: source_indices))
+    ),
+    match n.body { Present { value: b } => collect_pattern_parent_enums(n: b, source_indices: source_indices)  Absent => [] }
+  )
+  concat(here, kids)
+}
+
 fn collect_value_ref_names(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, type_summaries: std.types.Map<String, v1.compiler.infer_emit_info.TypeSummary>, variant_to_enum: std.types.Map<String, String>) -> std.types.List<String> {
   let self_name = match n.expr_data {
     ExprVar { binding_kind: bk } =>
@@ -2905,9 +2927,24 @@ fn collect_value_ref_names(n: v1.std.core.Node, source_indices: std.types.Map<St
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
     _ => []
   }
+  let pattern_names = match v1.std.core.arm_pattern(n: n) {
+    v1.std.core.VariantPattern { name: vn, parent_enum: pe, field_bindings: fbs } =>
+      let parent = match pe {
+        Present { value: p } => p
+        Absent => match map_get(variant_to_enum, vn) {
+          Present { value: p2 } => p2
+          Absent => ""
+        }
+      }
+      concat(
+        if parent != "" { [parent] } else { [] },
+        fbs |> flat_map(fb => collect_value_ref_names(n: fb, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum))
+      )
+    _ => []
+  }
   let list_fields = concat(
     concat(
-      n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
+      concat(pattern_names, n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum))),
       n.params |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum))
     ),
     concat(
@@ -3294,11 +3331,15 @@ fn reference_derived_use_line_dispositions(items: std.types.List<v1.std.core.Nod
         )
       }
     )
+    let pattern_established_parents = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_pattern_parent_enums(n: item, source_indices: source_indices)))
     let emitter_attested_anon_heads = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let candidates = v1.compiler.emit_core_support.unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), declared_field_type_names))
       |> filter(name =>
-        reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
-          || emitter_attested_anon_heads |> any(h => h == name))
+        if pattern_established_parents |> any(p => p == name) { true }
+        else {
+          reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+            || emitter_attested_anon_heads |> any(h => h == name)
+        })
       |> filter(name => !reference_is_host_realized_builtin(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
