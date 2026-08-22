@@ -68,10 +68,20 @@ fn generic_bad() -> Algebra<Thunk> { Algebra { unit: "x", unary: fn(a) { a } } }
 ```
 → `compiled: 6 files emitted, 0 diagnostics`
 
-`unit: R` with `R = Thunk` silently accepts a `String`. This is below floor (§5) rather than a rung
-on the ladder: a declared type admitting the wrong type with no diagnostic. It is reported here
-beside the mask because it was found by the same controls, and it is independent of the A/B — it
-would still be true if the mask were repaired tomorrow.
+`unit: R` with `R = Thunk` silently accepts a `String`. Two facts belong in the row rather than in
+whoever reads it:
+
+- **It is not a build artefact.** It reproduces on the same binary that produced every other result
+  in this document, including the controls that behave correctly.
+- **It is a FLOOR class, not a differentiating one.** "Values inhabit declared types" is the
+  ordinary compiler floor DESIGN §4b names, and a failure there is a below-baseline safety
+  regression — never compensated by higher-order capability. It is below the ladder rather than low
+  on it.
+
+It sits adjacent to the mask because both are the same missing propagation: the instantiation never
+reaches the field expectation, so nothing checks against it and nothing types the lambda parameters
+bound from it. One lane holds both or they are fixed twice. It is independent of the A/B — it would
+still be true if the mask were repaired tomorrow.
 
 ## Consequence for the board, unchanged by any of this
 
@@ -80,3 +90,10 @@ Repairing the mask will make **~68 E0308 sites appear** in `v2_compiler_tokenize
 because a blocking error aborts the pipeline before the phase that would report them. The
 registered population, the prediction `unexplained = 0`, and the join rule in the pre-registration
 are the instrument for reading that rise when it happens.
+
+## Status: PARKED at the B arm
+
+The unmask was re-scoped out of this lane by `smart-ram-730` and dispatched as a v1 inference repair
+carrying the fail-open above. This A/B is **parked, not cancelled**: the registered population, the
+join rule and this A-arm baseline stand, and the B arm costs one probe run plus one python run once
+the repair lands, because the classifier is committed and the raw log is published.
