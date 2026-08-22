@@ -96,6 +96,39 @@ must reproduce to agree.
    **invoked**. A carve-out argued from a named anchor was still wrong, because the
    instrument had not looked at the surface that would have settled it.
 
+6. **NEW — whole-pool unqualified resolution is consumption with neither an import nor a
+   qualified name.** v2 resolves a bare symbol against the **whole module pool**, not
+   against a containment scope, so a consumer may use a declaration while naming neither
+   the declaring module nor its file. `src/v2/lens/extdeps_shape_transport_policy/`
+   `module_refs.dag` is the worked case: **26 consumer files, all of them floor-discovered
+   `*_test.dag`, and all 26 name neither `v2.lens.extdeps_shape_transport_policy.module_refs`
+   nor its path** — they write `extdeps_cargo_build_module` bare and the resolver finds it.
+   All 9 of the module's declarations are consumed this way. **Scope of that 26, stated
+   because a narrower probe gets a smaller number and the two must not be reconciled by
+   splitting the difference:** it counts consumers of *any* of the module's 9 declarations.
+   A probe of the single symbol `extdeps_cargo_build_module` returns **13 consumer files,
+   none of which names the module or the path**. Both figures are correct at their own
+   scope; the class is identical either way. *One caveat, because it recurred here:* run
+   that probe after this document names the module and it returns 14 with 1 naming it —
+   the fourteenth is **this file**. §2's defect 4 already set the rule (the census is
+   excluded from its own scan); it is repeated at the receipt because the contamination
+   arrives the moment the finding is written down, not when it is measured. This class is invisible to a
+   module-name surface and a file-path surface **by construction**, not by an oversight in
+   either: neither string occurs in any consumer. Defect 3 is its near neighbour and does
+   not cover it — a qualified call at least spells the module name, which is exactly what
+   makes defect 3 detectable by a name scan and this one not.
+
+   *Direction, and what is NOT claimed.* Like every surface in §2 this one can only move
+   modules **out** of the population. It was measured on one module, reached by re-deriving
+   this census independently; **the whole 298 has not been re-scored against it**, so how
+   many rows it moves is unmeasured and no estimate is offered — §6's `LowerBoundOnly`
+   standing already covers exactly this and is the reason it does not need revising here.
+   **Rule for whoever measures next, beside the defect-4 rule:** a bare declaration name is
+   a reference too, and in `src/v2/lens/` it is the *normal* one. Restrict such a scan to
+   declaration names that are **unique corpus-wide**, or it reports collisions on common
+   words (`Stage`, `Review`, `Permission`) as consumption — measured, and the reason this
+   receipt counts unique-owner declarations only.
+
 **The universe the 298 is over.** Call surfaces decoded: `import` lines; fully-qualified
 `module.symbol` references (string- and annotation-stripped); argv `--entry` path literals;
 `*entry*:` path-field rows in `.dag`, `.yml`, `.rs`, `.md`, and shell; v1 seed mirrors by
@@ -234,6 +267,68 @@ is the one to look at twice: an empty `main` is a name reserving a seat.
 *are* discovered. The `_test`-suffixed rungs run; their non-suffixed peers do not, and
 nothing names them. Likely a ladder that stopped being climbed — but "the rung above the
 one we execute" is a claim about intent, so it is flagged, not classified.
+
+**g. Three modules that landed AFTER this census and are unconsumed — none of them
+residue.** Surfaced by a second census run independently on 2026-08-22 (population: every
+`.dag` module scored zero on module name *and* file path; the 14 it returned were 11
+instrument artifacts of defects 3 and 6 plus these three). All three postdate #8803, which
+is why §6's appendix does not carry them. Dispositions, one per module:
+
+*Why a naive re-run disagrees with the 298, recorded so the next reader does not
+re-derive it.* That second run scored 14 modules unreachable; **none of the 14 are in this
+document's 298**, and there is no contradiction to resolve. Eleven were reachable all
+along, through surfaces this document already names: ten by fully-qualified reference
+(§2, defect 3 — the run required an *exact* match against the module name, so
+`extdeps.bmc.access.redfish_rbac_policy` matched nothing because the reference string is
+*longer* than the module name), and one, `module_refs`, by whole-pool resolution (§2,
+defect 6 — the surface that run contributed). The `gunbc.accelerator_demo_*` family it
+returned as a four-module cluster is precisely the family §2's defect 3 records as having
+moved back to *reachable*, and `gunbc.accelerator_demo_gpu` is retained in §2's controls
+as the standing discriminator for that arm. The remaining three are the rows below, which
+postdate this document. **The general shape, which is the part worth keeping:** an
+import-line or exact-name census over this corpus does not merely under-count, it reports
+a **structural zero that is indistinguishable from a true zero** — deleting `module_refs`
+on such a reading would have taken 26 live floor-discovered witnesses with it while the
+census showed nothing. Before building a census instrument, search `docs/plans` for the
+census.
+
+- **`gunbc.empty_decl_file_checkpoint_bypass`** (`183e50a3469`) and
+  **`gunbc.generic_binder_field_projection_deficit`** (`aecb1fed927`) — **KEEP, and being
+  unconsumed is their correct state, not a defect.** Both are DESIGN §4b error-class
+  filings: declared rung found-at, ceiling with reason, next-rung trigger, dissolution
+  condition. §4b(2) *requires* a class below its ceiling to carry that row, and nothing in
+  §4b makes a code consumer part of the requirement — the row is the filing. Deleting them
+  deletes the safety ledger, and a future census that scores them residue is re-deriving a
+  question this row answers. **The ending event is each carrier's own stated dissolution
+  condition, and both are bounded events rather than an unbounded "later":** for the first,
+  `lookup_checkpoint` refusing on an empty `decl_file` with every production call site
+  threading identity; for the second, v2 inference resolving a generic coproduct's type
+  argument into the arm binder. Note for a reader who checks whether these should carry
+  witnesses: `generic_binder_field_projection_deficit` states in its own header why it does
+  not, and the reason is §5 construction-over-validation — its discriminating RED was
+  *refused at resolve* because the invalid state has no constructor, so the predicate and
+  its witness were deleted rather than kept as a green that cannot go red.
+
+- **`gunbc.scm.commit_closure_store`** (#8807) — **the one real finding in the batch: a
+  replacement-migration leftover, not residue and not correctly standing.**
+  `gunbc.scm.repository_envelope` (#8820, one day later) is by its own header the layer
+  *above* this module's grain, and the store's header anticipates it by name. The envelope
+  imports `gunbc.scm.image` and `gunbc.scm.object_store` and **does not import
+  `commit_closure_store`** — so the envelope took the grain and left the `Filesystem`
+  save/load half unattached, with the store's only tree-wide mention being a prose line in
+  `image.dag`. This is DESIGN §3's replacement-migration shape caught mid-cutover: X still
+  standing after Y claimed its root. **Not dispositioned here**, because the two arms —
+  the envelope grows save/load and this module deletes, versus this module is the
+  persistence layer the envelope should consume — differ on the #8820 author's intent, and
+  guessing is how a second authority gets ratified. Raised for that author.
+
+**A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree of this
+repo can be **shallow-grafted** — the 2026-08-22 run found its clone rooted at a single
+4608-file import commit dated six days earlier, so `git log <file>` reported that graft
+commit as the first commit of every older module. Any census arm that asks *was this
+consumed until a recent cut* (the question that separates a severed consumer from §6
+experimental residue) silently answers from a truncated history. `git rev-parse
+--is-shallow-repository` before trusting a history claim; `git fetch --unshallow` fixes it.
 
 ## 5. Proposed sequencing (for approval, not execution)
 
