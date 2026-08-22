@@ -20458,6 +20458,38 @@ pub fn is_collection_typed_expr(
     }
 }
 
+pub fn discriminant_zero_field_variant_tag(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            if ((arg.children.clone().len() as i64) != 0) {
+                None
+            } else {
+                match record_lit_type_name_at(
+                    arg.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(tn) => {
+                        let last = qualified_last_segment(tn.clone());
+                        if ((last.clone() != "".to_string())
+                            && is_known_variant(emit_info.type_summaries.clone(), last.clone()))
+                        {
+                            Some(last.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn emit_discriminant_call_lowering(
     value_arg: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -20468,6 +20500,32 @@ pub fn emit_discriminant_call_lowering(
 ) -> String {
     {
         let arg = arg_value(value_arg.clone());
+        match discriminant_zero_field_variant_tag(arg.clone(), scope.clone(), emit_info.clone()) {
+            Some(tag) => emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
+                v1_rt::concat("\"".to_string(), tag.clone()),
+                "\".to_string()".to_string(),
+            )),
+            None => emit_discriminant_call_scrutinee_lowering(
+                arg.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            ),
+        }
+    }
+}
+
+pub fn emit_discriminant_call_scrutinee_lowering(
+    arg: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
         let scrutinee = emit_typed_expr(
             arg.clone(),
             registry.clone(),
