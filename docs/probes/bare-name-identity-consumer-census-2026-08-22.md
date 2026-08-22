@@ -328,3 +328,40 @@ population came specifically **from the import statement** rather than from some
 with it is a reading of the lookup's scope argument plus the locality split — not an executed two-arm
 test.
 
+## The trailing comma: the finding was real, its stated consequence was not, and I repeated it unchecked
+
+Kept because the correction is to me as much as to the review, and because the durable record is this
+file rather than a branch commit message that a squash-merge discards.
+
+`review 54637` (REQUEST_CHANGES) reported that the `add_emit_item_summary` row's `outcome:` field
+ended without a trailing comma, unlike every other row, and concluded: *"This is a syntax error; the
+census file will not parse, so none of its derived counts or the sibling test file can consume it."*
+
+**The observation is correct** — my withdrawal edit was a slice that consumed `" },` and substituted
+text ending `" }`, dropping the delimiter with the content it replaced. Fixed, and every other row
+was checked rather than just the reported line.
+
+**The consequence is false, measured on a two-arm probe** — same binary, same tree, one line
+differing, each arm printing the line tail it actually ran against so the mutation is visible rather
+than assumed:
+
+| arm | line 184 tail | `census_member_count` |
+|---|---|---|
+| with comma | `oking at" },` | `12` |
+| comma stripped | `ooking at" }` | `12` |
+
+The trailing comma before `}` is **optional**. The file parsed, the derived counts evaluated, and the
+witness module could have consumed it. So this was a consistency defect, not a syntax error.
+
+**And I repeated the false half without checking it.** I wrote it into a commit message and said it
+aloud — that the branch had carried an unparseable carrier for one commit. My first attempt to check
+it could not have settled it either way: every run of that census returns the same
+`12 / 55 / 11 / 8 / 9 / 6`, because every edit in this exchange was *inside a string literal*, so
+identical counts are equally consistent with "parsed fine" and with "the runner measured an older
+head". A non-discriminating instrument agreeing with a claim is not evidence for it — which is the
+same lesson the confounded control two sections up teaches, arriving this time through a review
+finding I was too quick to accept because it was against me.
+
+**Net:** the fix stays (eleven rows spell it one way and now so does the twelfth); the diagnosis is
+corrected in both directions.
+
