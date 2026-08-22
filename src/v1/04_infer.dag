@@ -8618,14 +8618,54 @@ fn transparent_alias_target_name(item: Node, source_indices: Map<String, Newline
   }
 }
 
-fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
+// QUALIFYING THE TARGET AT BUILD TIME, so the representative comparison can be exact.
+// An alias target is the AUTHORED right-hand-side name and may be bare (`type Hash =
+// Fnv1a64Structural`), while the other side of a comparison may be qualified. That mismatch is the
+// only reason transparent_alias_identity_agrees reduces to a last segment at all -- and the
+// reduction is a fail-open: `a.Foo = x.Bar` and `b.Baz = y.Bar` are two aliases onto two DIFFERENT
+// types whose names both end in `Bar`, and a last-segment comparison of their representatives
+// equates them, suppressing a genuine brand mismatch (found by review, smart-ram-730).
+//
+// Names in this corpus resolve by global uniqueness rather than by import, so a census-unique bare
+// name has exactly one declaring module and qualifying it is exact rather than a guess. This map is
+// built during census construction and DISCARDED -- it is not stored on SymbolIndex, so the
+// per-query cost and the retained size are both unchanged, and only the stored targets get longer.
+// A census-AMBIGUOUS name has no unique declarer and is left bare; that residue is the one the
+// last-segment fallback still covers, and it is the DESIGN 4b ambiguity hole rather than a new one.
+fn corpus_decl_module_paths(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
+  fold(module_nodes, init: empty_map(), f: (acc, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    fold(module_items(n: module_node), init: acc, f: (inner, item) =>
+      let self_name = authored_name_at(source_indices: source_indices, node: item)
+      let unique = match map_get(item_counts, self_name) {
+        Present { value: 1 } => true
+        _ => false
+      }
+      if self_name == "" || module_path == "" || !unique { inner } else { map_insert(inner, self_name, module_path) }
+    )
+  )
+}
+
+fn transparent_alias_qualified_name(decl_modules: Map<String, String>, name: String) -> String {
+  if (module_path_segments(path: name) |> count) > 1 {
+    name
+  } else {
+    match map_get(decl_modules, name) {
+      Present { value: m } => concat(m, ".", name)
+      Absent => name
+    }
+  }
+}
+
+fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>) -> Map<String, String> {
   fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     fold(module_items(n: module_node), init: edges, f: (acc, item) =>
-      let target_name = transparent_alias_target_name(item: item, source_indices: source_indices)
-      if target_name == "" {
+      let raw_target = transparent_alias_target_name(item: item, source_indices: source_indices)
+      if raw_target == "" {
         acc
       } else {
+        let target_name = transparent_alias_qualified_name(decl_modules: decl_modules, name: raw_target)
         let self_name = authored_name_at(source_indices: source_indices, node: item)
         let qualified = map_insert(acc, concat(module_path, ".", self_name), target_name)
         match map_get(item_counts, self_name) {
@@ -8656,7 +8696,8 @@ fn transparent_alias_chase(edges: Map<String, String>, name: String, fuel: Int) 
 }
 
 fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
-  let edges = transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
+  let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
+  let edges = transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules)
   fold(sorted_map_keys(edges), init: empty_map(), f: (acc, k) =>
     map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: 16))
   )
@@ -8684,12 +8725,24 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
 // than hidden: for a census-AMBIGUOUS bare name that reduction can still equate two distinct
 // declarations -- the same open hole DESIGN 4b names on the source->.dag acceptance path, not one
 // this relation introduces.
+// BOTH sides chased means both representatives are stored targets, and stored targets are
+// qualified at build time wherever the corpus makes qualification exact -- so that comparison is
+// exact string equality and the a.Foo/b.Baz collision has no spelling. Only the ONE-chased case
+// still reduces to a last segment, because there the unchased side is an authored name this
+// relation never rewrote; that residue is narrower than the reduction it replaces and is the
+// remaining known widening, not a closed one.
 fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: String) -> Bool {
   let left_rep = transparent_alias_representative(index: index, name: left)
   let right_rep = transparent_alias_representative(index: index, name: right)
-  let chased_an_alias_edge = left_rep != left || right_rep != right
-  left != "" && right != "" && chased_an_alias_edge
-    && qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
+  let left_chased = left_rep != left
+  let right_chased = right_rep != right
+  let both_chased = left_chased && right_chased
+  left != "" && right != "" && (left_chased || right_chased)
+    && if both_chased {
+      left_rep == right_rep
+    } else {
+      qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
+    }
 }
 
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {

@@ -63,6 +63,39 @@ fn transparent_alias_variant_projection_source() -> String {
   "module aliasid.variantproj\n\ntype Runtime = | Local\n\ntype RuntimeAlias = Runtime\n\nfn project(r: RuntimeAlias) -> Int {\n  match r {\n    Local => 1\n  }\n}\n\nfn consume_rt(r: Runtime) -> Int {\n  project(r: r)\n}\n"
 }
 
+// THE BLAST RADIUS, PINNED. `dag/std/types.dag` declares CommitSha, Sha256, Email, SemVer,
+// Timestamp, RelPath, MimeType and 16 more as BARE transparent aliases of String, so 23 of them
+// reach one representative; further families reach NonEmptyStr (9), Node (8), LanguageModel (7),
+// Symbol (6) and Nat (3). Every pair inside a family agrees under this relation.
+//
+// THIS ARM IS NOT A CLIMB AND MUST NOT BE READ AS ONE. Measured on the PRE-relation binary, this
+// exact shape ALREADY compiles clean -- the relation does not make these substitutable, it makes
+// an existing fact visible. The paired control is the discriminator that makes that readable: an
+// Int-alias at the same String-alias formal is REFUSED on that same pre-relation binary
+// ("expected 'Primitive(String)', got 'Primitive(Int)'"), so the seam is live and running and
+// simply does not distinguish two bare aliases of one kernel type. A transparent alias adds no
+// information -- that is what transparent means -- and DESIGN 4b says richer type names are not
+// safety: a wrapper is cosmetic until construction and acceptance enforce the distinction.
+//
+// WHAT WOULD FLIP IT, and the direction is intended. The corpus already contains the cure two
+// files from the disease: `std.types` `Sha256` is `= String` while `std.content_hash`
+// `Sha256DigestHex` is `= String where lower_hex_64`. The refinement carries a type_annotation, so
+// transparent_alias_target_name REFUSES to peel it while the bare alias peels -- this relation
+// distinguishes grounded from anemic structurally, without being told to. Grounding CommitSha
+// therefore removes it from this relation automatically and turns this arm RED. That is the
+// DESIGN section 2 repair (a String leaf hiding named parts) exiting through this lane's Req-1
+// boundary by construction rather than by an edit to the predicate.
+//
+// So a future change that narrows this relation does not argue with a preference; it argues with a
+// recorded state of the corpus and a named exit.
+fn transparent_alias_string_family_source() -> String {
+  "module aliasid.family\n\ntype AttemptKey = String\n\ntype CommitSha = String\n\nfn take_attempt(k: AttemptKey) -> AttemptKey {\n  k\n}\n\nfn pass_commit_sha(c: CommitSha) -> AttemptKey {\n  take_attempt(k: c)\n}\n"
+}
+
+fn transparent_alias_string_family_control_source() -> String {
+  "module aliasid.familyctl\n\ntype AttemptKey = String\n\ntype IntKey = Int\n\nfn take_attempt(k: AttemptKey) -> AttemptKey {\n  k\n}\n\nfn pass_int_key(i: IntKey) -> AttemptKey {\n  take_attempt(k: i)\n}\n"
+}
+
 // HARNESS CONTROLS FOR THE TWO REFUSAL ARMS. compile_dag_rust_emit_check returns false for
 // more than one reason -- a refused compile, but also a fixture the harness could not place or
 // read -- so a bare `!check(...)` is satisfiable by a broken harness. Each refusal arm below is
@@ -149,5 +182,28 @@ test fn w_alias_at_a_variant_projection_position_test() -> Bool {
     "src/aliasid_variantproj.rs",
     ["Local"],
     ["compile_error"]
+  )
+}
+
+// BLAST-RADIUS RECORD. Two bare aliases of one kernel type are one type, accepted here BECAUSE
+// both are bare transparent aliases of String TODAY -- not because substitutability is desirable.
+// Green on the pre-relation binary too, so this arm records corpus state rather than this change.
+test fn w_two_bare_aliases_of_one_kernel_type_agree_test() -> Bool {
+  compile_dag_rust_emit_check(
+    transparent_alias_string_family_source(),
+    "src/aliasid_family.rs",
+    ["AttemptKey"],
+    ["compile_error"]
+  )
+}
+
+// ITS DISCRIMINATOR. Without this, the arm above is satisfiable by a seam that accepts everything.
+// An Int-alias at the same String-alias formal is refused, on this binary and the pre-relation one.
+test fn w_alias_of_another_kernel_type_still_refused_at_that_formal_test() -> Bool {
+  !compile_dag_rust_emit_check(
+    transparent_alias_string_family_control_source(),
+    "src/aliasid_familyctl.rs",
+    [],
+    []
   )
 }

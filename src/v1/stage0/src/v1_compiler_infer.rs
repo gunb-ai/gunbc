@@ -214,7 +214,9 @@ pub use crate::v1_std_core::{
     type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
     with_required_cardinality,
 };
-pub use crate::v1_std_core::{expr_is_any_literal, expr_literal_symbol_optional};
+pub use crate::v1_std_core::{
+    expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
+};
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncEnv,
     DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
@@ -16984,10 +16986,56 @@ pub fn transparent_alias_target_name(
     }
 }
 
+pub fn corpus_decl_module_paths(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item_counts: Rc<HashMap<String, i64>>,
+) -> Rc<HashMap<String, String>> {
+    module_nodes.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, module_node: Rc<Node>| {
+            let module_path = authored_name_at(source_indices.clone(), module_node.clone());
+            module_items(module_node.clone()).iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, String>>, item: Rc<Node>| {
+                    let self_name = authored_name_at(source_indices.clone(), item.clone());
+                    let unique = match v1_rt::map_get(&item_counts, self_name.clone()) {
+                        Some(1) => true,
+                        _ => false,
+                    };
+                    if (((self_name.clone() == "".to_string())
+                        || (module_path.clone() == "".to_string()))
+                        || !unique.clone())
+                    {
+                        inner.clone()
+                    } else {
+                        v1_rt::rc_map_insert(inner.clone(), self_name.clone(), module_path.clone())
+                    }
+                },
+            )
+        },
+    )
+}
+
+pub fn transparent_alias_qualified_name(
+    decl_modules: Rc<HashMap<String, String>>,
+    name: String,
+) -> String {
+    if ((module_path_segments(name.clone()).len() as i64) > 1) {
+        name.clone()
+    } else {
+        match v1_rt::map_get(&decl_modules, name.clone()) {
+            Some(m) => v1_rt::concat(v1_rt::concat(m.clone(), ".".to_string()), name.clone()),
+            None => name.clone(),
+        }
+    }
+}
+
 pub fn transparent_alias_direct_edges(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     item_counts: Rc<HashMap<String, i64>>,
+    decl_modules: Rc<HashMap<String, String>>,
 ) -> Rc<HashMap<String, String>> {
     module_nodes.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
@@ -16996,12 +17044,16 @@ pub fn transparent_alias_direct_edges(
             module_items(module_node.clone()).iter().cloned().fold(
                 edges,
                 |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
-                    let target_name =
+                    let raw_target =
                         transparent_alias_target_name(item.clone(), source_indices.clone());
-                    if (target_name.clone() == "".to_string()) {
+                    if (raw_target.clone() == "".to_string()) {
                         acc.clone()
                     } else {
                         {
+                            let target_name = transparent_alias_qualified_name(
+                                decl_modules.clone(),
+                                raw_target.clone(),
+                            );
                             let self_name = authored_name_at(source_indices.clone(), item.clone());
                             let qualified = v1_rt::rc_map_insert(
                                 acc.clone(),
@@ -17082,10 +17134,16 @@ pub fn transparent_alias_representatives(
     item_counts: Rc<HashMap<String, i64>>,
 ) -> Rc<HashMap<String, String>> {
     {
+        let decl_modules = corpus_decl_module_paths(
+            module_nodes.clone(),
+            source_indices.clone(),
+            item_counts.clone(),
+        );
         let edges = transparent_alias_direct_edges(
             module_nodes.clone(),
             source_indices.clone(),
             item_counts.clone(),
+            decl_modules.clone(),
         );
         Rc::new(v1_rt::sorted_map_keys(&edges))
             .iter()
@@ -17124,12 +17182,17 @@ pub fn transparent_alias_identity_agrees(
     {
         let left_rep = transparent_alias_representative(index.clone(), left.clone());
         let right_rep = transparent_alias_representative(index.clone(), right.clone());
-        let chased_an_alias_edge =
-            ((left_rep.clone() != left.clone()) || (right_rep.clone() != right.clone()));
+        let left_chased = (left_rep.clone() != left.clone());
+        let right_chased = (right_rep.clone() != right.clone());
+        let both_chased = (left_chased.clone() && right_chased.clone());
         ((((left.clone() != "".to_string()) && (right.clone() != "".to_string()))
-            && chased_an_alias_edge.clone())
-            && (qualified_last_segment(left_rep.clone())
-                == qualified_last_segment(right_rep.clone())))
+            && (left_chased.clone() || right_chased.clone()))
+            && if both_chased.clone() {
+                (left_rep.clone() == right_rep.clone())
+            } else {
+                (qualified_last_segment(left_rep.clone())
+                    == qualified_last_segment(right_rep.clone()))
+            })
     }
 }
 
