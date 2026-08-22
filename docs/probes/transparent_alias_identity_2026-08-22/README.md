@@ -205,14 +205,23 @@ regression is ~7,000s and no cache effect hides that.
 
 ## The fail-open the first version shipped, and what caught it
 
-Review 54654 (`claude-opus-4-7`, REQUEST_CHANGES) found that `transparent_alias_identity_agrees`
-reduced both sides to `qualified_last_segment` UNCONDITIONALLY. When neither name has an entry in
-`transparent_alias_rep` -- the common case, since most names are not aliases -- each representative
-is the input name, so the comparison made any two homonymous nominal types from different modules
-(`mod_a.Foo` vs `mod_b.Foo`, no alias relation) "agree", suppressing the brand mismatch. That is a
-widening inside the one arm whose entire job is to exculpate, and it is the same erasure class as
-the incident that created this lane: the lane would have shipped a fail-open shaped like the thing
-it was funded to close.
+Review 54654 (`claude-opus-4-7`, REQUEST_CHANGES) reported that `transparent_alias_identity_agrees`
+reduced both sides to `qualified_last_segment` UNCONDITIONALLY, so that when neither name had an
+entry in `transparent_alias_rep` each representative was the input name and any two homonymous
+nominal types from different modules (`mod_a.Foo` vs `mod_b.Foo`) would "agree".
+
+**That specific scenario is NOT reachable, and this note says so rather than banking the credit.**
+`nominal_call_arg_brand_mismatch`'s third conjunct is already
+`qualified_last_segment(formal_name) != qualified_last_segment(actual_name)`, so a pair whose names
+share a last segment never reaches the new conjunct at all. A later review by `smart-ram-730`
+raised the same reading and then withdrew it on exactly this ground; the withdrawal is correct, and
+the mechanism is verifiable at `v1.compiler.infer` `nominal_call_arg_brand_mismatch`. An earlier
+revision of this section asserted the fail-open was live; it was not, and a receipt that overstates
+what a review caught is the same fabrication class the receipt exists to prevent.
+
+The tightening below is therefore a HARDENING, not the repair of a live hole: it makes the
+predicate self-standing instead of relying on a distant conjunct for its safety, which is worth
+having because the distant conjunct is not part of this function's contract and could move.
 
 The fix requires the agreement to be licensed by an ALIAS EDGE rather than by spelling: at least
 one side must actually chase through `transparent_alias_rep`, and an unchased pair refuses, since
@@ -220,9 +229,23 @@ the caller has already established the names differ. The last-segment reduction 
 the chased case, where it is load-bearing -- an alias target is the authored RHS name and may be
 bare where the other side is qualified.
 
-**Residual, stated rather than hidden.** For a census-AMBIGUOUS bare name the reduction can still
-equate two distinct declarations. That is the open hole DESIGN 4b already names on the
-source->`.dag` acceptance path, not one this relation introduces.
+**A DIFFERENT fail-open survives the tightening, at representative grain, and it is open.**
+`smart-ram-730` located it: the guard excludes pairs whose NAMES share a last segment, but not
+pairs whose REPRESENTATIVES do. Given `a.Foo = x.Bar` and `b.Baz = y.Bar` -- two aliases with
+distinct names onto two distinct types whose names both end in `Bar` -- conjunct three passes
+(`Foo` != `Baz`), both sides chase, both representatives end in `Bar`, and a genuine brand mismatch
+is suppressed. The chased-edge requirement does NOT close this: both sides did chase. The
+population is not obviously empty -- this run's floor prints
+`[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040`, so same-last-segment
+names are ordinary here -- and it is not measured yet.
+
+**Also open: the enrolled arms cannot discriminate it.** All five witness arms are single-module,
+so a change that widened the relation to full name-collapse would keep every one of them green.
+That is a coverage gap in this PR's own evidence, named here rather than left for a reader.
+
+**Residual beyond that.** For a census-AMBIGUOUS bare name the reduction can still equate two
+distinct declarations -- the open hole DESIGN 4b already names on the source->`.dag` acceptance
+path, not one this relation introduces.
 
 **All four arms were re-run against the tightened predicate before merge was requested**, because
 "it cannot have moved them" is reasoning, not evidence. They hold: 20527 rows, 19999 `Compatible`,
@@ -230,6 +253,20 @@ source->`.dag` acceptance path, not one this relation introduces.
 `String`-at-an-`Int`-formal still refuses as exactly one row with `kernel=true nominal=false`; and
 production still emits `0 blocking / 503 advisory`. A result that survives a constraint not in
 force when it was first produced is strictly stronger than the original.
+
+## Scope of the diagnostic control, stated because it was nearly overclaimed
+
+`0 blocking / 503 advisory` on both binaries is CLOSURE-SCOPED. It covers the
+`src/v2/compiler/03_ingest.dag` import closure and nothing else. The corpus-scoped evidence for
+this change is its CI run, not this figure.
+
+The distinction is not hypothetical. gunbc#8879 attempted the same semantics at the resolve seam,
+carried six enrolled witnesses green by execution including a discriminating RED and a destruction
+control, and its corpus run then reddened 38 diagnostics -- among them
+`expected Product(Hash), got Product(Fnv1a64Structural)`, the alias family behind 92 of the 115
+relations measured here, located in `dag/gunbc/scm/object_store.dag` and `repository_envelope`.
+**Those files are not in the closure measured above.** An author-written fixture set is a sample of
+the author's hypothesis; the corpus is the only instrument that has caught anything in this area.
 
 ## What is NOT claimed
 
