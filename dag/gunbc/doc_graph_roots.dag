@@ -1293,7 +1293,14 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-23",
-    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_string_grounded_type_alias_decl_line", field: WholeDeclaration },
+    // REPOINTED 2026-08-22, and this is the class the census exists to catch. The bind named
+    // rust_string_grounded_type_alias_decl_line, the unconditional `item_text == "String"` alias
+    // arm at the declaration site. That arm was DELETED on main when the two spelling roles it was
+    // compensating for were split apart (checkpoint_table_bypasses_identity_note, THAT KNOWN GAP IS
+    // NOW CLOSED), so the citation outlived what it names. The successor for the question this doc
+    // diagnoses -- what a DECLARATION is grounded in, as against what a reference renders -- is the
+    // grounding entry point in the same module; the reference half is rust_scalar_checkpoint_reference_base.
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "emit_representation_mismatch brick clears and probe transport lands in .dag (#5828)") },
   },
