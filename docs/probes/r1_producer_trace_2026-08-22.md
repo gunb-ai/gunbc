@@ -209,3 +209,57 @@ OUTER 2 and TYPE-ARGUMENT 8 with one base realization held fixed.
 | **`v2_lens_cost.rs:312/315` move** | **REJECT** — keyed on the name, not the pair; base realization was not held fixed |
 | **any ELEMENT site moves** | **REJECT** — no `Nat`/`Int` site exists at element depth |
 | any non-R1 cluster moves | **REJECT** — more than one axis changed |
+
+---
+
+# The brief's question has a third answer: ~25 producers, one policy
+
+The brief asks whether R1 is **one recursively-consumed reference-layer authority** or **three
+position-specific producers wearing one delta**. Read statically, it is neither.
+
+`v1.compiler.emit_rust` contains **~25 independent `set_contains(shared_types, …)` wrap tests**.
+At every one of them the key is a **bare authored name** — `leaf`, `type_name`, `name`,
+`enum_name`, `ty_name`, `rc_name`, `ctor_name`, `acc_type_name`,
+`authored_name_at(…)`. What gets wrapped varies by position (`scalar`, `base`, `applied_ty`,
+`rendered`); the *key* does not, and none of them consults `decl_file`.
+
+So R1 is **one policy applied at ~25 sites**, not one authority and not three producers:
+
+- **One policy** — a single predicate over a single set, keyed on the name, everywhere.
+- **Not one authority** — no single function decides; twenty-five sites each decide for themselves.
+- **Not three producers** — the count is an order of magnitude larger than the depth count, and the
+  sites do not partition along outer / type-argument / element.
+
+This strengthens the invariance call rather than weakening it: not one name-keyed decision that must
+treat both base realizations alike, but twenty-five, all using the same key, none of which can see
+`decl_file`.
+
+**And it reframes the repair.** Changing the wrap policy means changing 25 sites, or extracting the
+policy to one authority *first* and then changing it once. That is a §2/§3 consolidation — one
+concept, one authority — and it is prior to any behavioural fix. A repair that edits some subset of
+the 25 leaves the rest applying the old policy, which is the forked-logic trap.
+
+## One structural asymmetry, found at the decision point
+
+`rust_render_checkpoint_scalar_bare` (`05_emit_rust.dag`) short-circuits:
+
+```
+match rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n)) {
+  Present { value: numeric } => Present { value: numeric }     // alias fired: returns i64, wrap NEVER consulted
+  Absent => … if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(scalar) { wrap } …
+}
+```
+
+On the alias-fired path **this producer cannot wrap at all** — it returns before the wrap test. So
+the `Rc<i64>` sites in R1 are not produced here; they must reach a wrap test by a path that does not
+route through this function.
+
+That is a *live question for the trace*, and it is the first thing the tracer should answer: **which
+of the ~25 sites emits each of the 10 `i64` R1 sites?** The static reading cannot say, because it
+cannot see which producer runs at a given reference.
+
+It also qualifies the invariance call without overturning it. The grounds — wrap keyed on name,
+realization keyed on the pair — hold at every site. But the `Nat`-spelled and `i64`-spelled sites may
+be emitted by *different producers*, in which case the invariant delta shape is two producers
+independently applying one policy rather than one producer treating both alike. Same conclusion for
+the experiment; a different reason, and the trace distinguishes them.
