@@ -112,15 +112,17 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
 // directions, so a wrong or partial population mass-fires one of them while
 // mass-silencing the other — and any assertion phrased as a total is satisfied by both
 // mistakes. The pair below is phrased at identity grain instead: one subject KNOWN to be
-// present (`retires_dissolution`, declared in `std.dissolution`) and one KNOWN to be
-// absent (a name authored nowhere), asserted in opposite directions IN THE SAME RUN
+// present and one KNOWN to be absent, asserted in opposite directions IN THE SAME RUN
 // against the same resolver answer. A population that lost the tree fails the first; a
 // population that fabricated it fails the second.
 //
-// The pool root is `dag/std` rather than the corpus: the resolver's behaviour is what is
-// under test, and scanning the whole tree to prove it would price the mechanism at the
-// corpus's breadth, which is the cost-shape defect DESIGN §6 names.
-data live_discriminator_pool_roots: List<String> = ["dag/std"]
+// The pool is the purpose-built fixture rather than a production directory: the subject
+// under test is the RESOLVER's behaviour, and scanning production to establish it prices
+// the mechanism at that directory's breadth — the cost-shape defect DESIGN §6 names.
+// Measured rather than assumed: pointed at `dag/std` this row was BUDGET-REFUSED at
+// 5510ms against the floor's 5000ms deadline and went undecided, which is a worse
+// outcome than a failure because nothing then claims it is broken.
+data live_discriminator_pool_roots: List<String> = ["dag/test/fixture/dissolution_live_discriminator"]
 
 fn live_discriminator_rows() -> List<FrontierRow> {
   [
@@ -128,14 +130,20 @@ fn live_discriminator_rows() -> List<FrontierRow> {
       ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "present_subject_row"),
       reason: "live discriminator: subject known present, so its retirement is PENDING",
       dissolution: retires_dissolution(
-        ref: decl_ref(module_path: "std.dissolution", decl_name: "retires_dissolution"),
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "present_subject_declaration",
+        ),
       ),
     ),
     frontier_row_decl(
       ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "absent_subject_row"),
       reason: "live discriminator: subject known absent, so its arrival is PENDING",
       dissolution: bound_dissolution(
-        ref: decl_ref(module_path: "std.dissolution", decl_name: "no_such_declaration_is_authored_here"),
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "absent_subject_declaration",
+        ),
       ),
     ),
   ]

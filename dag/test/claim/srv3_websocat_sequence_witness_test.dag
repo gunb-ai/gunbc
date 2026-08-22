@@ -7,6 +7,18 @@ import gunbc.host_effect_realize {
   Srv3PredicateFails,
   Srv3PredicateUnobserved,
   WebsocatWalk,
+  WebsocatStage,
+  WebsocatStep,
+  WebsocatContinue,
+  WebsocatStop,
+  WebsocatAlreadySatisfied,
+  EnsureDirectory,
+  EnsureOwnership,
+  Download,
+  EnsureExecutableMode,
+  Readback,
+  websocat_after,
+  websocat_edge_admits,
   websocat_trace_from_outcomes,
   websocat_trace_labels,
 }
@@ -138,4 +150,46 @@ test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> 
       "readback",
     ],
   )
+}
+
+
+// THE DRIVER'S OWN GUARD, EVALUATED. Everything above witnesses the trace, which follows the stage
+// websocat_after names. The production driver used to DISCARD that stage and run the one it was
+// written to expect, so websocat_after was the sole authority for stop-or-continue while the stage
+// EDGE was spelled a second time in the driver's call graph. Rewriting an edge would have reddened
+// the trace while production carried on in its original order, and the never-stops mutation could
+// not see it -- that mutation changes the stop decision, not the edge.
+//
+// These four witnesses evaluate the SAME expression each driver site now evaluates:
+// websocat_edge_admits(actual: <what the authority said>, expected: <what this site implements>).
+// Rewrite any edge in websocat_after and the matching one goes red, exactly as the driver would
+// refuse. Raised in side-chat review of the first cut.
+fn edge_admits(from: WebsocatStage, expected: WebsocatStage) -> Bool {
+  match websocat_after(stage: from, outcome: Srv3PredicateHolds) {
+    WebsocatAlreadySatisfied => false
+    WebsocatStop { verdict: _ } => false
+    WebsocatContinue { next: n } => websocat_edge_admits(actual: n, expected: expected)
+  }
+}
+
+test fn the_directory_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+  edge_admits(from: EnsureDirectory, expected: EnsureOwnership)
+}
+
+test fn the_ownership_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+  edge_admits(from: EnsureOwnership, expected: Download)
+}
+
+test fn the_download_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+  edge_admits(from: Download, expected: EnsureExecutableMode)
+}
+
+test fn the_mode_stage_continues_to_the_stage_its_driver_site_implements() -> Bool {
+  edge_admits(from: EnsureExecutableMode, expected: Readback)
+}
+
+// The control for the four above: the guard must be capable of answering false, or all four are
+// asserting that a function returns true rather than that the edges agree.
+test fn the_edge_guard_refuses_a_stage_the_site_does_not_implement() -> Bool {
+  edge_admits(from: EnsureDirectory, expected: Readback) == false
 }
