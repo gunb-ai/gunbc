@@ -1,0 +1,87 @@
+module test.claim.systemd_property_directive_overlap
+
+import gunbc.systemd_property_directive_overlap {
+  systemd_property_writability,
+  systemd_property_is_settable,
+  systemd_unit_property_mixes_writability,
+  settable_property_wires,
+  observation_only_property_wires,
+  systemd_property_consumers,
+  systemd_property_directive_overlap_dissolution,
+}
+import extdeps.systemd { MemoryMax, MemoryCurrent, ActiveState, TasksMax, systemd_unit_property_wire }
+import std.dissolution { dissolution_trigger_ref, DissolutionCondition, BoundDissolution, UnboundDissolution }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data overlap_witness_doc: String = "WHAT THESE WITNESSES ARE FOR, given the carrier they cover records a defect rather than repairing one. The risk with a recorded-and-not-repaired finding is that the record rots into prose nobody can check: someone splits the coproduct, or widens it, and the row still says what it said. So the claims below are about the TYPE, not about the note. The classification is asserted on both sides at named members, the mixing predicate is asserted to be currently TRUE, and the dissolution is asserted to name the declaration whose disappearance is the completion.\n\nThe mixing predicate is the one that will change, and its going FALSE is the intended future event rather than a regression -- at which point this witness and the carrier retire together, which is exactly what the DeclarationRetires trigger describes."
+
+// THE CLASSIFICATION IS ASSERTED AT NAMED MEMBERS ON BOTH SIDES, not by counting. A member on the
+// wrong side is the defect that would make the whole carrier misleading -- it would license writing
+// an observation into a unit file, or refuse to write a knob that is genuinely settable -- so the
+// two directions are pinned separately rather than through one aggregate that a single mistake
+// could leave green.
+test fn a_settable_knob_and_a_read_only_observation_classify_apart() -> Bool {
+  systemd_property_is_settable(property: MemoryMax)
+    && systemd_property_is_settable(property: TasksMax)
+    && !systemd_property_is_settable(property: MemoryCurrent)
+    && !systemd_property_is_settable(property: ActiveState)
+}
+
+// THE CONFLATION IS PRESENT TODAY. This is the carrier's central factual claim and the thing a
+// reader would otherwise have to take on trust. It is asserted as both classes being inhabited
+// rather than as a population size, so it survives upstream adding a member and goes false only on
+// the split that is this row's dissolution.
+test fn the_show_surface_currently_mixes_writability() -> Bool {
+  systemd_unit_property_mixes_writability()
+    && (settable_property_wires().count() > 0)
+    && (observation_only_property_wires().count() > 0)
+}
+
+// THE DISCRIMINATING CONTROL: the two projections are DISJOINT. A classification that quietly
+// returned one answer for everything would still inhabit both lists if the lists were built by
+// different means, and would still pass the mixing predicate. What cannot survive that mistake is
+// the requirement that no wire name appears on both sides -- which is also the property the future
+// unification must preserve when it derives the directive vocabulary from the knob authority.
+test fn no_property_is_both_settable_and_observation_only() -> Bool {
+  let settable = settable_property_wires()
+  fold(
+    observation_only_property_wires(),
+    init: true,
+    f: (acc, w) => acc && !(settable |> any(s => s == w)),
+  )
+}
+
+// THE MEMBER THAT MAKES THE REUSE UNSAFE, named explicitly rather than left implicit in the
+// classification. `MemoryCurrent` is the specimen: it is what systemctl reports and what no unit
+// file may assign, so a directive type admitting it can spell a unit systemd rejects. If this ever
+// classifies settable, the argument in the carrier's header has silently inverted.
+test fn memory_current_is_the_specimen_that_forbids_reusing_the_show_surface() -> Bool {
+  !systemd_property_is_settable(property: MemoryCurrent)
+    && (systemd_unit_property_wire(property: MemoryCurrent) as String == "MemoryCurrent")
+    && (observation_only_property_wires() |> any(w => w == "MemoryCurrent"))
+}
+
+// THE DISSOLUTION NAMES A DECLARATION THAT EXISTS NOW. That is the property DeclarationRetires has
+// and DeclarationAppears does not, and it is the whole reason this row can be trusted when written:
+// a forward trigger naming an undeclared symbol is unverifiable at authoring time, and this one is
+// checkable against the corpus today.
+test fn the_dissolution_retires_the_mixed_coproduct_by_name() -> Bool {
+  match systemd_property_directive_overlap_dissolution {
+    BoundDissolution { trigger: t } => {
+      let r = dissolution_trigger_ref(trigger: t)
+      (r.module_path as String == "extdeps.systemd")
+        && (r.decl_name as String == "SystemdUnitProperty")
+    }
+    UnboundDissolution { description: _ } => false
+  }
+}
+
+// THE ROSTER IS NON-EMPTY AND CARRIES MORE THAN ONE ROLE. The census's content is that the type
+// travels typed to a few consumers and stringified to the rest; a roster that had collapsed to one
+// role would mean the finding had been mis-measured, not that the tree had improved.
+test fn the_consumer_roster_records_more_than_one_role() -> Bool {
+  let typed = filter(systemd_property_consumers, c => match c.role { ShowArgvTyped => true, _ => false })
+  let stringified = filter(systemd_property_consumers, c => match c.role { ShowArgvTyped => false, _ => true })
+  (typed.count() > 0) && (stringified.count() > 0)
+}

@@ -556,6 +556,15 @@ pub enum CompilerDiagnostic {
         container_leaf: String,
         span: Rc<SourceSpan>,
     },
+    TransportEmissionNotModeled {
+        transport_kind: String,
+        service: String,
+        operation: String,
+        declaring_module: String,
+        target: String,
+        missing_realization_fact: String,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -665,6 +674,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
     }
 }
 
@@ -707,6 +717,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
+    CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
 }
 }
 

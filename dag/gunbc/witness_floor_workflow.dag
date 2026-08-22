@@ -1,7 +1,7 @@
 module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
-import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -22,7 +22,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action, upload_artifact_action
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
@@ -187,13 +187,36 @@ fn witness_floor_checkout_step() -> Step {
 // becomes a disk-pressure question instead of a correctness one. That is the right trade —
 // a full disk refuses loudly, a deleted source file mid-compile does not — but it is a real
 // obligation and it belongs to whoever owns fleet disk, not to this file.
+// THIS STEP ASKS FOR rustfmt EXPLICITLY, and the reason is a measured incident rather than
+// tidiness. Without the components key it installs a toolchain and takes whatever the runner's
+// resolved default happens to carry -- so the job passes on a runner whose default has rustfmt
+// and fails on one whose default does not, with no relationship to the diff under test.
+//
+// Observed 2026-08-22 on gunbc#8860: `required-ci: FAILED PHASE regen refused: normalize
+// candidate wt_b.rs: spawn rustfmt: No such file or directory (os error 2)`, while the witness
+// floor in the same run passed 10130/10130 with failed=0. The regen phase writes the emitted
+// artifact as a FIXED POINT of the formatter, so it must spawn rustfmt; nothing in this
+// workflow had asked for it.
+//
+// THE OBVIOUS READING OF THAT ERROR IS WRONG AND THIS REPOSITORY ALREADY PAID TO LEARN IT.
+// `gunbc.host_toolchain_components` `toolchain_completeness_authority_note` records the same
+// error on the same host class 2026-07-25: rustfmt WAS present on the machine, the job
+// principal simply had two rustup toolchains and defaulted to the one without it. A COMPONENT
+// IS A PROPERTY OF A TOOLCHAIN, NOT OF A MACHINE, so "install rustfmt on that host" converges
+// green while the gate keeps failing. The fix belongs in what this workflow ASKS FOR.
+//
+// `gunbc.fleet_workflow_steps` `ci_setup_rust_step` already passes this same key to this same
+// action; this step was the one that did not.
 fn witness_floor_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
     uses: setup_rust_action,
     with: Present {
-      value: [kv(key: "cache", value: yaml_bool(b: false))]
+      value: [
+        kv(key: "components", value: yaml_string(s: "rustfmt")),
+        kv(key: "cache", value: yaml_bool(b: false)),
+      ]
     },
     env: none,
     if_condition: none,
@@ -396,6 +419,17 @@ type WitnessFloorBoundStep {
   step_name: String
 }
 
+// THE RUN STEP WAS DECLARED `capability_neutral` AND THAT DECLARATION WAS FALSE. It runs
+// `claim_executor --required-ci`, whose regen phase spawns rustfmt to normalize the emitted
+// mirror, so it consumes RustfmtCapability and now says so.
+//
+// A step that consumes a capability while declaring it consumes none is invisible to the
+// closure check BY CONSTRUCTION: the check was honest and had nothing to catch, because the
+// consumer said it consumed nothing. That is why the failure surfaced as a runner lottery
+// instead of as a refusal.
+//
+// Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
+// shell out to cargo. Listing it would trade one false declaration for another.
 fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -405,7 +439,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability]),
+      role: provides_only(capabilities: [CargoCapability, RustfmtCapability]),
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
@@ -415,10 +449,60 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     },
     WitnessFloorBoundStep {
       step: witness_floor_run_step(),
-      role: capability_neutral,
+      role: consumes_only(capabilities: [RustfmtCapability]),
       step_name: "All witnesses (one prepared subject, one fold)",
     },
+    WitnessFloorBoundStep {
+      step: witness_floor_disposition_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload floor disposition receipts",
+    },
   ]
+}
+
+// THE THREE TSVs THE JOB ALREADY WRITES AND THEN THREW AWAY.
+//
+// The job env has named GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
+// GUNBC_LONG_HOME_STORAGE_AGREEMENT for as long as the fold has run, so the identity-grain
+// receipts were produced on every run and discarded with the runner. The consequence is not
+// theoretical: a PR was blocked by sixteen failures in witness families its diff could not
+// reach, the summary counters said fifteen identities had moved between dispositions, and the
+// incident could not be closed because the rows naming WHICH fifteen no longer existed
+// anywhere. Two independent recomputations from the trees then disagreed with the floor's own
+// counts at both ends -- so the only instrument that could settle it is the one the job was
+// deleting. A receipt computed and dropped is worse than one never computed, because the
+// summary it backs keeps being quoted as though the detail were available.
+//
+// long_home_storage_agreement.tsv is in the set deliberately rather than incidentally: it is
+// the row that records a file whose PATH and whose declared MODULE disagree about long-home,
+// which is the first hypothesis any recurrence of that incident has to eliminate.
+//
+// if_condition is the status guard rather than success(): the run this evidence is FOR is the
+// failing one, so a step that only fires after a green floor would capture exactly the runs
+// nobody needs it for. Cancellation is excluded because a cancelled run's TSVs are partial by
+// construction and a partial receipt read as a complete one is the fabricated-output failure.
+fn witness_floor_disposition_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload floor disposition receipts" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: "required-floor-receipts")),
+        kv(
+          key: "path",
+          value: yaml_string(
+            s: "required_floor_disposition.tsv\nexpected_red_roster_join.tsv\nlong_home_storage_agreement.tsv"
+          )
+        ),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn"))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn witness_floor_steps() -> List<Step> {
