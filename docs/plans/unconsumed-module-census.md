@@ -18,7 +18,16 @@ not residue.
 | additional roots: named by an entry row (argv `--entry` or an `*entry*:` path field) | 48 | DistinctModuleCount |
 | additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 79 | DistinctModuleCount |
 | reachable from those roots through imports **and qualified calls** | 3518 | DistinctModuleCount |
-| **unreachable — the census population** | **298** | DistinctModuleCount |
+| **unreachable on imports, qualified calls, entry rows and seed mirrors** | **298** | DistinctModuleCount |
+| — of those, **consumed by bare-symbol whole-pool reference** (§2 defect 6, re-scored 2026-08-22) | **91** | DistinctModuleCount |
+| **unreachable after the defect-6 re-score — the population as it now stands** | **207** | DistinctModuleCount |
+
+**The 298 is an over-count by at least 91 modules — roughly 31% — and the correction is
+concentrated in the batch this document proposed to delete first.** The number is stated in
+the headline table rather than a footnote because the headline number is the one anyone
+acts on. 207 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
+undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
+and what the re-score deliberately does *not* claim.
 
 Every number in this document carries its unit, and two units are deliberately never
 interchangeable: a **DistinctFileCount** (how many files name a thing) and a
@@ -128,6 +137,91 @@ must reproduce to agree.
    declaration names that are **unique corpus-wide**, or it reports collisions on common
    words (`Stage`, `Review`, `Permission`) as consumption — measured, and the reason this
    receipt counts unique-owner declarations only.
+
+### The defect-6 re-score of the whole population (2026-08-22)
+
+Defect 6 was found on one module, so the population was re-scored against it. **Method**,
+stated so it can be re-derived and disagreed with: for each of the 298, take its *declared
+symbols* — not its module name, not its path — and ask whether any other `.dag` file names
+one of them **bare**. Three deliberate restrictions, each of which removes a false-positive
+class that was **observed, not anticipated**:
+
+- **`.dag` consumers only.** Whole-pool resolution is a resolver behaviour; a mention in
+  `.md` or `.rs` is prose, not consumption.
+- **Comments and string literals stripped with a character scanner, not a regex.** The
+  first pass used `"(?:[^"\\]|\\.)*"` and it *failed on real `.dag` strings* —
+  `dag/gunbc/plans/axiom_syllogism_lens.dag` embeds prose containing `\{` interpolation
+  escapes, the regex terminated the literal early, and the exposed prose scored
+  `std.syllogism` as consumed. Caught by hand-reading a sample, not by the instrument.
+- **Identifiers preceded by `.` or followed by `:` are not references.** The first excludes
+  a qualified call's tail (`extdeps.ebay.ebay.create_offer` must not score `create_offer`
+  as bare) and field projection; the second excludes record fields and parameter labels.
+
+**Attribution is by unique ownership, which is what makes a hit decisive.** A bare symbol
+declared by exactly one module in the corpus attributes to that module and nothing else. A
+symbol declared by several does not, and is never counted as consumption here.
+
+| bucket | count | meaning |
+| --- | --- | --- |
+| **CONSUMED-DECISIVE** | **91** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
+| DEAD-CONSUMER-ONLY | 35 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue |
+| AMBIGUOUS-SHARED-ONLY | 75 | named bare only via symbols several modules declare; no attribution possible |
+| STILL-UNCONSUMED | 96 | no bare reference on any surface |
+| MISSING-FILE | 1 | appendix row whose path no longer exists |
+
+Verified by hand-reading the reference site, not by trusting the count:
+`extdeps.filesystem.posix` ← `posix_entry_kind(t: S_IFSOCK)`;
+`gunbc.host_runner_memory_cap_plan_emit` ← `expected_runner_memory_cap_apply_sheet(host:)`;
+`tools.infer_semantics_witness_transport` ← `run_infer_semantics_witness()`;
+`gunbc.install_media`, `gunbc.hostname_allocation`, `v2.extdeps.languages.wasm`. **Zero of
+the six import the module or qualify the name.**
+
+**Where the correction lands, which matters more than the total:**
+
+| disposition (§3) | population | consumed via defect 6 |
+| --- | --- | --- |
+| RESIDUE-EMPTY | 8 | **0** |
+| RESIDUE-UNMENTIONED | 67 | **13** |
+| RESIDUE-DOC-ONLY | 28 | 11 |
+| FROZEN-PENDING-RE-ADD | 13 | 10 |
+| PROSE-NAMED | 79 | 34 |
+| CITED-AUTHORITY | 103 | 23 |
+
+**RESIDUE-UNMENTIONED is the row to read.** §3 calls it *"Delete. Highest-confidence
+residue"* and §5 sequences it as batch B2 on the grounds that it is *"least exposed to the
+blind spots, because a module named nowhere in any surface is not waiting on a surface to
+be decoded."* That reasoning was sound and its premise was false: the surface it was
+waiting on had not been decoded yet, and **13 of those 67 are consumed by live callers**.
+The batch selected *because* it was the safest is the one carrying the most concentrated
+risk of deleting working code. RESIDUE-EMPTY at 0 of 8 is the control that shows the
+instrument is not simply finding consumption everywhere — a module declaring no symbols
+cannot be bare-referenced, and it scores zero.
+
+**FROZEN-PENDING-RE-ADD, 10 of 13, is the second correction and it repeats §2 defect 5's
+lesson exactly.** Those rows were frozen against a named re-add anchor; ten are *invoked
+now*, by live witnesses — `tools.infer_semantics_witness_transport` is called bare by
+`src/v2/test/claim/infer_semantics_witness_test.dag`. As with `tools.floor_effect_gate_witness`
+before them, the anchor was real and the conclusion was still wrong, because the instrument
+had not read the surface that settles it.
+
+**The ambiguity is a finding, not only instrument noise.** 75 modules are unresolvable
+because their symbols are not uniquely owned, and the distribution is not uniform:
+`extdeps_external_authority_anchor` is declared by **102 modules** (it is the boilerplate
+citation anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under
+whole-pool resolution a bare `main` has 11 candidate declarers. **The repository already
+measures this class and reports it every run** — the floor prints
+`[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040 worst_scope=125`,
+so 72% of scopes carry at least one ambiguous bare name. That line is the corroborating
+instrument for this bucket, and it is independent of this census. What the ambiguity means
+for *this* document is narrow and worth stating plainly: those 75 rows are **unresolved,
+not consumed** — they stay in the population, and no deletion should read their ambiguity
+as either evidence.
+
+**What this re-score does NOT claim.** Not that 207 is the true count: `DEAD-CONSUMER-ONLY`
+and `AMBIGUOUS-SHARED-ONLY` are both unresolved rather than settled, the appendix rows were
+not individually re-read, and §6's `LowerBoundOnly` standing is unchanged and now applies to
+207. It claims one thing, and it is enough to block a deletion: **at least 91 of the 298
+have a live caller.**
 
 **The universe the 298 is over.** Call surfaces decoded: `import` lines; fully-qualified
 `module.symbol` references (string- and annotation-stripped); argv `--entry` path literals;
@@ -338,9 +432,14 @@ with `failed=` read and PASS counted against the roster.
 
 1. **B1 — RESIDUE-EMPTY (8).** Nothing to strand; a pure control batch that proves the
    deletion pipeline and the floor both behave.
-2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67).** No citation to repair by
-   construction. This is the batch to establish the mechanics on: lowest chance of an
-   argument, per the review ruling.
+2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67). SUPERSEDED BY THE DEFECT-6
+   RE-SCORE — do not run this batch as written.** The rationale was that an unmentioned
+   module has no citation to repair and is least exposed to a blind spot; the re-score
+   (§2) found **13 of the 67 consumed by live bare-symbol callers**, so this batch would
+   delete working code, and the ordering argument that put it first is exactly what made
+   that risk invisible. It becomes eligible again only over the rows that survive the
+   re-score, and B1 replaces it as the batch to establish the mechanics on (RESIDUE-EMPTY
+   scored 0 of 8 consumed — a module declaring no symbols cannot be bare-referenced).
 3. **B3 — RESIDUE-DOC-ONLY (28).** Deletion plus the doc/receipt citation repair in the
    same diff.
 4. **B4 — the five `tools/` rows that are NOT on the re-add queue (finding d)**, including
@@ -378,9 +477,15 @@ document does not claim anywhere: *there are exactly 298 unconsumed modules.* Th
 sentence dies the moment someone decodes a fourth surface; the first survives it, and
 tells the reader what would change it.
 
-This standing is why §5's batches are ordered as they are. RESIDUE-UNMENTIONED first is
-not merely the lowest-argument batch — it is the class least exposed to the blind spots,
-because a module named nowhere in any surface is not waiting on a surface to be decoded.
+This standing is why §5's batches are ordered as they are — and the 2026-08-22 re-score is
+the case study for why the standing exists rather than a caveat about it. The original
+ordering argued RESIDUE-UNMENTIONED first because *"a module named nowhere in any surface
+is not waiting on a surface to be decoded."* The argument was valid; the premise was not,
+because a surface remained undecoded (§2, defect 6) and 13 of that batch turned out to have
+live callers. **A `LowerBoundOnly` standing is not compatible with treating any batch as
+blind-spot-free**, and the deletion order must follow from the standing rather than from a
+class name: B1 (RESIDUE-EMPTY) leads because a module declaring no symbols is unreachable by
+*construction* on the bare-symbol surface, not because nobody has mentioned it.
 
 ### Two broken entry strings, confirmed
 
