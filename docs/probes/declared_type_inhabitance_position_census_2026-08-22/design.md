@@ -72,6 +72,40 @@ is an unwired position, and an unwired position is visible as a missing obligati
 a verdict. Collapsing the two would make the count of honest undecidables grow every time coverage
 lags, which is the one number that must stay meaningful.
 
+## Three constraints taken from a solved instance one domain over
+
+From `wise-koi-228`'s quarantine-probe disposition fold — landed and executing, so these are
+measurements of a shipped carrier rather than design opinion. Each changes the type, not the prose.
+
+**(a) The alarm is a SECOND coproduct, not an arm of the answer.** If `Undecidable` sits as a peer
+arm beside `Inhabits` and the refusals, then "nothing produced an obligation here" and "the
+obligation is genuinely undecidable" become one symbol with two owners and opposite remedies — and
+a missing producer reads as a verdict. So: `InhabitanceVerdict` carries only dispositions
+(`Inhabits`, `RefusedPayloadAtParent`, `RefusedKernelAtStructured`, `Undecidable`), and integrity
+refusals — obligation MISSING, AMBIGUOUS, STALE — live in their own coproduct with no accepting arm.
+A position with no producer cannot be classified green; it can only be repaired.
+
+**(b) Unmeasured is not zero.** A typed counted arm makes it easy to ship a zero meaning "nothing to
+report" when it means "nobody looked". Every position with no producer wired reports UNMEASURED, and
+UNMEASURED must not render as `0`. This is not hypothetical here: the matrix will carry rows that
+are confirmed-by-execution and not yet wired, and their counts are exactly the ones a reader would
+otherwise read as clean.
+
+**(c) Totality is over ADMITTED states, not observed ones.** An arm is not deleted because nothing
+inhabits it today — the first legitimate future inhabitant lands in the error arm and refuses as a
+defect, usually with a destructive remedy attached. This applies directly to the type-only grammar
+positions: their disposition rows stay even though no source value can stand at them.
+
+## Proving a witness is ENROLLED, not merely present
+
+A green floor is NOT evidence that a new witness ran. A witness written as a plain `fn` instead of
+`test fn` is discovered nowhere, and the floor then reports success over a tree containing none of
+the evidence — a green that means the opposite of what it looks like.
+
+So every batch of witnesses this lane adds is reported with its ROSTER DELTA against main: offered,
+routed, passed, and both decline arms. The claim being made is not "the floor passed" but "the floor
+passed WITH THIS EVIDENCE IN IT", and only the delta distinguishes them.
+
 ## Evidence per position, and the one people skip
 
 Per reachable value-bearing position, five arms:
