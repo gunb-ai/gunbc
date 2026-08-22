@@ -2777,7 +2777,12 @@ enforces end to end.
    annotation. *Walked, UNTYPED* — transport `properties` (body/query/stdin among them) and the
    `svc_auth_source` item property, both through `infer_expr(expected: none)`: an undefined name
    DOES refuse there, and inhabitance has nothing to compare against, which is a different defect
-   with a different repair (thread the declared type, do not add a pass). *Never walked* — the two
+   with a different repair (thread the declared type, do not add a pass). THE SPELLING IS NOT THE
+   CLASS: `expected: none` appears at 25 of `04_infer`'s 47 `infer_expr` call sites and is CORRECT
+   at most of them — a match scrutinee, an `if` condition, a method receiver, a binary operand and a
+   lambda value have no declared type in context to thread. The property is that a declared type WAS
+   available and was not threaded, which only the declaration-side read decides; grepping the
+   argument returns 25 and a false population. *Never walked* — the two
    confirmed members above, plus four rows flagged by structure and NOT counted as members here:
    non-`svc_auth_source` item properties (`{ prop: p, diagnostics: [] }`, passed through), `uses`
    resource config args (the scope is extended with the resource TYPE; the arg expressions are

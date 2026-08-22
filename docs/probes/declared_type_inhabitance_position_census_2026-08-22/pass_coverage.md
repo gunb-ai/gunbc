@@ -31,6 +31,15 @@ descends with `expected: none`, so an undefined name DOES refuse there while inh
 nothing to compare against. That is a different defect from the never-walked rows and needs a
 different repair (thread the declared type, not add a pass).
 
+**Do not grep the spelling.** `expected: none` appears at 25 of `04_infer`'s 47 `infer_expr` call
+sites, and the count does not support the alarm: match scrutinee, `if` condition, method receiver,
+binary operands and lambda values have NO declared type in context, so `expected: none` is the
+correct call there and not a lost annotation. The property that puts a row in this class is that
+**a declared type WAS available at the site and was not threaded** — which is decidable only from
+the declaration-side read below, never from counting the argument. Someone grepping the spelling
+gets 25 and a false population. (Measured by swift-badger-524, who went looking for this class to
+be larger than six rows and reported the check coming back empty.)
+
 ## Confirmed by execution vs flagged by structure
 
 - **Confirmed members** (three-arm run, in `measured.md`): parameter default, field default. Both
