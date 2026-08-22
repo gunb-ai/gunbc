@@ -447,7 +447,7 @@ type ArtifactLookup
 
 fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> ArtifactLookup {
   let existing = git.Plumbing.ObserveRef(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: ref_name,
   )
   if existing.exit_code == 0 {
@@ -472,7 +472,7 @@ fn artifact_lookup(store_root: String, repo_root: String, token: String) -> Arti
 // WHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model.
 fn recorded_artifact_digest(store_root: String, repo_root: String, token: String) -> String {
   let out = git.Plumbing.CatFileBlob(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     object: digest_ref_of(token: token),
   )
   if out.exit_code == 0 {
@@ -484,7 +484,7 @@ fn recorded_artifact_digest(store_root: String, repo_root: String, token: String
 
 fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
   let stored = git.Plumbing.CatFileBlob(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     object: subject_ref_of(token: token),
   )
   if stored.exit_code == 0 { stored.content } else { "" }
@@ -519,7 +519,7 @@ fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMa
 // The cost is one read of the artifact on the reuse path. That is the honest price of the contract this vertical was given -- a reuse that skipped it would be reporting retrievability it had not established, which is the one thing there is no arm for.
 fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) -> String {
   let unpacked = git.Plumbing.UnpackObject(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     object: oid,
   )
   if !(unpacked.exit_code == 0) {
@@ -573,7 +573,7 @@ fn observe_artifact_availability(
   subject: BuildSubject,
 ) -> ArtifactAvailability {
   let present = git.Plumbing.CatFileExists(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     object: oid,
   )
   if !(present.exit_code == 0) {
@@ -589,7 +589,7 @@ fn observe_artifact_availability(
           oid: oid,
           sha256_hex: observed,
           bytes_text: trim(s: git.Plumbing.CatFileSize(
-            address: devboot_store_address(store_root: store_root),
+            address: devboot_store_address(store_root: store_root, repo_root: repo_root),
             object: oid,
           ).size),
         )
@@ -848,12 +848,12 @@ fn devboot_produce_build(store_root: String, repo_root: String, work_root: Strin
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
   let claim = git.Plumbing.HashObjectWrite(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     path: claim_path as FilePath,
   )
   let claim_oid = trim(s: claim.oid)
   let taken = git.Plumbing.CreateRefIfAbsent(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: lease_ref_of(token: token),
     new: claim_oid,
   )
@@ -1042,7 +1042,7 @@ fn devboot_run_build_plan(
     }
   } else {
     let stored = git.Plumbing.HashObjectWrite(
-      address: devboot_store_address(store_root: store_root),
+      address: devboot_store_address(store_root: store_root, repo_root: repo_root),
       path: join([target_dir, "/", artifact_path], "") as FilePath,
     )
     let blob_oid = trim(s: stored.oid)
@@ -1093,27 +1093,27 @@ fn devboot_bind_produced_artifact(
     content: render_build_subject(subject: subject),
   )
   let record_blob = git.Plumbing.HashObjectWrite(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     path: record_path as FilePath,
   )
   let record_bound = git.Plumbing.CreateRefIfAbsent(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: subject_ref_of(token: token),
     new: trim(s: record_blob.oid),
   )
   let digest_path = join([store_root, "/devboot-digest-", token], "")
   let digest_written = Filesystem.Write(path: digest_path, content: artifact_sha256)
   let digest_blob = git.Plumbing.HashObjectWrite(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     path: digest_path as FilePath,
   )
   let digest_bound = git.Plumbing.CreateRefIfAbsent(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: digest_ref_of(token: token),
     new: trim(s: digest_blob.oid),
   )
   let bound = git.Plumbing.CreateRefIfAbsent(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: artifact_ref_of(token: token),
     new: blob_oid,
   )
@@ -1153,7 +1153,7 @@ fn devboot_bind_produced_artifact(
 // The caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester.
 fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: String, out_path: String) -> String {
   let unpacked = git.Plumbing.UnpackObject(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     object: artifact_oid,
   )
   let temp_name = trim(s: unpacked.path)
@@ -1418,7 +1418,7 @@ fn devboot_break_stranded_lease(
   expected_holder: String,
 ) -> LeaseRecovery {
   let broken = git.Plumbing.DeleteRefIfExpected(
-    address: devboot_store_address(store_root: store_root),
+    address: devboot_store_address(store_root: store_root, repo_root: repo_root),
     ref_name: lease_ref_of(token: token),
     expected_old: expected_holder,
   )

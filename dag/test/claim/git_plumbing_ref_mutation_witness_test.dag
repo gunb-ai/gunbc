@@ -279,8 +279,8 @@ data address_is_one_axis_note: String = "THE TWO REPOSITORY READINGS ARE NOT INT
 test fn each_repository_reading_produces_its_own_spelling() -> Bool {
   git_repository_address_argv(address: GitWorktreeAt { path: "/repo" })
     == ["-C", "/repo"]
-    && git_repository_address_argv(address: GitDirectoryAt { path: "/store.git" })
-      == ["--git-dir=/store.git"]
+    && git_repository_address_argv(address: GitDirectoryAt { path: "/store.git", run_in: "/repo" })
+      == ["-C", "/repo", "--git-dir=/store.git"]
 }
 
 test fn the_index_override_is_an_environment_prefix_not_a_flag() -> Bool {

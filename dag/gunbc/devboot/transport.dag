@@ -120,8 +120,8 @@ fn devboot_repo_address(repo_root: String) -> GitRepositoryAddress {
   GitWorktreeAt { path: repo_root as FilePath }
 }
 
-fn devboot_store_address(store_root: String) -> GitRepositoryAddress {
-  GitDirectoryAt { path: store_root as FilePath }
+fn devboot_store_address(store_root: String, repo_root: String) -> GitRepositoryAddress {
+  GitDirectoryAt { path: store_root as FilePath, run_in: repo_root as FilePath }
 }
 
 // A REF READ HAS THREE ANSWERS AND THIS IS WHERE THE EXIT CODES BECOME THEM. `rev-parse
@@ -156,13 +156,6 @@ fn devboot_observe_ref(repo_root: String, ref_name: String) -> GitRefObservation
   devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
 }
 
-fn devboot_observe_store_ref(store_root: String, ref_name: String) -> GitRefObservation {
-  let read = git.Plumbing.ObserveRef(
-    address: devboot_store_address(store_root: store_root),
-    ref_name: ref_name,
-  )
-  devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
-}
 
 type WitnessBinRunOutcome {
   success: Bool

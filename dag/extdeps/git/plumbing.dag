@@ -46,14 +46,25 @@ data git_plumbing_outcome_shape_note: String = "Operations report exit_code and 
 // the object/ref store directly (the bare reading, which is what a store with no worktree
 // requires). Modeling the choice as a parameter is DESIGN section 2 horizontal: one concept
 // spanning both breadths, rather than every operation below appearing twice.
+//
+// THE BARE READING CARRIES A DIRECTORY TO RUN IN, AND THAT IS NOT REDUNDANT WITH THE STORE.
+// `--git-dir` says where the objects and refs are; it says nothing about where the PROCESS
+// stands, and at least one plumbing command writes its output relative to that: `unpack-file`
+// materializes the blob into the CURRENT DIRECTORY and prints a path relative to it. An
+// address that named only the store would leave the process standing wherever the interpreter
+// happened to be, so the file would land in one place while the caller resolved the printed
+// path against another -- a defect that looks like a missing temporary file and has nothing to
+// do with the store. `--git-dir` is additionally resolved relative to the `-C` directory, so
+// naming both is what makes a relative store path mean the same thing it meant before.
 type GitRepositoryAddress
   = GitWorktreeAt { path: FilePath }
-  | GitDirectoryAt { path: FilePath }
+  | GitDirectoryAt { path: FilePath, run_in: FilePath }
 
 fn git_repository_address_argv(address: GitRepositoryAddress) -> List<String> {
   match address {
     GitWorktreeAt { path } => ["-C", path as String]
-    GitDirectoryAt { path } => [concat("--git-dir=", path as String)]
+    GitDirectoryAt { path, run_in } =>
+      ["-C", run_in as String, concat("--git-dir=", path as String)]
   }
 }
 
