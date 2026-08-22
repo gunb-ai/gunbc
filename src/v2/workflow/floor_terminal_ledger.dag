@@ -3,7 +3,7 @@ module v2.workflow.floor_terminal_ledger
 import v2.std.integer { Int }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.logic { Bool }
-
+import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.required_floor { ClaimSafetyOutcome }
@@ -109,6 +109,21 @@ type TerminalLedger {
   publication: LedgerPublication
 }
 
+// THE PROJECTION IS LOSSLESS, AND AN EARLIER DRAFT'S WAS NOT.
+//
+// That draft sent RuntimeErrored, HostToolUnresolved, RouteGap and ObservationUnrepresentable all
+// to one `RefusedBeforeVerdict`. The row had just been un-collapsed for exactly this reason -- a
+// budget refusal, a runtime error and a witness that answered false have different remedies -- and
+// the disposition re-collapsed them one step later, for the consumer that most needs them apart.
+//
+// It is not a cosmetic loss. The floor already reports these as SEPARATE COUNTERS
+// (`host_tool_unresolved`, `route_gap_unenrolled`, `route_gap_held`, `stale_route_gap`,
+// `interrupted_before_verdict`), and the obligation requires those counters to be DERIVED from
+// the finalized rows so that a counter disagreeing with the ledger has no constructor. A
+// projection that has already merged two counters cannot derive either, so the counters would
+// have had to be computed independently -- restoring the dual authority the derivation exists to
+// dissolve. One arm per terminal shape keeps every counter derivable.
+
 // `Pass` IS A PROJECTION, NOT A STORED FIELD, AND THAT IS THE WHOLE CONSTRUCTION.
 //
 // There is no `passed: Bool` anywhere in the row, so a row cannot disagree with its own
@@ -122,18 +137,21 @@ type ClaimDisposition
   | Failed
   | KnownRedHeld
   | KnownRedNowPassing
-  | RefusedBeforeVerdict
-  | InterruptedBeforeVerdict
+  | BudgetRefusedBeforeVerdict
+  | HostToolUnresolvedBeforeVerdict
+  | RouteGapBeforeVerdict
+  | RuntimeErroredBeforeVerdict
+  | ObservationUnreadableBeforeVerdict
 
 fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
   match row.terminal {
-    BudgetRefused { safety: _ } => InterruptedBeforeVerdict
-    RuntimeErrored { message: _ } => RefusedBeforeVerdict
-    HostToolUnresolved { name: _, probed: _ } => RefusedBeforeVerdict
-    RouteGap { route: _ } => RefusedBeforeVerdict
+    BudgetRefused { safety: _ } => BudgetRefusedBeforeVerdict
+    RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
+    HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
+    RouteGap { route: _ } => RouteGapBeforeVerdict
     Returned { observation: o } =>
       match o {
-        ObservationUnrepresentable { reason: _ } => RefusedBeforeVerdict
+        ObservationUnrepresentable { reason: _ } => ObservationUnreadableBeforeVerdict
         ObservedVerdict { holds: h } =>
           match row.expectation {
             ExpectedToHold => if h { Passed } else { Failed }

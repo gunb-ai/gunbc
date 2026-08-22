@@ -10,7 +10,7 @@ import v2.workflow.floor_terminal_ledger {
   ExpectedToHold,
   Failed,
   BudgetRefused,
-  InterruptedBeforeVerdict,
+  BudgetRefusedBeforeVerdict,
   KnownRedHeld,
   KnownRedNowPassing,
   LedgerFinalized,
@@ -25,7 +25,7 @@ import v2.workflow.floor_terminal_ledger {
   ObservationUnrepresentable,
   ObservedVerdict,
   Passed,
-  RefusedBeforeVerdict,
+  ObservationUnreadableBeforeVerdict,
   Returned,
   claim_disposition,
   ledger_is_complete,
@@ -88,7 +88,7 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
     identity: ident(f: "e"),
     expectation: ExpectedToHold,
     terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
-  }) == RefusedBeforeVerdict
+  }) == ObservationUnreadableBeforeVerdict
 }
 
 // THE LOAD-BEARING TEST: A DUPLICATE REPLACING AN OMISSION, WITH EVERY COUNT UNCHANGED.
