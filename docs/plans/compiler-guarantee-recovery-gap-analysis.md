@@ -2949,8 +2949,23 @@ enforces end to end.
    row above, for two of the three mechanisms).
 
    Deleting `module_skips_direct_call_arg_check` makes the witness floor refuse on its prepared
-   subject — `modules_resolved=3867 modules_excluded=4` — with **19 distinct located diagnostics
-   across 9 modules**. Not one of them is a call site that should be edited.
+   subject with **19 distinct located diagnostics across 9 modules**. Not one of them is a call site
+   that should be edited.
+
+   **THE 19 IS A COUNT OVER A MOVING CORPUS, so it is bound to its runs rather than stated as a
+   standing fact.** Measured twice, on a branch carrying the deletion:
+
+   | base | floor subject | modules_resolved | diagnostics |
+   |---|---|---|---|
+   | `71d7da4e92` | `ac87f26533b2a89c` | 3867 | 19 |
+   | `abf7194e2b` (main absorbed) | `224767fa49c4a2c4` | 3874 | **the same 19** — set diffed identical, none new, none dropped |
+
+   Seven modules entered the subject between those runs and the diagnostic set did not move, which
+   is evidence that the population is structural rather than incidental to one tree. **It is not a
+   claim that the count is 19 today.** Main has advanced well past `abf7194e2b`; nobody has
+   re-measured since, and a stable value is precisely the one that stops being re-derived because
+   carrying it forward costs nothing and looks like continuity. Anyone citing the number should
+   re-take it against their own ref, or cite it as *19 at `224767fa49c4a2c4`*.
 
    - **Seam A — a transparent alias whose RHS is a GENERIC INSTANTIATION is not peeled.** Population
      8 sites, one per formatter module (`type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>` at a
