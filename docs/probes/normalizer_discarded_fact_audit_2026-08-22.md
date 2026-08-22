@@ -149,3 +149,69 @@ other.
   adjudication) the class may be larger than it suggests.
 - No site here has been read for whether the discarded fact is *actually* depended upon — only that a
   dependent exists in frame. Each candidate still needs its executed discriminator.
+
+---
+
+## CORRECTION 2026-08-22 — Verdict 1 (ENUMERATION CLOSED) is WITHDRAWN
+
+Verdict 1 is false. It is replaced by ENUMERATION SCOPE-LIMITED, and the
+scope is stated below rather than left implied.
+
+**What was wrong.** The enumeration ran over a compiler-centric file scope
+and the verdict was published corpus-wide. Re-deriving the same rule against
+`origin/main` returns 32 operations against the audited 26. Six were never
+considered; none of the 26 are dead.
+
+    normalize_cost_expr_to_symbolic   src/v2/lens/cost/expr.dag
+    normalize_size_expr_to_bound      src/v2/lens/cost/expr.dag
+    normalized_grain_tree             src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag
+    normalized_of                     src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag
+    normalizes                        src/v2/test/claim/long/dag_repeat_spine_wellformed_test.dag
+    normalize_outcome                 src/v2/test/claim/body_lowering/{declaration_structure_preserved,statement_let_bind}_test.dag
+
+**Staleness is NOT the cause, and this matters for the remedy.** The audit
+was performed against a worktree 171 commits behind main (merge-base
+`a6ca6882d18`). That is a real, separately-reported defect. It is not this
+one: five of the six missed operations were present at the audit's own head
+and were missed anyway. Only `normalize_outcome` is new in those 171 commits.
+So re-running the audit on a fresh tree would have corrected 1 of 6. The
+enumeration rule was narrower than the class it claimed to close, and no
+amount of rebasing repairs that.
+
+**How they escaped, measured.** Audited call-site distribution was 17 in
+`src/v2/compiler`, 1 in `src/v2/lens`, 3 in `src/v2/test`. All six missed
+operations live in `src/v2/lens/cost/` and `src/v2/test/claim/`. The scope
+was compiler-shaped; the verdict was not.
+
+**Is the missed scope inert?** No, though the honest reading is weaker than
+it first looks. `normalize_size_expr_to_bound` contains
+`SizeConst { value: _ } => unit_cost()`, which discards a constant's value —
+on-subject shape for this audit. For a symbolic *complexity* bound, collapsing
+constant size to O(1) is plausibly correct by design, so this is NOT reported
+as a member of the class. It is reported as what it is: an unanalysed
+operation, of the right shape, inside a scope the audit declared closed
+without looking at it. The two `lens/cost` operations are production code;
+the four test-file operations may or may not be in-class once adjudicated.
+
+**Verdict 2 (DEPENDENTS PARTIAL) is unaffected in direction** — it was
+already partial (29 evidenced / 42 unanalysed) — but its denominator is now
+known to be a subset, so 29/71 is a ratio over the compiler scope only and
+must not be quoted as a corpus figure.
+
+**What survives unchanged.** The 13 frame-escape sort, the 2 contract-test
+candidates (`src/v1/04_infer.dag` `peel_alias_once_for_field_access` inside
+`expand_alias_chain_for_field_access`; `src/v2/lens/vacuity.dag`), and the
+calibration receipt are all statements about operations that do exist and were
+analysed. They are narrowed by this correction, not falsified — with the
+caveat that the three v1 files they were read in (`05_emit_rust.dag`
++1076/-217, `04_infer.dag` +197/-12, `04_types.dag` +80/-20) differ from main,
+so their line-anchored positions need re-derivation before citation.
+`src/v2/compiler/03_normalize.dag` and `src/v1/04_env.dag` are byte-identical
+to main and need no re-derivation.
+
+**Class.** This is OBSERVED ON vs CLAIM ABOUT: the measurement named its
+subject, the verdict did not, and "CLOSED" is precisely the word that carries
+a scope claim it never earned. A completeness verdict must state the
+population it closed over in the same sentence that closes it.
+
+— smart-ram-730
