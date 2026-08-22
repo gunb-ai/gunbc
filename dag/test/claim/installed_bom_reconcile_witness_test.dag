@@ -55,6 +55,7 @@ import product.inventory {
   ReservationOverRelease,
   ZeroQuantityEvent,
   derive_inventory_balance,
+  lot_catalog_exact_row,
   lot_catalog_is_read,
   lot_catalog_read_obligation,
   lot_landed_cost_reading,
@@ -415,16 +416,26 @@ test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
 
 // --- the 64 GiB lot on the ledger --------------------------------------------------------------
 
-// THE LOT IS COMMITTED, UNREAD, AND UNSETTLED, and each of those is asserted by constructor rather
-// than inferred from a total. A lot that reported a read catalog, or a recorded cost, would be
-// claiming facts nobody has - and the read obligation is what makes the missing part number
-// countable instead of merely absent.
-test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() -> Bool {
+// THE LOT IS COMMITTED, READ, AND STILL UNSETTLED, and each of those is asserted by constructor
+// rather than inferred from a total. This claim INVERTED on 2026-08-22: it previously asserted the
+// catalog was UNREAD and carried a standing read obligation, and it went green by the obligation
+// being discharged - the sticks arrived, the label was read, and extdeps.memory.samsung
+// m393a8g40d40_crb0q_catalog was authored against the manufacturer's part number. Per DESIGN
+// section 4b(4) the claim is INVERTED IN PLACE rather than deleted: it now guards the other
+// direction, so a regression that dropped the citation back to an unread family string goes red
+// here instead of passing unnoticed. The cost and receipt halves did not move - a lot that reported
+// a recorded cost would still be claiming facts nobody has.
+test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bool {
   let quantity = dimm_lot_64gib_32x.quantity_acquired == 32
-  let unread = !lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
-  let obligation = match lot_catalog_read_obligation(catalog: dimm_lot_64gib_32x.catalog) {
-    Present { value: _ } => true
+  let read = lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
+  let cited = match lot_catalog_exact_row(catalog: dimm_lot_64gib_32x.catalog) {
+    Present { value: r } => r.module_path == "extdeps.memory.samsung"
+      && r.decl_name == "m393a8g40d40_crb0q_catalog"
     Absent => false
+  }
+  let no_obligation = match lot_catalog_read_obligation(catalog: dimm_lot_64gib_32x.catalog) {
+    Present { value: _ } => false
+    Absent => true
   }
   let no_public_cost = match lot_landed_cost_reading(lot: dimm_lot_64gib_32x) {
     LandedCostReadingUnsettled => true
@@ -432,12 +443,21 @@ test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() ->
     LandedCostReadingHeldPrivately => false
   }
   let no_public_receipt = !lot_receipt_is_recorded(lot: dimm_lot_64gib_32x)
-  quantity && unread && obligation && no_public_cost && no_public_receipt
+  quantity && read && cited && no_obligation && no_public_cost && no_public_receipt
 }
 
-// EVERY STICK IS AWAITING RECEIPT AND NONE IS RESERVED. The intent says eight per host; the ledger
-// says nothing is allocated, because nothing has arrived. Asserting both in one claim is what keeps
-// the intent from being read as a holding.
+// THE LEDGER STILL REPORTS EVERY STICK AWAITING RECEIPT, AND THAT IS NOW A LAG, NOT THE WORLD.
+// The sticks arrived: twenty-four are installed across srv1/srv3/srv4 and srv2's eight were
+// installed, failed training and were removed. The ledger has not been advanced because the
+// receipt events need per-stick PhysicalAssetIdentity that nobody captured, and because srv2's
+// eight have no established disposition - both stated as an obligation in
+// gunbc.fleet_physical_inventory beside the lot.
+//
+// SO THIS CLAIM MEASURES THE LEDGER, NOT THE FLEET, and it is kept rather than deleted precisely
+// because it makes the lag countable: it goes red the moment the events land, which is the signal
+// to re-read this comment and retire it. Reading it as evidence that nothing has arrived is the
+// authority-substitution failure DESIGN warns about - the ledger is the authority for allocation,
+// never for what is physically installed, and the installed answer lives in fleet_dimm_verdicts.
 test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
   match derive_inventory_balance(lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger) {
     BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
