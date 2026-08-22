@@ -38,14 +38,14 @@ fn tunnel_join() -> EndpointHostJoin {
 // THE ARM THIS TYPE EXISTS FOR: an asserted join must never report as observed. If this flips, a
 // receipt claims the response identified its server -- which on an identically-converged fleet no
 // response can do.
-fn a_asserted_join_is_not_observed() -> Bool {
+test fn a_asserted_join_is_not_observed() -> Bool {
   match tunnel_join() {
     JoinAssertedBy { asserter: _, basis: _, asserted_at: _ } => true
     JoinObservedFromResponse { per_host_marker: _ } => false
   }
 }
 
-fn b_observed_join_is_observed() -> Bool {
+test fn b_observed_join_is_observed() -> Bool {
   match JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr } {
     JoinAssertedBy { asserter: _, basis: _, asserted_at: _ } => false
     JoinObservedFromResponse { per_host_marker: _ } => true
@@ -54,7 +54,7 @@ fn b_observed_join_is_observed() -> Bool {
 
 // The two arms must not render alike: a reader of the receipt has to be able to tell an assertion
 // from an observation without consulting the type.
-fn c_join_arms_render_distinctly() -> Bool {
+test fn c_join_arms_render_distinctly() -> Bool {
   endpoint_host_join_wire(j: tunnel_join())
     != endpoint_host_join_wire(
          j: JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr },
@@ -63,11 +63,11 @@ fn c_join_arms_render_distinctly() -> Bool {
 
 // An asserted join must carry its asserter into the wire, or the receipt records a claim with
 // nobody attached to it.
-fn d_asserted_wire_names_its_asserter() -> Bool {
+test fn d_asserted_wire_names_its_asserter() -> Bool {
   string_contains(s: endpoint_host_join_wire(j: tunnel_join()), pattern: "operator workstation ssh tunnel")
 }
 
-fn e_three_wire_protocols_render_distinctly() -> Bool {
+test fn e_three_wire_protocols_render_distinctly() -> Bool {
   if inference_wire_protocol_wire(p: OpenAiResponses) == inference_wire_protocol_wire(p: OpenAiChatCompletions) {
     false
   } else if inference_wire_protocol_wire(p: OpenAiChatCompletions) == inference_wire_protocol_wire(p: AnthropicMessages) {
@@ -79,7 +79,7 @@ fn e_three_wire_protocols_render_distinctly() -> Bool {
 
 // The dialled URL is a transport fact and must survive into the carrier unchanged -- it is the one
 // thing a tunnelled receipt can honestly state about where the request went.
-fn f_dialled_endpoint_carries_its_url() -> Bool {
+test fn f_dialled_endpoint_carries_its_url() -> Bool {
   let d = DialledEndpoint {
     url: "http://127.0.0.1:11435" as NonEmptyStr,
     wire: OpenAiResponses,
@@ -128,26 +128,26 @@ fn standing_tag(r: CodingTurnReceipt) -> String {
   }
 }
 
-fn g_all_preconditions_observed_qualifies() -> Bool {
+test fn g_all_preconditions_observed_qualifies() -> Bool {
   standing_tag(r: qualified_receipt()) == "qualified"
 }
 
 // EITHER precondition missing must refuse. These are separate witnesses because a check that
 // happened to test only the first would pass while the second silently qualified.
-fn h_missing_context_refuses() -> Bool {
+test fn h_missing_context_refuses() -> Bool {
   standing_tag(r: receipt_missing_context()) == "unqualified"
 }
 
-fn i_missing_wire_subset_refuses() -> Bool {
+test fn i_missing_wire_subset_refuses() -> Bool {
   standing_tag(r: receipt_missing_wire_subset()) == "unqualified"
 }
 
 // The refusal must NAME what is missing, or a reader learns only that something was wrong.
-fn j_refusal_names_the_missing_precondition() -> Bool {
+test fn j_refusal_names_the_missing_precondition() -> Bool {
   string_contains(s: coding_turn_receipt_wire(r: receipt_missing_wire_subset()), pattern: "wire subset exercised")
 }
 
 // An asserted join must not render as an observed one in the receipt's own wire.
-fn k_receipt_wire_reports_join_as_asserted() -> Bool {
+test fn k_receipt_wire_reports_join_as_asserted() -> Bool {
   string_contains(s: coding_turn_receipt_wire(r: qualified_receipt()), pattern: "join=ASSERTED")
 }
