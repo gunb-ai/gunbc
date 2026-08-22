@@ -45,10 +45,14 @@ Both produced a table of all-zero diagnostics that looks exactly like "nothing r
 which is the finding this census would report if it were true. Neither was detectable from the
 table alone — only from the raw output.
 
-1. **A whole-root compile refuses on the memory budget and exits 0.**
-   `WholeCorpusCompileBudgetBelowMeasuredDemand` on a 7 GiB runner: the run never starts, the
-   message goes to stderr, and the exit status is 0. Grepping such a run for `error[` yields
-   zero. Remedy: `--entry <file.dag>` scopes the compile past the whole-corpus admission.
+1. **A whole-root compile refuses on the memory budget and prints nothing a scanning caller
+   recognises.** `WholeCorpusCompileBudgetBelowMeasuredDemand` on a 7 GiB runner: the run never
+   starts, the message goes to stderr, and there is no `error[` line and no `compiled:` summary —
+   so a harness classifying runs by scanning output reads it as a compile that produced nothing.
+   The exit status IS correct (1, measured directly against a clean-compile control); an earlier
+   draft of this file claimed it was 0, which was an artifact of capturing `$?` after a pipe to
+   `head`. Remedy: `--entry <file.dag>`, and classify by `compiled:` and exit status, never by the
+   absence of a marker.
 2. **A `--source-root` outside the workspace root PANICS.**
    `repo_relative_path_normalized: path /tmp/... is not under process workspace root` — so arms
    written to `/tmp` produce a panic, not a compile. The arms must live under the repo root

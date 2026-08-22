@@ -2797,49 +2797,39 @@ enforces end to end.
    the default expression through inference against the parameter's declared type, which makes it
    an ordinary consumer of item 28's obligation rather than a check of its own.
 
-30. **`gunbc compile` REFUSES on the whole-corpus memory budget and reports that refusal through an
-   exit status of 0** (opened 2026-08-22, session quiet-boar-696, found while building item 28's
-   instrument and filed separately on a swift-badger-524 ruling: it is not a quirk of one probe,
-   it is a fail-open in a tool other sessions are using now).
+30. **WITHDRAWN BEFORE IT WAS ACTED ON: `gunbc compile` does NOT report a budget refusal as
+   success — the exit status was measured through a pipe, and the pipe was the defect** (opened
+   and withdrawn 2026-08-22, session quiet-boar-696; kept as a row rather than deleted because a
+   withdrawn claim that leaves no trace gets re-derived by the next reader from the same evidence).
 
-   INVALID STATE. A whole-root compile (`--source-root <root>` with no `--entry`) on a host whose
-   readable budget is below the measured whole-tree demand prints
-   `WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget=... is below the measured
-   whole-tree compile demand of ...` to stderr, does not compile anything, and exits 0.
+   WHAT WAS CLAIMED. That a whole-root compile refusing on `WholeCorpusCompileBudgetBelowMeasuredDemand`
+   exits 0 — a refusal typed as success, the §5 shape, in a tool other sessions use daily.
 
-   HARM, and it is the §5 shape exactly: **a refusal typed as success.** Any consumer reading the
-   exit status gets a green from a run that refused to start. Worse, the refusal's own text says a
-   count grepped from a killed run is "a memorial to a killed process" — the message is precisely
-   right about the class and the mechanism carrying it hands the caller a zero of the same kind.
-   A caller that greps the output for diagnostics gets ZERO DIAGNOSTICS, which is the answer a
-   clean compile gives.
+   WHAT REFUTED IT. Direct measurement on a runner below the budget, exit status captured from the
+   compiler itself with no pipeline in between, against two controls in the same run: the budget
+   refusal exits **1**, an ordinary type refusal exits **1**, and a clean compile exits **0**. The
+   admission arm is correct and this row asserts no defect in it.
 
-   MEASURED CONSEQUENCE, in this session and not hypothetically. Two successive 52-arm census runs
-   returned a complete table of zeroes that read as "no position refuses anything anywhere" — which
-   is a stronger version of the finding the census was written to look for, and would have been
-   published as such. What exposed it was the REACHABILITY control's own zero: an undefined name
-   cannot be accepted at every position, so the instrument, not the compiler, had to be wrong.
-   A zero from a measurement is only readable beside a nonzero from the same instrument.
+   HOW THE WRONG NUMBER WAS PRODUCED, which is the part worth keeping. The original observation was
+   captured as `gunbc compile ... | head -8; echo exit=$?` — `$?` there is **head's** status, and
+   `head` exits 0 essentially always. So the measurement could not have returned anything but zero:
+   not a wrong number, an UNINFORMATIVE one wearing a number's clothes, which is the same class as
+   an instrument that can only return one answer. Use `${PIPESTATUS[0]}`, or drop the pipe.
 
-   DISTINGUISHING FACTS: exit status captured directly (not through a pipeline, which reports the
-   last stage's status — the first attempt at this measurement made exactly that error and its
-   number is not the one recorded here), against a clean-compile positive control and an ordinary
-   type-refusal control in the same run.
+   WHAT SURVIVES, AND IT IS THE HALF THAT ACTUALLY BROKE THE CENSUS. The refusal is loud in its
+   status and silent in the shape a caller greps: it emits no `error[` line and no
+   `compiled: … N diagnostics` summary, so a harness that classifies runs by scanning output — which
+   is what a diagnostic census does — reads it as a compile that produced nothing. Two successive
+   52-arm runs returned a complete table of zeroes that read as "no position refuses anything
+   anywhere". That is an instrument obligation, not a compiler defect: classify by
+   `compiled:` and by exit status, never by the absence of a marker.
 
-   THE LESSER TWIN, recorded beside it because it belongs to the same "scratch fixture" workflow
-   and not because it is equally severe: a `--source-root` outside the process workspace root
-   PANICS (`repo_relative_path_normalized: path ... is not under process workspace root`). A panic
-   is loud and its status is nonzero, so it is a much smaller problem — but it is the second way a
-   scratch-fixture compile produces no diagnostics for a reason that is not the compiler's verdict.
+   THE LESSER TWIN, likewise not a defect: a `--source-root` the process cannot use PANICS (status
+   101) — `source root does not exist` for an absent path, `repo_relative_path_normalized: … is not
+   under process workspace root` for a path outside the workspace. Loud, nonzero, and fatal.
 
-   RUNG FOUND AT: **below the ladder** for the budget arm — silent wrongness at the process
-   boundary, which §4b places outside the ladder rather than on its bottom rung. CEILING:
-   **structurally impossible** — a refusal and a success are different states and the exit status
-   is a two-valued carrier the process already has; the admission refusal has a typed cause in
-   hand and simply needs to be reported through a nonzero status.
-
-   OWNER QUESTION: the whole-corpus admission is `gunbc.whole_corpus_compile_admission`; the exit
-   path is the `gunbc compile` CLI arm in `v1_compiler` `main`. Routed, not claimed.
+   RUNG: **not on the ladder** — this is a property of a withdrawn claim, not of `main`. Recorded as
+   a methodology hazard for anyone measuring a compiler's verdict from a shell.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
