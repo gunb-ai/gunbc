@@ -55,11 +55,11 @@ pub fn v1_rc_match_scrutinee_clone_bound_param_names(
     } else {
         Rc::new({
             let mut __result = Vec::new();
-            for arg_name in scrutinee_type_arg_names.clone().iter().cloned() {
+            for arg_name in scrutinee_type_arg_names.iter().cloned() {
                 __result.extend(
                     (*if {
                         let mut __found = false;
-                        for g in generic_param_names.clone().iter().cloned() {
+                        for g in generic_param_names.iter().cloned() {
                             if (g.clone() == arg_name.clone()) {
                                 __found = true;
                                 break;
@@ -85,13 +85,12 @@ pub fn v1_union_bound_param_names(
     extra: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
     extra
-        .clone()
         .iter()
         .cloned()
         .fold(base.clone(), |acc: Rc<Vec<String>>, x: String| {
             if {
                 let mut __found = false;
-                for y in acc.clone().iter().cloned() {
+                for y in acc.iter().cloned() {
                     if (y.clone() == x.clone()) {
                         __found = true;
                         break;
@@ -127,7 +126,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
     {
         let bare_match = if (({
             let mut __found = false;
-            for g in callee_generic_param_names.clone().iter().cloned() {
+            for g in callee_generic_param_names.iter().cloned() {
                 if (g.clone() == callee_param_type_name.clone()) {
                     __found = true;
                     break;
@@ -136,7 +135,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
             __found
         } && {
             let mut __found = false;
-            for g in callee_bound_param_names.clone().iter().cloned() {
+            for g in callee_bound_param_names.iter().cloned() {
                 if (g.clone() == callee_param_type_name.clone()) {
                     __found = true;
                     break;
@@ -145,7 +144,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
             __found
         }) && {
             let mut __found = false;
-            for g in wrapper_generic_param_names.clone().iter().cloned() {
+            for g in wrapper_generic_param_names.iter().cloned() {
                 if (g.clone() == arg_type_name.clone()) {
                     __found = true;
                     break;
@@ -164,16 +163,15 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
         } else {
             Rc::new({
                 let mut __result = Vec::new();
-                for callee_arg in callee_param_type_arg_names.clone().iter().cloned() {
+                for callee_arg in callee_param_type_arg_names.iter().cloned() {
                     __result.extend(
                         (*Rc::new({
                             let mut __result = Vec::new();
-                            for wrapper_arg in arg_type_arg_names.clone().iter().cloned() {
+                            for wrapper_arg in arg_type_arg_names.iter().cloned() {
                                 __result.extend(
                                     (*if (({
                                         let mut __found = false;
-                                        for g in callee_generic_param_names.clone().iter().cloned()
-                                        {
+                                        for g in callee_generic_param_names.iter().cloned() {
                                             if (g.clone() == callee_arg.clone()) {
                                                 __found = true;
                                                 break;
@@ -182,7 +180,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
                                         __found
                                     } && {
                                         let mut __found = false;
-                                        for g in callee_bound_param_names.clone().iter().cloned() {
+                                        for g in callee_bound_param_names.iter().cloned() {
                                             if (g.clone() == callee_arg.clone()) {
                                                 __found = true;
                                                 break;
@@ -191,8 +189,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
                                         __found
                                     }) && {
                                         let mut __found = false;
-                                        for g in wrapper_generic_param_names.clone().iter().cloned()
-                                        {
+                                        for g in wrapper_generic_param_names.iter().cloned() {
                                             if (g.clone() == wrapper_arg.clone()) {
                                                 __found = true;
                                                 break;
@@ -231,7 +228,7 @@ pub fn v1_equality_bound_param_name(
     } else {
         if ((left_type_name.clone() == right_type_name.clone()) && {
             let mut __found = false;
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if (g.clone() == left_type_name.clone()) {
                     __found = true;
                     break;

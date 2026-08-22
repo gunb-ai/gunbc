@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_plan_cli
 
+import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
@@ -197,7 +198,7 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
+                    ArgvCommand { argv: [chmod_path_resolved_program as String, "0755", fleet_converge_plan_apply_shell_path] },
                     ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
                     ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
                   ],

@@ -3,7 +3,7 @@
 ## Completeness standing (reporting convention adopted 2026-08-22)
 
 ```
-VISIBLE CANARY        coded rustc rows: 316 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
+VISIBLE CANARY        coded rustc rows: 315 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
                       canonical E0308 sites: 154
 DIAGNOSTIC COVERAGE   standing: PARTIAL
   known censor        LexMatchThunk.apply / generic-instantiation failure (E0599 aborts before
@@ -22,11 +22,33 @@ censor is removed the board will RISE, and that is diagnostic completion, not re
 | entry | `src/v2/compiler/03_ingest.dag` (M=1) |
 | producer | `curated_cargo_probe_one+emit+seedlink+cargo`, `CSSL_STD_SEED_LINK=1`, shim `""` |
 | emitted roster | 177 files, 503 emit diagnostics (same roster count as the 2026-08-21 run — same subject) |
-| raw E0308 blocks | **128** (40.5% of 316 coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
+| raw E0308 blocks | **128** (40.6% of **315** coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
 | canonical sites | **154** |
 | clusters | 14 + residue |
 | unclassified residue | **7 (4.5%)**, printed in full; residue arm known-positive |
 | classifier | `docs/probes/e0308_classify_sites.py` (committed; re-runnable over the published raw log) |
+
+### Coded-row count corrected 316 → 315 (2026-08-22), and one derived percentage moved
+
+The stamp and the receipt both reported **316** coded rustc rows. The published raw log yields
+**315**, which is also what this board's own name in the receipt's series table already said
+(`315-board`) — so the receipt disagreed with its own series counter, and the log settles it.
+
+The arithmetic that produced the wrong number, stated so it is not re-derived: `HISTOGRAM_SUM=330`
+counts `^error(\[E[0-9]+\])?:` lines (`curated_cargo_probe_one.sh` `HISTOGRAM_SUM`), and cargo's
+own trailing `error: could not compile ... due to 329 previous errors` line matches that pattern.
+So 330 = 329 real error blocks + 1 summary line. Subtracting only the 14 uncoded rows
+(`uncoded_unsupported_mock_expression:13` + `uncoded_UNRESOLVED_CompilerError:1`) from 330 gives
+316; the summary line must come off first. 330 − 1 − 14 = **315**, and the per-code histogram sums
+to 315 independently (`grep -o '^error\[E[0-9]*\]' | sort | uniq -c`), so the two agree.
+`CARGO_ERROR_TOTAL=329` = 315 coded + 14 uncoded is the third agreeing reading.
+
+**Derived percentages that moved:** exactly one. The E0308 share of the coded board is
+128 / 315 = **40.6%**, not 128 / 316 = 40.5%. Every other percentage in this stamp and in the
+receipt is denominated in the **154 canonical sites**, not in coded rows, so no cluster share, the
+95.5% classified figure, or the 4.5% residue figure changes. The 128, the 154, the cluster counts,
+the histogram and every disposition are unaffected — this was a denominator arithmetic slip, not a
+measurement error.
 
 ## Clusters (site grain, this subject only) — every one a CANDIDATE root
 
