@@ -210,3 +210,35 @@ claims this row for `Connective` only.
 itself deliver the refusal, because `derive_variant_to_enum` **scans** the whole map rather than
 looking one entry up. A better key hands it two entries where it had one; it still has to be taught
 that two entries sharing a spelling is the refusing case. A scan is not repaired by a key.
+
+## A third instance, from the same branch, landing on two rows
+
+`crisp-crab-430` carried their branch 10,821 → 1,801 → 395 errors. The second fix is this census's
+`build_shared_types` row, measured far more sharply than the row had it: of **21 `shared_types`
+membership tests, only 7** passed an already-leaf-reduced expression. A dotted spelling missed the
+set and rendered **unwrapped**, while a leaf-reduced site rendered the same type **wrapped** — the
+emitted tree disagreeing with itself about one type *in both directions*. `source_indices` went
+343 wrapped / 371 unwrapped → **714 / 0**, the shape main already holds, which is the discriminator
+rather than the raw drop.
+
+**The row's `call_site_count` stays at 2 and is deliberately not 21.** That column counts calls to
+the *deciding function* across the whole roster; 21 counts the membership tests *consuming* its
+output. Both are true here and only one is what the column means — re-defining it for one row would
+silently break every comparison in the histogram. The 21 lives in the row's measurement text.
+
+**And a second way `lookup_checkpoint`'s key misses**, added to that row: the comparison against
+`cp.dag_name` is *exact*, so a qualified spelling cannot match a bare-keyed row at all — the table is
+**missed**, not mis-answered. That lane completed the leaf reduction that closes it, **measured it,
+found it inert on their corpus (no emitted change outside its own mirror), and reverted it** rather
+than land an inert change inside a "1,801 → 395" narrative. Recorded here as a *measured-inert
+repair* rather than as an open item, precisely so the next reader who notices the exact comparison
+does not re-derive and re-land it.
+
+**One thing that lane explicitly did not establish, carried so nobody inherits it as settled:** for
+the residual `Nat` rendering, `decl_file == ""` (identity unknown) and `decl_file ==
+"src/v2/std/nat.dag"` (identity known and correctly refused) produce *identical* output and have
+**opposite** repairs. Distinguishing them needs one instrumented emit that has not been run. Note
+that the second case is the fail-closed arm working as designed — `numeric_realization_identity_note`
+says an unknown identity yields no realization rather than a guess — so this is a resolver-identity
+gap upstream of the renderer, not a rendering defect.
+
