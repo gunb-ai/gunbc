@@ -35,6 +35,14 @@ carrier-keyed and context-keyed arms is now declared in the classifier and in th
 | DIAG diagnostic carrier fork | 3 | 1.9% |
 | BOX-WRAP `Box` wrap decision (**NEW**) | 1 | 0.6% |
 
+## Carrier flags (beside the root, not a category)
+
+Six sites sit on the `Measure` carrier whose stage0 alias-emission collapse is already documented
+with a dissolve-on at `std.measure` `billing_month_as_hour_count_representation_note`, split R1 4 /
+D 2 / C 2 by their deltas. They are joinable by the `carrier_flags` column rather than pooled into
+an arm: at `std_cache_interface.rs:652`/`:667` the collapse is on BOTH sides, so it is invisible in
+the mismatch and no pair-keyed rule can recover it.
+
 ## Prior-root dispositions
 
 - **StillLive:** R1, R2, T3, D, A-clone, ARG-ORDER, B3, W, B2, C, DIAG (D, ARG-ORDER and B2 are
