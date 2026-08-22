@@ -44,6 +44,14 @@ be larger than six rows and reported the check coming back empty.)
 
 - **Confirmed members** (three-arm run, in `measured.md`): parameter default, field default. Both
   accept an undefined name; the in-body `let x = nosuchname_zzz` control refuses in the same run.
+- **A first confirmation attempt was UNINFORMATIVE and is recorded rather than dropped.** Four
+  service fixtures (exit-entry status pattern, transport property value, service-input field
+  default, plus a positive control) all REFUSED — including the control, which was authored to be
+  ACCEPTED. The cause was the fixture, not the compiler: `unresolved import: module 'std.types' not
+  found`, because the arms were compiled against their own source root with no dependency pool. A
+  run whose positive control refuses cannot read its negative arms, so nothing in that run is
+  evidence about any of the four rows. Re-run with `--source-root dag` beside the arm's own root.
+
 - **Flagged by structure, not yet fixtured**: non-`svc_auth_source` item properties, `uses` config
   args, service exit-entry status patterns, transport children. Each is a presence-test-or-passthrough
   row above; none has been executed, and none is counted as a member here.
