@@ -8190,8 +8190,43 @@ fn is_collection_typed_expr(texpr: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+// A zero-field literal of a coproduct VARIANT is a TAG REFERENCE, not a construction --
+// the frontend already sanctions exactly this shape (04_infer.dag
+// zero_field_variant_tag_reference_frontier_note, operator Ruling 1a). The variant is named
+// statically, so its discriminant is a compile-time constant and the lowering folds to that
+// name. Constructing an instance in order to read a name it already has is the redundant
+// second representation DESIGN section 2 forbids -- and for a variant carrying required
+// fields the construction is not merely wasteful, it is unwritable in Rust (E0063).
+fn discriminant_zero_field_variant_tag(arg: Node, scope: InferScope, emit_info: EmitGraphInfo) -> String? {
+  match arg.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      if (arg.children |> count) != 0 {
+        none
+      } else {
+        match record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
+          Present { value: tn } =>
+            let last = qualified_last_segment(name: tn)
+            if last != "" && is_known_variant(type_summaries: emit_info.type_summaries, name: last) {
+              Present { value: last }
+            } else { none }
+          Absent => none
+        }
+      }
+    _ => none
+  }
+}
+
 fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let arg = arg_value(n: value_arg)
+  match discriminant_zero_field_variant_tag(arg: arg, scope: scope, emit_info: emit_info) {
+    Present { value: tag } =>
+      emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", tag, "\".to_string()"))
+    Absent =>
+      emit_discriminant_call_scrutinee_lowering(arg: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
+}
+
+fn emit_discriminant_call_scrutinee_lowering(arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let scrutinee = emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ty_name = resolved_type_name(n: arg, source_indices: scope.type_env.source_indices)
   match lookup_type_by_name(env: scope.type_env, name: ty_name) {
