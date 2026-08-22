@@ -309,7 +309,7 @@ data asrock_altrad8ud_bios_3_10_instant_flash_release: extdeps.firmware.types.Fi
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)ROM.zip"
   },
   image_bytes: byte_size(count: 5359089),
-  image_digest: v2.std.optional.Present {
+  image_digest: Present {
     value: sha256_digest(
       hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223",
     ),
@@ -330,7 +330,7 @@ data asrock_altrad8ud_bios_3_10_openbmc_release: extdeps.firmware.types.Firmware
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)TAR.zip"
   },
   image_bytes: byte_size(count: 5359341),
-  image_digest: v2.std.optional.Present {
+  image_digest: Present {
     value: sha256_digest(
       hex: "7693421cd665dd674f919856b1d3a46ecdbd80df2626665dcf0376f9cb7b7eb4",
     ),
@@ -371,7 +371,7 @@ data asrock_altrad8ud_bmc_3_22_00_release: extdeps.firmware.types.FirmwareReleas
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   },
   image_bytes: byte_size(count: 29056000),
-  image_digest: v2.std.optional.Absent,
+  image_digest: Absent,
   release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
   prerequisite: NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
