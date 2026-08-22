@@ -1717,25 +1717,27 @@ pub fn field_type_expr_is_stripped_placeholder(
     te: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    authored_name_at(source_indices.clone(), te.clone()) == *""
-        && te.children.len() == 0
-        && te.params.len() == 0
+    (((authored_name_at(source_indices.clone(), te.clone()) == "".to_string())
+        && ((te.children.clone().len() as i64) == 0))
+        && ((te.params.clone().len() as i64) == 0))
 }
 
 pub fn field_substitution_carrier(
     sf: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    let te = field_node_type_expr(sf.clone());
-    if field_type_expr_is_stripped_placeholder(te.clone(), source_indices.clone()) {
-        match sf.inferred.as_deref() {
-            Some(InferredNode::Resolved { node: rt }) => {
-                preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+    {
+        let te = field_node_type_expr(sf.clone());
+        if field_type_expr_is_stripped_placeholder(te.clone(), source_indices.clone()) {
+            match sf.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => {
+                    preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+                }
+                _ => te.clone(),
             }
-            _ => te.clone(),
+        } else {
+            te.clone()
         }
-    } else {
-        te.clone()
     }
 }
 
@@ -1935,9 +1937,9 @@ pub fn type_node_is_established(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    authored_name_at(source_indices.clone(), n.clone()) != *""
-        || n.children.len() > 0
-        || n.params.len() > 0
+    (((authored_name_at(source_indices.clone(), n.clone()) != "".to_string())
+        || ((n.children.clone().len() as i64) > 0))
+        || ((n.params.clone().len() as i64) > 0))
 }
 
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
@@ -8296,15 +8298,17 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 {
                     let exp = expected.clone().unwrap();
                     if ((exp.params.clone().len() as i64) > 0) {
-                        match exp.inferred.as_deref() {
-                            Some(InferredNode::Resolved { node: declared_ret }) => {
-                                if type_node_is_established(
+                        match exp.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved {
+                                node: declared_ret, ..
+                            }) => {
+                                if (type_node_is_established(
                                     declared_ret.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 ) && is_fully_resolved(
                                     declared_ret.clone(),
                                     scope.type_env.clone().source_indices.clone(),
-                                ) {
+                                )) {
                                     Some(declared_ret.clone())
                                 } else {
                                     None
