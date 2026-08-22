@@ -680,6 +680,29 @@ type argument.
 So by per-site read the collision mechanism reaches **at least 8 of 39**, not 2. Eight is a **floor
 established by reading**, not a total: the other 7 `Measure` rows and all of `Vector` 7 are unread.
 
+**Superseded by the re-key — the figure is 15, not 8.** Keyed mechanically on the innermost diverging
+atom, **15 of 39 (38%)** diverge at `Nat`: 13 at a position whose atom is `i64` (emitted `Nat`) and 2
+spelled `Rc<Nat>` directly. Eleven of the thirteen `Measure`-shaped rows diverge at the `i64`
+argument, not the four I read by hand — `realization_schedule` 64/74/83, `cache_interface` 652/667,
+`realization_measurement` 96, each contributing two rows for the two type-argument positions. My 8
+was a floor and behaved like one.
+
+The remaining **24** are genuinely other carriers: `LetBinding` 4, `Edge` 2, `Vector<NarrowingReason>`
+2, `DeriveGrammarRelationTokensProgress` 2, and eleven singletons.
+
+**`Nat` at the diverging position is NOT the same as "rows the `shared_types` mechanism explains."**
+Nine of the 15 sit in `realization_schedule` and `cache_interface`, which overlap the documented
+**alias-collapse** defect (`measure.dag:755`, dissolve-on stated) — a different defect wearing the
+same delta signature, and the basis on which this document already excluded four `cache_interface`
+rows from the instrument and reclassified `realization_schedule` 64/83 into cluster D. So: **15
+diverge at `Nat`, of which up to 9 may belong to the alias-collapse defect instead**, unseparated
+per-row.
+
+*One caveat on the denominator:* "each contributing two rows for the two type-argument positions"
+means these are **rows, not sites**. Finding 0 above reduced R1 from 39 to 36 sites on a mechanical
+rule. The 15-of-39 ratio is internally consistent if both halves count rows; it should not be read
+against a site-denominated figure without re-deriving one of the two.
+
 **What holds either way:** 8 is not 39. `Measure` and `Vector` together remain the largest part of
 the cluster and the collision mechanism does not reach most of it. **No identity repair — composite
 key, `decl_file` on `TypeSummary`, or identity carried into `shared_types` — should be scoped as an
