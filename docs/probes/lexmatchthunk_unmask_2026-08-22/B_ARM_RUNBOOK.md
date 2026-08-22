@@ -8,6 +8,43 @@ quietly improved.
 Owner: whoever lands the repair, so exposure and measurement sit together. The two raw `cargo.log`s
 are published either way, so the adjudication can be re-run independently by anyone.
 
+## BLOCKER, measured 2026-08-22 on `761c0d094d`: this subject's board is currently UNTAKEABLE
+
+**`src/v2/compiler/03_ingest.dag` cannot be emitted on current main.** Measured, not inferred —
+`gunbc compile --source-root dag --source-root src/v2 --entry src/v2/compiler/03_ingest.dag --target
+rust` exits **1** with **0 files emitted** and five typed refusals, one per file-transport operation
+its closure declares:
+
+```
+'file' transport emission is not modeled: operation 'Filesystem.Write' … cannot be emitted for
+target 'rust' — the file transport dispatch supplies only the operation name and an indent depth …
+Bind a realization handler for the 'file' transport (DESIGN §3: interface shape and transport are
+two facts); do not add a per-target renderer
+```
+(`Filesystem.Write`, `WriteOwnerOnly`, `Read`, `Delete`, `List`, all declared in
+`extdeps.filesystem.filesystem_io`.)
+
+**This is a fail-closed repair working, not a regression** (gunbc#8858): the file transport emitter
+previously fabricated a read for every operation, ignored its path template, and dropped `Write`'s
+content, producing code that compiled in no target. The absence was spelled as *output* and is now
+spelled as a *refusal*. A newly refusing pipeline is the expected signature of that repair — the
+same shape, in the opposite direction, as the rising board this registration already pre-commits to
+not reading as regression. Both are the instrument getting more honest and looking worse.
+
+**Two consequences for this runbook, and neither is optional:**
+
+1. **Steps 1–2 cannot run** until a realization handler is bound for the `file` transport. Not
+   "will give a different answer" — the probe reaches cargo with nothing to build. The gate is
+   independent of the `(c) → (a) → (b)` chain and can lift before or after it.
+2. **The A-arm baseline in [`A_ARM_MASK_MECHANISM.md`](A_ARM_MASK_MECHANISM.md) was taken at
+   `967b5bc1b92`, i.e. through the fabricating emitter.** Some unknown share of that board's rows
+   are the fabrication's own artifacts — one cited fabricated shape is a Rust write declaring
+   `Result<(bool), _>` and returning a `String`, which is an **E0308**, the exact class this
+   partition measures. **No share is estimated here**, because there is no basis for one and a
+   guess would be the residual-explained-by-mechanism error this lane has already made. The
+   qualitative statement is enough and is the registered one: the 315 series is not comparable to
+   the next takeable board in the way a same-subject A/B would normally assume.
+
 ## Arms
 
 | arm | ref |
