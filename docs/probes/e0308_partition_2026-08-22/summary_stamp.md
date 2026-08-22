@@ -1,0 +1,51 @@
+# E0308 repartition on current main (mechanism grain, M=1)
+
+| field | value |
+|---|---|
+| git_sha | `967b5bc1b92ee66250e06a7870c132b48a16b80a` (requested `967b5bc1b92`; echoed from inside the remote dispatch and pinned by `PROBE_EXPECT_BASE_SHA`) |
+| entry | `src/v2/compiler/03_ingest.dag` (M=1) |
+| producer | `curated_cargo_probe_one+emit+seedlink+cargo`, `CSSL_STD_SEED_LINK=1`, shim `""` |
+| emitted roster | 177 files, 503 emit diagnostics (same roster count as the 2026-08-21 run — same subject) |
+| raw E0308 blocks | **128** (40.5% of 316 coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
+| canonical sites | **154** |
+| clusters | 13 + residue |
+| unclassified residue | **6 (3.9%)**, printed in full; residue arm known-positive |
+| classifier | `docs/probes/e0308_classify_sites.py` (committed; re-runnable over the published raw log) |
+
+## Clusters (site grain, this subject only) — every one a CANDIDATE root
+
+| cluster | sites | % |
+|---|---:|---:|
+| R1 bare↔`Rc` wrap (17 outer / 14 type-argument depth / 6 element) | 39 | 25.3% |
+| R2 Optional surface fork | 22 | 14.3% |
+| T3 collection carrier fork | 14 | 9.1% |
+| D alias arity / generic argument count | 13 | 8.4% |
+| A-clone generic `Clone` bound absent | 12 | 7.8% |
+| ARG-ORDER call argument order | 11 | 7.1% |
+| B3 modeled `Nat` vs native integer | 10 | 6.5% |
+| W `Witness<_>` type argument | 9 | 5.8% |
+| B2 `Bool` vs `bool`/variant | 6 | 3.9% |
+| RESIDUE | 6 | 3.9% |
+| C carrier collapses to `()` | 4 | 2.6% |
+| ELEM-COLL element vs its own collection (**NEW**) | 4 | 2.6% |
+| DIAG diagnostic carrier fork | 3 | 1.9% |
+| BOX-WRAP `Box` wrap decision (**NEW**) | 1 | 0.6% |
+
+## Prior-root dispositions
+
+- **StillLive:** R1, R2, T3, D, A-clone, ARG-ORDER, B3, W, B2, C, DIAG (D, ARG-ORDER and B2 are
+  count-for-count identical, same file, same pairs).
+- **Removed:** R5 (`OccurrenceId`/`NodeOccurrenceId`) — zero occurrences anywhere in the TSV.
+- **Converted out of E0308:** RT-builtin — `v1_rt::lookup` went generic in gunbc#8792; the callee
+  now shows up in 17 `E0061` blocks instead.
+- **Unjoinable (masked, NOT closed):** T2 (34→0) and most of B3 (49→10). Their file,
+  `v2_compiler_tokenize.rs`, now fails at `E0599` before inference reaches those expressions.
+- **New:** ELEM-COLL (4), BOX-WRAP (1).
+
+## Cost shape
+
+Four clusters cover 57% of sites; six more are single-file and cover another 45. Tail = 6 residue
+sites in 4 files. This is a small number of producer decisions with wide fanout, not a site-by-site
+tail — the same shape the 2026-08-21 board reported on a different population.
+
+Receipt: [`e0308_partition_2026-08-22.md`](../e0308_partition_2026-08-22.md).

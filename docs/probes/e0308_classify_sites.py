@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+# PROBE INSTRUMENT (measurement only; never imported by production code).
+# dissolve-on: the E0308 population reaches zero on the self-host board, or the partition moves
+# into a modeled .dag carrier that reads the diagnostic stream directly. Committed rather than
+# run ad hoc because the 2026-08-21 partition had no committed classifier, so its categories
+# could not be re-derived and a later lane had to re-author the discriminators from prose.
+"""E0308 raw rows -> canonical sites -> mechanism clusters (candidate roots).
+
+Reads a cargo human-format build log; emits a per-site TSV. Fail-closed:
+any site that does not match a discriminator is printed as RESIDUE, never
+absorbed into the nearest familiar category.
+"""
+import re, sys, collections
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+BLOCK = re.compile(r"^error\[(E\d+)\]: (.*)$")
+SPAN = re.compile(r"^\s*-->\s+(\S+?):(\d+):(\d+)\s*$")
+INLINE = re.compile(r"expected (?:type parameter |struct |enum |reference |unit type )?`(.+?)`, found (?:type parameter |struct |enum |reference |unit type )?`(.+?)`")
+NOTE_EXP = re.compile(r"=\s*note:\s*expected (\w+(?: \w+)?) `(.+?)`\s*$")
+NOTE_FOUND = re.compile(r"^\s*found (\w+(?: \w+)?) `(.+?)`\s*$")
+
+def read_blocks(path):
+    lines = [ANSI.sub("", l.rstrip("\n")) for l in open(path, encoding="utf-8", errors="replace")]
+    blocks, cur = [], None
+    for i, l in enumerate(lines):
+        m = BLOCK.match(l)
+        if m:
+            if cur: blocks.append(cur)
+            cur = {"code": m.group(1), "msg": m.group(2), "lines": []}
+            continue
+        if cur is not None:
+            if l.startswith("error") or l.startswith("warning:"):
+                blocks.append(cur); cur = None; continue
+            cur["lines"].append(l)
+    if cur: blocks.append(cur)
+    return [b for b in blocks if b["code"] == "E0308"]
+
+def block_sites(b):
+    """Expand one block into canonical mismatch sites."""
+    file = line = col = None
+    callee_note = ""
+    callee_kind = ""
+    pending_note = None
+    notes = []          # (expected, found) from `= note:` groups
+    inlines = []        # (expected, found) from caret labels
+    reorder = False
+    in_callee = False
+    for l in b["lines"]:
+        s = SPAN.match(l)
+        if s:
+            if in_callee and not callee_note:
+                callee_note = "%s:%s:%s" % s.groups()
+                in_callee = False
+            elif file is None:
+                file, line, col = s.group(1), s.group(2), s.group(3)
+            continue
+        if l.startswith("note: ") and "defined here" in l:
+            in_callee = True
+            callee_kind = l[len("note: "):].strip()
+            continue
+        if "reorder these arguments" in l or l.startswith("help: did you mean"):
+            reorder = True
+        m = NOTE_EXP.search(l)
+        if m:
+            pending_note = (m.group(1), m.group(2)); continue
+        if pending_note:
+            f = NOTE_FOUND.match(l)
+            if f:
+                notes.append((pending_note[1], f.group(2), pending_note[0], f.group(1)))
+            pending_note = None
+        for m in INLINE.finditer(l):
+            inlines.append((m.group(1), m.group(2)))
+    pairs = []
+    seen = set()
+    for e, f in ((normalize(a), normalize(b)) for a, b in inlines):
+        if (e, f) not in seen:
+            seen.add((e, f)); pairs.append((e, f, "", ""))
+    for e, f, ke, kf in ((normalize(a), normalize(b), c, d) for a, b, c, d in notes):
+        if (e, f) not in seen:
+            seen.add((e, f)); pairs.append((e, f, ke, kf))
+    # One mismatch printed two ways: rustc's caret label elides deep generics as `...`
+    # while the `= note:` prints the type in full. Keeping both would count one site twice.
+    def elision_of(a, b):
+        if "..." not in a[0] + a[1] or "..." in b[0] + b[1]:
+            return False
+        pat = lambda t: "^" + re.escape(t).replace(r"\.\.\.", ".*") + "$"
+        return bool(re.match(pat(a[0]), b[0]) and re.match(pat(a[1]), b[1]))
+    pairs = [a for a in pairs if not any(elision_of(a, b) for b in pairs if b is not a)]
+    out = []
+    if not pairs:
+        out.append(dict(file=file, line=line, col=col, expected="", found="",
+                        kind_e="", kind_f="", callee=callee_note, callee_kind=callee_kind,
+                        reorder=reorder, msg=b["msg"], nopair=True))
+    for e, f, ke, kf in pairs:
+        out.append(dict(file=file, line=line, col=col, expected=e, found=f,
+                        kind_e=ke, kind_f=kf, callee=callee_note, callee_kind=callee_kind,
+                        reorder=reorder, msg=b["msg"], nopair=False))
+    return out
+
+# ---- delta vector -----------------------------------------------------------
+def strip_rc(t):
+    n = 0
+    while t.startswith("Rc<") and t.endswith(">"):
+        t = t[3:-1]; n += 1
+    return t, n
+
+def head(t):
+    """Nominal head: generic arguments dropped, module path dropped."""
+    t = t.split("<")[0]
+    return t.split("::")[-1].strip("&")
+
+PATH_NOISE = re.compile(r"\b(?:std::string::|std::option::|std::vec::|std::collections::|im::|alloc::)")
+def normalize(t):
+    """Semantic identity of a type spelling: module-path noise removed, spacing collapsed.
+    `im::Vector<..>` and `Vector<..>` are ONE type printed two ways by rustc; keeping both
+    would count one mismatch twice."""
+    t = PATH_NOISE.sub("", t)
+    t = re.sub(r"\b[a-z0-9_]+::", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+TEXT = {"String", "str", "&str"}
+NUMERIC_NATIVE = {"i64", "u64", "i32", "usize", "{integer}", "integer", "u8", "i8", "u32"}
+COLLECTIONS = {"OrdSet", "HashMap", "BTreeSet", "BTreeMap", "Vec", "Vector", "HashSet",
+               "PointwisePower", "PartialFunction", "FreeMonoid"}
+
+def delta_vector(e, f):
+    eb, en = strip_rc(e); fb, fn = strip_rc(f)
+    v = []
+    if en != fn: v.append("rc_depth")
+    if head(eb) != head(fb): v.append("nominal")
+    elif eb != fb: v.append("generic_arg")
+    if head(eb) in COLLECTIONS or head(fb) in COLLECTIONS: v.append("container")
+    if e.startswith("&") or f.startswith("&"): v.append("borrowed")
+    if head(eb) == "Option" or head(fb) == "Option" or f == "None": v.append("optionality")
+    return "+".join(v) if v else "none"
+
+# ---- discriminators (prior 15-root vocabulary) ------------------------------
+def classify(s):
+    e, f = s["expected"], s["found"]
+    if s["nopair"]:
+        if s["reorder"] or "reorder" in s["msg"]:
+            return "ARG-ORDER", "call_argument_order_diverges_from_declaration"
+        return "RESIDUE", "block_carries_no_expected_found_pair"
+    eb, en = strip_rc(e); fb, fn = strip_rc(f)
+    he, hf = head(eb), head(fb)
+    if s["reorder"]:
+        return "ARG-ORDER", "call_argument_order_diverges_from_declaration"
+    # A-clone: generic parameter cloned through a reference
+    if s["kind_e"] == "type parameter" or (eb.isidentifier() and f == "&" + e):
+        if f.startswith("&") and f.lstrip("&") == e:
+            return "A-clone", "generic_param_clone_bound_absent"
+    # B3 modeled Nat vs native integer
+    if {he, hf} & {"Nat"} and (hf in NUMERIC_NATIVE or he in NUMERIC_NATIVE
+                               or hf == "integer" or he == "integer"):
+        return "B3", "modeled_numeric_vs_native"
+    # B2 Bool carrier vs native/variant
+    if {he, hf} & {"Bool"} and (hf in {"bool", "True", "False"} or he in {"bool", "True", "False"}):
+        return "B2", "bool_carrier_vs_native_or_variant"
+    # T2 text carrier vs String
+    if (he in TEXT and hf in {"Vector", "FreeMonoid"}) or (hf in TEXT and he in {"Vector", "FreeMonoid"}):
+        return "T2", "text_carrier_vs_string"
+    # T3 collection carrier fork
+    if he in COLLECTIONS and hf in COLLECTIONS and he != hf:
+        return "T3", "collection_carrier_fork"
+    # DIAG diagnostic carrier fork
+    if {he, hf} & {"Diagnostic", "NonEmptyDiagnostics", "Diagnostics"} and he != hf:
+        return "DIAG", "diagnostic_carrier_fork"
+    # W Witness type argument
+    if he == "Witness" or hf == "Witness":
+        return "W", "witness_type_argument"
+    # C carrier collapses to unit
+    if eb == "()" or fb == "()" or s["kind_f"] == "unit type" or s["kind_e"] == "unit type":
+        return "C", "carrier_collapses_to_unit"
+    # R2 optional surface fork
+    if he == "Option" or hf == "Option" or f == "None" or e == "None":
+        return "R2", "optional_surface_fork"
+    # BOX-WRAP: same nominal, one side Box-wrapped. Named separately from R1 because the
+    # wrapper is a different one and a wrap-decision fix keyed on Rc would not reach it.
+    if e == "Box<%s>" % f or f == "Box<%s>" % e:
+        return "BOX-WRAP", "box_wrap_only"
+    # ELEM-COLL: one side is the ELEMENT, the other its own collection. Mechanically
+    # distinct from D (no alias, no arity change on one nominal) and from T3 (one carrier,
+    # not two forked carriers), so it gets its own arm rather than the nearest familiar one.
+    def elem_of(container_t, other_head):
+        m = re.match(r"[A-Za-z_][A-Za-z0-9_]*<(.+)>$", container_t)
+        if not m: return False
+        args = m.group(1)
+        return head(strip_rc(args.split(",")[-1].strip())[0]) == other_head
+    if he in COLLECTIONS and hf not in COLLECTIONS and elem_of(eb, hf):
+        return "ELEM-COLL", "element_vs_its_own_collection"
+    if hf in COLLECTIONS and he not in COLLECTIONS and elem_of(fb, he):
+        return "ELEM-COLL", "element_vs_its_own_collection"
+    # D alias arity / generic argument count: one side IS the other's generic argument,
+    # or the two differ only by an elided argument list
+    if he != hf and (re.search(r"[<,]\s*(?:Rc<)?%s[>,]" % re.escape(hf), eb)
+                     or re.search(r"[<,]\s*(?:Rc<)?%s[>,]" % re.escape(he), fb)):
+        return "D", "alias_arity_generic_argument_count"
+    if he != hf and ("..." in e or "..." in f):
+        return "D", "alias_arity_generic_argument_count"
+    # R5 duplicate type authority (same leaf spelling under two paths / near-identical nominals)
+    if he != hf and (he in hf or hf in he):
+        return "R5", "duplicate_type_authority"
+    # R1 bare<->Rc wrap decision
+    if he == hf and en != fn:
+        return "R1", "rc_wrap_only"
+    if he == hf and eb != fb and ("Rc<" in eb or "Rc<" in fb):
+        return "R1", "rc_wrap_at_type_argument_depth"
+    if he == hf and eb != fb:
+        return "D", "alias_arity_generic_argument_count"
+    return "RESIDUE", "unclassified_pair: %s | %s" % (e, f)
+
+def main(path, out):
+    blocks = read_blocks(path)
+    sites, seen = [], set()
+    for b in blocks:
+        for s in block_sites(b):
+            key = (s["file"], s["line"], s["col"],
+                   frozenset((s["expected"], s["found"])))
+            if key in seen: continue
+            seen.add(key)
+            root, reason = classify(s)
+            s["root"], s["reason"] = root, reason
+            s["delta"] = "" if s["nopair"] else delta_vector(s["expected"], s["found"])
+            sites.append(s)
+    cols = ["file", "line", "col", "expected", "found", "delta", "root", "reason",
+            "callee", "callee_kind", "block_msg"]
+    with open(out, "w") as fh:
+        fh.write("\t".join(cols) + "\n")
+        for s in sites:
+            fh.write("\t".join(str(s.get(c, "")) for c in
+                     ["file", "line", "col", "expected", "found", "delta", "root", "reason",
+                      "callee", "callee_kind", "msg"]) + "\n")
+    print("raw E0308 blocks: %d" % len(blocks))
+    print("canonical sites : %d" % len(sites))
+    hist = collections.Counter(s["root"] for s in sites)
+    for r, n in hist.most_common():
+        print("  %-12s %4d  %5.1f%%" % (r, n, 100.0 * n / len(sites)))
+    print("\nRESIDUE detail:")
+    for s in sites:
+        if s["root"] == "RESIDUE":
+            print("  %s:%s:%s  %s | %s  [%s] callee=%s" %
+                  (s["file"], s["line"], s["col"], s["expected"], s["found"], s["delta"], s["callee"]))
+
+main(sys.argv[1], sys.argv[2])
