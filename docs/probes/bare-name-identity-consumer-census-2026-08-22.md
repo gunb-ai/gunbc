@@ -22,6 +22,29 @@ sweep is a precondition for any refusal, not a follow-up to it.
 3. For each candidate: read the body, then read every call site, and record whether a declaration
    identity expression (`type_reference_decl_file`, `decl_identity_file`) is in scope there.
 
+**A SECOND, LARGER BLIND SPOT — the selector is scoped to TYPE realization, and the class has a
+value half.** Stated here after `crisp-crab-430` hit the value half from the other direction: their
+qualification pass rewrote bare reads of a *parameter* named `module_items` into
+`v1.std.core.module_items`, the module-qualified **function** of the same name, so five function
+bodies stopped reading their own argument and named a global instead (`for item in
+crate::v1_std_core::module_items.iter()` — iterating a fn item). That is this census's proposition
+one scope down: there a *type* resolved to the wrong declaring module, here a *value* resolved past
+the parameter that shadows it.
+
+It is not a thirteenth row — it is a defect in their source-rewriting pass, not an emitter decision
+site — but it names a region my selector never looked at. The emitter has at least one known
+value-side member of the same shape (`05_emit.dag`'s free-call `_` target arm renders a call to a
+parameter named `lookup` and a call to a free `lookup` identically, and produced an error only
+because the arities differed). **This roster does not cover value-position name resolution at all,
+and a reader must not take twelve as the count for the whole class.**
+
+**And their instrument correction is exactly what the next-rung lens will need.** Asking "is there a
+qualified reference whose leaf matches an in-scope parameter name" returned **1,350** sites, almost
+all false — `acc.env`, `lr.table` are ordinary field accesses whose leaf happens to collide.
+Requiring the *prefix* to be a module path rather than an expression, and excluding call positions,
+gave **8**. A lens deriving this roster from the `Node` tree has to make that same grammatical
+distinction, and a grep never can.
+
 **Known blind spot, stated because three rows were found outside the selector.** A name compared
 against a literal *inline* — no name-shaped parameter, no `decl_file` argument — is not selected.
 `is_host_optional_carrier_type`, `is_host_diagnostics_carrier_type` and `derive_variant_to_enum`
