@@ -77,19 +77,52 @@ go. Confirmed here as a measurement: **the residue list is not a fixed set, it i
 point, and one pass does not reach it.** A follow-on pass over these seven is owed and is
 not attempted in this change.
 
-## 3. One deletion reversed by the census itself
+## 3. The one row the census deferred, now answered by its author -- and the cause it gave is not the cause the census guessed
 
-`gunbc.scm.commit_closure_store` was deleted by the batch rule and **restored in the same
-branch**. The census names this row specifically as *"the one real finding in the batch: a
-replacement-migration leftover, not residue"* -- `gunbc.scm.repository_envelope` took its
-grain one day later and left the `Filesystem` save/load half unattached -- and declines to
-disposition it, because the two arms turn on the #8820 author's intent. Sweeping it on an
-unreachability score would answer that question by deleting the evidence. It is held, not
-deleted, and it stays raised for that author.
+`gunbc.scm.commit_closure_store` was deleted by the batch rule, restored while the question
+was open, and is **deleted again** on the answer from `gentle-eagle-360`, who authored #8820.
+The verdict and the reasoning are recorded here rather than in the module, because the module
+is going away and a citation into it dies with it.
 
-This is recorded rather than quietly fixed because it is the honest shape of the risk: a
-mechanical residue rule *did* select a module the census had already ruled was not residue,
-and only a per-row read caught it.
+**Both arms the census offered were built on a false premise, and the correction is
+load-bearing.** The census framed this as *the envelope grew save/load and superseded it*
+versus *the envelope should consume it as its persistence layer*.
+
+- *Not superseded.* `gunbc.scm.repository_envelope` contains **zero `Filesystem` operations
+  and not one `func`** -- it is a pure codec, `RepositoryEnvelope` to `JsonValue` and back.
+  Nothing took over this module's job. Recording the deletion as "replaced by the envelope"
+  would be false.
+- *And the envelope should NOT consume it.* `commit_closure_store` persists **one root and
+  its closure**. A repository is a different subject: an empty initialized state with **no
+  root at all**, several commits over one shared node population, a checked-out selection.
+  Wiring the envelope to a carrier that demands a root would force `init` to invent a phantom
+  commit to satisfy it -- a grain mismatch dressed as a fix.
+
+**The correct disposition row: DELETE, cause = STAGED ORPHAN AT THE WRONG GRAIN.** Not
+superseded, not replaced, and not merely unconsumed. It was never wired, and the layer that
+will do this job is repository-grain and will be written that way whether or not this module
+stands.
+
+**Why delete rather than hold it for that layer** -- the author's reasoning, and DESIGN §3's:
+a surviving X is an **attractor**. While it stands, every nearby persistence question gets
+answered in commit-closure vocabulary that is already scheduled to die. They declined to hold
+a lane open against a speculative future "export one commit" operation for which they have no
+consumer -- §6 experimental residue, applied by an author to their own module.
+
+**A rung-honesty defect in its own carrier, volunteered by that author, which strengthens the
+warrant.** The module's header claims its persistence is *"verified by direct execution in Wet
+mode"* and points at `commit_closure_round_trip_probe`. That was true when it was run by hand
+and is not true now: the probe is **enrolled nowhere and nothing executes it**. So the module
+is not merely unconsumed -- it carries an overclaim about its own evidence, which is a
+stronger reason to delete than unreachability ever was, and exactly the specification-without-
+execution shape DESIGN §5 names.
+
+**What must survive into the replacement, recorded because this deletion is what removes the
+prompt for it** (not this lane's to carry, and named so a future reader does not have to
+re-derive it): the host's success/content/error triple folded into a coproduct **at** the
+boundary, so no downstream consumer picks which member to believe or reads content from a
+failed read; and encode adjudicated **before** the write, so a successful write cannot upgrade
+an encoding failure into `Saved`.
 
 ## 4. One finding the deletion surfaced, and it is not a deletion
 
