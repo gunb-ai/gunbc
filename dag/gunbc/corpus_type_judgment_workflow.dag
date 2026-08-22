@@ -117,6 +117,19 @@ fn corpus_type_judgment_build_step() -> Step {
   }
 }
 
+// THE RUN STEP IS A SHELL STRING, AND THAT IS THE SANCTIONED FORM HERE RATHER THAN RESIDUE.
+//
+// Recorded because the shape reads like the medium-as-string class on sight, and a reader who
+// stops there will re-file it as a defect. docs/plans/shell-emission-model.md's bash-minimization
+// rule (operator, 2026-07-03) admits emitted bash in exactly two places, and a GitHub Actions
+// `run:` block is the first of them: a FOREIGN EXECUTOR that accepts a shell payload and nothing
+// else. There is no typed transport to reach for at this seam — the executor is the constraint.
+//
+// What this file does NOT do is mint a second way of building that payload: the two words of argv
+// come from `corpus_type_judgment_run_command` as an ArgvCommand and are rendered by the shared
+// `shell_command_render`, exactly as gunbc.witness_floor_workflow does. So the string is a
+// rendering of a modeled command, not a hand-authored script, and this is one more instance of an
+// existing class rather than a new one.
 fn corpus_type_judgment_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
