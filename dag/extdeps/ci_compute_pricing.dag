@@ -1,7 +1,7 @@
 module extdeps.ci_compute_pricing
 
 import std.types { NonEmptyStr, List, Bool }
-import std.nat { Nat, nat_min }
+import std.nat { Nat }
 import std.currency { CurrencyCode, Eur, Usd }
 import std.measure {
   MoneyPerHour, MoneyPerMinute, MoneyRate, money_amount_micro,
@@ -728,8 +728,48 @@ data namespace_note: NonEmptyStr = "Namespace belongs in the competitor set and 
 // 4 GiB delivers one unit, not two: the second vCPU has no memory to work with.
 //
 // The count is carried in PERMILLE so a 6 GiB shape reads as 1.5 units instead of truncating to 1.
+// WHICH RESOURCE RUNS OUT FIRST, carried rather than discarded.
+//
+// offer_unit_count_permille takes a min and throws away which side won. "How many units this box
+// yields" and "what stops it yielding more" are two different facts with opposite remedies - buy
+// RAM, or buy cores - and collapsing them into one number is why a supply decision gets made by
+// hand-arithmetic in a chat window instead of being read off the model. A box whose CPU is
+// abundant and whose memory binds is not expensive compute; it is a memory purchase wearing a CPU
+// price tag, and nothing in the offer table said so until this function existed.
+type BindingResource
+  = BoundByMemory { cpu_units_permille: Nat, memory_units_permille: Nat }
+  | BoundByCpu { cpu_units_permille: Nat, memory_units_permille: Nat }
+  | BoundEqually { units_permille: Nat }
+
+fn offer_binding_resource(o: ComputeOfferObservation) -> BindingResource {
+  let cpu = o.vcpu_count * 1000
+  let mem = o.memory_gib * 1000 / 4
+  if cpu < mem {
+    BoundByCpu { cpu_units_permille: cpu, memory_units_permille: mem }
+  } else {
+    if mem < cpu {
+      BoundByMemory { cpu_units_permille: cpu, memory_units_permille: mem }
+    } else {
+      BoundEqually { units_permille: cpu }
+    }
+  }
+}
+
+fn binding_resource_label(b: BindingResource) -> NonEmptyStr {
+  match b {
+    BoundByMemory { cpu_units_permille, memory_units_permille } => "memory binds",
+    BoundByCpu { cpu_units_permille, memory_units_permille } => "CPU binds",
+    BoundEqually { units_permille } => "balanced",
+  }
+}
+
+// The unit count is now DERIVED from the binding read, so the two can never disagree.
 fn offer_unit_count_permille(o: ComputeOfferObservation) -> Nat {
-  nat_min(a: o.vcpu_count * 1000, b: o.memory_gib * 1000 / 4)
+  match offer_binding_resource(o: o) {
+    BoundByMemory { cpu_units_permille, memory_units_permille } => memory_units_permille,
+    BoundByCpu { cpu_units_permille, memory_units_permille } => cpu_units_permille,
+    BoundEqually { units_permille } => units_permille,
+  }
 }
 
 // A price whose currency is not the table's currency is NOT comparable, and a foreign figure shown
