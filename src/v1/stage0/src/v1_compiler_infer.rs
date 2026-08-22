@@ -3003,14 +3003,18 @@ pub fn coproduct_variant_payload_admits_type_name(
                         };
                         let payload_name =
                             authored_name_at(source_indices.clone(), payload_type.clone());
-                        ((payload_name.clone() != "".to_string())
-                            && application_type_names_compatible(
-                                payload_name.clone(),
-                                actual_name.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                                source_indices.clone(),
-                            ))
+                        let names_agree = (application_type_names_compatible(
+                            payload_name.clone(),
+                            actual_name.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ) || transparent_alias_identity_agrees(
+                            type_env.symbol_index.clone(),
+                            payload_name.clone(),
+                            actual_name.clone(),
+                        ));
+                        ((payload_name.clone() != "".to_string()) && names_agree.clone())
                     } {
                         __found = true;
                         break;
@@ -3061,33 +3065,55 @@ pub fn coproduct_payload_where_parent_required(
                     ) {
                         false
                     } else {
-                        match lookup_type_by_name(scope.type_env.clone(), formal_name.clone()) {
-                            Some(decl) => {
-                                let decl_is_concrete_coproduct = (((decl.connective.clone()
-                                    == Connective::Disj)
-                                    && ((decl.params.clone().len() as i64) == 0))
-                                    && ((decl.children.clone().len() as i64) > 0));
-                                if (decl_is_concrete_coproduct.clone() == false) {
-                                    false
-                                } else {
-                                    if has_child_named(
-                                        decl.clone(),
-                                        qualified_last_segment(actual_name.clone()),
-                                        source_indices.clone(),
-                                    ) {
-                                        false
-                                    } else {
-                                        coproduct_variant_payload_admits_type_name(
+                        if transparent_alias_identity_agrees(
+                            scope.type_env.clone().symbol_index.clone(),
+                            formal_name.clone(),
+                            actual_name.clone(),
+                        ) {
+                            false
+                        } else {
+                            {
+                                let actual_rep = transparent_alias_representative(
+                                    scope.type_env.clone().symbol_index.clone(),
+                                    actual_name.clone(),
+                                );
+                                match lookup_type_by_name(
+                                    scope.type_env.clone(),
+                                    formal_name.clone(),
+                                ) {
+                                    Some(decl) => {
+                                        let decl_is_concrete_coproduct =
+                                            (((decl.connective.clone() == Connective::Disj)
+                                                && ((decl.params.clone().len() as i64) == 0))
+                                                && ((decl.children.clone().len() as i64) > 0));
+                                        let names_a_variant = (has_child_named(
                                             decl.clone(),
-                                            actual_name.clone(),
-                                            scope.type_env.clone(),
-                                            scope.module_name.clone(),
+                                            qualified_last_segment(actual_name.clone()),
                                             source_indices.clone(),
-                                        )
+                                        ) || has_child_named(
+                                            decl.clone(),
+                                            qualified_last_segment(actual_rep.clone()),
+                                            source_indices.clone(),
+                                        ));
+                                        if (decl_is_concrete_coproduct.clone() == false) {
+                                            false
+                                        } else {
+                                            if names_a_variant.clone() {
+                                                false
+                                            } else {
+                                                coproduct_variant_payload_admits_type_name(
+                                                    decl.clone(),
+                                                    actual_name.clone(),
+                                                    scope.type_env.clone(),
+                                                    scope.module_name.clone(),
+                                                    source_indices.clone(),
+                                                )
+                                            }
+                                        }
                                     }
+                                    None => false,
                                 }
                             }
-                            None => false,
                         }
                     }
                 }
