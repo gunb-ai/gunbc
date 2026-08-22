@@ -19,17 +19,28 @@ not residue.
 | additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 79 | DistinctModuleCount |
 | reachable from those roots through imports **and qualified calls** | 3518 | DistinctModuleCount |
 | **unreachable on imports, qualified calls, entry rows and seed mirrors** | **298** | DistinctModuleCount |
-| — of those, **consumed by bare-symbol whole-pool reference** (§2 defects 6 and 7, re-scored 2026-08-22) | **92** | DistinctModuleCount |
-| **unreachable after the re-score — the population as it now stands** | **206** | DistinctModuleCount |
+| — of those, **consumed by bare-symbol whole-pool reference** (§2 defects 6 and 7, re-scored 2026-08-22) | **≥ 92** | DistinctModuleCount, `LowerBoundOnly` |
+| **unreachable after the re-score — the population as it now stands** | **≤ 206** | DistinctModuleCount, `LowerBoundOnly` |
+| — of those, **residue on every decoded surface** — what a deletion lane consumes (§4h) | **≤ 112** | DistinctModuleCount, `LowerBoundOnly` |
+
+**Every number in this table is a BOUND, not a measurement, and the inequality signs are
+load-bearing.** They are written into the cells because *a bounded number quoted without its
+boundary becomes an exact one in the next reader's hands* — which is exactly how **298**
+travelled out of this document and became a deletion list. 206 and 112 are `LowerBoundOnly`
+for the same reason 298 was, and the named blind surfaces (§2: dynamically composed argv,
+host-side invocation naming neither path nor module, an entry row declared inside an
+unreachable module, and the service-namespace credit of §2 defect 7(e)) can only move
+modules **out** of both. A later reader who decodes an eighth surface should expect these to
+fall again; that is the standing working, not the standing failing.
 
 **The 298 is an over-count by at least 92 modules — roughly 31% — and the correction is
-concentrated in the batch this document proposed to delete first.** The number is stated in
-the headline table rather than a footnote because the headline number is the one anyone
-acts on. 206 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
-undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
-and what the re-score deliberately does *not* claim. **The actionable residue list is 112,
-not 206** — see §4h: 112 is what a deletion lane consumes, while 206 is the unresolved
-population.
+concentrated in the batch this document proposed to delete first.** It is stated in the
+headline table rather than a footnote because the headline number is the one anyone acts on.
+**The two numbers answer different questions and must not be substituted for one another:**
+≤ 206 is the *unresolved population*, while ≤ 112 is what a deletion lane may actually
+consume — the 94-module difference is `AMBIGUOUS-SHARED-ONLY` plus `MISSING-FILE`, rows that
+are unresolved at identity grain rather than proven residue. See §2 defect 6 for the method
+and the buckets, and §4h for the residue list itself.
 
 Every number in this document carries its unit, and two units are deliberately never
 interchangeable: a **DistinctFileCount** (how many files name a thing) and a
