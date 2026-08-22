@@ -109,6 +109,29 @@ mitigatable"* -- and this measurement is the independent corroboration of that s
 the module is not merely ungated, it is unreachable. Recorded as a rung-honesty datum for
 whoever climbs it, not as a disposition.
 
+## 4b. The one strand the deletion actually produced
+
+The precondition in section 1 covers `.dag`, `.rs`, `.yml`, `.yaml`, `.toml`, `.sh` and
+`.md`. Widening it afterwards to `.txt` and `.json` found exactly one live consumer the
+source-extension scan could not see, and it is worth the row because of *where* it was:
+
+`docs/probes/census_extra_excludes.txt` and `docs/probes/census_extra_excludes_seeds.txt`
+both listed `dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag`, and
+`v1_compiler.census_exclude_derive` loads both -- the seeds drive the derived exclude
+closure and the pinned oracle is that closure's drift witness. A row naming a deleted path
+therefore skews the symmetric diff between them in the direction that reads as *drift*
+rather than as *staleness*, which is the wrong diagnosis by exactly one step. Both rows are
+removed, with the two count literals that pin the files (83 to 82, 27 to 26).
+
+The row is removed rather than the module restored: an exclusion exists to keep a module out
+of a resolve walk, and a module that is gone needs no exclusion.
+
+**What this says about the precondition.** A source-extension scan is not a complete
+consumption surface -- data files carry references too, and this one was load-bearing.
+Nothing else in the 71 has a `.txt`, `.json`, `.jsonl` or `.lock` reference outside historical
+receipt transcripts, checked after the fact. The general point stands for the next pass: the
+census's decoded-surface list should include authored data files, not only source.
+
 ## 5. The 71 deleted
 
 | module | path | lines |
