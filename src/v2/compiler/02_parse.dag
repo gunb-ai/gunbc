@@ -2057,9 +2057,15 @@ fn parse_expr_terminal(
                   start: tok.start,
                   end: tok.end
                 )
+                // THE WRAP IS LOAD-BEARING. minted.id is a raw OccurrenceId; Node.occurrence_id
+                // is the NodeOccurrenceId coproduct, so the mint has to be lifted into
+                // MintedOccurrence before it can inhabit a Node. #8833 removed this call reading
+                // it as a spurious wrap against a callee that declared the raw type -- but the
+                // callee's declaration was the defect, and dropping the wrap put a value outside
+                // the coproduct into every int-literal node the parser built.
                 match dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: minted.id
+                  occurrence_id: node_occurrence_minted(id: minted.id)
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
