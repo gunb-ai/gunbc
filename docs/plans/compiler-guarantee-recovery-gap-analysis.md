@@ -2738,7 +2738,17 @@ enforces end to end.
    construction move is to stop writing positions rather than to build a checker for them. The three
    sites named above are the current bounded population.
 
-   ### DECLARED RUNG DROP (§4b(3)) — CONDITIONAL, and it may not be needed at land time
+   ### DECLARED RUNG DROP (§4b(3)) — CONDITIONAL, and currently **DORMANT: NO DROP IS IN FORCE**
+
+   **Read the whole of this sub-section in the subjunctive.** It was written when cut B was expected
+   to land. Cut B (PR #8924) is **closed** — held by decision, see row 29 — so no deletion lands, no
+   citation goes stale, and **no rung drop is declared or pending.** There is no restoration trigger
+   outstanding and nothing here is waiting on gunbc#8800. The branch and the arms below are retained
+   so that whoever lands the deletion later inherits the analysis rather than re-deriving it; the
+   conditional is theirs to evaluate at *their* land time, not a live declaration made here.
+
+   *(Recorded because a §4b(3) drop that is described but not in force is inflation in the opposite
+   direction — it advertises a safety regression that does not exist and a trigger nobody owes.)*
 
    The `doc_graph_roots` bind **refuses loudly** on this deletion — but only once the cited-symbol
    resolver runs **as a required check**, which is gunbc#8800. Until that merges, the refusal exists
