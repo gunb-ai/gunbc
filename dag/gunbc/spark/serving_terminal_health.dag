@@ -22,7 +22,6 @@ import gunbc.spark.serving_desired {
   spark_serving_desired_model_ref,
   spark_serving_local_api_version_url,
   spark_serving_local_endpoint_url,
-  spark_serving_local_endpoint_url,
 }
 import gunbc.spark.serving_install_paths { spark_serving_health_request_body_path }
 
