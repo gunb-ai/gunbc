@@ -130,3 +130,38 @@ of `type_reference_decl_file`. It is a mechanism consistent with every measureme
 makes the falsifiable prediction above; it is not yet a receipt. The board count it is stated
 against is 339 coded / 135 E0308 at `629252b6df` (measured by the parent lane with provenance
 attached, cited rather than re-measured).
+
+---
+
+# Registered predictions for the intervention (written before the run)
+
+The mechanism above is consistent with every observation, which is not the same as being its
+cause: an observation cannot separate "this mechanism produces the signature" from "something else
+does and this mechanism is also true". Changing the input can. One dispatch, two arms, same ref,
+same tree, one variable — the fallback arm's answer.
+
+- **ARM A** — fallback returns the reference's own `ident_span` file (today's behaviour).
+- **ARM B** — fallback answers absent (`String::new()`).
+
+Numbers registered before the run, so a partial result cannot be read as confirmation:
+
+| # | quantity | prediction |
+|---|---|---|
+| P1 | `T2_POSITIONS_BOTH_DIRECTIONS` | arm A > 0, arm B **exactly 0** |
+| P2 | `T3_LIKE_SITES` | arm B − arm A = **exactly 0** |
+| P3 | T2 sites whose `expected` is host `String` | arm B **exactly 0** |
+| P4 | *control* — `sha256(target/release/gunbc)` | arms **must differ** |
+| P5 | *control* — the fallback source line as read on the runner | arms **must differ** |
+
+P4 and P5 are not decoration. The probe rebuilds `gunbc` keyed on `git rev-parse HEAD` via a
+`.tree` stamp, so an *uncommitted* patch leaves HEAD unchanged, skips the rebuild, and measures the
+baseline twice — which would render as "no effect" and read as a refutation. Arm B therefore
+commits (on the runner, never pushed) to move HEAD, and both controls must show a difference before
+any P1–P3 number is reportable. A control that agrees with the thing it controls for is
+indistinguishable from a control that never differed.
+
+T3 is a genuine control rather than a hoped-for null because it was established independently and
+before it was needed: zero within-position reversals, uniform modeled→host at 24 of 25, ten
+modules.
+
+Both arms will be reported with both numbers whether or not they match.
