@@ -35,8 +35,8 @@ from them is in [design.md](design.md). Headline, from this session's own run an
 from another session's report: **seven of the fourteen grammar sites accept a plain kernel value
 where a coproduct is declared** (the `as` cast is an eighth, excluded for gunbc#8925's stated
 reason), **the arm-payload-at-parent specimen is accepted at all twelve reached positions**, and
-two cells no census had recorded — a parameter's default-value expression, which no judgment
-reaches at all, and the map-key position, whose refusals are the grammar's and not a type
+two cells no census had recorded — a parameter's default-value expression, which is resolved
+but never inferred (so an undefined name is accepted there), and the map-key position, whose refusals are the grammar's and not a type
 judgment's.
 
 ## Two instrument failures, recorded because both fail toward ZERO

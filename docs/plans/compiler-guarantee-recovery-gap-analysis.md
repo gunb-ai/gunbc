@@ -2683,8 +2683,8 @@ enforces end to end.
    recorded as corroboration, not as a citation of that row. What it ADDS is two cells neither
    census carried, and one correction of tense.
 
-   INVALID STATE (a), AND IT IS THE SHARPEST CELL IN THE CENSUS. A parameter's DEFAULT-VALUE
-   expression is judged by nothing at all. `fn a_pd(r: Rel = 7)` compiles clean, and so does
+   INVALID STATE (a) — SPLIT OUT AS ITEM 29 BELOW AND LEFT HERE ONLY AS A POINTER. A parameter's
+   DEFAULT-VALUE expression is judged by nothing at all. `fn a_pd(r: Rel = 7)` compiles clean, and so does
    `fn a_pd(r: Rel = nosuchname_zzz)`. The reachability control PASSING is what makes this a
    finding rather than a fourteenth silence: at every other value-bearing position an undefined
    name refuses, so this is not a type judgment missing from a live position — the expression is
@@ -2744,6 +2744,102 @@ enforces end to end.
    NOT CLAIMED. No count of live corpus defects at any of these positions. This row measures what
    the compiler judges, not what the corpus contains, and gunbc#8876's eight live sites are the
    standing evidence that the two numbers are not each other.
+
+29. **A parameter's DEFAULT-VALUE expression is RESOLVED but never INFERRED, so an undefined name
+   at that position is accepted** (opened 2026-08-22, session quiet-boar-696, split out of item 28
+   because severity does not follow position-count: at item 28's seven positions a judgment runs
+   and reaches the wrong verdict, and here the judgment that would refuse never runs).
+
+   INVALID STATE. `fn a_pd(r: Rel = 7)` compiles clean at a declared coproduct — and so does
+   `fn a_pd(r: Rel = nosuchname_zzz)`.
+
+   WHY THE SECOND ARM IS THE FINDING AND THE FIRST IS NOT. At item 28's positions the reachability
+   control REFUSES, which is what establishes the position is analysed and makes a passing kernel
+   arm a missing judgment. Here the reachability control PASSES. An undefined name surviving a
+   position is not an inhabitance gap: DESIGN §4b's floor clause opens with *names resolve*, and
+   this one does not.
+
+   WHAT THE STRUCTURE SAYS, AND IT CORRECTS AN EARLIER, STRONGER VERSION OF THIS ROW. The first
+   draft — and a ruling written on top of it, both withdrawn the same day — said nothing looks at
+   the expression at all, and that is FALSE. `v1.compiler.parse` `parse_param` parses the default
+   on `EatConsumed` of `=` and stores it (`default_value: Present { value: r4.expr }`);
+   `v1.compiler.resolve` `resolve_param` reads it back through `param_node_default_value` and
+   passes it to `resolve_expr_types`, the same treatment a field default gets. So the expression is
+   parsed, kept and resolved. The gap is one pass further on: `resolve_expr_types`' `ExprVar` arm
+   returns the node unchanged with an EMPTY diagnostic list — it resolves TYPE references inside an
+   expression and never binds VARIABLE references — and `v1.compiler.infer` touches
+   `param_node_default_value` at exactly one site, the call-shape test for whether a parameter is
+   required. No inference arm walks the default expression. Undefined-name refusal and declared-type
+   inhabitance BOTH live in infer, which is precisely why both arms pass.
+
+   OWNERSHIP, SETTLED RATHER THAN ROUTED. Because the missing pass is inference, this cell sits in
+   the same territory as item 28's other positions rather than upstream of it, and the
+   declared-type-inhabitance lane keeps it. An interim ruling routed it away on the withdrawn
+   premise above; that routing is void. The distinction the two readings turn on is worth keeping:
+   *unanalysed* and *analysed by a pass that does not judge this* are different defects with
+   different repairs, and only the second is supported by the structure.
+
+   DISTINGUISHING FACTS. Measured on a binary built from `abf7194e2b2`: four specimens at the
+   position (declared member / plain kernel / arm payload at parent / undefined name), all four
+   ACCEPTED, against eleven sibling positions whose undefined-name arm refuses in the same run.
+   Structure read at `v1.compiler.parse` `parse_param`, `v1.compiler.resolve` `resolve_param`,
+   `v1.compiler.resolve` `resolve_expr_types` and `v1.compiler.infer`'s single
+   `param_node_default_value` use. Receipts:
+   `docs/probes/declared_type_inhabitance_position_census_2026-08-22/measured.md`.
+
+   RUNG FOUND AT: **below the floor** — an undefined name is accepted, which is the floor's own
+   first clause. CEILING: **structurally guaranteed** — a default value is an ordinary expression
+   at a position whose declared type is in hand, so routing it through inference is the same
+   judgment every other position already receives.
+
+   NEXT TRIGGER: (1) a discriminating RED — the undefined-name arm at a parameter default,
+   asserting a located refusal, with the accepted-default positive control beside it; (2) route
+   the default expression through inference against the parameter's declared type, which makes it
+   an ordinary consumer of item 28's obligation rather than a check of its own.
+
+30. **`gunbc compile` REFUSES on the whole-corpus memory budget and reports that refusal through an
+   exit status of 0** (opened 2026-08-22, session quiet-boar-696, found while building item 28's
+   instrument and filed separately on a swift-badger-524 ruling: it is not a quirk of one probe,
+   it is a fail-open in a tool other sessions are using now).
+
+   INVALID STATE. A whole-root compile (`--source-root <root>` with no `--entry`) on a host whose
+   readable budget is below the measured whole-tree demand prints
+   `WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget=... is below the measured
+   whole-tree compile demand of ...` to stderr, does not compile anything, and exits 0.
+
+   HARM, and it is the §5 shape exactly: **a refusal typed as success.** Any consumer reading the
+   exit status gets a green from a run that refused to start. Worse, the refusal's own text says a
+   count grepped from a killed run is "a memorial to a killed process" — the message is precisely
+   right about the class and the mechanism carrying it hands the caller a zero of the same kind.
+   A caller that greps the output for diagnostics gets ZERO DIAGNOSTICS, which is the answer a
+   clean compile gives.
+
+   MEASURED CONSEQUENCE, in this session and not hypothetically. Two successive 52-arm census runs
+   returned a complete table of zeroes that read as "no position refuses anything anywhere" — which
+   is a stronger version of the finding the census was written to look for, and would have been
+   published as such. What exposed it was the REACHABILITY control's own zero: an undefined name
+   cannot be accepted at every position, so the instrument, not the compiler, had to be wrong.
+   A zero from a measurement is only readable beside a nonzero from the same instrument.
+
+   DISTINGUISHING FACTS: exit status captured directly (not through a pipeline, which reports the
+   last stage's status — the first attempt at this measurement made exactly that error and its
+   number is not the one recorded here), against a clean-compile positive control and an ordinary
+   type-refusal control in the same run.
+
+   THE LESSER TWIN, recorded beside it because it belongs to the same "scratch fixture" workflow
+   and not because it is equally severe: a `--source-root` outside the process workspace root
+   PANICS (`repo_relative_path_normalized: path ... is not under process workspace root`). A panic
+   is loud and its status is nonzero, so it is a much smaller problem — but it is the second way a
+   scratch-fixture compile produces no diagnostics for a reason that is not the compiler's verdict.
+
+   RUNG FOUND AT: **below the ladder** for the budget arm — silent wrongness at the process
+   boundary, which §4b places outside the ladder rather than on its bottom rung. CEILING:
+   **structurally impossible** — a refusal and a success are different states and the exit status
+   is a two-valued carrier the process already has; the admission refusal has a typed cause in
+   hand and simply needs to be reported through a nonzero status.
+
+   OWNER QUESTION: the whole-corpus admission is `gunbc.whole_corpus_compile_admission`; the exit
+   path is the `gunbc compile` CLI arm in `v1_compiler` `main`. Routed, not claimed.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 

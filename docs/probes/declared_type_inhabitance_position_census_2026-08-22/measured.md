@@ -105,12 +105,18 @@ count is twelve, not eleven.
 
 ## Two cells this census adds
 
-**A parameter's DEFAULT-VALUE expression is analysed by nothing.** `fn a_pd(r: Rel = 7)` compiles
-clean, and so does `fn a_pd(r: Rel = nosuchname_zzz)`. It is the reachability control PASSING that
-makes this a finding rather than a fourteenth silence: at every other value-bearing position an
-undefined name refuses, so this is not a type judgment missing from a live position — the
-expression is not judged at all. Strictly worse than the seven, and the only cell where "no
-judgment runs here" is established by a control rather than inferred from a quiet arm.
+**A parameter's DEFAULT-VALUE expression is RESOLVED but never INFERRED.** `fn a_pd(r: Rel = 7)`
+compiles clean, and so does `fn a_pd(r: Rel = nosuchname_zzz)`. It is the reachability control
+PASSING that makes this a finding: at every other value-bearing position an undefined name refuses.
+
+The structure says exactly where the gap is, and it is NOT "nothing looks at the expression" — an
+earlier draft of this paragraph said that and it is false. `parse_param` parses the default and
+stores it; `resolve_param` reads it back and passes it to `resolve_expr_types`. But that pass's
+`ExprVar` arm returns the node unchanged with an empty diagnostic list — it resolves TYPE
+references inside an expression and never binds VARIABLE references — and `04_infer` touches
+`param_node_default_value` at exactly one site, the call-shape test for whether a parameter is
+required. Undefined-name refusal and declared-type inhabitance both live in inference, which is
+why both arms pass. Full row: gap analysis item 29.
 
 **The map-KEY position refuses by grammar and passes by typing.** `{ 7: 1 }` and
 `{ mk_inner(): 1 }` at a declared `Map<Rel, Int>` are refused as `module index refused: 1

@@ -62,6 +62,16 @@ declaration (a type variable in a payload position is not decidably a member or 
 Refusing there would be a fabricated refusal. Counting there keeps the deficit's frequency
 observable rather than zero by construction, which is the same rule read the other way.
 
+## `Undecidable` may never stand for UNIMPLEMENTED
+
+A position the relation COULD decide but does not yet decide is a different state and must not
+borrow the honest arm's name. `Undecidable` is reserved for pairs whose membership is not decidable
+from the declaration — a type variable in a payload position, the `Optional` cardinality carrier, a
+produced side whose identity was erased upstream. Anything the relation is simply not wired to yet
+is an unwired position, and an unwired position is visible as a missing obligation producer, not as
+a verdict. Collapsing the two would make the count of honest undecidables grow every time coverage
+lags, which is the one number that must stay meaningful.
+
 ## Evidence per position, and the one people skip
 
 Per reachable value-bearing position, five arms:
