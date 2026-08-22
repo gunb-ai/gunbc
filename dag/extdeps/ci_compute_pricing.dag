@@ -4,12 +4,15 @@ import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat, nat_min }
 import std.currency { CurrencyCode, Eur, Usd }
 import std.measure {
-  MoneyPerHour, MoneyPerMinute, money_amount_micro,
+  MoneyPerHour, MoneyPerMinute, MoneyRate, money_amount_micro,
   money_per_hour_micros, money_per_minute_micros,
+  per_hour_equivalent_from_per_minute,
+  ByteSize, byte_size, BasisPoint, basis_point,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Architecture, X86_64, Aarch64, architecture_diagnostic_name }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -55,22 +58,24 @@ type CpuEntitlement
 
 // Architecture is load-bearing for spill: an x86-only job cannot run on an Arm route and the
 // reverse is equally false. A route that cannot say which it is cannot be selected for either.
-type CpuArchitecture
-  = Amd64
-  | Arm64
-  | ArchitectureUnstated
+// ARCHITECTURE IS NOT THIS MODULE'S TO NAME. dag/extdeps/toolchain/types.dag Architecture is the
+// single authority and the corpus already collapsed the forks into it; minting a CpuArchitecture
+// here would be the §3 nickname failure DESIGN.md uses as its own worked example, re-spelled. What
+// IS this module's to model is that a vendor may not state the architecture at all - so "unstated"
+// is an outer STANDING over the authority, never a variant inside it. A variant would put an
+// absence of evidence into the same closed set as the real architectures, and every consumer
+// matching on Architecture would then have to handle a member that is not one.
+type ArchitectureStanding
+  = ArchitectureKnown { arch: Architecture }
+  | ArchitectureUnstated { obligation: NonEmptyStr }
 
-fn architecture_label(a: CpuArchitecture) -> NonEmptyStr {
+fn architecture_label(a: ArchitectureStanding) -> NonEmptyStr {
   match a {
-    Amd64 => "x86-64",
-    Arm64 => "Arm64",
-    ArchitectureUnstated => "unstated",
+    ArchitectureKnown { arch } => architecture_diagnostic_name(arch: arch),
+    ArchitectureUnstated { obligation } => "unstated",
   }
 }
 
-// Shared-burstable capacity provides baseline performance with temporary bursting. CI compilation is
-// exactly the workload that exposes the difference, so a guaranteed-performance tier cannot be
-// served from a shared family without a benchmark receipt.
 type ResourceDedication
   = DedicatedResource { note: NonEmptyStr }
   | SharedResource { note: NonEmptyStr }
@@ -82,7 +87,7 @@ type InterruptionStanding
   | InterruptionUnread { obligation: NonEmptyStr }
 
 type AvailabilityStanding
-  = AvailabilitySlaPublished { permille: Nat, note: NonEmptyStr }
+  = AvailabilitySlaPublished { availability: BasisPoint, note: NonEmptyStr }
   | AvailabilityUnread { obligation: NonEmptyStr }
 
 // WHETHER A NEW CUSTOMER CAN BUY IT AT ALL, which is not the price and not the SLA.
@@ -121,7 +126,7 @@ data purchase_default: PurchaseAvailability = NoPurchaseRestrictionObserved {
 }
 
 type DataAllowance
-  = IncludedTraffic { terabytes: Nat, scope: NonEmptyStr }
+  = IncludedTraffic { allowance: ByteSize, scope: NonEmptyStr }
   | AllowanceUnread { obligation: NonEmptyStr }
 
 type RegionIdentity
@@ -192,7 +197,7 @@ type VendorRate
 fn vendor_rate_micros_per_hour(r: VendorRate) -> Nat {
   match r {
     RatePerHour { rate } => money_per_hour_micros(q: rate),
-    RatePerMinute { rate } => money_per_minute_micros(q: rate) * 60,
+    RatePerMinute { rate } => money_per_hour_micros(q: per_hour_equivalent_from_per_minute(q: rate)),
   }
 }
 
@@ -234,7 +239,7 @@ type ComputeOfferObservation {
   identity: ComputeOfferIdentity
   product: NonEmptyStr
   market_class: MarketClass
-  architecture: CpuArchitecture
+  architecture: ArchitectureStanding
   entitlement: CpuEntitlement
   dedication: ResourceDedication
   interruption: InterruptionStanding
@@ -277,7 +282,7 @@ data gcp_n2_on_demand: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-on-demand" },
   product: "N2 on-demand (n2-standard-128 derived)",
   market_class: RawInfrastructure,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: SmtHardwareThread,
   dedication: DedicatedResource { note: "N2 runs on Intel processors and each vCPU is one hardware thread." },
   interruption: NonPreemptible { note: "Standard on-demand allocation." },
@@ -298,7 +303,7 @@ data gcp_n2_spot: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-spot" },
   product: "N2 Spot (n2-standard-128 derived)",
   market_class: RawInfrastructure,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: SmtHardwareThread,
   dedication: DedicatedResource { note: "Same hardware entitlement as on-demand while the instance lives." },
   interruption: Preemptible { note: "Reclaimable at short notice. CI work is interruptible and re-runnable, which is close to the ideal spot workload." },
@@ -319,7 +324,7 @@ data gcp_cloud_run: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "cloud-run-container" },
   product: "Cloud Run container",
   market_class: RawInfrastructure,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Cloud Run does not expose whether a vCPU is a dedicated thread." },
   interruption: NonPreemptible { note: "Request-scoped allocation." },
@@ -348,14 +353,14 @@ data hetzner_cax41: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Hetzner", sku: "cax41" },
   product: "CAX41 shared Arm",
   market_class: RawInfrastructure,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: SharedBurstableVcpu,
   dedication: SharedResource { note: "Shared vCPU family: baseline performance with temporary bursting. Hetzner recommends dedicated instances for continuous CPU-intensive workloads." },
   interruption: NonPreemptible { note: "Ordinary cloud instance, not preemptible." },
-  availability: AvailabilitySlaPublished { permille: 999, note: "Published instance-availability SLA." },
+  availability: AvailabilitySlaPublished { availability: basis_point(count: 9990), note: "Published instance-availability SLA, 99.9 percent." },
   purchase: purchase_default,
   region: RegionNamed { name: "EU (Falkenstein / Nuremberg / Helsinki)" },
-  included_traffic: IncludedTraffic { terabytes: 20, scope: "EU traffic included on CAX; overage rate beyond the allowance not read." },
+  included_traffic: IncludedTraffic { allowance: byte_size(count: 20000000000000), scope: "20 TB EU traffic included on CAX, read as decimal TB (10^12) per the vendor's convention; a binary reading would differ by about ten percent and was not confirmed. Overage rate beyond the allowance not read." },
   tax: TaxExcluded { note: "Excluding VAT." },
   shape_provenance: ShapePublished { note: "Published CAX41 shape: 16 Arm vCPU, 32 GB." },
   performance: performance_unmeasured_default,
@@ -372,7 +377,7 @@ data oci_ampere_a1: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Oracle Cloud", sku: "ampere-a1-flex" },
   product: "Ampere A1 flexible (1 OCPU + 4 GB)",
   market_class: RawInfrastructure,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: PhysicalCore,
   dedication: DedicatedResource { note: "One OCPU is one physical Ampere Altra core with no SMT." },
   interruption: NonPreemptible { note: "On-demand flexible shape." },
@@ -397,7 +402,7 @@ data scaleway_amp2: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Scaleway", sku: "amp2-labs" },
   product: "AMP2 Arm (public Labs trial)",
   market_class: RawInfrastructure,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Trial programme; entitlement not read." },
   interruption: InterruptionUnread { obligation: "Trial programme; reclaim policy not read." },
@@ -442,7 +447,7 @@ data ubicloud_standard_x64: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "standard-runner-x64" },
   product: "standard CI runner, x64",
   market_class: HostedCiProduct,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: SmtHardwareThread,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -469,7 +474,7 @@ data ubicloud_standard_arm64: ComputeOfferObservation = ComputeOfferObservation 
   identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "standard-runner-arm64" },
   product: "standard CI runner, arm64",
   market_class: HostedCiProduct,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: SmtHardwareThread,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -493,7 +498,7 @@ data blacksmith_x64: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "x64-runner" },
   product: "x64 runner",
   market_class: HostedCiProduct,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -514,7 +519,7 @@ data blacksmith_arm: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "arm-runner" },
   product: "ARM runner",
   market_class: HostedCiProduct,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -535,7 +540,7 @@ data depot_runner: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Depot", sku: "standard-runner" },
   product: "x64 or ARM runner",
   market_class: HostedCiProduct,
-  architecture: ArchitectureUnstated,
+  architecture: ArchitectureUnstated { obligation: "Vendor did not state the architecture with the relayed rate. A spill route must resolve it before carrying work, because a binary built for one architecture does not run on the other." },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -556,7 +561,7 @@ data buildkite_hosted: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "Buildkite", sku: "hosted-linux-agent" },
   product: "hosted Linux agent",
   market_class: HostedCiProduct,
-  architecture: ArchitectureUnstated,
+  architecture: ArchitectureUnstated { obligation: "Vendor did not state the architecture with the relayed rate. A spill route must resolve it before carrying work, because a binary built for one architecture does not run on the other." },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Agent entitlement not read." },
   interruption: NonPreemptible { note: "Hosted agent." },
@@ -577,7 +582,7 @@ data circleci_medium: ComputeOfferObservation = ComputeOfferObservation {
   identity: ComputeOfferIdentity { provider: "CircleCI", sku: "docker-medium" },
   product: "x64 2-CPU/4-GB class (credit model)",
   market_class: HostedCiProduct,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: ProviderVcpuUnspecified,
   dedication: DedicationUnread { obligation: "Class entitlement not read." },
   interruption: NonPreemptible { note: "Hosted executor." },
@@ -602,7 +607,7 @@ data github_hosted_linux_2core_x64: ComputeOfferObservation = ComputeOfferObserv
   identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux" },
   product: "GitHub-hosted Linux 2-core runner, x64",
   market_class: HostedCiProduct,
-  architecture: Amd64,
+  architecture: ArchitectureKnown { arch: X86_64 },
   entitlement: SmtHardwareThread,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -623,7 +628,7 @@ data github_hosted_linux_2core_arm64: ComputeOfferObservation = ComputeOfferObse
   identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux_arm" },
   product: "GitHub-hosted Linux 2-core runner, arm64",
   market_class: HostedCiProduct,
-  architecture: Arm64,
+  architecture: ArchitectureKnown { arch: Aarch64 },
   entitlement: SmtHardwareThread,
   dedication: DedicationUnread { obligation: "Runner entitlement not read." },
   interruption: NonPreemptible { note: "Hosted runner." },
@@ -684,17 +689,23 @@ fn offer_unit_count_permille(o: ComputeOfferObservation) -> Nat {
 // A price whose currency is not the table's currency is NOT comparable, and a foreign figure shown
 // in a comparison column is worse than no figure at all. The division happens once, at the end, so
 // the hourly-to-per-minute step does not truncate before the per-unit step.
+// The pricing unit of this module: one isolated CPU entitlement plus 4 GiB, for one minute. It is a
+// phantom period marker in std.measure's open MoneyRate<P> family, so no new money carrier is
+// minted - the same §2-horizontal move PerMinute and PerKilowattHour already use.
+type PerComputeUnitMinute
+
+type MoneyPerComputeUnitMinute = MoneyRate<PerComputeUnitMinute>
+
 type UnitPriceStanding
-  = UnitPriceUsd { micro: Int }
-  | UnitPriceForeign { micro: Int, currency: CurrencyCode, obligation: NonEmptyStr }
+  = UnitPriceUsd { rate: MoneyPerComputeUnitMinute }
+  | UnitPriceForeign { rate: MoneyPerComputeUnitMinute, obligation: NonEmptyStr }
 
 fn offer_unit_price(o: ComputeOfferObservation) -> UnitPriceStanding {
   let micro = vendor_rate_micros_per_hour(r: o.rate) * 1000 / (60 * offer_unit_count_permille(o: o))
   match vendor_rate_currency(r: o.rate) {
-    Usd => UnitPriceUsd { micro: micro },
+    Usd => UnitPriceUsd { rate: MoneyPerComputeUnitMinute { amount: money_amount_micro(count: micro), currency: Usd } },
     Eur => UnitPriceForeign {
-      micro: micro,
-      currency: Eur,
+      rate: MoneyPerComputeUnitMinute { amount: money_amount_micro(count: micro), currency: Eur },
       obligation: "No exchange-rate reading is held. Converting at a rate nobody recorded would make a euro figure look like a dollar one; the row stays in its own currency until an FX observation with a timestamp exists.",
     },
   }
@@ -702,8 +713,8 @@ fn offer_unit_price(o: ComputeOfferObservation) -> UnitPriceStanding {
 
 fn unit_price_is_usd(p: UnitPriceStanding) -> Bool {
   match p {
-    UnitPriceUsd { micro } => true,
-    UnitPriceForeign { micro, currency, obligation } => false,
+    UnitPriceUsd { rate } => true,
+    UnitPriceForeign { rate, obligation } => false,
   }
 }
 
@@ -744,15 +755,15 @@ fn offer_identities_are_unique() -> Bool {
 // The only spendable form of a route's price. Missing and ambiguous both refuse; neither becomes a
 // number, and in particular neither becomes zero.
 type RouteCostStanding
-  = RouteCostKnown { per_unit_minute_micro: Int, offer: ComputeOfferObservation }
+  = RouteCostKnown { rate: MoneyPerComputeUnitMinute, offer: ComputeOfferObservation }
   | RouteCostRefused { identity: ComputeOfferIdentity, reason: NonEmptyStr }
 
 fn route_cost(id: ComputeOfferIdentity) -> RouteCostStanding {
   match resolve_offer(id: id) {
     ComputeOfferResolved { offer } =>
       match offer_unit_price(o: offer) {
-        UnitPriceUsd { micro } => RouteCostKnown { per_unit_minute_micro: micro, offer: offer },
-        UnitPriceForeign { micro, currency, obligation } =>
+        UnitPriceUsd { rate } => RouteCostKnown { rate: rate, offer: offer },
+        UnitPriceForeign { rate, obligation } =>
           RouteCostRefused { identity: id, reason: obligation },
       },
     ComputeOfferMissing { identity } =>
