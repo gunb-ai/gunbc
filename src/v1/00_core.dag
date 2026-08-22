@@ -181,6 +181,19 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: std.types.SourceSpan
     }
+  | UseLineCandidateRefused { name: String, cause: UseLineCandidateRefusalCause, span: std.types.SourceSpan }
+
+// They are separate arms rather than one counter because they are different
+// deficits with different repairs: a name the registry cannot resolve at all, a
+// name whose registry row points back at the consuming module, and a name whose
+// provider is known but whose export surface does not prove it. A single total
+// over the three would reproduce, one level up, exactly the state-space
+// conflation the split exists to remove -- and there is deliberately no residual
+// arm, because an "other" bucket is where the next uncounted class hides.
+type UseLineCandidateRefusalCause
+  = UseLineRegistryResolveFailed
+  | UseLineRegistryResolvesToSelf
+  | UseLineProviderExportProofUnproven
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic

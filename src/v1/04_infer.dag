@@ -8384,7 +8384,7 @@ fn transparent_alias_target_name(item: v1.std.core.Node, source_indices: Map<Str
       Present { value: Resolved { node: target } } =>
         let self_name = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
         let target_name = v1.std.core.authored_name_at(source_indices: source_indices, node: target)
-        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == Required
+        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == v1.std.core.Required
         if !target_shape_admits {
           ""
         } else if target_name == "" || target_name == self_name {
@@ -8549,7 +8549,7 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<v1.std.core.Node>, sou
       corpus_item_counts: corpus_item_counts
     )
   )
-  SymbolIndex {
+  v1.compiler.infer_env.SymbolIndex {
     entries: folded.entries,
     global_bare: folded.global_bare,
     services: folded.services,
