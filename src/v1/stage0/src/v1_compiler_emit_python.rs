@@ -1148,10 +1148,12 @@ pub fn emit_py_transport_body(
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
+    op_node: Rc<Node>,
 ) -> String {
     emit_unified_transport_dispatch(
         transport.clone(),
         op_name.clone(),
+        op_node.clone(),
         source_indices.clone(),
         depth.clone(),
         RenderTarget::Python,
@@ -1172,12 +1174,13 @@ pub fn emit_py_service_def(
         registry.clone(),
         env.clone(),
         |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
-        |transport, op_name, si, depth| {
+        |transport, op_name, si, depth, op_node| {
             emit_py_transport_body(
                 transport.clone(),
                 op_name.clone(),
                 si.clone(),
                 depth.clone(),
+                op_node.clone(),
             )
         },
     )

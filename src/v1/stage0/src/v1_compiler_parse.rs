@@ -77,7 +77,8 @@ pub use crate::v1_std_core::{
     service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
     transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
     transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
-    transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
+    transport_url_key, transport_verb_key, variant_node_fields, variant_node_name_at,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -8109,7 +8110,7 @@ pub fn parse_file_fields(
                     continue;
                 }
             } else {
-                if (fname.clone() == "verb".to_string()) {
+                if (fname.clone() == transport_verb_key()) {
                     {
                         let __tco_0 = r3.ctx.clone();
                         let __tco_1 = Some(r3.expr.clone());

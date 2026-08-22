@@ -1416,10 +1416,12 @@ pub fn emit_go_transport_body(
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
+    op_node: Rc<Node>,
 ) -> String {
     emit_unified_transport_dispatch(
         transport.clone(),
         op_name.clone(),
+        op_node.clone(),
         source_indices.clone(),
         depth.clone(),
         RenderTarget::Go,
@@ -1442,12 +1444,13 @@ pub fn emit_go_service_def(
         |name, transport, ops, si| {
             emit_go_service_struct(name.clone(), transport.clone(), ops.clone(), si.clone())
         },
-        |transport, op_name, si, depth| {
+        |transport, op_name, si, depth, op_node| {
             emit_go_transport_body(
                 transport.clone(),
                 op_name.clone(),
                 si.clone(),
                 depth.clone(),
+                op_node.clone(),
             )
         },
     )

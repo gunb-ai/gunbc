@@ -45,13 +45,13 @@ pub use crate::v1_compiler_coercion::{
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 pub use crate::v1_compiler_emit::{
-    compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
-    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    emit_unmodeled_file_transport_refusal, escape_rust_interp_text, extract_modifier_names,
+    child_from_key, compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
+    emit_container, emit_data_value_json, emit_error_expr, emit_file_transport_body, emit_ident,
+    emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding, emit_let_binding_annotated,
+    emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type, emit_null_coalesce,
+    emit_return, emit_shared_expr, emit_shared_tco_expr, emit_simple_expr, emit_string_literal,
+    emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
+    escape_rust_interp_text, extract_modifier_names, file_transport_realization,
     has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
     is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
     order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
@@ -160,35 +160,38 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
+use crate::v1_std_core::TransportKind::{
+    FileTransport, LocalTransport, RestTransport, ShellTransport,
+};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
+    binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
     find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    NewlineIndex, Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -28281,7 +28284,6 @@ pub fn emit_service_config_fields(
             ServiceFieldSet {
                 has_rest: fs.has_rest.clone(),
                 has_shell: fs.has_shell.clone(),
-                has_file: fs.has_file.clone(),
                 has_auth: true,
             }
         } else {
@@ -28373,7 +28375,6 @@ pub fn emit_service_new_method(
             ServiceFieldSet {
                 has_rest: fs.has_rest.clone(),
                 has_shell: fs.has_shell.clone(),
-                has_file: fs.has_file.clone(),
                 has_auth: true,
             }
         } else {
@@ -28797,37 +28798,13 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        emit_rest_call(
-            op_name.clone(),
-            transport.clone(),
-            registry.clone(),
-            depth.clone(),
-            service_item.clone(),
-            op_node.clone(),
-            source_indices.clone(),
-            shared_types.clone(),
-            env.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(
-                op_name.clone(),
-                transport.clone(),
-                registry.clone(),
-                depth.clone(),
-                inferred.clone(),
-                op_node.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), RenderTarget::Rust)
-            } else {
-                emit_local_call(op_name.clone())
-            }
-        }
-    }
+    match classify_transport(transport.clone(), source_indices.clone()) {
+    Some(TransportKind::RestTransport) => emit_rest_call(op_name.clone(), transport.clone(), registry.clone(), depth.clone(), service_item.clone(), op_node.clone(), source_indices.clone(), shared_types.clone(), env.clone()),
+    Some(TransportKind::ShellTransport) => emit_shell_call(op_name.clone(), transport.clone(), registry.clone(), depth.clone(), inferred.clone(), op_node.clone(), source_indices.clone()),
+    Some(TransportKind::FileTransport) => emit_file_transport_body(transport.clone(), op_name.clone(), op_node.clone(), RenderTarget::Rust, source_indices.clone()),
+    Some(TransportKind::LocalTransport) => emit_local_call(op_name.clone()),
+    None => emit_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("transport for operation '".to_string(), op_name.clone()), "' matches no member of the closed transport roster (rest, shell, file, local): it declares ".to_string()), "properties or argv but no base_url, no body and no path".to_string()), RenderTarget::Rust),
+}
 }
 
 pub fn emit_rest_call(
@@ -29376,39 +29353,6 @@ pub fn has_response_prefix(name: String) -> bool {
         false
     } else {
         (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
-pub fn child_from_key(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for p in ch.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "from_key".to_string())
-            {
-                __result.push(p);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
-            _ => None,
-        },
-        None => None,
     }
 }
 
@@ -30548,6 +30492,22 @@ pub fn emit_shell_argv_element(
     }
 }
 
+pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+    {
+        let is_product = is_product_type(n.clone());
+        if ((is_product.clone() && (n.ident_span.clone() == None))
+            && ((n.children.clone().len() as i64) == 1))
+        {
+            match n.children.clone().first().cloned() {
+                Some(field_node) => resolved_type(field_node.clone()),
+                None => n.clone(),
+            }
+        } else {
+            n.clone()
+        }
+    }
+}
+
 pub fn emit_shell_return(
     inferred: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -30655,22 +30615,6 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
             )
         } else {
             base.clone()
-        }
-    }
-}
-
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_product = is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => resolved_type(field_node.clone()),
-                None => n.clone(),
-            }
-        } else {
-            n.clone()
         }
     }
 }

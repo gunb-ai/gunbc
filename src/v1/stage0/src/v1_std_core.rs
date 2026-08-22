@@ -10,6 +10,7 @@ use self::ExprData::*;
 use self::ExprErrorKind::*;
 use self::FieldAccessStyle::*;
 use self::FieldValueShape::*;
+use self::FileVerb::*;
 use self::FunctionSizeEffect::*;
 use self::InferredNode::*;
 use self::MatchPattern::*;
@@ -18,6 +19,7 @@ use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::StringPart::*;
 use self::TokenShape::*;
+use self::TransportKind::*;
 use self::UnaryOpKind::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
@@ -351,6 +353,29 @@ pub enum OperationModifier {
     Idempotent,
     Readonly,
     Hermetic,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TransportKind {
+    RestTransport,
+    ShellTransport,
+    FileTransport,
+    LocalTransport,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum FileVerb {
+    FileRead,
+    FileWrite,
+    FileWriteOwnerOnly,
+    FileDelete,
+    FileList,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2246,6 +2271,15 @@ pub fn transport_path_key() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn transport_verb_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "verb".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn transport_auth_token_key() -> String {
     thread_local! {
         static CACHED: String = {
@@ -2552,7 +2586,12 @@ pub fn file_transport_node(
         let props = match verb.clone() {
             Some(verb_expr) => Rc::new(vec![
                 path_field.clone(),
-                make_field_init_node("verb".to_string(), verb_expr.clone(), no_span(), no_span()),
+                make_field_init_node(
+                    transport_verb_key(),
+                    verb_expr.clone(),
+                    no_span(),
+                    no_span(),
+                ),
             ]),
             None => Rc::new(vec![path_field.clone()]),
         };
@@ -2723,12 +2762,98 @@ pub fn is_file_transport(
     (transport_base_path(t.clone(), source_indices.clone()) != None)
 }
 
+pub fn is_bare_transport(t: Rc<Node>) -> bool {
+    ((((t.properties.clone().len() as i64) == 0) && ((t.children.clone().len() as i64) == 0))
+        && (t.body.clone() == None))
+}
+
+pub fn classify_transport(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<TransportKind> {
+    if is_rest_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::RestTransport)
+    } else {
+        if is_shell_transport(t.clone()) {
+            Some(TransportKind::ShellTransport)
+        } else {
+            if is_file_transport(t.clone(), source_indices.clone()) {
+                Some(TransportKind::FileTransport)
+            } else {
+                if is_bare_transport(t.clone()) {
+                    Some(TransportKind::LocalTransport)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub fn is_local_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((!is_rest_transport(t.clone(), source_indices.clone()) && !is_shell_transport(t.clone()))
-        && !is_file_transport(t.clone(), source_indices.clone()))
+    match classify_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::LocalTransport) => true,
+        _ => false,
+    }
+}
+
+pub fn file_transport_verb(
+    t: Rc<Node>,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<FileVerb> {
+    match find_property_string(
+        t.properties.clone(),
+        transport_verb_key(),
+        source_indices.clone(),
+    ) {
+        Some(v) => {
+            if (v.clone() == "delete".to_string()) {
+                Some(FileVerb::FileDelete)
+            } else {
+                if (v.clone() == "list".to_string()) {
+                    Some(FileVerb::FileList)
+                } else {
+                    if (v.clone() == "write_owner_only".to_string()) {
+                        Some(FileVerb::FileWriteOwnerOnly)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+        None => {
+            if {
+                let mut __found = false;
+                for p in op_node.params.clone().iter().cloned() {
+                    if (param_node_name_at(p.clone(), source_indices.clone())
+                        == "content".to_string())
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Some(FileVerb::FileWrite)
+            } else {
+                Some(FileVerb::FileRead)
+            }
+        }
+    }
+}
+
+pub fn file_verb_name(v: FileVerb) -> String {
+    match v.clone() {
+        FileVerb::FileRead => "read".to_string(),
+        FileVerb::FileWrite => "write".to_string(),
+        FileVerb::FileWriteOwnerOnly => "write_owner_only".to_string(),
+        FileVerb::FileDelete => "delete".to_string(),
+        FileVerb::FileList => "list".to_string(),
+    }
 }
 
 pub fn field_init_operation_modifier(
@@ -4388,6 +4513,24 @@ pub struct Idempotent;
 pub struct Readonly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hermetic;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RestTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LocalTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileRead;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileWrite;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileWriteOwnerOnly;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileDelete;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileList;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChildrenListField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

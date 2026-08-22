@@ -138,11 +138,9 @@ type ServiceFieldTemplates {
   rest_decl: String
   auth_decl: String
   shell_decl: String
-  file_decl: String
   rest_ctor: String
   auth_ctor: String
   shell_ctor: String
-  file_ctor: String
 }
 
 type BlockSyntax {
@@ -423,11 +421,9 @@ fn rust_spec() -> LanguageSpec {
       rest_decl: "    pub base_url: String,\n",
       auth_decl: "    pub auth_token: String,\n",
       shell_decl: "    pub working_dir: Option<String>,\n",
-      file_decl: "    pub base_path: String,\n",
       rest_ctor: "        base_url: \"{0}\".to_string(),\n",
       auth_ctor: "        auth_token: String::new(),\n",
-      shell_ctor: "        working_dir: None,\n",
-      file_ctor: "        base_path: \".\".to_string(),\n"
+      shell_ctor: "        working_dir: None,\n"
     },
     block_syntax: BlockSyntax {
       block_open: " \{\n", block_close: "\}",
@@ -573,11 +569,9 @@ fn python_spec() -> LanguageSpec {
       rest_decl: "base_url: str",
       auth_decl: "auth_token: str",
       shell_decl: "working_dir: str | None = None",
-      file_decl: "base_path: str",
       rest_ctor: "self.base_url = base_url",
       auth_ctor: "self.auth_token = auth_token",
-      shell_ctor: "self.working_dir = working_dir",
-      file_ctor: "self.base_path = base_path"
+      shell_ctor: "self.working_dir = working_dir"
     },
     block_syntax: BlockSyntax {
       block_open: ":\n", block_close: "",
@@ -723,11 +717,9 @@ fn go_spec() -> LanguageSpec {
       rest_decl: "\tBaseURL string",
       auth_decl: "\tAuthToken string",
       shell_decl: "\tWorkingDir string",
-      file_decl: "\tBasePath string",
       rest_ctor: "",
       auth_ctor: "",
-      shell_ctor: "",
-      file_ctor: ""
+      shell_ctor: ""
     },
     block_syntax: BlockSyntax {
       block_open: " \{\n", block_close: "\}",
@@ -873,11 +865,9 @@ fn dag_spec() -> LanguageSpec {
       rest_decl: "    pub base_url: String,\n",
       auth_decl: "    pub auth_token: String,\n",
       shell_decl: "    pub working_dir: Option<String>,\n",
-      file_decl: "    pub base_path: String,\n",
       rest_ctor: "        base_url: \"{0}\".to_string(),\n",
       auth_ctor: "        auth_token: String::new(),\n",
-      shell_ctor: "        working_dir: None,\n",
-      file_ctor: "        base_path: \".\".to_string(),\n"
+      shell_ctor: "        working_dir: None,\n"
     },
     block_syntax: BlockSyntax {
       block_open: " \{\n", block_close: "\}",

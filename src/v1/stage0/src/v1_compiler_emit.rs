@@ -3,6 +3,7 @@
 
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
+use self::FileEmissionOutcome::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
 use self::TcoExprShape::*;
@@ -50,7 +51,7 @@ pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
-    is_declared_container_alias_spelling, is_unit_like, node_is_collection,
+    is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
     resolved_type,
 };
@@ -88,34 +89,39 @@ use crate::v1_std_core::ExprData::{
     ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
+use crate::v1_std_core::FileVerb::{FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
+use crate::v1_std_core::TransportKind::{
+    FileTransport, LocalTransport, RestTransport, ShellTransport,
+};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
+    binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
     expr_field_access_summary, expr_has_non_tail_self_call, expr_has_self_call,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_init_operation_modifier, find_child_named, foreach_body,
-    foreach_collection, foreach_variable_at, if_condition, if_else_branch, if_then_branch,
-    index_base, index_expr, is_compiler_error, is_file_transport, is_local_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
+    field_init_node_value, field_init_operation_modifier, file_transport_verb, file_verb_name,
+    find_child_named, foreach_body, foreach_collection, foreach_variable_at, if_condition,
+    if_else_branch, if_then_branch, index_base, index_expr, is_compiler_error, is_file_transport,
+    is_local_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
+    param_node_type_expr, record_lit_type_name_at, return_value, slice_base, slice_end,
+    slice_start, transport_base_path, transport_has_auth, transport_verb_key, tuple_type_name,
     unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    FieldAccessStyle, FieldSummary, FileVerb, InferredNode, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2024,34 +2030,6 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
     }
 }
 
-pub fn service_has_file(
-    fallback_transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let from_fallback = is_file_transport(fallback_transport.clone(), source_indices.clone());
-        let from_ops = {
-            let mut __found = false;
-            for op in op_children.clone().iter().cloned() {
-                if if (op.transport.clone() != None) {
-                    is_file_transport(
-                        op.transport.clone().clone().unwrap(),
-                        source_indices.clone(),
-                    )
-                } else {
-                    false
-                } {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        (from_fallback.clone() || from_ops.clone())
-    }
-}
-
 pub fn service_has_rest_auth(
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
@@ -2114,7 +2092,6 @@ pub fn extract_modifier_names(
 pub struct ServiceFieldSet {
     pub has_rest: bool,
     pub has_shell: bool,
-    pub has_file: bool,
     pub has_auth: bool,
 }
 
@@ -2130,11 +2107,6 @@ pub fn compute_service_fields(
             source_indices.clone(),
         ),
         has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
-        has_file: service_has_file(
-            fallback_transport.clone(),
-            op_children.clone(),
-            source_indices.clone(),
-        ),
         has_auth: service_has_rest_auth(
             fallback_transport.clone(),
             op_children.clone(),
@@ -2161,11 +2133,6 @@ pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
         } else {
             result.clone()
         };
-        let result = if fs.has_file.clone() {
-            v1_rt::concat(result.clone(), Rc::new(vec![t.file_decl.clone()]))
-        } else {
-            result.clone()
-        };
         result.clone()
     }
 }
@@ -2188,11 +2155,6 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
         } else {
             result.clone()
         };
-        let result = if fs.has_file.clone() {
-            v1_rt::concat(result.clone(), Rc::new(vec![t.file_ctor.clone()]))
-        } else {
-            result.clone()
-        };
         result.clone()
     }
 }
@@ -2200,6 +2162,7 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 pub fn emit_unified_transport_dispatch(
     transport: Rc<Node>,
     op_name: String,
+    op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
     target: RenderTarget,
@@ -2208,33 +2171,13 @@ pub fn emit_unified_transport_dispatch(
         + Clone,
     render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        render_rest(
-            op_name.clone(),
-            transport.clone(),
-            depth.clone(),
-            source_indices.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            render_shell(
-                op_name.clone(),
-                transport.clone(),
-                depth.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), target.clone())
-            } else {
-                if is_local_transport(transport.clone(), source_indices.clone()) {
-                    render_local(op_name.clone(), depth.clone())
-                } else {
-                    emit_error_expr("unrecognized transport kind".to_string(), target.clone())
-                }
-            }
-        }
-    }
+    match classify_transport(transport.clone(), source_indices.clone()) {
+    Some(TransportKind::RestTransport) => render_rest(op_name.clone(), transport.clone(), depth.clone(), source_indices.clone()),
+    Some(TransportKind::ShellTransport) => render_shell(op_name.clone(), transport.clone(), depth.clone(), source_indices.clone()),
+    Some(TransportKind::FileTransport) => emit_file_transport_body(transport.clone(), op_name.clone(), op_node.clone(), target.clone(), source_indices.clone()),
+    Some(TransportKind::LocalTransport) => render_local(op_name.clone(), depth.clone()),
+    None => emit_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("transport for operation '".to_string(), op_name.clone()), "' matches no member of the closed transport roster (rest, shell, file, local): it declares ".to_string()), "properties or argv but no base_url, no body and no path".to_string()), target.clone()),
+}
 }
 
 pub fn emit_unified_operation_method(
@@ -2244,7 +2187,7 @@ pub fn emit_unified_operation_method(
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64, Rc<Node>) -> String
         + Clone,
 ) -> String {
     {
@@ -2282,6 +2225,7 @@ pub fn emit_unified_operation_method(
             op_text.clone(),
             si.clone(),
             (method_depth.clone() + 1),
+            op_node.clone(),
         );
         let sig = v1_rt::concat(
             v1_rt::concat(
@@ -2344,7 +2288,7 @@ pub fn emit_unified_service_def(
     env: Rc<TypeEnv>,
     render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64, Rc<Node>) -> String
         + Clone,
 ) -> String {
     {
@@ -4203,7 +4147,7 @@ pub fn render_target_name(target: RenderTarget) -> String {
 pub fn unmodeled_file_transport_missing_fact() -> String {
     thread_local! {
         static CACHED: String = {
-            "the file transport dispatch supplies only the operation name and an indent depth; emitting this operation requires the declared verb, the resolved path template, the operation input bindings, the payload/content input, the declared output type, and the failure/effect semantics".to_string()
+            "no file-transport realization row is bound for this target; the shared handler needs one row supplying the path binding, one statement block per verb in the closed roster (read, write, write_owner_only, delete, list) binding the five result channels, and the channel expressions the declared output is mapped from".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4213,18 +4157,13 @@ pub fn is_file_transport_after_dispatch_precedence(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if is_rest_transport(t.clone(), source_indices.clone()) {
-        false
-    } else {
-        if is_shell_transport(t.clone()) {
-            false
-        } else {
-            is_file_transport(t.clone(), source_indices.clone())
-        }
+    match classify_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::FileTransport) => true,
+        _ => false,
     }
 }
 
-pub fn unmodeled_file_transport_operation_diagnostics(
+pub fn file_transport_operation_diagnostics(
     tm: Rc<TypedModule>,
     item: Rc<Node>,
     target: RenderTarget,
@@ -4242,19 +4181,32 @@ pub fn unmodeled_file_transport_operation_diagnostics(
                     (*{
                         let t = effective_operation_transport(op_node.clone(), fallback.clone());
                         if is_file_transport_after_dispatch_precedence(t.clone(), si.clone()) {
-                            Rc::new(vec![make_error_node(
-                                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
-                                    transport_kind: "file".to_string(),
-                                    service: service_name.clone(),
-                                    operation: authored_name(env.clone(), op_node.clone()),
-                                    declaring_module: module_name.clone(),
-                                    target: render_target_name(target.clone()),
-                                    missing_realization_fact: unmodeled_file_transport_missing_fact(
-                                    ),
-                                    span: op_node.span.clone(),
-                                }),
-                                module_name.clone(),
-                            )])
+                            match (*emit_file_transport_outcome(
+                                t.clone(),
+                                op_node.clone(),
+                                target.clone(),
+                                si.clone(),
+                            ))
+                            .clone()
+                            {
+                                FileEmissionOutcome::FileEmissionCode { code: _, .. } => {
+                                    Rc::new(vec![])
+                                }
+                                FileEmissionOutcome::FileEmissionRefused {
+                                    reason: reason, ..
+                                } => Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "file".to_string(),
+                                        service: service_name.clone(),
+                                        operation: authored_name(env.clone(), op_node.clone()),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: reason.clone(),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                            }
                         } else {
                             Rc::new(vec![])
                         }
@@ -4291,7 +4243,7 @@ pub fn unmodeled_file_transport_diagnostics(
                     .cloned()
                     {
                         __result.extend(
-                            (*unmodeled_file_transport_operation_diagnostics(
+                            (*file_transport_operation_diagnostics(
                                 tm.clone(),
                                 item.clone(),
                                 target.clone(),
@@ -4310,26 +4262,463 @@ pub fn unmodeled_file_transport_diagnostics(
     })
 }
 
-pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
-    emit_error_expr(
-        v1_rt::concat(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FileTargetRealization {
+    pub path_binding_template: String,
+    pub read_block: String,
+    pub write_block: String,
+    pub write_owner_only_block: String,
+    pub delete_block: String,
+    pub list_block: String,
+    pub channel_write_success: String,
+    pub channel_bytes_written: String,
+    pub channel_path: String,
+    pub channel_error: String,
+    pub channel_content: String,
+    pub optional_wrap_template: String,
+    pub result_template: String,
+}
+
+pub fn rust_file_read_block() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let (__file_success, __file_error, __file_content) = match std::fs::read_to_string(&path) {\n    Ok(c) => (true, String::new(), c),\n    Err(e) => (false, format!(\"{}\", e), String::new()),\n};\nlet __file_bytes: i64 = __file_content.len() as i64;".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_file_write_block() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let __file_offered: i64 = content.len() as i64;\nlet (__file_success, __file_error) = match std::fs::write(&path, content.as_bytes()) {\n    Ok(()) => (true, String::new()),\n    Err(e) => (false, format!(\"{}\", e)),\n};\nlet __file_bytes: i64 = if __file_success { __file_offered } else { 0 };\nlet __file_content = String::new();".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_file_write_owner_only_block() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let __file_offered: i64 = content.len() as i64;\nlet (__file_success, __file_error) = {\n    use std::io::Write;\n    use std::os::unix::fs::OpenOptionsExt;\n    match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path) {\n        Ok(mut f) => match f.write_all(content.as_bytes()) {\n            Ok(()) => (true, String::new()),\n            Err(e) => (false, format!(\"{}\", e)),\n        },\n        Err(e) => (false, format!(\"{}\", e)),\n    }\n};\nlet __file_bytes: i64 = if __file_success { __file_offered } else { 0 };\nlet __file_content = String::new();".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_file_delete_block() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let (__file_success, __file_error) = match std::fs::remove_file(&path) {\n    Ok(()) => (true, String::new()),\n    Err(e) => (false, format!(\"{}\", e)),\n};\nlet __file_bytes: i64 = 0;\nlet __file_content = String::new();".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_file_list_block() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let (__file_success, __file_error, __file_content) = match std::fs::read_dir(&path) {\n    Ok(entries) => {\n        let mut names: std::vec::Vec<String> = entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        names.sort();\n        (true, String::new(), names.join(\"\\n\"))\n    }\n    Err(e) => (false, format!(\"{}\", e), String::new()),\n};\nlet __file_bytes: i64 = __file_content.len() as i64;".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_file_path_binding() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let path: String = format!(\"{}\", {0});".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_realization(target: RenderTarget) -> Option<Rc<FileTargetRealization>> {
+    match target.clone() {
+        RenderTarget::Rust => Some(Rc::new(FileTargetRealization {
+            path_binding_template: rust_file_path_binding(),
+            read_block: rust_file_read_block(),
+            write_block: rust_file_write_block(),
+            write_owner_only_block: rust_file_write_owner_only_block(),
+            delete_block: rust_file_delete_block(),
+            list_block: rust_file_list_block(),
+            channel_write_success: "__file_success".to_string(),
+            channel_bytes_written: "__file_bytes".to_string(),
+            channel_path: "path.clone()".to_string(),
+            channel_error: "__file_error".to_string(),
+            channel_content: "__file_content".to_string(),
+            optional_wrap_template: "Some({0})".to_string(),
+            result_template: "Ok({0})".to_string(),
+        })),
+        _ => None,
+    }
+}
+
+pub fn file_verb_block(row: Rc<FileTargetRealization>, verb: FileVerb) -> String {
+    match verb.clone() {
+        FileVerb::FileRead => row.read_block.clone(),
+        FileVerb::FileWrite => row.write_block.clone(),
+        FileVerb::FileWriteOwnerOnly => row.write_owner_only_block.clone(),
+        FileVerb::FileDelete => row.delete_block.clone(),
+        FileVerb::FileList => row.list_block.clone(),
+    }
+}
+
+pub fn file_channel_expr(
+    row: Rc<FileTargetRealization>,
+    channel: String,
+    is_optional: bool,
+) -> Option<String> {
+    {
+        let base = if (channel.clone() == "write_success".to_string()) {
+            row.channel_write_success.clone()
+        } else {
+            if (channel.clone() == "bytes_written".to_string()) {
+                row.channel_bytes_written.clone()
+            } else {
+                if (channel.clone() == "path".to_string()) {
+                    row.channel_path.clone()
+                } else {
+                    if (channel.clone() == "error".to_string()) {
+                        row.channel_error.clone()
+                    } else {
+                        if (channel.clone() == "content".to_string()) {
+                            row.channel_content.clone()
+                        } else {
+                            "".to_string()
+                        }
+                    }
+                }
+            }
+        };
+        if (base.clone() == "".to_string()) {
+            None
+        } else {
+            if is_optional.clone() {
+                Some(apply_type_template1(
+                    row.optional_wrap_template.clone(),
+                    base.clone(),
+                ))
+            } else {
+                Some(base.clone())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FileChannelBinding {
+    pub channel: String,
+    pub expr: Option<String>,
+    pub is_optional: bool,
+}
+
+pub fn file_output_bindings(
+    effective: Rc<Node>,
+    row: Rc<FileTargetRealization>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<FileChannelBinding>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for ch in effective.children.clone().iter().cloned() {
+            __result.push({
+                let channel = match child_from_key(ch.clone(), source_indices.clone()) {
+                    Some(c) => c.clone(),
+                    None => "".to_string(),
+                };
+                let is_optional = (ch.return_cardinality.clone() == Cardinality::CardOptional);
+                Rc::new(FileChannelBinding {
+                    channel: channel.clone(),
+                    expr: file_channel_expr(row.clone(), channel.clone(), is_optional.clone()),
+                    is_optional: is_optional.clone(),
+                })
+            });
+        }
+        __result
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FileEmissionOutcome {
+    FileEmissionRefused { reason: String },
+    FileEmissionCode { code: String },
+}
+
+pub fn file_output_binds_no_channel_fact() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "the operation declares no output record binding result channels; a file operation's output fields must bind from \"write_success\", \"bytes_written\", \"path\", \"error\" or \"content\"".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_output_channel_unproduced_fact() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "the declared output binds channels the file realization does not produce".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_verb_outside_roster_fact() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "the transport declares a verb outside the closed roster (delete, list, write_owner_only; read and write are implied by whether a content input is declared)".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_no_path_fact() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "the file transport declares no path; parse_file_fields substitutes an empty string literal when `path:` is omitted, and an empty path is a fabricated destination, not a default".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_declared_path(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match transport_base_path(t.clone(), source_indices.clone()) {
+        None => None,
+        Some(p) => match (*p.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                if (s.clone() == "".to_string()) {
+                    None
+                } else {
+                    Some(p.clone())
+                }
+            }
+            _ => Some(p.clone()),
+        },
+    }
+}
+
+pub fn file_transport_return_outcome(
+    inferred: Rc<Node>,
+    row: Rc<FileTargetRealization>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<FileEmissionOutcome> {
+    {
+        let effective = inferred.clone();
+        let field_count = (effective.children.clone().len() as i64);
+        let binds_channels = (is_product_type(effective.clone()) && (field_count.clone() > 0));
+        if !binds_channels.clone() {
+            Rc::new(FileEmissionOutcome::FileEmissionRefused {
+                reason: file_output_binds_no_channel_fact(),
+            })
+        } else {
+            {
+                let bindings =
+                    file_output_bindings(effective.clone(), row.clone(), source_indices.clone());
+                let unbound = Rc::new({
+                    let mut __result = Vec::new();
+                    for b in bindings.clone().iter().cloned() {
+                        if (b.expr.clone() == None) {
+                            __result.push(b);
+                        }
+                    }
+                    __result
+                });
+                if ((unbound.clone().len() as i64) > 0) {
+                    {
+                        let names = Rc::new({
+                            let mut __result = Vec::new();
+                            for b in unbound.clone().iter().cloned() {
+                                __result.push(if (b.channel.clone() == "".to_string()) {
+                                    "<no from-key>".to_string()
+                                } else {
+                                    b.channel.clone()
+                                });
+                            }
+                            __result
+                        })
+                        .join(&", ".to_string());
+                        Rc::new(FileEmissionOutcome::FileEmissionRefused {
+                            reason: v1_rt::concat(
+                                v1_rt::concat(
+                                    file_output_channel_unproduced_fact(),
+                                    ": ".to_string(),
+                                ),
+                                names.clone(),
+                            ),
+                        })
+                    }
+                } else {
+                    {
+                        let exprs = Rc::new({
+                            let mut __result = Vec::new();
+                            for b in bindings.clone().iter().cloned() {
+                                __result.push(match b.expr.clone() {
+                                    Some(e) => e.clone(),
+                                    None => "".to_string(),
+                                });
+                            }
+                            __result
+                        });
+                        let value = if (field_count.clone() == 1) {
+                            match exprs.clone().first().cloned() {
+                                Some(e) => e.clone(),
+                                None => "".to_string(),
+                            }
+                        } else {
+                            render_tuple_parts(exprs.clone(), target.clone())
+                        };
+                        Rc::new(FileEmissionOutcome::FileEmissionCode {
+                            code: apply_type_template1(row.result_template.clone(), value.clone()),
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn emit_file_transport_outcome(
+    transport: Rc<Node>,
+    op_node: Rc<Node>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<FileEmissionOutcome> {
+    match file_transport_realization(target.clone()) {
+        None => Rc::new(FileEmissionOutcome::FileEmissionRefused {
+            reason: unmodeled_file_transport_missing_fact(),
+        }),
+        Some(row) => {
+            match file_transport_declared_path(transport.clone(), source_indices.clone()) {
+                None => Rc::new(FileEmissionOutcome::FileEmissionRefused {
+                    reason: file_transport_no_path_fact(),
+                }),
+                Some(path_expr) => match file_transport_verb(
+                    transport.clone(),
+                    op_node.clone(),
+                    source_indices.clone(),
+                ) {
+                    None => Rc::new(FileEmissionOutcome::FileEmissionRefused {
+                        reason: file_verb_outside_roster_fact(),
+                    }),
+                    Some(verb) => match (*file_transport_return_outcome(
+                        resolved_type(op_node.clone()),
+                        row.clone(),
+                        target.clone(),
+                        source_indices.clone(),
+                    ))
+                    .clone()
+                    {
+                        FileEmissionOutcome::FileEmissionRefused { reason: r, .. } => {
+                            Rc::new(FileEmissionOutcome::FileEmissionRefused { reason: r.clone() })
+                        }
+                        FileEmissionOutcome::FileEmissionCode { code: ret, .. } => {
+                            let path_line = apply_type_template1(
+                                row.path_binding_template.clone(),
+                                emit_simple_expr(
+                                    path_expr.clone(),
+                                    target.clone(),
+                                    source_indices.clone(),
+                                ),
+                            );
+                            Rc::new(FileEmissionOutcome::FileEmissionCode {
+                                code: v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(path_line.clone(), "\n".to_string()),
+                                            file_verb_block(row.clone(), verb.clone()),
+                                        ),
+                                        "\n".to_string(),
+                                    ),
+                                    ret.clone(),
+                                ),
+                            })
+                        }
+                    },
+                },
+            }
+        }
+    }
+}
+
+pub fn emit_file_transport_body(
+    transport: Rc<Node>,
+    op_name: String,
+    op_node: Rc<Node>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*emit_file_transport_outcome(
+        transport.clone(),
+        op_node.clone(),
+        target.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
+    {
+        FileEmissionOutcome::FileEmissionCode { code: code, .. } => code.clone(),
+        FileEmissionOutcome::FileEmissionRefused { reason: reason, .. } => emit_error_expr(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "file transport emission is not modeled for operation '".to_string(),
-                            op_name.clone(),
+                            v1_rt::concat(
+                                "file transport emission is not modeled for operation '"
+                                    .to_string(),
+                                op_name.clone(),
+                            ),
+                            "' (target ".to_string(),
                         ),
-                        "' (target ".to_string(),
+                        render_target_name(target.clone()),
                     ),
-                    render_target_name(target.clone()),
+                    ") -- ".to_string(),
                 ),
-                ") -- ".to_string(),
+                reason.clone(),
             ),
-            unmodeled_file_transport_missing_fact(),
+            target.clone(),
         ),
-        target.clone(),
-    )
+    }
+}
+
+pub fn child_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in ch.properties.clone().iter().cloned() {
+            if (field_init_node_name_at(p.clone(), source_indices.clone())
+                == "from_key".to_string())
+            {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                Some(s.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
 }
 
 pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {
