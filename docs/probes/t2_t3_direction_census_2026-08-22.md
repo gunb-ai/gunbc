@@ -330,3 +330,25 @@ on agrees exactly).
 **P1's precondition is satisfied at this subject.** The earlier run's failure is now fully
 explained: the instrument was sound and the population at `90986d19` was empty, exactly as the local
 row-level check predicted. The intervention run at this sha is therefore interpretable.
+
+### The 24 removed sites are five or six construct shapes, not one
+
+Grouping the removed `v2_compiler_tokenize.rs` E0308 sites by column (parent lane's artifact):
+
+| column | count | lines |
+|---|---:|---|
+| 13 | 8 | 196 225 248 269 294 337 359 367 |
+| 36 | 5 | 559 585 589 617 620 |
+| 99 | 3 | 558 588 619 |
+| 16 | 2 | 154 195 |
+| 57 / 58 / 62 | 3 | 462 463 464 |
+| 15 / 11 / 43 | 1 each | 142 143 682 |
+
+The column-13 group of eight is the construct family carrying the four both-direction positions
+recorded at the top of this document. The 36/99 interleaving across 558–620 is a distinct repeating
+pattern — three lines each contributing a 99 and a 36, reading as one construct reported twice per
+site. The 462/463/464 run at ascending columns 57/58/62 is a third: one multi-line expression.
+
+So whatever removed them either was one change reaching several construct families, or was several
+changes inside the six-PR window. A single narrow repair is the least likely of the three. The
+attribution remains open and currently has **no dependent**, so it is recorded rather than pursued.
