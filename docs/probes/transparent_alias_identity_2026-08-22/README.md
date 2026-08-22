@@ -193,15 +193,38 @@ arms FAIL identically (`generated surface drift: v1_compiler_infer.rs`) with the
 only in the final comparison after emit. A symmetric failure is a stronger control than a
 symmetric success: neither arm is skipping downstream work the other pays for.
 
-**A confound in this design, and what it costs the claim.** gen1 ran FIRST in every pair, so
-run-order is perfectly confounded with arm -- and gen2's three runs span 0.3s (428.1-428.4) while
-gen1's span 19s (442-461), which is what first-run page-cache warming looks like. Writing W for
-the warming advantage of second position and R for the relation's true cost, what is observed is
-`W - R = 25s`. That does not bound R on its own: if W were 60s, R would be 35s -- a real 8%
-regression, fully masked, producing data identical to this. So the consistent advantage to gen2 is
-NOT evidence the relation is free, let alone faster, and this table alone supports only
-`R < W` with W unmeasured. It IS decisive against the risk the bar was written for: an 18x
-regression is ~7,000s and no cache effect hides that.
+**That table is CONFOUNDED and is kept only as history.** gen1 ran FIRST in every pair, so
+run-order was perfectly confounded with arm. The reviewer's arithmetic is why that matters: writing
+W for the warming advantage of second position and R for the relation's true cost, the observation
+is `W - R = 25s`, which does not bound R -- if W were 60s then R would be 35s, a real 8% regression
+producing identical data. The confound can MASK a regression, not merely block a claim of
+improvement.
+
+### Crossed order: the measured null
+
+Four pairs with position crossed against arm (relation-present first in pairs 1 and 3,
+relation-absent first in pairs 2 and 4), on a COMMITTED tree so no arm could be perturbed mid-run,
+all eight runs reporting five phases:
+
+| | relation absent | relation present |
+|---|---:|---:|
+| runs (s) | 463.6 / 461.0 / 433.6 / 459.6 | 428.7 / 458.6 / 468.8 / 469.6 |
+| **mean** | **454.4** | **456.5** |
+| within-arm spread | 29.9 | 40.9 |
+
+**Delta +2.0 s (+0.4%), against within-arm spreads of 30-41 s.** The effect is an order of
+magnitude below what this host resolves, and now with order crossed it cannot be hidden by
+position. This is the null the uncrossed table could not support.
+
+**Two failed measurements on the way, recorded because a receipt that shows only the successful run
+is not a receipt.** (1) An earlier crossed attempt was corrupted when the author edited
+`src/v1/04_infer.dag` mid-run: runs 6-8 returned 56-62 SECONDS against a ~450s baseline, which
+reads as a 7x speedup and was a frontend refusal that never reached emit (a `//` block inside a
+function body; DESIGN 4c models module-item grain only). Caught by reading the output file rather
+than the duration. (2) The shadow was first armed with `GUNBC_SHADOW_ARG_TSV`; the instrument reads
+`GUNBC_SHADOW_ARG_CONFORMANCE`, so it wrote nothing -- and a missing ledger would have read as zero
+`WouldDiagnose`, the exact result being hoped for. Both instruments failed TOWARD the desired
+answer, which is where a fabricated result enters.
 
 ## The fail-open the first version shipped, and what caught it
 
@@ -267,6 +290,35 @@ control, and its corpus run then reddened 38 diagnostics -- among them
 relations measured here, located in `dag/gunbc/scm/object_store.dag` and `repository_envelope`.
 **Those files are not in the closure measured above.** An author-written fixture set is a sample of
 the author's hypothesis; the corpus is the only instrument that has caught anything in this area.
+
+## Two lessons from this lane's own measurement failures
+
+**More runs of a confounded design converge on a confident wrong answer.** Uncrossed said -25s (the
+relation faster), two crossed pairs said +9.6s (slower), four crossed pairs say +2.0s. Every one of
+those is arithmetically correct on its own data; only the last answers the question, and the
+difference is entirely DESIGN rather than precision. Crossing the order changed the sign, not the
+error bars.
+
+**An instrument that fails toward your hypothesis is not rare here -- it is the DEFAULT failure
+direction**, because the failure modes that produce empty or short output are the ones that look
+like success. Three in this session: a shadow armed on the wrong env var (no ledger reads as zero
+`WouldDiagnose`), a frontend refusal that never reached emit (56s against a ~450s baseline reads as
+a 7x speedup), and a source edit landing mid-run. All three were caught by reading the artifact
+rather than the metric, and none by noticing the number looked wrong.
+
+## Corpus residue: adopting a number that is not this probe's
+
+`silent-badger-817` measured what remains when `module_skips_direct_call_arg_check` is actually
+deleted: **285 blocking type mismatches against main, 67 with this change merged -- 218 of 285
+cleared (76%)**.
+
+This receipt's own "residue zero" is true of the `03_ingest` closure and FALSE of the corpus, where
+it is 67. The two numbers had different SUBJECTS, not different values, and leaving both for a
+reader to reconcile would have been the mixed-grain failure. Of the 67, 48 are `CoreNode` declared
+identically in two modules (`v2.compiler.00_compile` and `v2.compiler.self_host`) -- one alias onto
+one target, authored twice -- which a name-keyed relation excludes conservatively. Admitting a bare
+name whose declarations are UNANIMOUS is sound and is deliberately left to its own PR: it is a
+distinct semantic claim and deserves to be argued on its own rather than bundled here.
 
 ## What is NOT claimed
 
