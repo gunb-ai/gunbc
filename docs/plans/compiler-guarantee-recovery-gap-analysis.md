@@ -2671,70 +2671,85 @@ enforces end to end.
    binary, including a boundary control written specifically to catch over-peeling. The corpus was
    the only instrument that detected any of this.
 
-30. **A FUNCTION name resolves order-dependently across the whole corpus: adding one import edge
-   to a hub module silently re-typechecked three files nobody touched.** Measured 2026-08-22 by
-   `quick-newt-661` while sealing `ArgvCommand`; filed here with the narrower claim that session
-   insisted on, not the broader one this document was initially tempted toward.
+30. **A function name's meaning depends on the CONSUMER'S TRANSITIVE IMPORT CLOSURE, so adding
+   one import edge anywhere can silently re-typecheck any file that reaches the ambiguity.
+   Population: 46 files, of which 3 have fired.** Measured 2026-08-22 by `quick-newt-661` while
+   sealing `ArgvCommand`.
 
-   THE CONTROL IS THE FINDING. main at `abf7194` — the branch's exact merge base — is GREEN:
-   `strict-preparation state=completed modules_resolved=3874`, `required-floor: planned=10550
-   executed=10550 passed=10241 known_red_held=208 failed=0`. The branch at that same base REFUSES
-   preparation with nine diagnostics. Same base, same corpus, opposite verdicts.
+   **THIS ROW WAS FIRST FILED WITH THE WRONG MECHANISM AND IS CORRECTED IN PLACE.** The initial
+   version said traversal ORDER changed while reachability did not, and offered "neither affected
+   file imports `v2.std.collection` at all" as proof that resolution is GLOBAL. That proof is
+   exactly backwards, and the measuring session caught it before this row was reviewed: the files
+   do not NAME the module, they REACH it transitively. Recorded rather than silently rewritten
+   because a canonical document asserting a wrong mechanism is premise contamination — every
+   session reading it would plan against a global-resolution model that does not exist.
 
-   ORDER CHANGED, NOT REACHABILITY, and this is the part that makes it a resolution defect rather
-   than an ordinary breakage: `modules_resolved` moves 3874 → 3882 against exactly 8 added module
-   files. Nothing new entered the resolved set — `v2.std.collection` was already present on green
-   main. The single causal edge is one line: `dag/extdeps/exec/command.dag` gains
-   `import v2.std.orchestration { EnvSet }`, `v2.std.orchestration` imports `v2.std.collection`
-   at its head, and `command.dag` is a hub that ~20 modules import. One import edge re-orders the
-   traversal for the entire corpus.
+   THE MEASUREMENT (import-closure BFS over module/import declarations, main in a detached
+   worktree versus the branch, same script both sides):
 
-   THE AFFECTED FILES DO NOT IMPORT THE MODULE IN QUESTION. Neither `extdeps.git.object_store` nor
-   `v2.workflow.floor_preparation` imports `v2.std.collection` at all. That is what establishes
-   the resolution is GLOBAL rather than import-bound, and it is the most alarming single fact in
-   the report: an unchanged file with no import relationship to the perturbation began
-   typechecking differently.
+   | consumer | closure on main | reaches `v2.std.collection`? | closure on branch | reaches? |
+   | --- | --- | --- | --- | --- |
+   | `extdeps.git.object_store` | 45 modules | **no** | 56 modules | **yes** |
+   | `v2.workflow.floor_preparation` | 59 modules | **no** | 70 modules | **yes** |
 
-   AUTHORSHIP SEPARATED FROM CAUSATION. `git diff --numstat origin/main HEAD` returns ZERO ENTRIES
-   for all three files — they do not appear in the diff at all. The branch did not author the
-   matches; it caused them to be typechecked differently. Both facts must be reported, and they
-   answer different questions.
+   THE EXACT PATHS, both ending in one edge:
+
+   ```
+   extdeps.git.object_store      -> extdeps.git -> extdeps.exec.command -> v2.std.orchestration -> v2.std.collection
+   v2.workflow.floor_preparation -> v2.workflow.floor_discovery -> extdeps.git.object_store -> (same tail)
+   ```
+
+   The causal edge is a single import added to `dag/extdeps/git/git.dag` for
+   `git_config_local_set_command`. `floor_preparation` is COLLATERAL — it reaches `object_store`
+   through `floor_discovery`, so one edge in one module moved two unrelated modules' closures.
+
+   THE DENOMINATOR SWAP THAT PRODUCED THE WRONG VERSION, kept because it is the same failure this
+   document keeps recording: `modules_resolved` 3874 → 3882 against 8 added files is a fact about
+   the CORPUS-WIDE resolved set, and it was used to conclude that no PER-CONSUMER closure changed.
+   Two different populations. The corpus set genuinely did not gain `v2.std.collection`; each
+   failing module's closure did.
+
+   **THE POPULATION IS 46, NOT 3.** Forty-six files corpus-wide call `map_get` and match
+   `Present`/`Absent` against it. Only three errored — the three whose closures now reach
+   `v2.std.collection`. **The other 43 are one import edge away from the identical failure**, each
+   waiting on whichever future PR happens to connect them. Repairing the three fixes one breakage
+   and leaves the class fully live.
+
+   ARITHMETIC CLOSES: 6 `collection.dag:82` diagnostics = 3 call sites × 2 variants
+   (`Present`, `Absent`); `object_store` has 2 sites, `floor_preparation` 1. Nothing unaccounted for.
 
    THE AMBIGUITY IS REAL AND PRE-EXISTING: `v2.std.collection` `map_get` returns
-   `Outcome<Optional<V>>`, while a `map_get` builtin (`v1.compiler.04_method`, contract at
-   `std.primitives` `map_get_contract`) returns `Optional`. The three sites call positionally and
-   match `Present`/`Absent`, which typechecks against the builtin and not against the `fn`. Which
-   one wins is decided by traversal order, silently, with no diagnostic either way.
+   `Outcome<Optional<V>>`, while the `map_get` builtin (contract at `std.primitives`
+   `map_get_contract`) returns `Optional`. The sites call positionally and match `Present`/`Absent`,
+   which typechecks against the builtin and not the `fn`. Which one wins is decided by whether the
+   consumer's closure reaches the `fn` — silently, with no diagnostic either way.
 
-   NOT THE SAME ROW AS THE CENSUS-AMBIGUOUS TYPE NAME, and the distinction is deliberate. §4b
-   records a confirmed hole where a census-AMBIGUOUS TYPE NAME resolves by silent last-import-wins,
-   claiming "0 live exposure today by targeted grep". This specimen is a FUNCTION/BUILTIN name —
-   the same family and the same silence, but not that row. **That clause is NOT falsified by this
-   finding and must not be cited as if it were.** The measuring session narrowed its own claim to
-   this scope unprompted; an inflated claim gets discounted whole, a precise one gets acted on.
+   NOT THE SAME ROW AS THE CENSUS-AMBIGUOUS TYPE NAME. §4b records a confirmed hole where a
+   census-AMBIGUOUS TYPE NAME resolves by silent last-import-wins, claiming "0 live exposure today
+   by targeted grep". This is a FUNCTION/BUILTIN name — same family, same silence, different row.
+   **That clause is NOT falsified here and must not be cited as if it were.**
 
-   RUNG: outside the ladder — silent wrongness. The corpus reports green, and a subsequent
-   unrelated change flips innocent files to a typecheck error. No mechanism observes the ordering.
+   RUNG: outside the ladder — silent wrongness. The corpus reports green; an unrelated PR adding
+   an unrelated import flips innocent files to a typecheck error. Nothing observes the closure.
 
-   CEILING: *structurally guaranteed*. Ambiguous resolution of a name with two authorities is
-   decidable at the point of resolution; the fix is to REFUSE the ambiguity with a typed, located
-   diagnostic naming both candidates, rather than to pick one by traversal order.
+   CEILING: *structurally guaranteed*. A name resolving to two authorities is decidable at the
+   point of resolution; the fix is to REFUSE the ambiguity with a typed, located diagnostic naming
+   both candidates, rather than to let the answer depend on what else the consumer happens to reach.
 
-   NEXT-RUNG TRIGGER: refuse a name that resolves to more than one authority, at resolution,
-   naming the candidates. Until then every added module is an untracked perturbation of every
-   other module's typechecking.
+   NEXT-RUNG TRIGGER: refuse a name that resolves to more than one authority within a consumer's
+   closure, naming the candidates. Until then **every added import edge is an untracked
+   perturbation of every reachable file's typechecking**, and the 43 are unguarded.
 
-   NOT THE REPAIR OF THE SPECIMEN, which is separate and prescribed by the authority itself:
-   `v2.std.collection`'s own module note says the total `map_lookup` is the primitive and the
-   `Outcome`-wrapped `map_get` is a projection of it (`map_get` is `outcome_accepted`
-   unconditionally and can never return `Rejected`), warning that "a caller reaching for `map_get`
-   must match a `Rejected` arm that no producer can construct… the unreachable arm gets bound to
-   whichever domain answer is nearest, and a substrate failure would report as a domain fact."
-   The three sites want `map_lookup`. Rewriting them is correct independently of this row and
-   would have been correct had no flip ever occurred — but it repairs THREE SITES, not the class.
+   THE SPECIMEN'S REPAIR IS SEPARATE AND DOES NOT CLOSE THE CLASS. `v2.std.collection`'s own note
+   prescribes it: `map_lookup` is the total primitive and `map_get` is a projection
+   (`outcome_accepted` unconditionally — it can never return `Rejected`), warning that "a caller
+   reaching for `map_get` must match a `Rejected` arm that no producer can construct… a substrate
+   failure would report as a domain fact." The three sites want `map_lookup`. Correct
+   independently of this row; it repairs THREE of FORTY-SIX.
 
-   NOT CLAIMED: that any other file in the corpus is currently mis-resolved. No instrument can
-   answer that today, which is the row's point. It records a mechanism and one live specimen.
+   NOT CLAIMED: that any of the 43 is currently mis-resolved. They are not — they resolve to the
+   builtin today and typecheck. The claim is that their meaning is contingent on an import graph
+   nobody is watching.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
