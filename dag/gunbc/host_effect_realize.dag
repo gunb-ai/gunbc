@@ -1616,7 +1616,53 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
 // probes each had their own transport match over the same four arms; the stat probes this cut adds
 // would have made a third. The argv is the parameter because that is exactly what differs --
 // everything else about "run this readonly command and take its one line of output" is identical.
-fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken {
+// WHAT MAY BE ASKED, not what may be run. Every token read this realizer performs is one of four
+// questions about the host, so the caller names the QUESTION and the argv is derived here. Before
+// this type existed the entry point took a List<String> and would run whatever it was handed --
+// the semantic request and the command serialization were one fact, so a new probe was authored by
+// passing a new argv rather than by declaring a new subject, and nothing distinguished a modeled
+// read from an arbitrary one.
+type Srv3TokenSubject
+  = Srv3EffectiveUserId
+  | Srv3EffectiveGroupId
+  | Srv3PathOwnerUser { path: String }
+  | Srv3PathOwnerGroup { path: String }
+
+// The single public token read. The argv never crosses this boundary in either direction: callers
+// hand in a subject and receive a typed observation.
+fn srv3_read_token(
+  subject: Srv3TokenSubject,
+  transport: HostEffectTransport,
+) -> Srv3ObservedToken {
+  srv3_transport_token(argv: srv3_token_argv(subject: subject), transport: transport)
+}
+
+// The serialization half, private to the two decls above by admission rather than by convention.
+fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "owner_halves_do_not_derive_the_same_command"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "the_path_subject_carries_its_own_path"),
+  ]
+{
+  match subject {
+    Srv3EffectiveUserId => id_uid_argv_absolute()
+    Srv3EffectiveGroupId => id_gid_argv_absolute()
+    Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
+    Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
+  }
+}
+
+// SEALED TO THE ONE SUBJECT-TAKING CALLER. This is the arm that will run any argv it is given, so
+// admission is what stops a future probe from re-opening the untyped surface: adding a read means
+// adding a Srv3TokenSubject variant, not calling through here with a fresh vector.
+fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
+  ]
+{
   match transport {
     LocalShell => srv3_local_token_from_argv(argv: argv)
     SshShell { ssh_host: h } =>
@@ -1666,12 +1712,12 @@ fn srv3_token_from_run(success: Bool, stdout: String) -> Srv3ObservedToken {
 // effectful call outside the branch that decides whether it should happen runs anyway, and nothing
 // in the signature says so.
 fn srv3_effective_owner(transport: HostEffectTransport) -> Srv3EffectiveOwner {
-  match srv3_transport_token(argv: id_uid_argv_absolute(), transport: transport) {
+  match srv3_read_token(subject: Srv3EffectiveUserId, transport: transport) {
     Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
     Srv3TokenAbsent =>
       Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -u` produced no output" }
     Srv3TokenObserved { value: uid_text } =>
-      match srv3_transport_token(argv: id_gid_argv_absolute(), transport: transport) {
+      match srv3_read_token(subject: Srv3EffectiveGroupId, transport: transport) {
         Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
         Srv3TokenAbsent =>
           Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -g` produced no output" }
@@ -1722,14 +1768,14 @@ fn srv3_owner_from_texts(uid_text: String, gid_text: String) -> Srv3EffectiveOwn
 
 // THE PATH'S CURRENT OWNER, read independently of anything this process did to it.
 fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> PathOwnershipObservation {
-  match srv3_transport_token(argv: stat_owner_user_argv(path: path), transport: transport) {
+  match srv3_read_token(subject: Srv3PathOwnerUser { path: path }, transport: transport) {
     Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
     Srv3TokenAbsent =>
       PathOwnerUnobserved {
         reason: concat("srv3 owner: `stat -c %u` produced no output for ", path),
       }
     Srv3TokenObserved { value: uid_text } =>
-      match srv3_transport_token(argv: stat_owner_group_argv(path: path), transport: transport) {
+      match srv3_read_token(subject: Srv3PathOwnerGroup { path: path }, transport: transport) {
         Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
         Srv3TokenAbsent =>
           PathOwnerUnobserved {
@@ -3928,7 +3974,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
   }
 }
 
-data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint now converges WITHOUT reinstalling and restarting it -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
+data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
 
 fn build_cache_host_read(argv: List<String>, transport: HostEffectTransport) -> HostRead {
   match build_cache_host_read_observed(argv: argv, transport: transport) {
@@ -4298,7 +4344,7 @@ fn build_cache_already_converged(
         [
           "BuildCacheProvisionReceipt: already_converged unit=",
           unit as String,
-          " (observed owning the configured endpoint; no unit written, no restart issued)",
+          " (observed owning AND listening on the configured endpoint; no unit written, no restart issued)",
         ],
         "",
       ),

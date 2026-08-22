@@ -27,12 +27,13 @@ type EndpointPreflight
 
 type EnsureRefusal
   = EnsureEndpointOccupied { owner: ProcessIdentity }
+  | EnsureOwnedButNotServing { unit: NonEmptyStr, detail: NonEmptyStr }
   | EnsureEndpointPathConflict { detail: NonEmptyStr }
   | EnsureEndpointUnobservable { detail: NonEmptyStr }
   | EnsureUnlinkRefused { detail: NonEmptyStr }
   | EnsurePlacementUnknown { detail: NonEmptyStr }
 
-data ensure_is_a_reconcile_not_an_install_note: String = "ENSURE MUST BE IDEMPOTENT, WHICH IS WHY EnsureAlreadyConverged IS ITS OWN ARM RATHER THAN A SUCCESSFUL RE-INSTALL. The membership-diff spine's reading applies unchanged here: desired versus observed, and Unchanged is the ABSENCE of a hunk, not a cheap version of Added. If a correctly-placed managed unit already owns the endpoint, writing the unit again and restarting it would tear down a healthy cache and re-cold every compile on the host to reach a state it was already in — the most expensive possible no-op, and one that would fire on every convergence pass.\n\nDeciding it needs the OWNER, not the path. A listening endpoint tells you something holds it; only placement tells you whether that something is the unit we intend. So this admission takes both, and the placement authority is consulted FIRST: already-converged short-circuits before any path reasoning, because when the answer is 'nothing to do' the path state is irrelevant and reading it could only produce a spurious refusal."
+data ensure_is_a_reconcile_not_an_install_note: String = "ENSURE MUST BE IDEMPOTENT, WHICH IS WHY EnsureAlreadyConverged IS ITS OWN ARM RATHER THAN A SUCCESSFUL RE-INSTALL. The membership-diff spine's reading applies unchanged here: desired versus observed, and Unchanged is the ABSENCE of a hunk, not a cheap version of Added. If a correctly-placed managed unit already owns the endpoint AND IS SERVING IT, writing the unit again and restarting it would tear down a healthy cache and re-cold every compile on the host to reach a state it was already in -- the most expensive possible no-op, and one that would fire on every convergence pass.\n\nCONVERGED MEANS SERVING, NOT MERELY PLACED, AND THAT IS A CORRECTION RATHER THAN A REFINEMENT (2026-08-22). An earlier revision of this note argued the opposite construction in this same paragraph: that placement is consulted FIRST and short-circuits before any path reasoning, because when the answer is nothing-to-do the path state is irrelevant and reading it could only produce a spurious refusal. That argument is wrong, and the tree had already measured why. gunbc.build_cache_endpoint_observe socket_owner_path_state produces EndpointPathConflict for a socket that a live process holds OPEN while nothing LISTENS on it, and placement is derived from the fd-holder walk rather than from the listen table -- so a process in our own intended unit's cgroup, wedged with its socket open and no listener, reads as ServerManagedUnitOwned. Under the placement-first short-circuit that host converged: no unit written, no restart issued, a receipt saying already_converged, and a cache no client can reach. The path state was not irrelevant; it carried the half of the question placement cannot answer.\n\nTHE DECISION, STATED AS THE CONTRACT: EnsureAlreadyConverged is minted only when BOTH axes agree -- the endpoint owner is our intended managed unit (placement) AND the endpoint is being LISTENED on (path). Placement answers WHO, the path answers WHETHER IT SERVES, and neither is derivable from the other. Every other combination under our own placement is a REFUSAL rather than a converge or a write, because a unit of ours that owns the endpoint without serving it is not a state ensure can fix by its own means: restarting it is an eviction of a live process that owns in-flight work, which the sibling occupied_endpoint_refuses_note already rules is a different operation from ensuring a unit exists. The refusal names the unit, so an operator sees exactly which of the host's servers is wedged.\n\nWHAT THIS DOES NOT ESTABLISH, NAMED SO THE RUNG IS HONEST (DESIGN section 4b). Serving here means a listener is bound on the configured endpoint by our unit. It does NOT establish that the daemon behind that listener RESPONDS, that it was started from the unit body this desired instance renders, or that its storage, capacity and principal still match the desired ones -- a unit file edited out of band keeps its name, and the name is all placement compares. Those are the postcondition axes gunbc.build_cache_provision_verdict already folds (DaemonUnresponsive, DaemonMisconfigured, DaemonPathShadowed), and the acted path consumes that fold after its ensure runs while this no-act path cannot: answering them needs a read this module may not emit, because sccache --show-stats is refused as evidence anywhere in this lane (it prints a full table whether or not a server exists) and the config read-back is behind the same typed-argv dissolve-on the rest of this lane's shell waits on (#5828). So the no-act path is strictly weaker than the acted path on those axes, and it is weaker LOUDLY rather than silently: it is named here, and it is the residue this contract change deliberately does not claim. NEXT-RUNG TRIGGER: a non-mutating readiness/identity read of the running server that the preflight can take, at which point the no-act arm routes through the same verdict authority the acted arm does and the two paths stop answering one question by two contracts.\n\nTHE ORDERING IS UNCHANGED FOR EVERY OTHER PLACEMENT. ServerPlacementUnknown still refuses before the path is consulted (placement_unknown_refuses_before_the_path_note), and the four positive non-ours placements still fall through to the path reasoning. What changed is only that being ours is no longer sufficient on its own."
 
 type EnsureBuildCacheAdmission
   = EnsureAlreadyConverged { desired: BuildCacheInstance, unit: NonEmptyStr }
@@ -95,7 +96,7 @@ fn admit_ensure_build_cache_instance(
   currency: ObservationCurrency,
 ) -> EnsureBuildCacheAdmission {
   match placement_already_converged(instance: desired, placement: placement) {
-    true => EnsureAlreadyConverged { desired: desired, unit: desired.intended_unit }
+    true => ensure_from_our_own_placement(desired: desired, observed_path: observed_path)
     false =>
       match placement {
         ServerPlacementUnknown { detail: d } =>
@@ -108,6 +109,54 @@ fn admit_ensure_build_cache_instance(
         ServerUnsupervised { cgroup: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
         ServerPlacementAbsent => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
       }
+  }
+}
+
+fn ensure_from_our_own_placement(
+  desired: BuildCacheInstance,
+  observed_path: EndpointPathState,
+) -> EnsureBuildCacheAdmission {
+  match observed_path {
+    EndpointListening { owner: _ } =>
+      EnsureAlreadyConverged { desired: desired, unit: desired.intended_unit }
+    EndpointPathAbsent =>
+      owned_but_not_serving(
+        desired: desired,
+        detail: "the endpoint owner is our intended managed unit, but the configured endpoint path does not exist, so nothing can reach the server; the two reads disagree and a restart would evict a live process that owns in-flight compiles" as NonEmptyStr,
+      )
+    EndpointStaleSocket { detail: d } =>
+      owned_but_not_serving(
+        desired: desired,
+        detail: concat(
+          "the endpoint owner is our intended managed unit while the socket at the configured path reads as stale, which cannot both be true of one host; refusing rather than unlinking a path our own live unit may hold: ",
+          d as String,
+        ) as NonEmptyStr,
+      )
+    EndpointPathConflict { detail: d } =>
+      owned_but_not_serving(
+        desired: desired,
+        detail: concat(
+          "the endpoint owner is our intended managed unit but it is NOT LISTENING on the configured endpoint, so the cache is unreachable while ownership looks correct: ",
+          d as String,
+        ) as NonEmptyStr,
+      )
+    EndpointPathObservationUnavailable { reason: _ } =>
+      EnsureBuildCacheRefused {
+        instance: desired,
+        reason: EnsureEndpointUnobservable {
+          detail: "the endpoint owner is our intended managed unit, but the endpoint path could not be read, so whether it is being served is unknown; refusing rather than reporting convergence from ownership alone" as NonEmptyStr,
+        },
+      }
+  }
+}
+
+fn owned_but_not_serving(
+  desired: BuildCacheInstance,
+  detail: NonEmptyStr,
+) -> EnsureBuildCacheAdmission {
+  EnsureBuildCacheRefused {
+    instance: desired,
+    reason: EnsureOwnedButNotServing { unit: desired.intended_unit, detail: detail },
   }
 }
 
@@ -239,6 +288,14 @@ fn ensure_refusal_detail(reason: EnsureRefusal) -> NonEmptyStr {
         concat(
           concat(" under boot ", o.boot_id as String),
           ". Evicting a live owner strands the compiles that are its children, so ensure refuses rather than taking the socket; draining is a separate operation.",
+        ),
+      ) as NonEmptyStr
+    EnsureOwnedButNotServing { unit: u, detail: d } =>
+      concat(
+        concat("the intended managed unit ", u as String),
+        concat(
+          " owns the configured endpoint but is not observed serving it, so ownership is not convergence: ",
+          concat(d as String, " Ensure refuses rather than restarting: replacing a live owner of in-flight compiles is an eviction, which is a separate operation from ensuring a unit exists."),
         ),
       ) as NonEmptyStr
     EnsureEndpointPathConflict { detail: d } => d
