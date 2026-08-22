@@ -63,6 +63,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // sites are DISCOVERED AND NEVER RUN. So this witness is counted, located, hand-runnable by the
 // recipe on its exclusion row, and executed by nothing on a cadence.
 //
+// DO NOT SIZE THE ROSTER GAP FROM THE NUMBER ABOVE — IT IS THE SMALLER OF THE TWO DECLINE ARMS, and
+// this block would otherwise be the exact place a reader picks up the wrong denominator. Admission
+// is an OR of two independent arms, not one gate: a long home declines first, then a live-tree read
+// declines second. Measured on this branch's own floor run 32582755530 (head 8b28945b27, so the base
+// is stated rather than inherited): declined_long=543 and declined_live=830. The live arm is the
+// LARGER population by half again, and the corpus already says so about itself in
+// test.claim.transport_script_wall_compile_red_test, which recorded 766 against 536 at its own
+// measurement and observed that an entire multi-session effort had been aimed at the smaller arm.
+// This lane did the same thing. Anyone sizing the gap starts from the live arm.
+//
+// AND ADMISSION TESTS THE AUTHORED MODULE NAME, NOT THE FILE PATH — required_floor matches the
+// module declaration against long_home_prefixes ("test.claim.long."), which is why this file's move
+// renamed its module in the same commit. The corollary is the one that misleads: moving a module OUT
+// of the long prefix is NOT an admission, it just re-decides which arm declines it. Measured at
+// identity grain by the transport_script witness — declined_long 539->536, declined_live 763->766,
+// the same three identities, never Planned.
+//
 // PREVIOUS RUNG: mitigatable, and only ever that — one module walled by an executing assertion while
 // the rest of the corpus stayed review diligence. TEMPORARY RUNG: outside the ladder, because an
 // unexecuted check establishes nothing at all. REASON: a corpus-scale reflection cost with no lane
