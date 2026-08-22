@@ -553,6 +553,40 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // at a time: they ARE the two-tree migration, so the refusal is downstream of it, and landing the
 // refusal first would red the compiler's own pool against a population nobody had counted.
 
+// A SECOND PRODUCTION SPECIMEN, AND IT IS A DIFFERENT FAILURE MODE FROM THE FIRST. Connective is a
+// WRONG answer produced by two declarations collapsing into one entry. This one is a MISSING answer
+// produced by a key that was never going to match, with no homonym anywhere in it -- so this map's
+// exposure is not exclusively about collisions, and a reader who takes the collision population as
+// the whole risk surface will underestimate it.
+//
+// THE PATH (v1.compiler.emit_rust, the record-literal arm, on this roster as emit_typed_record_lit):
+// tn_is_known_struct is map_contains_key(emit_info.type_summaries, tn); the map is keyed BARE; the
+// namespace-cut corpus spells every construction QUALIFIED; so the membership test misses, ctor_name
+// takes the resolve fallback, and the downstream phantom lookup answers Absent -- whose arm emits
+// NOTHING rather than refusing. Result at that head: 13 rustc E0063 "missing field _phantom",
+// emitted structs that declare the field beside emitted literals that never set it.
+//
+// THE TWO-ARM CONTROL, WHICH THAT LANE COULD NOT BUILD AND I RAN HERE. Their branch cannot author
+// the opposite arm by construction: with imports deleted, a bare cross-module spelling does not
+// resolve at all. Main is that arm. TargetCapabilityShapeRow on main: 8 construction sites, all
+// BARE, zero qualified -- and its committed mirror extdeps_languages_rust_capabilities.rs carries 8
+// emitted literals with 9 _phantom lines (8 rows plus the enclosing table). Their branch: the same
+// type, 8 sites, all QUALIFIED, 8 E0063. Same type, same emitter path, opposite spelling, opposite
+// outcome, at artifact grain.
+//
+// POPULATION, SCOPED HONESTLY IN TWO STEPS, because the miss is much wider than the diagnostic.
+// Every qualified record literal misses the bare membership test: 1341 sites over 101 distinct types
+// on main today. Only a phantom-bearing type turns that miss into E0063, and main has 36 such struct
+// types in its mirror, of which ZERO are ever constructed with a qualified spelling. So main is
+// population-conditionally correct here on a SECOND unenforced premise -- everything is spelled bare
+// -- and the cut branch violated exactly that premise for six types.
+//
+// AND ONE FALSE POSITIVE OF MY OWN, RECORDED BECAUSE IT IS THIS CARRIER'S SUBJECT TURNED ON ITS
+// AUTHOR: my first intersection joined those two sets on the LEAF NAME and returned one exposed type,
+// Group. It is not one. The phantom-bearing Group is std.algebra.Group; the qualified construction is
+// std.render.Group, a different declaration sharing a leaf. Joining on a spelling produced a wrong
+// answer in the middle of a measurement about joining on a spelling. The corrected count is zero.
+
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
 //
 // The open question this paragraph previously carried was WHICH pool holds both declarations. It is

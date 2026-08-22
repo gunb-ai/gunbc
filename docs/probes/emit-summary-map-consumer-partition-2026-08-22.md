@@ -161,6 +161,39 @@ module the fold reached last, and `is_known_variant`, `derive_variant_to_enum` a
 pair as the specimen where a bare-name rule realizes the wrong declaration. They are refused as a
 body or not at all, which puts the refusal downstream of the two-tree migration.
 
+### A second specimen, and a second failure mode: the miss, with no collision in it
+
+`Connective` is a **wrong** answer from two declarations collapsing into one entry. This one is a
+**missing** answer from a key that was never going to match — no homonym involved. The map's
+exposure is therefore not exclusively about collisions.
+
+Path (`emit_typed_record_lit`, this roster's row): `tn_is_known_struct` is
+`map_contains_key(emit_info.type_summaries, tn)`, the map is keyed bare, the namespace-cut corpus
+spells every construction qualified — so the test misses, `ctor_name` takes the resolve fallback, and
+the phantom lookup answers `Absent`, **whose arm emits nothing rather than refusing**. 13 rustc
+E0063 `missing field _phantom` at that head: emitted structs declaring the field beside emitted
+literals that never set it.
+
+**The two-arm control, which that lane could not build (with imports deleted, a bare cross-module
+spelling does not resolve at all) — main is the other arm.** `TargetCapabilityShapeRow` on main: 8
+construction sites, **all bare**, zero qualified; its committed mirror
+`extdeps_languages_rust_capabilities.rs` carries 8 emitted literals and 9 `_phantom` lines (8 rows +
+the enclosing table). Their branch: same type, 8 sites, **all qualified**, 8 E0063. Same type, same
+emitter path, opposite spelling, opposite outcome.
+
+**Population, in two steps, because the miss is far wider than the diagnostic.** Every qualified
+record literal misses the bare membership test — **1341 sites over 101 types on main today**. Only a
+*phantom-bearing* type turns that miss into E0063, and main has 36 such struct types in its mirror,
+of which **zero** are ever constructed qualified. Main is population-conditionally correct here on a
+*second* unenforced premise — everything is spelled bare — which the cut branch violated for six
+types.
+
+**One false positive of my own, recorded because it is this carrier's subject turned on its author.**
+My first intersection joined those sets on the **leaf name** and returned one exposed type, `Group`.
+It isn't: the phantom-bearing one is `std.algebra.Group`, the qualified construction is
+`std.render.Group` — a different declaration sharing a leaf. Joining on a spelling produced a wrong
+answer inside a measurement about joining on a spelling. Corrected count: zero.
+
 ### The `Connective` specimen: pool named, and it is a third root
 
 `Connective` is declared twice — `v1.std.core` (`src/v1/00_core.dag`) and `v2.std.node`
