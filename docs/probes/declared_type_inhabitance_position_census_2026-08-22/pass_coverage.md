@@ -24,9 +24,18 @@ places anyone happened to look: it is taken from the DECLARATION CONSTRUCTORS in
 is the constructor set — which is why a row can be added to the table only by adding a constructor
 slot, not by remembering another place.
 
-Counted against it: **6 never-walked of 10**, 2 walked-typed, 2 walked-untyped (both currently
-UNCONFIRMED — see the retraction below). Of the 6, **2 are confirmed by execution** (parameter
-default, field default) and 4 are flagged.
+Counted against it: **6 never-walked of 10**, 2 walked-typed, 2 walked-untyped.
+
+**THE TABLE CLASSIFIES WHAT THE CODE DOES WHEN REACHED; IT DOES NOT SAY THE PATH IS REACHED.** Both
+`walked, UNTYPED` rows are on the service side, and execution (below) establishes that inference
+never arrives at a `service` declaration at all — so those two rows describe a live code path over
+an unreached subtree, which is a different fact from the never-walked rows and is why they are not
+counted with them. Read the two together or the table looks like it contradicts the measurements.
+
+Of the 6 never-walked rows, **2 are confirmed by execution as INDEPENDENT members** (parameter
+default on a plain `fn`, field default on a plain `type`); 2 more (`uses` config args, non-auth item
+`properties`) are flagged and unmeasured; and the remaining service-side rows are subsumed by the
+one service fact rather than counted separately.
 
 | declaration node | expression-bearing field | what inference does | class |
 |---|---|---|---|
