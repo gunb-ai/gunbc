@@ -463,6 +463,15 @@ fn main() {
             // Indexed modules outside the compile closure, included in the name
             // census only (fill = whole tree; the compile scope stays the closure).
             let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+            // The refusal's SUBJECT is what THIS invocation compiled, supplied by the
+            // caller. It used to be hardcoded "v2 self-compile" inside the shared
+            // message, so a user compiling their own fixture was told a compile they
+            // never ran had failed.
+            let compile_subject = match (&entry, &source_dir) {
+                (Some(entry_path), _) => format!("compile of {entry_path}"),
+                (None, Some(dir)) => format!("compile of {dir}"),
+                (None, None) => format!("compile of {}", source_roots.join(", ")),
+            };
             let sources = if !source_roots.is_empty() {
                 // ARM-TIME ADMISSION for a whole-corpus compile (no --entry). The host
                 // budget was already readable at this point and was joined to nothing: the
@@ -692,9 +701,10 @@ fn main() {
                     render_targets[0].1.clone(),
                     pipeline_options.clone(),
                 );
-                if let Some(message) =
-                    v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
-                {
+                if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
+                    compile_subject.clone(),
+                    result.clone(),
+                ) {
                     eprintln!("{message}");
                     std::process::exit(1);
                 }
@@ -720,9 +730,10 @@ fn main() {
                         resolved.clone(),
                         render_target,
                     );
-                    if let Some(message) =
-                        v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
-                    {
+                    if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
+                        format!("{compile_subject} [{name}]"),
+                        result.clone(),
+                    ) {
                         eprintln!("{message}");
                         std::process::exit(1);
                     }
