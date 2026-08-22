@@ -2637,12 +2637,26 @@ would already own. The lane's question is what a flat file is actually made of.
 surviving 21 diagnostics (90%) are **two** roots, and the seven-class spread is an artifact of
 one mechanism wearing three rustc codes and another wearing two.
 
-**Subject / ref / producer.** Subject `v2_compiler_parse.rs` in the emitted `03_ingest` closure;
-ref `531a107787` (clean worktree) for the characterization, and a second independent tree
-(`ba63edc09b` + 61 ambient dirty files, one BuildBuddy dispatch) for the before/after; producer
-`docs/probes/curated_cargo_probe_one.sh` with `CSSL_STD_SEED_LINK=1`, blocks attributed to a file
-by the `-->` line of each coded `error[E…]` block. The two trees agree at **24 diagnostics with a
-byte-identical site list**, which is worth more than either run alone.
+**Subject / ref / producer — and the two strings, because they differ here.**
+
+```
+OBSERVED ON:  03_ingest closure at ba63edc09b PLUS 61 uncommitted files,
+              including src/v1/05_emit_rust.dag (another lane's emitter WIP)
+CLAIM ABOUT:  v2_compiler_parse.rs, this file's own root partition
+```
+
+Producer `docs/probes/curated_cargo_probe_one.sh` with `CSSL_STD_SEED_LINK=1`; blocks attributed
+to a file by the `-->` line of each coded `error[E…]` block. **Every absolute total in this
+section is on that contaminated tree and is not a board figure** — see §22.3. What survives the
+contamination is the per-file *partition* and the *delta*, both of which are joined at site
+identity rather than counted.
+
+A characterization pass also ran at `531a107787` and produced the same **24 diagnostics with a
+byte-identical site list**. That is two runs agreeing, not two *trees* agreeing: an earlier
+revision of this sentence called that run a "clean worktree", which was a claim about the
+REQUESTING worktree and says nothing about what the runner was dirty with, since that run did not
+echo `git status`. The agreement is real and the adjective was unearned — the same conflation
+§22.3 exists to prevent, made one paragraph above it.
 
 **The brief's board was already one class stale, and this is the first thing to take from here.**
 It was measured at `6c3fbeb960` as `E0308:6 E0282:5 E0609:5 E0061:4 E0597:4 E0560:3 E0573:1` = 28.
@@ -2650,7 +2664,7 @@ Live, the **E0597 column is zero** — gunbc#8799 ("E0597 … v2_compiler_parse.
 that measurement and closed all four. No delta is claimed against the other columns (§15.1); the
 E0597 claim is a join on the class being absent, not on counts moving.
 
-### 22.1 The partition (24 at `531a107787`, mechanism grain)
+### 22.1 The partition (24 diagnostics, mechanism grain)
 
 | mechanism | diagnostics | source sites | codes worn |
 |---|---:|---:|---|
@@ -2690,17 +2704,22 @@ Fixed — three genuine type defects in `src/v2/compiler/02_parse.dag`, all insi
    `List<Diagnostic>` field. The module already declares the converter
    (`parse_non_empty_diagnostics_to_list`) and uses it elsewhere. (E0308)
 
-Not fixed, and not this lane's to fix: T3 and RT-builtin are corpus-wide emitter/resolution roots
-(§11.18, §21). Patching their symptoms inside `02_parse.dag` — hand-rolling a membership list to
-dodge `Set`, renaming `contains` to dodge the interception — is the §5 unmarked workaround, and it
-would delete the specimens that make these two roots legible. **This file is now the cleanest
-available specimen of both**, which is more valuable than three fewer diagnostics.
+Not fixed, and not this lane's to fix — **both roots have owners.** T3 (`Set` as function-record
+vs `OrdSet`) is `royal-dove-436`'s cluster, currently blocked on an identity question, and its
+renderers are not to be touched from here; the RT-builtin `contains` interception belongs to the
+callee-resolution class (§21). Patching their symptoms inside `02_parse.dag` — hand-rolling a
+membership list to dodge `Set`, renaming `contains` to dodge the interception — is the §5 unmarked
+workaround, and it would delete the specimens that make these two roots legible.
 
-### 22.3 Evidence
+**This file is now the cleanest unpatched specimen of both, and that is the deliverable those two
+lanes should take from here**, worth more than three fewer diagnostics: seven `Set` sites where one
+construction's three codes can be read side by side, and four `contains` sites where an explicit
+`import v2.std.algebra { contains }` is demonstrably overridden by the host builtin. A specimen has
+value to the lane that owns the root even when it is not the specimen-holder's to fix.
 
-Two arms, **one dispatch, one ambient tree**, so the delta is attributable even though that tree
-was neither arm's declared ref (the runner mirrors a different checkout than the requesting
-worktree — noted because it silently confounded a first attempt at this measurement):
+### 22.3 Evidence — the delta is sound, the absolutes are NOT board figures
+
+Two arms, **one dispatch, one ambient tree**, so the contamination is common-mode and cancels:
 
 ```
 ARM=BASE  TOTAL 431  v2_compiler_parse.rs 24
@@ -2710,7 +2729,23 @@ ARM=HEAD  TOTAL 428  v2_compiler_parse.rs 21
 Joined at SITE identity, not by count: the removed set is exactly
 `{E0573@1664:56, E0308@1675:62, E0308@1684:18}`. **Nothing was added**, in this file or any other,
 and every other file's count is identical across the arms — so the −3 total is the −3 in this file
-and not a class moving upstream.
+and not a class moving upstream. The site-identity join is what makes this defensible rather than
+hopeful, and it is why the claim survives the confound below intact.
+
+**431 and 428 ARE NOT COMPARABLE TO THE FLEET BOARD, and must never be differenced against it.**
+The fleet's figure on `ba63edc09b` is **399**, reproduced independently twice (`smart-ram-730`,
+`vivid-badger-696`) site-for-site under the same probe, subject and convention. The 32-diagnostic
+gap is the 61 ambient dirty files this lane's runner mirrored — a dirty `src/v1/05_emit_rust.dag`
+changes what gets emitted, which changes what rustc sees. So 431/428 are internally consistent
+with each other and **with nothing else**; differencing 428 against 399 would render this lane's
+−3 as some fiction like +29. A quotable absolute requires a fresh single arm that echoes both its
+ref and `git status --porcelain | wc -l` before the number is read.
+
+**The instrument gap that produced this, stated because it was general, not local.** The standard
+dispatch echoed `MARKER_REF`, which proves which COMMIT the runner is on and says nothing about
+what is dirty on top of it. A single-arm remote probe cannot be trusted to be measuring your tree
+unless it echoes its own HEAD **and** its status; `smart-ram-730` has added the status count to the
+standard dispatch for every lane on the strength of this run.
 
 Surviving board: `E0282:5 E0609:5 E0308:4 E0061:4 E0560:3`. The **E0573 column is now zero**, and
 the file's top-class share rises from 21% to 24% — i.e. fixing the singletons makes the file
