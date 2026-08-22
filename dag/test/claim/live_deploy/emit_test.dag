@@ -264,7 +264,7 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\"")
     && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" /etc/gunbc-tree-sync.env")
     && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" /etc/systemd/system/gunbc-tree-sync.service")
-    && string_contains(s: sh, pattern: systemctl_restart_command(unit: srv1_live_deployment_names.tree_sync_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
     && string_contains(s: sh, pattern: "sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "[Service]")
@@ -321,7 +321,7 @@ test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   string_contains(
     s: sh,
     pattern: concat(
-      systemctl_restart_command(unit: srv1_live_deployment_names.tree_sync_unit_name, privileged: true),
+      systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true),
       " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }",
     ),
   )
