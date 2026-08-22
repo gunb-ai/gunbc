@@ -55,15 +55,17 @@ data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
 }
 
 // Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
-// (gunbc.host_axis_caps). Convergence must not re-apply via set-property — witness enrolls
-// host_converge_slice1_memory_max_converge_apply_suppressed below.
+// (gunbc.host_axis_caps). Convergence must not re-apply it.
+//
+// TWO `data ...: Bool = true` FLAGS USED TO SIT HERE and they are deleted rather than moved.
+// They claimed the converge-side apply was suppressed; their only readers were two witnesses
+// asserting the literals, so what executed was `true && true`. Nothing in any production path
+// consulted them, and the arm they described stayed wired the whole time
+// (gunbc.host_converge_realize interpreted a PerSlotMemoryCap knob into a shell body and
+// host_effect_realize ran it). The hold is now carried by the absence of that code path, which
+// is the construction move the flags were standing in for — see
+// gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason.
 data host_converge_slice1_memory_max_deploy_authority_note: String = "MemoryMax is authored at deploy through gunbc.host_axis_caps cap membership reconcile and drop-in upsert — not re-applied by gunbc converge. Dual authority (deploy drop-in vs converge set-property) is forbidden."
-
-data host_converge_slice1_memory_max_converge_apply_suppressed: Bool = true
-
-// Live author/revert on the operator converge principal requires root (drop-in writes,
-// daemon-reload, systemctl revert) — withheld by fleet_posix_operator_privilege_hold.
-data host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed: Bool = true
 
 data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises effective caps to the superseded regime."
 

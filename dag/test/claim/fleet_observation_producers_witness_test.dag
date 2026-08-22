@@ -2,7 +2,6 @@ module test.claim.fleet_observation_producers_witness
 
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
-  fleet_shell_transport_unobserved_count,
   still_ram_738_session_shell_transport_receipt_note,
   ShellTransportReachRefused,
   ShellTransportSucceeded,
@@ -16,17 +15,14 @@ import gunbc.session_residency {
   SessionsOperatorDeclaredAbsent,
 }
 import gunbc.host_disk_observation {
-  host_disk_fleet_unobserved_count,
   host_disk_observation,
   DiskUnobserved,
   DiskObservationRefused,
 }
 import gunbc.host_swap_backing {
-  host_swap_backing_fleet_unobserved_count,
   host_swap_backing_host_verdict,
 }
 import gunbc.build_cache_endpoint_observation {
-  build_cache_ci_endpoint_fleet_unavailable_count,
   build_cache_ci_placement_observation,
   build_cache_ci_endpoint_observation,
 }
@@ -43,8 +39,58 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+
+// EVERY FRONTIER BELOW IS A SET OF NAMED HOSTS, NOT A TALLY. The four fleet counts these replaced
+// were deleted from production entirely: they had no production consumer at all, and a function
+// whose only consumer is evidence is the no-final-consumer tell. The evidence itself stays, rebuilt
+// here at identity grain -- DESIGN 4b(4) dissolves the lower-rung machinery a climb obsoletes and
+// keeps the evidence that the rung is real, and here the two were separable because a witness can
+// fold the enrolled population itself.
+//
+// WHAT IDENTITY GRAIN BUYS OVER THE COUNTS. DESIGN section 5 requires completeness to be an identity
+// join rather than a count equality. A count says six hosts are unobserved but never WHICH, so a
+// producer arriving moves a number and the diff cannot say what acquired one. Named sets make that
+// readable. The sharper reason is that a count and its own prose cannot contradict each other
+// detectably -- a count has no members, so no review, execution or lens can check a sentence about
+// it against it; the sibling witness in test.claim.host_swap_backing carries the specimen, where a
+// note saying "all four enrolled hosts" sat beside a fold over six for as long as it took someone to
+// read both.
+//
+// NOT A CLAIM THAT ANY HOST HERE IS FICTIONAL, stated because an earlier revision of this block said
+// so and was wrong: all six enrolled hosts are real machines. srv5 and srv6 are the two DGX Spark
+// units, live on the operator LAN with ARP-confirmed MACs and measured SSH host keys; counting them
+// as unobserved is correct, because nobody has measured their disk, swap or endpoint yet.
+//
+// THE UNIVERSE IS THE ENROLLED POPULATION and never a roster typed into this file: a list pinned to
+// nothing is the same defect as a count pinned to a population, with more typing.
+fn disk_unobserved_hosts() -> List<HostIdentity> {
+  filter(fleet_subsumption_hosts, h => match host_disk_observation(host: h) {
+    DiskUnobserved { reason: _ } => true
+    _ => false
+  })
+}
+
+fn swap_unobserved_hosts() -> List<HostIdentity> {
+  filter(fleet_subsumption_hosts, h => host_swap_backing_host_verdict(host: h) == UnknownRefused)
+}
+
+fn endpoint_unavailable_hosts() -> List<HostIdentity> {
+  filter(fleet_subsumption_hosts, h => match build_cache_ci_endpoint_observation(host: h) {
+    EndpointObservationUnavailable { instance: _, reason: _ } => true
+    _ => false
+  })
+}
+
+fn shell_transport_unobserved_hosts() -> List<HostIdentity> {
+  filter(fleet_subsumption_hosts, h => match fleet_shell_transport_observation(host: h) {
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+    _ => true
+  })
+}
+
 test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
-  fleet_shell_transport_unobserved_count() == fleet_subsumption_hosts.length() - 1
+  shell_transport_unobserved_hosts()
+    == filter(fleet_subsumption_hosts, h => h != operator_host_srv3)
     && fleet_subsumption_hosts.length() > 0
     && match fleet_shell_transport_observation(host: operator_host_srv3) {
       ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => true
@@ -86,8 +132,8 @@ test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bo
 }
 
 test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
-  host_disk_fleet_unobserved_count() == fleet_subsumption_hosts.length()
-    && host_swap_backing_fleet_unobserved_count() == fleet_subsumption_hosts.length()
+  disk_unobserved_hosts() == fleet_subsumption_hosts
+    && swap_unobserved_hosts() == fleet_subsumption_hosts
     && match host_disk_observation(host: operator_host_srv3) {
       DiskUnobserved { reason: _ } => true
       DiskObservationRefused { detail: _ } => false
@@ -97,7 +143,7 @@ test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
 }
 
 test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
-  build_cache_ci_endpoint_fleet_unavailable_count() == fleet_subsumption_hosts.length()
+  endpoint_unavailable_hosts() == fleet_subsumption_hosts
     && match build_cache_ci_endpoint_observation(host: operator_host_srv3) {
       EndpointObservationUnavailable { instance: _, reason: _ } => true
       _ => false
