@@ -32,12 +32,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // which a script body becomes a modeled program, and the sites that reach for this builder are the
 // ones that have not yet been carried through it.
 //
-// POPULATION AT THE SEAL, so this is countable rather than a feeling: six call sites, all in the
-// fleet observation and enrollment path (gunbc.fleet_probe_identity_observe x2,
-// gunbc.fleet_host_key_enrollment x4). They are host probes whose bodies use `$(...)`, `&&` and `||`
-// -- genuine shell composition, not an argv wearing a costume.
+// POPULATION AT THE SEAL, counted rather than estimated: eleven call sites. Ten are production host
+// probes in the fleet observation and enrollment path (gunbc.fleet_probe_identity_observe x6,
+// gunbc.fleet_host_key_enrollment x4) whose bodies use $(...), && and || -- genuine shell
+// composition, not an argv wearing a costume. The eleventh is a manual receipt test that needs a
+// program which exits nonzero while printing nothing, and reaches for `sh -c "exit 3"` because no
+// utility has that as its contract.
 //
-// DISSOLVE-ON: those six bodies become modeled programs through the shell -> dag route, at which
+// DISSOLVE-ON: those bodies become modeled programs through the shell -> dag route, at which
 // point this builder loses its last caller and is deleted with them. It is NOT an escape hatch for a
 // new argv: a caller reaching for it to run a single program with flags is spelling that program's
 // argv inside a string, which review must refuse exactly as it refuses the record literal.
