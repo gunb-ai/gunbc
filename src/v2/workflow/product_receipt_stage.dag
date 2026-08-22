@@ -1,0 +1,660 @@
+module v2.workflow.product_receipt_stage
+
+import extdeps.cargo_build
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  fnv1a64_structural_hex_digest
+}
+import std.types { NonEmptyStr }
+import v2.compiler.self_host.compiler_closure_emit { CompilerClosureEmitReceipt }
+import v2.compiler.self_host.compiler_closure_emit_driver {
+  ClosureEmitPopulationAdmitted,
+  ClosureEmitPopulationRefused,
+  closure_emit_population_admission,
+  drive_compiler_closure_emit
+}
+import v2.compiler.source_authority {
+  DiscoveredSourceRefsDigestFromList,
+  DiscoveredSourceRefsDigestUnavailable,
+  discovered_source_refs_digest_for_refs
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.algebra { Empty, fold_list, length }
+import v2.std.logic { Bool }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.workflow.body_lowering_retention_census {
+  EvidenceNotApplicable,
+  B4EvidenceOutcome,
+  EvidenceWriteFailed,
+  EvidenceWritten,
+  b4_evidence_outcome_admits,
+  diagnostic_ledger_render,
+  retention_census,
+  retention_census_render
+}
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_closure_refs,
+  host_source_root_ingest_content_hash,
+  host_source_root_ingest_coverage_receipt
+}
+import v2.workflow.product_receipt {
+  ArtifactIdentity,
+  ArtifactIdentityAbsent,
+  ArtifactIdentityKnown,
+  AssemblyRefused,
+  AuthorityCargoManifest,
+  BoundaryCompleted,
+  BoundaryNotExercised,
+  BoundaryNotReached,
+  BoundaryObservation,
+  BoundaryRefusalCause,
+  BoundaryRefused,
+  BoundaryStanding,
+  CargoBuild,
+  CargoBuildFailed,
+  CargoManifestWriteFailed,
+  ClosureCandidateEmitted,
+  EmittedHardRefusalsPresent,
+  DiagnosticCauseTally,
+  EmitterRejected,
+  diagnostic_tally_bump,
+  HostDerivesManifest,
+  IngestRowShortfall,
+  ManifestCoverageIncomplete,
+  ManifestNotProduced,
+  ManifestOverlayNotResolved,
+  ManifestPopulationAdmitted,
+  ManifestPopulationEmpty,
+  ManifestPopulationPartial,
+  AdmissionReasonUnrecognized,
+  ManifestSourceReadFailed,
+  PopulationDigestMismatch,
+  ProducerReportedNoArtifact,
+  ProductBoundary,
+  ProductReceipt,
+  RefsHashVerified,
+  SeedLinkedAssembly,
+  product_artifact_identity,
+  product_receipt_green,
+  product_receipt_render
+}
+import tools.self_host_curated_seed_linked_harness {
+  cssl_v1_compiled_probe_lib_cargo_toml
+}
+
+// THE COMPOSITION, and why it runs HERE rather than in the driver that
+// launched it.
+//
+// Boundary 1 -- the host deriving the manifest -- must happen before this
+// process starts, because the manifest is a SOURCE ROOT this process is
+// resolved against. That is the whole chicken-and-egg the existing gates
+// route around by running each boundary in its own invocation and cleaning
+// up in between. Here the manifest artifact is NOT cleaned: the driver hands
+// this process the transaction directory and the digest of the exact bytes it
+// wrote, and boundary 2 re-hashes the file it was actually resolved against.
+// If those disagree, this run consumed a different artifact from the one the
+// host produced, and the receipt says so instead of reporting six green
+// components.
+
+data product_receipt_stage_double_read_note: String = "DECLARED COST, not an oversight. Boundaries 2 and 3 read the admission through closure_emit_population_admission, and boundary 4 calls drive_compiler_closure_emit, which runs that same admission again -- so every ref is read from disk twice per transaction. The alternative was to call emit_compiler_import_closure_from_ingest directly with the ingest the first admission returned, which halves the reads and is exactly the composition the driver module says its factoring exists to permit. It is not taken here because the boundary-4 standing is supposed to be the DRIVER'S verdict, and reaching past the driver to its emitter would make this receipt report a composition that no production caller performs. The cost is one extra read pass over the closure; the alternative is a receipt about a path nobody runs. Dissolve-on: the driver exposing an arm that takes an already-admitted population and returns the same Outcome, at which point boundaries 2-4 share one read with no layer skipped."
+
+data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_ingest_manifest.dag"
+data product_receipt_stage_candidate_rel: String = "/candidate"
+data product_receipt_stage_receipt_rel: String = "/receipt.txt"
+data product_receipt_stage_census_rel: String = "/b4-retention-census.txt"
+data product_receipt_stage_ledger_rel: String = "/b4-diagnostic-ledger.txt"
+
+fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
+  match fnv1a64_structural_hex_digest(hex: hex) {
+    Present { value: digest } =>
+      ArtifactIdentityKnown { digest: digest, file_count: file_count }
+    Absent => ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
+  }
+}
+
+// The driver's refusal reason is a Symbol because a Diagnostic carries one.
+// This maps that single authority onto the receipt's closed cause vocabulary
+// rather than re-deriving the admission ladder, so there is still exactly one
+// place that decides whether a population is admissible.
+//
+// THE LAST ARM CARRIES THE UNRECOGNISED LEXEME AND DOES NOT GUESS. The ladder
+// enumerates the five reasons the driver has today; if a sixth is added, a
+// terminal arm naming one of the five would attribute the refusal to a cause
+// that did not fire -- a fabricated plausible output at exactly the point a
+// reader trusts the receipt to say what stopped it. Carrying the reason
+// through instead makes the gap visible in the receipt that hits it, and no
+// consumer downstream has to have anticipated it.
+fn stage_admission_cause(reason: Symbol) -> BoundaryRefusalCause {
+  if reason == ^closure_emit_driver_empty_population {
+    ManifestPopulationEmpty
+  } else {
+    if reason == ^closure_emit_driver_coverage_incomplete {
+      ManifestCoverageIncomplete
+    } else {
+      if reason == ^closure_emit_driver_partial_population {
+        ManifestPopulationPartial
+      } else {
+        if reason == ^closure_emit_driver_population_digest_mismatch {
+          PopulationDigestMismatch
+        } else {
+          if reason == ^closure_emit_driver_source_read_failed {
+            ManifestSourceReadFailed
+          } else {
+            if reason == ^closure_emit_driver_ingest_row_shortfall {
+              IngestRowShortfall
+            } else {
+              AdmissionReasonUnrecognized { reason: symbol_lexeme(sym: reason) }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Boundary 2 owns the population checks and boundary 3 owns the read. The
+// admission ladder short-circuits, so a refusal on a boundary-2 cause leaves
+// boundary 3 NotExercised -- which is the honest answer, not a failure.
+fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
+  match cause {
+    ManifestSourceReadFailed => true
+    IngestRowShortfall => true
+    AdmissionReasonUnrecognized { reason: _ } => false
+    ManifestNotProduced => false
+    ManifestOverlayNotResolved => false
+    ManifestPopulationEmpty => false
+    ManifestCoverageIncomplete => false
+    ManifestPopulationPartial => false
+    PopulationDigestMismatch => false
+    EmitterRejected { causes: _ } => false
+    EmittedHardRefusalsPresent { count: _ } => false
+    AssemblyRefused => false
+    CargoManifestWriteFailed => false
+    CargoBuildFailed => false
+  }
+}
+
+fn stage_population_digest_identity() -> ArtifactIdentity {
+  match discovered_source_refs_digest_for_refs(refs: host_source_root_closure_refs) {
+    DiscoveredSourceRefsDigestFromList { digest: digest } =>
+      ArtifactIdentityKnown {
+        digest: digest,
+        file_count: host_source_root_ingest_coverage_receipt.ingest_read_count
+      }
+    DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
+      ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
+  }
+}
+
+fn stage_not_exercised(boundary: ProductBoundary) -> BoundaryObservation {
+  BoundaryObservation {
+    boundary: boundary,
+    standing: BoundaryNotExercised,
+    consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
+    produced: ArtifactIdentityAbsent { cause: BoundaryNotReached }
+  }
+}
+
+fn stage_refused(
+  boundary: ProductBoundary,
+  cause: BoundaryRefusalCause,
+  consumed: ArtifactIdentity
+) -> BoundaryObservation {
+  BoundaryObservation {
+    boundary: boundary,
+    standing: BoundaryRefused { cause: cause },
+    consumed: consumed,
+    produced: ArtifactIdentityAbsent { cause: BoundaryNotReached }
+  }
+}
+
+fn stage_completed(
+  boundary: ProductBoundary,
+  consumed: ArtifactIdentity,
+  produced: ArtifactIdentity
+) -> BoundaryObservation {
+  BoundaryObservation {
+    boundary: boundary,
+    standing: BoundaryCompleted,
+    consumed: consumed,
+    produced: produced
+  }
+}
+
+// symbol_lexeme is a host-intercepted bridge, so this partition is
+// available to the INTERPRETED transport and would not survive a compiled
+// realization of it unchanged. Stated because the receipt would otherwise
+// look portable across realizations when one of its fields is not.
+fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
+  fold_list(
+    xs: ds.tail,
+    empty: diagnostic_tally_bump(
+      tally: Empty,
+      reason: symbol_lexeme(sym: ds.head.reason)
+    ),
+    cons: fn(acc, d) {
+      diagnostic_tally_bump(tally: acc, reason: symbol_lexeme(sym: d.reason))
+    }
+  )
+}
+
+type ProductReceiptCandidate {
+  observation: BoundaryObservation
+  emitted_source: String
+  census: B4EvidenceOutcome
+  ledger: B4EvidenceOutcome
+}
+
+func product_receipt_candidate(
+  txn: String,
+  candidate_dir: String,
+  population_digest: ArtifactIdentity
+) -> ProductReceiptCandidate {
+  match drive_compiler_closure_emit(
+    refs: host_source_root_closure_refs,
+    receipt: host_source_root_ingest_coverage_receipt,
+    admission: host_compiler_closure_admission,
+    target: rust_target_model()
+  ) {
+    Rejected { diagnostics: ds } =>
+      product_receipt_candidate_refused(
+        txn: txn,
+        ds: ds,
+        population_digest: population_digest
+      )
+    Accepted { value: value, diagnostics: _ } =>
+      product_receipt_candidate_materialize(
+        candidate_dir: candidate_dir,
+        population_digest: population_digest,
+        emitted_source: value.source.carried
+      )
+  }
+}
+
+// The census is written from INSIDE the transaction that produced the
+// diagnostics, not reconstructed afterwards from a log. A census rebuilt by
+// re-running the emitter would be a second observation of a second run, and
+// the whole argument of this lane is that a boundary's evidence has to be the
+// artifact the boundary actually produced.
+func product_receipt_candidate_refused(
+  txn: String,
+  ds: NonEmptyDiagnostics,
+  population_digest: ArtifactIdentity
+) -> ProductReceiptCandidate {
+  let census_write = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_census_rel),
+    content: retention_census_render(families: retention_census(ds: ds))
+  )
+  let ledger_write = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_ledger_rel),
+    content: diagnostic_ledger_render(ds: ds)
+  )
+  ProductReceiptCandidate {
+    observation: stage_refused(
+      boundary: ClosureCandidateEmitted,
+      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
+      consumed: population_digest
+    ),
+    emitted_source: "",
+    census: if census_write.success { EvidenceWritten } else { EvidenceWriteFailed },
+    ledger: if ledger_write.success { EvidenceWritten } else { EvidenceWriteFailed }
+  }
+}
+
+func product_receipt_candidate_materialize(
+  candidate_dir: String,
+  population_digest: ArtifactIdentity,
+  emitted_source: String
+) -> ProductReceiptCandidate {
+  let hard_refusals = length(xs: emitted_source.split("compile_error!")) - 1
+  if hard_refusals > 0 {
+    ProductReceiptCandidate {
+      observation: stage_refused(
+        boundary: ClosureCandidateEmitted,
+        cause: EmittedHardRefusalsPresent { count: hard_refusals },
+        consumed: population_digest
+      ),
+      emitted_source: emitted_source,
+      census: EvidenceNotApplicable,
+      ledger: EvidenceNotApplicable
+    }
+  } else {
+    let made = shell.Mkdir.Parents(path: concat(candidate_dir, "/src"))
+    let written = Filesystem.Write(
+      path: concat(candidate_dir, "/src/lib.rs"),
+      content: emitted_source
+    )
+    if made.success && written.success {
+      ProductReceiptCandidate {
+        observation: stage_completed(
+          boundary: ClosureCandidateEmitted,
+          consumed: population_digest,
+          produced: product_artifact_identity(value: emitted_source, file_count: 1)
+        ),
+        emitted_source: emitted_source,
+        census: EvidenceNotApplicable,
+        ledger: EvidenceNotApplicable
+      }
+    } else {
+      ProductReceiptCandidate {
+        observation: stage_refused(
+          boundary: ClosureCandidateEmitted,
+          cause: EmitterRejected { causes: Empty },
+          consumed: population_digest
+        ),
+        emitted_source: emitted_source,
+        census: EvidenceNotApplicable,
+        ledger: EvidenceNotApplicable
+      }
+    }
+  }
+}
+
+type ProductReceiptTail {
+  b5: BoundaryObservation
+  b6: BoundaryObservation
+  b7: BoundaryObservation
+}
+
+fn product_receipt_tail_not_exercised() -> ProductReceiptTail {
+  ProductReceiptTail {
+    b5: stage_not_exercised(boundary: SeedLinkedAssembly),
+    b6: stage_not_exercised(boundary: AuthorityCargoManifest),
+    b7: stage_not_exercised(boundary: CargoBuild)
+  }
+}
+
+func product_receipt_cargo_tail(
+  root: String,
+  candidate_dir: String,
+  b5: BoundaryObservation,
+  assembled_identity: ArtifactIdentity
+) -> ProductReceiptTail {
+  let cargo_manifest_text = cssl_v1_compiled_probe_lib_cargo_toml(root: root)
+  let written = Filesystem.Write(
+    path: concat(candidate_dir, "/Cargo.toml"),
+    content: cargo_manifest_text
+  )
+  if written.success {
+    let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
+    let build = cargo.Build.BuildManifest(
+      workdir: candidate_dir,
+      manifest_path: concat(candidate_dir, "/Cargo.toml"),
+      target_dir: concat(candidate_dir, "/target"),
+      extra_args: ["--release"]
+    )
+    ProductReceiptTail {
+      b5: b5,
+      b6: stage_completed(
+        boundary: AuthorityCargoManifest,
+        consumed: assembled_identity,
+        produced: manifest_identity
+      ),
+      b7: if build.success {
+        stage_completed(
+          boundary: CargoBuild,
+          consumed: manifest_identity,
+          produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
+        )
+      } else {
+        stage_refused(
+          boundary: CargoBuild,
+          cause: CargoBuildFailed,
+          consumed: manifest_identity
+        )
+      }
+    }
+  } else {
+    ProductReceiptTail {
+      b5: b5,
+      b6: stage_refused(
+        boundary: AuthorityCargoManifest,
+        cause: CargoManifestWriteFailed,
+        consumed: assembled_identity
+      ),
+      b7: stage_not_exercised(boundary: CargoBuild)
+    }
+  }
+}
+
+func product_receipt_tail(
+  root: String,
+  entry: String,
+  candidate_dir: String,
+  emitted_source: String,
+  b4_ok: Bool
+) -> ProductReceiptTail {
+  if !b4_ok {
+    product_receipt_tail_not_exercised()
+  } else {
+    let candidate_identity = product_artifact_identity(value: emitted_source, file_count: 1)
+    let assemble = gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: concat(root, "/target/release/cssl_assemble"),
+      args: [
+        "--out-dir", candidate_dir,
+        "--entry-dag", entry,
+        "--root", root,
+        "--std-bridge-dir", "dag/tools/self_host_std_bridge_shims"
+      ]
+    )
+    let assembled_read = Filesystem.Read(path: concat(candidate_dir, "/src/lib.rs"))
+    let assembled_files = shell.Find.FilesByNameSorted(
+      root: concat(candidate_dir, "/src"),
+      name_glob: "*.rs"
+    )
+    let assembled_file_count = length(xs: assembled_files.stdout.split("\n")) - 1
+    if assemble.success
+      && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
+      && assembled_read.success {
+      let assembled_identity = product_artifact_identity(
+        value: assembled_read.content,
+        file_count: assembled_file_count
+      )
+      product_receipt_cargo_tail(
+        root: root,
+        candidate_dir: candidate_dir,
+        b5: stage_completed(
+          boundary: SeedLinkedAssembly,
+          consumed: candidate_identity,
+          produced: assembled_identity
+        ),
+        assembled_identity: assembled_identity
+      )
+    } else {
+      ProductReceiptTail {
+        b5: stage_refused(
+          boundary: SeedLinkedAssembly,
+          cause: AssemblyRefused,
+          consumed: candidate_identity
+        ),
+        b6: stage_not_exercised(boundary: AuthorityCargoManifest),
+        b7: stage_not_exercised(boundary: CargoBuild)
+      }
+    }
+  }
+}
+
+func run_product_receipt_stage(txn: String, manifest_identity: String, entry: String) -> ProcessExit {
+  let manifest_path = concat(txn, product_receipt_stage_manifest_rel)
+  let candidate_dir = concat(txn, product_receipt_stage_candidate_rel)
+  let root = git.Inspect.Toplevel()
+
+  let b1_produced = stage_identity_from_hex(hex: manifest_identity, file_count: 1)
+
+  let manifest_read = Filesystem.Read(path: manifest_path)
+  let b2_consumed = if manifest_read.success {
+    product_artifact_identity(value: manifest_read.content, file_count: 1)
+  } else {
+    ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
+  }
+
+  let overlay_resolved = manifest_read.success
+    && host_source_root_ingest_content_hash != ""
+    && string_contains(s: manifest_read.content, pattern: host_source_root_ingest_content_hash)
+
+  let admission = closure_emit_population_admission(
+    refs: host_source_root_closure_refs,
+    receipt: host_source_root_ingest_coverage_receipt
+  )
+
+  let admission_cause = match admission {
+    ClosureEmitPopulationRefused { reason: reason } => stage_admission_cause(reason: reason)
+    ClosureEmitPopulationAdmitted { ingest: _ } => ManifestNotProduced
+  }
+  let admitted = match admission {
+    ClosureEmitPopulationRefused { reason: _ } => false
+    ClosureEmitPopulationAdmitted { ingest: _ } => true
+  }
+
+  let population_digest = stage_population_digest_identity()
+
+  let b2 = if !manifest_read.success {
+    stage_refused(
+      boundary: ManifestPopulationAdmitted,
+      cause: ManifestNotProduced,
+      consumed: b2_consumed
+    )
+  } else {
+    if !overlay_resolved {
+      stage_refused(
+        boundary: ManifestPopulationAdmitted,
+        cause: ManifestOverlayNotResolved,
+        consumed: b2_consumed
+      )
+    } else {
+      if admitted || stage_cause_belongs_to_read(cause: admission_cause) {
+        stage_completed(
+          boundary: ManifestPopulationAdmitted,
+          consumed: b2_consumed,
+          produced: population_digest
+        )
+      } else {
+        stage_refused(
+          boundary: ManifestPopulationAdmitted,
+          cause: admission_cause,
+          consumed: b2_consumed
+        )
+      }
+    }
+  }
+
+  let b2_ok = match b2.standing {
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
+  }
+
+  let b3 = if !b2_ok {
+    stage_not_exercised(boundary: RefsHashVerified)
+  } else {
+    if admitted {
+      stage_completed(
+        boundary: RefsHashVerified,
+        consumed: population_digest,
+        produced: population_digest
+      )
+    } else {
+      stage_refused(
+        boundary: RefsHashVerified,
+        cause: admission_cause,
+        consumed: population_digest
+      )
+    }
+  }
+
+  let b3_ok = match b3.standing {
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
+  }
+
+  let candidate = if b3_ok {
+    product_receipt_candidate(
+      txn: txn,
+      candidate_dir: candidate_dir,
+      population_digest: population_digest
+    )
+  } else {
+    ProductReceiptCandidate {
+      observation: stage_not_exercised(boundary: ClosureCandidateEmitted),
+      emitted_source: "",
+      census: EvidenceNotApplicable,
+      ledger: EvidenceNotApplicable
+    }
+  }
+  let b4 = candidate.observation
+  let emitted_source = candidate.emitted_source
+  let census_outcome = candidate.census
+  let ledger_outcome = candidate.ledger
+
+  let b4_ok = match b4.standing {
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
+  }
+
+  let tail = product_receipt_tail(
+    root: root.path,
+    entry: entry,
+    candidate_dir: candidate_dir,
+    emitted_source: emitted_source,
+    b4_ok: b4_ok
+  )
+  let b5 = tail.b5
+  let b6 = tail.b6
+  let b7 = tail.b7
+
+  let receipt = ProductReceipt {
+    subject: entry,
+    observations: [
+      BoundaryObservation {
+        boundary: HostDerivesManifest,
+        standing: if manifest_read.success { BoundaryCompleted } else {
+          BoundaryRefused { cause: ManifestNotProduced }
+        },
+        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
+        produced: b1_produced
+      },
+      b2,
+      b3,
+      b4,
+      b5,
+      b6,
+      b7
+    ]
+  }
+
+  let written = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_receipt_rel),
+    content: product_receipt_render(receipt: receipt)
+  )
+
+  if !b4_evidence_outcome_admits(outcome: census_outcome) {
+    exit_failure(
+      reason: "boundary-4 retention census could not be written; the receipt would understate a population it observed"
+    )
+  } else if !b4_evidence_outcome_admits(outcome: ledger_outcome) {
+    exit_failure(
+      reason: "boundary-4 diagnostic ledger could not be written; the receipt would name a refusal it cannot attribute"
+    )
+  } else {
+    if written.success && product_receipt_green(receipt: receipt) {
+      ExitSuccess
+    } else {
+      exit_failure(reason: "seven-boundary product receipt is RED")
+    }
+  }
+}

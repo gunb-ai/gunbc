@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -119,7 +119,7 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 70
+    timeout-minutes: 105
     permissions:
       contents: read
       actions: read
@@ -155,7 +155,6 @@ jobs:
         timeout-minutes: 5
       - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
@@ -181,7 +180,6 @@ jobs:
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         if: github.event.inputs.mode == 'plan'
@@ -210,13 +208,9 @@ jobs:
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           set -euo pipefail
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
-          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then
-            echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2
-            exit 1
-          fi
+          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
@@ -226,24 +220,68 @@ jobs:
       - name: Spark serving linger converge (executor→target FleetSsh typed argv)
         id: spark_linger
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
           cat "$ROOT/target/spark-serving-converge-slice-wet-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           SPARK_CONVERGE_EXECUTE: 1
         if: github.event.inputs.mode == 'spark_linger'
-        timeout-minutes: 5
+        timeout-minutes: 60
+      - name: Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)
+        id: spark_grants
+        run: |
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE"' EXIT
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/grant_install.dag --function spark_grant_install_ci_wet
+          cat "$ROOT/target/spark-grant-install-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'spark_grants'
+        timeout-minutes: 60
       - name: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)"
         id: spark_observe
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_observe_invoke — foreign-executor shell invoking spark_serving_observe_ci_wet (runner-side, read-only: unit state, ollama version, model tags, driver); DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_observe.dag --function spark_serving_observe_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_observe.dag --function spark_serving_observe_ci_wet
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
         if: github.event.inputs.mode == 'spark_observe'
-        timeout-minutes: 5
+        timeout-minutes: 60
+      - name: "Spark serving reboot (durability probe: the receipt is the converge that follows)"
+        id: spark_reboot
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_reboot_probe.dag --function spark_serving_reboot_ci_wet
+          cat "$ROOT/target/spark-serving-reboot-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_reboot'
+        timeout-minutes: 60
+      - name: Spark serving durability transaction (boot identity before and after, in one run)
+        id: spark_durability
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability.dag --function spark_serving_durability_ci_wet
+          cat "$ROOT/target/spark-serving-durability-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_durability'
+        timeout-minutes: 60
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi

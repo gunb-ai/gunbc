@@ -1,0 +1,481 @@
+module test.claim.spark_managed_grant_install_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.managed_access_bootstrap {
+  EnableLingerForOwnAccount,
+  RebootThisHost,
+  spark_managed_grant_population,
+  spark_managed_grant_sudoers_command,
+}
+import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path }
+import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
+import gunbc.spark.managed_grant_install {
+  spark_grant_install_plan,
+  spark_grant_install_operation_labels,
+  cleanup_grant_staging_argv,
+  spark_grant_cleanup_standing,
+  spark_grant_install_administrator_standing,
+  spark_grant_install_plan_wire,
+  spark_grant_staging_path,
+  SparkGrantInstallSteps,
+  SparkGrantInstallRefused,
+  SparkGrantInstallRun,
+  SparkGrantInstallNotAttempted,
+  spark_grant_install_run_succeeded,
+  spark_grant_install_run_text,
+  spark_grant_install_outcome_wire,
+  spark_grant_credential_requirement,
+  spark_grant_install_from_privileged,
+  spark_grant_install_succeeded,
+  SparkGrantInstallExecuted,
+  GrantReadbackConfirmed,
+  GrantReadbackDisagreed,
+  GrantReadbackNotAttempted,
+  SparkGrantInstallAwaitingOperatorCredential,
+}
+import gunbc.remote_operation {
+  remote_operation_argv,
+  remote_operation_label,
+  RemoteStepStanding,
+  RemoteStepUnattempted,
+  RemoteStepCompleted,
+  RemoteStepFailed,
+}
+import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
+import gunbc.spark.grant_privileged_operation {
+  OperatorBootstrapCredentialLease,
+  spark_bootstrap_credential_lease,
+  CredentialNotEnrolled,
+  CredentialRejected,
+  PrivilegedCommandSucceeded,
+  ValidateStagedSudoers,
+  InstallStagedSudoers,
+  admitted_root_argv_words,
+  grant_sudoers_validation_argv,
+  grant_sudoers_installation_argv,
+  CredentialNotMaterialized,
+  privileged_step_outcome_wire,
+}
+
+// The installing principal, which is deliberately NOT the grantee: an account cannot install its own
+// sudoers entries, and the fixtures below would pass against either if the two were the same string.
+fn installer() -> NonEmptyStr { "briansrls" as NonEmptyStr }
+
+fn pending_lease() -> OperatorBootstrapCredentialLease {
+  spark_bootstrap_credential_lease(
+    host: "srv6",
+    administrator: CredentialMaterializationPending,
+    grant: RebootThisHost,
+    attempt_identity: "fixture" as NonEmptyStr,
+  )
+}
+
+
+// The four phases the executor consumes, named and in order. This reads the labels off the same
+// record fields the executor destructures, so a phase that stopped being run would stop being named.
+test fn the_reboot_grant_plans_stage_validate_install_and_cleanup() -> Bool {
+  let labels = spark_grant_install_operation_labels(
+    plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()),
+  )
+  labels.length() == 4
+    && any(labels, l => string_contains(l, "stage-gunbc-reboot"))
+    && any(labels, l => l == "validate-staged-sudoers")
+    && any(labels, l => l == "install-staged-sudoers")
+    && any(labels, l => string_contains(l, "cleanup-gunbc-reboot"))
+}
+
+// THE ORDERING IS THE SAFETY ARGUMENT, and it is now carried by the plan's shape rather than checked
+// over a list. A malformed drop-in in /etc/sudoers.d does not fail that file alone -- sudo refuses
+// the entire sudoers set, so every privileged operation on the host stops, including the one that
+// would repair it.
+//
+// This began as a forward scan asserting validate preceded install in an ordered step list, with a
+// discriminating negative that fed it an inverted list. That wall is now structural: the phases are
+// FIELDS, so an inverted plan has no representation and the negative has nothing to construct. Per
+// the guarantee ladder the check dissolved and this control stays, one rung up -- it fails if the
+// two phases are ever swapped back into a permutable sequence.
+test fn every_grant_validates_its_sudoers_before_installing_it() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    let labels = spark_grant_install_operation_labels(
+      plan: spark_grant_install_plan(grant: g, principal: installer()),
+    )
+    acc && fold(labels, init: 0, f: fn(state, l) {
+      if state == 2 {
+        2
+      } else if l == "validate-staged-sudoers" {
+        1
+      } else if l == "install-staged-sudoers" && state == 0 {
+        2
+      } else {
+        state
+      }
+    }) == 1
+  })
+}
+
+// visudo runs against the STAGED copy, never against the live drop-in path -- validating the file
+// already in /etc/sudoers.d would be checking after the damage was done. Asserted over the argv the
+// privileged step actually sends, not over a planned spelling nothing executes.
+test fn validation_targets_the_staged_copy_not_the_live_dropin() -> Bool {
+  match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
+    SparkGrantInstallRefused { grant: _, cause: _ } => false
+    SparkGrantInstallSteps { grant: _, stage: _, validate: v, install: _, cleanup: _ } => {
+      let argv = admitted_root_argv_words(command: grant_sudoers_validation_argv(command: v))
+      any(argv, w => w == "visudo")
+        && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
+        && !any(argv, w => w == (spark_managed_grant_dropin_path(grant: RebootThisHost) as String))
+    }
+  }
+}
+
+// `install` rather than `mv`, with an explicit owner and a mode sudo will accept: sudo refuses a
+// drop-in that is group- or world-writable, so ownership and mode are facts of the command that
+// placed the file rather than of whatever umask the staging write ran under.
+test fn the_dropin_lands_root_owned_and_not_group_writable() -> Bool {
+  match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
+    SparkGrantInstallRefused { grant: _, cause: _ } => false
+    SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: i, cleanup: _ } => {
+      let argv = admitted_root_argv_words(command: grant_sudoers_installation_argv(command: i))
+      any(argv, w => w == "install")
+        && any(argv, w => w == "0440")
+        && any(argv, w => w == "root")
+        && !any(argv, w => w == "mv")
+        && any(argv, w => w == (spark_managed_grant_dropin_path(grant: RebootThisHost) as String))
+    }
+  }
+}
+
+// THE CREDENTIAL IS NEVER AN ARGV WORD, and the prompt is suppressed rather than answered. `sudo -S`
+// reads it from stdin; a step that prompted would hang a non-interactive transport forever rather
+// than refusing, which is the failure mode with no diagnostic at all. The earlier form of this
+// witness asserted `sudo -n` over planned steps that the credential cutover had already replaced --
+// it was green against argvs nothing sent.
+test fn no_privileged_step_carries_a_credential_or_can_prompt() -> Bool {
+  match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
+    SparkGrantInstallRefused { grant: _, cause: _ } => false
+    SparkGrantInstallSteps { grant: _, stage: _, validate: v, install: i, cleanup: _ } =>
+      fold(
+        [grant_sudoers_validation_argv(command: v), grant_sudoers_installation_argv(command: i)],
+        init: true,
+        f: fn(acc, c) {
+        let argv = admitted_root_argv_words(command: c)
+        acc
+          && any(argv, w => w == "-S")
+          && any(argv, w => w == "-p")
+          && any(argv, w => w == "--")
+          && !any(argv, w => w == "-n")
+        },
+      )
+  }
+}
+
+// BOTH staging names are removed, not just the destination. The typed write stages at
+// <path>.gunbc-staging, modes it, renames it, then compares, so a refusal at mode or rename strands
+// the sibling and a refusal at compare strands the final name. A cleanup naming only one of them
+// leaves a readable copy of the sudoers content behind on exactly the paths most likely to fail.
+test fn the_plan_removes_the_staged_file() -> Bool {
+  match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
+    SparkGrantInstallRefused { grant: _, cause: _ } => false
+    SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: _, cleanup: c } => {
+      let argv = cleanup_grant_staging_argv(cleanup: c)
+      any(argv, w => w == "rm")
+        && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
+        && any(argv, w => w == concat(spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String, ".gunbc-staging"))
+    }
+  }
+}
+
+// An empty sequencer result means the cleanup was never attempted, and says so with the identity of
+// the step that did not run -- rather than reading as a quiet success.
+test fn an_unrun_cleanup_reports_itself_unattempted() -> Bool {
+  match spark_grant_cleanup_standing(identity: "cleanup-fixture" as NonEmptyStr, standings: []) {
+    RemoteStepUnattempted { identity: id } => id as String == "cleanup-fixture"
+    RemoteStepCompleted { identity: _, execution: _ } => false
+    RemoteStepFailed { identity: _, execution: _ } => false
+  }
+}
+
+// Each grant stages to its own path, so two grants installed in one run cannot overwrite each
+// other's staged file between that file's validation and its installation.
+test fn the_two_grants_stage_to_distinct_paths() -> Bool {
+  spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String
+    != spark_grant_staging_path(grant: EnableLingerForOwnAccount, principal: installer()) as String
+}
+
+test fn the_plan_wire_names_the_grant_and_its_steps() -> Bool {
+  let text = spark_grant_install_plan_wire(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer()))
+  string_contains(text, "grant-install grant=reboot this host")
+    && string_contains(text, "validate-staged-sudoers")
+}
+
+test fn a_refused_plan_renders_its_cause_and_plans_no_steps() -> Bool {
+  let plan = SparkGrantInstallRefused { grant: RebootThisHost, cause: "fixture refusal" as NonEmptyStr }
+  spark_grant_install_operation_labels(plan: plan).length() == 0
+    && string_contains(spark_grant_install_plan_wire(plan: plan), "REFUSED cause=fixture refusal")
+}
+
+// THE VERDICT IS THE VARIANTS, NOT THE TEXT. A sibling module records this exact defect landing
+// once: an exit decided by string_contains(body, "REFUSED") passed a run whose refusal arm spells
+// "probe-refused" in lower case. A run holding one not-attempted outcome must refuse whatever its
+// receipt happens to read like.
+// AN EXECUTED INSTALL WITH NO PRIVILEGED STEPS IS NOT A SUCCESS. The staging write alone converges
+// nothing -- the drop-in is still absent -- and an outcome that counted it would put a grant in the
+// receipt the host does not hold, which is the exact confusion the reconcile exists to end.
+test fn staging_alone_never_counts_as_an_installed_grant() -> Bool {
+  !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+    host: "srv6",
+    grant: RebootThisHost,
+    standings: [],
+    privileged: [],
+    readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  })
+}
+
+// A SUCCESSFUL INSTALL WITH NO CONFIRMING READBACK IS NOT A GRANT. `install` exiting zero says a
+// file was placed; whether sudo now grants the command is a separate fact only sudo can state, and
+// it can disagree -- a drop-in naming the wrong account, a valid rule for a path that does not
+// exist, or an earlier sudoers entry taking precedence all place a file successfully and grant
+// nothing. This is the gap the whole vertical started in: a hand-applied sudoers line converged
+// nothing the process could see.
+test fn a_privileged_success_without_a_confirmed_readback_is_not_an_installed_grant() -> Bool {
+  let steps = [
+    PrivilegedCommandSucceeded { command: ValidateStagedSudoers { staged_path: "p" as NonEmptyStr } },
+    PrivilegedCommandSucceeded {
+      command: InstallStagedSudoers { staged_path: "p" as NonEmptyStr, dropin_path: "d" as NonEmptyStr },
+    },
+  ]
+  spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+    host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+    readback: GrantReadbackConfirmed,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  })
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+         readback: GrantReadbackDisagreed { standing: "sudo does not name the command" as NonEmptyStr },
+         cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+       })
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [], privileged: steps,
+         readback: GrantReadbackNotAttempted,
+         cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+       })
+}
+
+// The receipt says which of the three happened, because "installed" and "installed and confirmed"
+// are the two sentences this vertical exists to stop conflating.
+test fn the_receipt_states_the_readback_outcome() -> Bool {
+  string_contains(
+    spark_grant_install_outcome_wire(outcome: SparkGrantInstallExecuted {
+      host: "srv6", grant: RebootThisHost, standings: [], privileged: [],
+      readback: GrantReadbackConfirmed,
+      cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+    }),
+    "grant-readback CONFIRMED",
+  )
+    && string_contains(
+         spark_grant_install_outcome_wire(outcome: SparkGrantInstallExecuted {
+           host: "srv6", grant: RebootThisHost, standings: [], privileged: [],
+           readback: GrantReadbackDisagreed { standing: "fixture disagreement" as NonEmptyStr },
+           cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+         }),
+         "grant-readback DISAGREED fixture disagreement",
+       )
+}
+
+// A credential that was never enrolled is not a failed install: "nobody has supplied authorization
+// yet" and "the installer is broken" send a reader to different places.
+test fn a_never_enrolled_credential_is_awaiting_and_not_a_failure() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialNotEnrolled { lease: pending_lease() }], readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  ) {
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => true
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _, readback: _, cleanup: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
+// AN UNMATERIALIZED CREDENTIAL IS AN EXECUTED INSTALL, not an awaiting-credential one, and its
+// located cause survives to the receipt. Routing it to the awaiting arm rebuilt the exact conflation
+// the four-arm outcome exists to end: that arm carries no cause, so a missing environment variable,
+// an unreadable file, an empty payload and a line-bearing payload would all read as "nobody supplied
+// a credential" -- four different remedies wearing one sentence, on the first run after IAM lands.
+test fn an_unmaterialized_credential_keeps_its_cause_at_the_production_outcome() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialNotMaterialized {
+      lease: pending_lease(),
+      cause: "fixture: the credential file named by the environment does not exist",
+    }],
+    readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  ) {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _, cleanup: _ } =>
+      string_contains(
+        join(map(pr, o => privileged_step_outcome_wire(outcome: o)), ""),
+        "the credential file named by the environment does not exist",
+      )
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
+// A REJECTED credential IS an executed-and-failed install, because something was actually attempted
+// against an enrolled secret -- the remedy is a different version, not a first enrolment.
+test fn a_rejected_credential_is_an_executed_failure_not_an_awaiting_one() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialRejected { lease: pending_lease() }], readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  ) {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _, cleanup: _ } => pr.length() == 1
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+    && !spark_grant_install_succeeded(outcome: SparkGrantInstallExecuted {
+         host: "srv6", grant: RebootThisHost, standings: [],
+         privileged: [CredentialRejected { lease: pending_lease() }],
+         readback: GrantReadbackNotAttempted,
+         cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+       })
+}
+
+test fn a_run_holding_a_not_attempted_outcome_refuses() -> Bool {
+  !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallNotAttempted {
+      host: "srv6",
+      grant: RebootThisHost,
+      cause: "fixture" as NonEmptyStr,
+    }],
+  })
+}
+
+// Nothing missing IS success, and only here: the reconcile has already refused to put an unobserved
+// grant in the install set, so an empty list cannot have arrived from ignorance.
+test fn a_run_with_nothing_to_install_succeeds() -> Bool {
+  spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=true\n",
+    outcomes: [],
+  })
+}
+
+// The receipt is a projection of the outcomes and carries both halves, so a reader sees the standing
+// that motivated each install beside what the install did.
+test fn the_run_text_carries_the_standing_and_each_outcome() -> Bool {
+  let text = spark_grant_install_run_text(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallNotAttempted {
+      host: "srv6",
+      grant: RebootThisHost,
+      cause: "sudo: a password is required" as NonEmptyStr,
+    }],
+  })
+  string_contains(text, "grant-standing host=srv6")
+    && string_contains(text, "NOT-ATTEMPTED cause=sudo: a password is required")
+}
+
+// THE DISCRIMINATING NEGATIVE FOR THE STAGING HOME, and it is the defect that actually shipped: the
+// path came from a constant naming the grantee's home, so a run connecting as the operator wrote
+// into the automation account's directory and got Permission denied. Staging must follow the
+// principal doing the writing, and asserting the two differ is what makes the constant unwritable.
+test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
+  let as_installer = spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String
+  let as_grantee = spark_grant_staging_path(grant: RebootThisHost, principal: "gunbc-automation" as NonEmptyStr) as String
+  as_installer != as_grantee
+    && string_contains(as_installer, "/home/briansrls/")
+    && !string_contains(as_installer, "gunbc-automation")
+}
+
+// THE REMEDY IS A CREDENTIAL, NEVER A RECIPE, and this witness is the wall against the defect that
+// shipped: the receipt rendered a sudoers line, a mode and a path as instructions to apply by hand.
+// Asking an operator to reproduce a frozen plan is asking them to do work convergence owns, and it
+// leaves the result unobserved by the process that needed it. So the text must name the credential
+// and must NOT contain the mutation.
+//
+// It also names the ENROLLED secret rather than the no-secret-yet wording it carried while the
+// production standing was pending. That half is a control on the production entry and not a
+// restatement of the renderer: the resource can only appear here because the lane's single standing
+// authority resolves to the CARRIED reference, so this reds if that entry regresses to pending --
+// which is exactly the state that would make every privileged step refuse before reading a
+// credential at all, with the real cause hidden behind whatever else was failing.
+// A LOCAL READ FAILURE IS NOT AN ENROLMENT FAILURE. This is the discriminating control for a
+// regression this branch actually shipped: deriving the standing from an observed file read made
+// every missing, empty, unreadable or line-bearing payload collapse into pending -> NotEnrolled ->
+// "awaiting operator credential", destroying the located cause one producer BEFORE the arm built to
+// carry it. The enrolled reference is a fact about Secret Manager; whether this run holds the bytes
+// is a fact about this run; the receipt must not answer the second by rewriting the first.
+test fn a_local_read_failure_is_not_reported_as_an_unenrolled_credential() -> Bool {
+  let outcome = spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(),
+    staged: [],
+    outcomes: [CredentialNotMaterialized {
+      lease: pending_lease(),
+      cause: "fixture: the credential file named by the environment does not exist",
+    }],
+    readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  )
+  match outcome {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _, cleanup: _ } => {
+      let text = join(map(pr, o => privileged_step_outcome_wire(outcome: o)), "")
+      string_contains(text, "the credential file named by the environment does not exist")
+        && string_contains(text, "CREDENTIAL-NOT-MATERIALIZED")
+        && !string_contains(text, "CREDENTIAL-NOT-ENROLLED")
+    }
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
+// The production entry names the exact enrolled version, and says nothing about any run's file read.
+test fn the_production_standing_is_the_exact_enrolled_version() -> Bool {
+  match spark_grant_install_administrator_standing() {
+    CredentialMaterialized { ref: r } =>
+      secret_ref_version_resource(ref: r)
+        == "projects/gunbai-secrets/secrets/spark-administrator-password/versions/1"
+        && r.version as String != "latest"
+    CredentialMaterializationPending => false
+  }
+}
+
+test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutation() -> Bool {
+  let text = spark_grant_install_outcome_wire(outcome: SparkGrantInstallAwaitingOperatorCredential {
+    host: "srv6",
+    grant: RebootThisHost,
+    principal: installer(),
+  })
+  string_contains(text, "AWAITING-OPERATOR-CREDENTIAL")
+    && string_contains(text, "REQUIRED: an administrator credential")
+    && string_contains(text, "enrolled at ")
+    && string_contains(text, "spark-administrator-password")
+    && !string_contains(text, "no secret is enrolled for this host yet")
+    && !string_contains(text, "NOPASSWD:")
+    && !string_contains(text, "visudo -c -f")
+}
+
+// It refuses like any other unfinished install: naming the floor never converts it into success.
+test fn the_root_of_trust_arm_still_refuses() -> Bool {
+  !spark_grant_install_run_succeeded(run: SparkGrantInstallRun {
+    standing_report: "grant-standing host=srv6 converged=false\n",
+    outcomes: [SparkGrantInstallAwaitingOperatorCredential {
+      host: "srv6",
+      grant: RebootThisHost,
+      principal: installer(),
+    }],
+  })
+}
+
+// The request names the exact grant it is authorization FOR, built from the same rows the installer
+// writes, so a credential cannot be supplied for one purpose and consumed for another.
+test fn the_credential_request_names_the_exact_grant_it_authorizes() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    acc && string_contains(
+      spark_grant_credential_requirement(host: "srv6", grant: g),
+      spark_managed_grant_sudoers_command(grant: g) as String,
+    )
+  })
+}
+

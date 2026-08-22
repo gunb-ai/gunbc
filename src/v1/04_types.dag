@@ -37,7 +37,9 @@ import v1.std.core {
   default_ident_span, kernel_span,
   authored_name_at,
   ErrorNode, make_error_node, InternalError,
-  qualified_last_segment, type_name_compatible
+  qualified_last_segment, type_name_compatible,
+  ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
+  ContainerSpellingUnknown, authored_container_spelling_verdict
 }
 
 
@@ -109,7 +111,7 @@ fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -
 }
 
 fn is_declared_container_alias_spelling(name: String) -> Bool {
-  match container_template_algebra(name: qualified_last_segment(name: name)) {
+  match container_template_alias_algebra(name: qualified_last_segment(name: name)) {
     Present { value: _ } => true
     Absent => false
   }
@@ -183,16 +185,74 @@ fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
 fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
 fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
 
-fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+// The three answers this walk can give. Before this type existed the walk returned
+// Bool, which has nowhere to put "I cannot classify this name": an unrecognized
+// container spelling took the same Absent arm as String and every user record and
+// came back "not under-parameterized" -- a resolution claim about a name whose
+// arity is unknown. UnderResolved and ContainerSpellingUnresolvable are different
+// states with different remedies (supply the type argument / declare the row), and
+// the collapse to Bool below is now a NAMED collapse rather than a silent one.
+type TypeResolutionVerdict
+  = FullyResolved
+  | UnderResolved
+  | ContainerSpellingUnresolvable { name: String }
+
+// Refusal dominates under-resolution dominates resolution: the strongest reason
+// the walk found is the one it reports, so a refused child is never averaged away
+// by resolved siblings.
+fn combine_resolution_verdicts(acc: TypeResolutionVerdict, next: TypeResolutionVerdict) -> TypeResolutionVerdict {
+  match acc {
+    ContainerSpellingUnresolvable { name: _ } => acc
+    _ =>
+      match next {
+        ContainerSpellingUnresolvable { name: _ } => next
+        UnderResolved => UnderResolved
+        FullyResolved => acc
+      }
+  }
+}
+
+fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
-  if self_is_type_var { false }
+  if self_is_type_var { UnderResolved }
   else {
-    let under_param = match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: n)) {
-      Present { value: expected } => (n.children |> count) < expected
-      Absent => false
+    match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
+      ContainerSpellingUnknown { container_leaf: _ } =>
+        ContainerSpellingUnresolvable { name: authored_name_at(source_indices: source_indices, node: n) }
+      ContainerSpellingDeclared { arity: expected } =>
+        if (n.children |> count) < expected {
+          UnderResolved
+        } else {
+          fold(n.children, init: FullyResolved, f: (acc, ch) =>
+            combine_resolution_verdicts(
+              acc: acc,
+              next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+            )
+          )
+        }
+      NotAContainerSpelling =>
+        fold(n.children, init: FullyResolved, f: (acc, ch) =>
+          combine_resolution_verdicts(
+            acc: acc,
+            next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+          )
+        )
     }
-    if under_param { false }
-    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch), source_indices: source_indices)) }
+  }
+}
+
+// The collapse the thirteen call sites consume. A refusal reads as NOT fully
+// resolved, which is the conservative arm -- it declines to claim a resolution the
+// walk could not establish, and it never widens to the resolved answer the old
+// Absent arm gave. The located, counted report of the same class is emitted once
+// per authored occurrence by v1.compiler.normalize check_bare_containers, which
+// already owns a diagnostics channel; reporting from here instead would emit one
+// diagnostic per query per node of every recursive walk that asks.
+fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match type_resolution_verdict(n: n, source_indices: source_indices) {
+    FullyResolved => true
+    UnderResolved => false
+    ContainerSpellingUnresolvable { name: _ } => false
   }
 }
 

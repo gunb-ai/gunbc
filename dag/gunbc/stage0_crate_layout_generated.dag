@@ -33,8 +33,7 @@ data generated_pub_mod_basenames: List<String> = [
   "v2_compiler_resolve",
   "v2_compiler_program_partition",
   "v2_compiler_tokenize",
-  "v2_compiler_infer",
-  "v1_interpreter_dispatch_generated"
+  "v2_compiler_infer"
 ]
 
 data generated_stage0_filenames: List<String> = [
@@ -47,7 +46,6 @@ data generated_stage0_filenames: List<String> = [
   "resolved_graph_cache.rs",
   "shared_typecheck_store.rs",
   "recorded_fixture.rs",
-  "main.rs",
   "phase_profile.rs",
   "pre_push.rs",
   "census_exclude_derive.rs",
@@ -72,8 +70,9 @@ data generated_stage0_filenames: List<String> = [
   "v2_compiler_program_partition.rs",
   "v2_compiler_tokenize.rs",
   "v2_compiler_infer.rs",
+  "bootstrap_stage0_crate_layout_generated.rs",
   "v1_interpreter_dispatch_generated.rs",
-  "bootstrap_stage0_crate_layout_generated.rs"
+  "main.rs"
 ]
 
 data generated_stage0_dirs: List<String> = [

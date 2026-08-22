@@ -280,6 +280,6 @@ requires both.
   `src/v2` maintainers) should write or independently re-derive `ddc_reference_compiler`, to
   strengthen the collusion-risk mitigation named in §6.
 
-Related: [RED-job counted-divergence ratchet — shape note](regen-divergence-ratchet-shape.md) (#6350's two-job split: `regen_verify` + the self-host staleness arm in a non-required RED job, divergences counted not absorbed) · [post-zero regen gate placement](post-zero-regen-gate-placement.md) (where the enforcing gate lands once divergence pins at zero).
+Related: [post-zero regen gate placement](post-zero-regen-gate-placement.md) (where the enforcing gate lands once divergence pins at zero).
 
 Historical audit record: [regen divergence 31 vs 32 — reconciliation](regen-divergence-31-vs-32-reconciliation.md).

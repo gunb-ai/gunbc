@@ -35,12 +35,45 @@ import std.types { String, List }
 // the floor. A gunbc module answering a fabric question is a gunbc module that
 // will answer it differently from the next consumer.
 //
-// THE FABRIC RUNS THE WITNESSES.
+// THE FABRIC DEFINES THE WITNESS RUN. IT DOES NOT YET RUN IT.
 //
-// This is the execution half of the CI replacement: the argv that runs the
-// required floor is PRODUCED BY THE FABRIC UNDER A GRANT, rather than written
-// into a workflow step. No grant, no command -- so the authorization is not a
-// label beside the run, it is the only thing that can yield a run.
+// THIS PARAGRAPH PREVIOUSLY CLAIMED THE OPPOSITE AND THE CLAIM WAS FALSE. It read
+// that the argv is "PRODUCED BY THE FABRIC UNDER A GRANT" and that "no grant, no
+// command -- so the authorization is not a label beside the run, it is the only
+// thing that can yield a run". Measured against the live tree: `floor_run_command`
+// is NULLARY, there is no grant anywhere on the workflow path, and of the ten
+// functions in this module exactly ONE has a production consumer outside it --
+// this one, imported by gunbc.witness_floor_workflow to render a shell word.
+// Work contract, execution requirements, offer fungibility, affordability, buy
+// terms, admission terms, satisfaction requirement and grant duration have ZERO.
+//
+// So the sentence described a wall that does not exist, in the module that IS this
+// repository's claim to running its own CI on the fabric. That is rung inflation
+// (DESIGN section 4b), and it is worse than sitting low: a class reported at the
+// top rung never ranks for climbing, and a reader planning the cutover against
+// this paragraph would have budgeted for extending an allocator that was never
+// built. It cost exactly that once already -- answering "where is the fabric in
+// our CI" required measuring past this prose rather than reading it.
+//
+// WHAT IS TRUE: the command is DEFINED BY THE FABRIC WORK AUTHORITY and CURRENTLY
+// TRANSPORTED BY GITHUB ACTIONS. GitHub owns triggering, queueing, runner
+// selection, concurrency, execution lifecycle, logs and check publication. The
+// fabric owns what the Work IS.
+//
+// AND THE WALL BELONGS SOMEWHERE ELSE THAN WHERE THAT SENTENCE PUT IT, which is
+// the more useful half of the correction. A Grant authorizes REALIZATION OF AN
+// ATTEMPT, not construction of a command value. Inspecting, hashing, comparing,
+// caching or rendering a command spends no resource; executing it does. So the
+// invariant to build toward is:
+//
+//     no committed Grant  ->  no process and no host effect
+//
+// NOT "no grant, no command". Threading a Grant into this constructor would fuse
+// semantic Work identity with scheduling authority and make one Work compare
+// unequal to itself depending on whose Grant it ran under -- a defect, not a
+// stricter version of the same idea. NEXT-RUNG TRIGGER: an executor that holds an
+// ExecutionGrant against a reserved slot, at which point the invariant above
+// becomes structural and this paragraph is rewritten as an ordinary description.
 //
 // What is deliberately NOT here, because GitHub Actions still supplies it while
 // it still triggers: polling, durable state, the compare-and-swap authority
@@ -52,7 +85,7 @@ import std.types { String, List }
 // about where or when it runs -- scheduling facts live in ExecutionRequirements
 // beside it, so revising a thread estimate cannot mint a new semantic Work.
 //
-// ONE STEP, FOUR PHASES (2026-08-20). This read "Two steps, not one, because the
+// ONE STEP, THREE PHASES (2026-08-20; phase list narrowed 2026-08-21). This read "Two steps, not one, because the
 // workflow gates them separately and the v1 parse gate is a blocking step in its
 // own right: collapsing them into one step would make a parse failure and a floor
 // failure indistinguishable in the receipt, which is the distinction
@@ -64,12 +97,17 @@ import std.types { String, List }
 // Actions step list and into the binary -- so a contract listing two steps is a
 // SECOND, now-false description of a job shape that has one. What made the two
 // steps worth having was the receipt's ability to say WHICH part failed, and that
-// distinction survives at a finer grain: `--required-ci` reports four phases and
-// prints `FAILED PHASE <name>` per failure, so parse, regen, regen-determinism
-// and floor are four distinguishable outcomes where there were two. Measured on
-// the first CI run of the composed step (32347573121), which reported
-// `phases_run=4 failed=2` and named both -- a regen drift AND a floor failure --
-// where a step ladder would have surfaced them one merge at a time.
+// distinction survives at a finer grain: `--required-ci` reports its phases and
+// prints `FAILED PHASE <name>` per failure, so parse, regen and floor are three
+// distinguishable outcomes where there were two. Measured on the first CI run of
+// the composed step (32347573121), which reported `phases_run=4 failed=2` and
+// named both -- a regen drift AND a floor failure -- where a step ladder would
+// have surfaced them one merge at a time. That measurement is quoted at its own
+// date: the run had four phases because the 2026-08-21 operator ruling had not
+// yet cut the roster to three (merge-admission-capture, regen-determinism,
+// receipt-selftest, receipt-vs-changed-authorities and merge-admission-stamp are
+// gone from the required mode). The property it establishes -- per-phase
+// attribution in one receipt -- is unchanged by the count.
 //
 // WHAT THIS DOES COST, stated rather than glossed: resumability was per-step, so
 // a green parse could previously be receipt-satisfied and skipped on a rerun.
@@ -165,15 +203,31 @@ fn floor_run_command() -> ArgvCommand {
   }
 }
 
-// THE FLOOR IS AN ORDINARY PRICED DEMAND, NOT A PRIVILEGED PATH.
+// THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
 //
-// gunbc's own CI enters the market on the same terms as any other demand, and
-// this fold takes the budget ceiling as an argument precisely so that there is
-// no arm here that admits a floor run without clearing a price. If self-CI
-// bypassed the market, the opportunity cost of running our own work would not
-// be a computable quantity and the arbitrage -- run our CI on our hardware, or
-// sell that capacity and rent -- would degrade into a hand-maintained
-// spreadsheet.
+// The design intent is real and unchanged: gunbc's own CI should enter the market
+// on the same terms as any other demand, so that the opportunity cost of running
+// our own work stays a computable quantity and the arbitrage -- run our CI on our
+// hardware, or sell that capacity and rent -- does not degrade into a
+// hand-maintained spreadsheet. This fold takes the budget ceiling as an argument
+// for exactly that reason.
+//
+// WHAT WAS OVERSTATED, corrected in the same pass as the paragraph above: this
+// previously read that the ceiling is an argument "precisely so that there is no
+// arm here that admits a floor run without clearing a price", present tense, as
+// though the guard were live. It is not reachable. `floor_offer_affordability` and
+// `floor_buy_terms` have NO production consumer -- the only function in this module
+// that any non-test module calls is `floor_run_command` -- so no floor run has ever
+// cleared a price, and no arm could have admitted one without doing so, because no
+// arm runs at all. A fold with no caller cannot enforce anything, and describing it
+// as enforcement is the same inflation this file's header paragraph now records.
+//
+// The fold stays: it is the modeled decision the broker will consume, and deleting
+// it would be deleting the design rather than the overstatement. What changes is
+// that it is described as UNCONSUMED, so its status is a countable gap instead of
+// an assumed guarantee. NEXT-RUNG TRIGGER: a broker fold that selects an Offer for
+// this Demand, at which point affordability is on the live path and this row
+// becomes an ordinary description of a check that runs.
 //
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.

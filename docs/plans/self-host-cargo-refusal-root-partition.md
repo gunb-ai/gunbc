@@ -1936,6 +1936,16 @@ as a field, and `PartialFunction<String, …>` (a record of closures, §11.18) i
 type. **Adding the derive is impossible here; the requirement has to go.** So T5b is the same shape
 as T3: a modeling decision (do not serialize a value containing closures), not a repair.
 
+**DECIDED 2026-08-21** (session `tidy-dove-648`): "the requirement has to go" is only half true.
+It holds for process-local realization carriers (`CompiledLexRule`, `PartialFunction`, the
+interpreter family) — extend the already-correct `fn_field_derive_traits()` rule through
+coproducts, where it is currently unwired. It does NOT hold for `ProducedDeclSupport`, which sits
+inside `TargetModel` and should stay fully serializable — there the embedded `render` closure is
+redundant dispatch beside an identity (`scaffold_relation_rule_name`) the record already carries,
+and the fix is to remove the closure, not the record's derives. Full decision, per-declaration
+disposition table, and the two handoffs:
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md).
+
 **R1 — the Rc wrap decision is INCONSISTENT, not uniformly over- or under-wrapping.**
 
 ```
@@ -2185,6 +2195,22 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 `ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
+
+**The operator question above is answered** (session `tidy-dove-648`, 2026-08-21): not one answer
+for all twelve declarations. `ProducedDeclSupport` takes the third option named above — keep the
+record serializable, make `render` a named resolvable reference dispatched through the
+`scaffold_relation_rule_name` it already carries — because `TargetModel` is real per-language
+configuration, not a runtime-only carrier. The interpreter-family majority (`RuntimeBehaviorInterpreter`
+and its six payload types, `EffectIoEvalBundle`, `CompiledLexRule`, `PartialFunction`) takes the
+first option, which is not new: `fn_field_derive_traits()` already answers it for the direct-field
+struct case, and it is simply unwired for coproducts (`v1_emit_enum_derives` takes no
+`has_fn_fields` parameter) and for enum-transitive reachability (`build_type_summary`'s enum branch
+hardcodes `field_type_map: empty_map()` in `04_emit_info.dag`, so `type_summary_reaches_fn` cannot
+see through a variant payload the way it already sees through a struct field). `InterpretationStructureWitness`
+and the four remaining `target_model.rs` sites hold no function field of their own and are treated
+as collateral of the above, not independent decisions, pending re-measurement.
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md)
+has the full per-declaration table and the two repair handoffs.
 
 ## 16. The finding above the findings: a site count measures where the compiler pointed
 
@@ -2452,3 +2478,277 @@ Full receipt:
 Per-site TSV:
 [`docs/probes/e0308_partition_2026-08-18/sites_classified.tsv`](../probes/e0308_partition_2026-08-18/sites_classified.tsv).
 Measurement route and entry set are in the receipt's Method table.
+
+## 20. E0277 root partition — trait × self-type grain (`bright-moth-92`, 2026-08-21)
+
+**Dispatched question:** E0277 is the second-largest emitted-Rust class and had no partition at
+E0277-only grain — §11 sized all codes together, and the July census
+(`e0277_trait_bound_census_2026-07-26.md`) counted occurrences rather than sites. **Answer:** E0277
+is **four mechanisms (five root labels) at 82 distinct sites**, **365** blocks summed over M=6
+(**4.45×** inflation within E0277 alone), **zero unclassified**.
+
+| root | E0277 sites | % of E0277 | disposition |
+|---|---:|---:|---|
+| T5b — serde/Debug demanded over closure-bearing values | 35 | 42.7% | dispatched (was §11.23, unowned) |
+| A — generic parameter bound not emitted (`Clone` 25, **`Ord` 5**) | 30 | 36.6% | Root A lane; the `Ord` 5 dispatched |
+| R3 — `Rc<dyn Fn..>` where an `Fn` bound is expected | 9 | 11.0% | dispatched |
+| T7 — `Hash`/`Eq` on `Fnv1a64Structural` | 7 | 8.5% | blocked in tree, do NOT re-dispatch |
+| T5a — `Eq` on `OccurrenceId` | 1 | 1.2% | same blocker |
+
+**Three findings that change what someone should do next, none of which the by-code view showed.**
+
+1. **The July census's ranking is falsified at site grain.** Its "dominant family" (generic `Clone`)
+   is second at 36.6%; its family 2 self types (`Node`, `EnvironmentBindingKey`) carry **zero**
+   E0277 sites today. No attribution is offered for the move — §16 applies.
+2. **Root A's five `Ord` sites are outside the mechanism's expressible range, not gaps in its
+   coverage.** `std.authorization_profile` `AudienceSet` declares `EnumeratedAudience { members: Set<P> }`;
+   `Set<P>` realizes as `BTreeSet<P>`, which demands `P: Ord` the way `im::Vector<A>` demands
+   `A: Clone`. The entire v1 supplemental-bound apparatus is **`Clone`-only** — a one-trait fixpoint
+   (`v1_clone_bounded_type_params`) with no arm that can emit any other bound. So these are an
+   executed specimen of exactly what `trait_derive_emit_item_clone_bound_contract_fork_note`'s
+   dissolution clause exists for: v2's `target_derive_supplemental_generic_bound_contract` is
+   per-derive-impl and cited, v1's is per-type and Clone-shaped, and the requirement side now has
+   evidence, not just the fork-hygiene side. That note's warning still binds — the wire-through
+   changes the grain, and unioning per-derive requirements onto the declaration reproduces v1's
+   over-constraint under v2's name.
+3. **T7/T5a is characterized AND blocked, in tree, already.** `v1.trait_derive_emit`
+   `map_key_alias_hop_gap_note` names this population, records that the obvious alias-following fix
+   was attempted, measured and reverted (it drags `Int`/`Nat` to map-key positions and diverges two
+   stage0 files), and states its dissolution as a realization binding keyed on `DeclarationRef` —
+   the same threading the identity-keyed `lookup_checkpoint` cut waits on. Anyone sizing an
+   E0277 lane should subtract these 8 rather than staff them.
+
+**Method correction worth carrying, because it cost a full remote build cycle.** A comparison set
+must be **one dispatch**. Three parallel dispatches pinned with `PROBE_EXPECT_BASE_SHA` taken from an
+earlier dispatch's resolved HEAD all died on `SAME_BASE_REFUSE` — `ctrl-build --remote` resolves the
+repo-root HEAD *when the run starts*, and main moved twice inside the window. Capture `HEAD` inside
+the dispatch and export it there; then "one tree" is a property of the run. The pin worked exactly as
+specified: it stopped the line instead of yielding six numbers from three trees.
+
+Full receipt, including the controls (the exact-100 truncation check against a 120-error rustc
+control, and the classifier's known-positive RESIDUE arm):
+[`docs/probes/e0277_root_partition_2026-08-21.md`](../probes/e0277_root_partition_2026-08-21.md).
+Per-site TSV:
+[`docs/probes/e0277_partition_2026-08-21/sites_classified.tsv`](../probes/e0277_partition_2026-08-21/sites_classified.tsv).
+
+## 21. E0308 re-derived on current main — mechanism grain at M=1 (`smart-otter-254`, 2026-08-21)
+
+**Dispatched question:** re-derive E0308's expected/found categories against the **live 199**
+(39% of 03_ingest's coded board, no owner) instead of inheriting §19's M=11 partition or the older
+204/275 boards. **Answer:** at `2a2bd0ad59…`, 03_ingest carries **199 E0308 blocks / 235 distinct
+(file, line, col, expected, found) sites** in **15 categories**, 7 unclassified (3.0%), and **four
+of the categories do not exist in §19 or §11.3**.
+
+| root | sites | % | note |
+|---|---:|---:|---|
+| B3 — modeled `Nat` vs native integer | 49 | 20.9% | 28 are an integer *literal* at a `Rc<Nat>` parameter |
+| T2 — text carrier vs `String` | 34 | 14.5% | value `String`, declaration `Rc<im::Vector<_>>` |
+| R1 — bare↔`Rc` wrap | 33 | 14.0% | **11 of them at type-argument depth**, not the outer position |
+| T3 — collection carrier fork | 25 | 10.6% | |
+| **RT-builtin** — host-builtin signature interception | 20 | 8.5% | **NEW**: callee resolves to `src/v1_rt.rs`; E0308 face of the bare-name interception root |
+| D — alias arity | 13 | 5.5% | all in `v2_lens_coverage.rs` |
+| **ARG-ORDER** — call argument order | 11 | 4.7% | **NEW**: rustc `reorder these arguments`, five `eval_*_node` callees |
+| R2 / W / A-clone / B2 / R5 / C / DIAG | 9/8/6/6/6/4/4 | | **A-clone is Root A surfacing under E0308**, missed by an E0277-only view |
+| RESIDUE | 7 | 3.0% | printed, fail-closed |
+
+**Three things a session planning E0308 work should take from this and not from §19.**
+
+1. **§19's largest root has zero sites on this subject.** T7 (`Fnv1a64Structural` ↔ `String`,
+   99 sites / 24.3% at M=11) does not appear at M=1 on 03_ingest. Per §15.1/§16 **no delta is
+   claimed** — different subject and different M — but a plan that opens with T7 because §19 ranked
+   it first will find nothing to do in this closure.
+2. **Two mechanisms are not carrier forks at all.** ARG-ORDER (11) is the emitter reordering a
+   call against its callee's declaration — the failure DESIGN.md §4b names in its rung-honesty
+   clause, now measured with five named callees in `v2_compiler_eval.rs`. RT-builtin (20) is a
+   *resolution* defect: the call is routed to a host builtin sharing a spelling with the corpus
+   declaration, so its `String`-typed signature is the "expected" side. Neither dissolves under any
+   Rc-wrap or repr work.
+3. **The tail is in files.** `v2_compiler_tokenize.rs` carries 68 of 235 sites (28.9%) across two
+   roots that are one seam (Nat and text realized natively at the value, modeled at the
+   declaration). 47 files hold the rest.
+
+Full receipt, with the board reproduced beside its denominator, the block-vs-site instrument split,
+and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md).
+Per-site TSV:
+[`docs/probes/e0308_partition_2026-08-21/sites_classified.tsv`](../probes/e0308_partition_2026-08-21/sites_classified.tsv).
+
+### 20.1 What has changed since §20 was written (same lane, 2026-08-21, later the same day)
+
+§20 is a dated partition and §9.1 governs it: nothing here is current unless it names today's
+measurement. Four of its rows have been overtaken within hours of landing, and this subsection
+records that rather than leaving the table to be read as live. **The site counts are not restated
+or re-measured — only the dispositions changed.**
+
+**T7/T5a is no longer "blocked, subtract it".** §20 routed those 8 sites away from staffing because
+`v1.trait_derive_emit` `map_key_alias_hop_gap_note` recorded the alias-hop fix as NOT LANDED and
+blocked on a realization binding keyed on `DeclarationRef`. **gunbc#8736 has since landed that
+identity** — "thread declaration identity to the type renderer so the derive walk can follow an
+alias exactly as far as the emitter renders it structurally (19 of 56, two consumers)". The
+instruction to subtract those sites was correct when written and is now stale; whether the note's
+own dissolution condition is fully met is unmeasured and is the next thing to check before staffing
+or re-subtracting them.
+
+**Root A's Ord half is closed, and by the mechanism the fork note names rather than the one this
+lane first proposed.** gunbc#8749 grounds the supplemental bound on `im::OrdSet` (aliased
+`as BTreeSet`) rather than `std::collections::BTreeSet`, routes per derive impl — `Debug`/`PartialEq`
+leave the derive list as hand-written impls, `Serialize`/`Deserialize` carry a `serde(bound(..))`
+override — and leaves `AudienceSet<P>`'s own header **bare**. Its first pass cited the std authority
+and left 16 real `P: Ord` sites open under rustc; that was caught by `curated_cargo_probe_one.sh`
+and not by `gunbc compile` clean, which is §5's "a typecheck and a grep are not consumers" measured
+rather than quoted.
+
+**The two residuals §20 filed were one generalization, not two roots — and one of them was a
+heuristic.** `adhoc-a9f61ade-340` (fn-signature) and `adhoc-1e0dee2d-68f` (well-formedness
+propagation) were filed as separate lanes on the belief they were separate mechanisms. They are two
+halves of one bound-trait generalization. The fn-signature lane's first implementation inferred the
+bound by recognizing `set_union` **call sites by name** — a heuristic standing where a structural
+fact was available (§4) — and was withdrawn by its own author once the item-level bound made the
+structural route available: a fn naming an Ord-bounded declared type earns the bound by naming it.
+Checked three ways independently: exactly two generic `set_union` call sites exist in the corpus,
+both naming `AudienceSet<P>` at value-param position, so no specimen requires the walker.
+
+**A header-level bound is not the general form of a per-derive one, and this lane authorized that
+error before it was caught.** Generalizing the item-header `Clone` fixpoint to `Ord` looks like the
+§2 horizontal move — one trait-parameterized axis instead of two engines — and it is, *as engine
+shape*. But what it emits is a bound on the type declaration, which for `Ord` would revert #8749's
+deliberate bare-header decision and force `P: Ord` on every consumer naming `AudienceSet<P>`
+(four request types use `P` Ord-free today). The fork note's own discriminating control states the
+test in one line — **bound the derive, not the type** — and the header route fails it. The correction
+is recorded here because the reasoning that produced it is attractive and will recur: optimizing the
+shape of a mechanism is not the same as checking what it emits.
+
+**Method, carried because it cost real cycles twice.** (1) A `.dag` edit is INERT until regen writes
+the stage0 mirrors and `gunbc` is rebuilt from them; a before/after that skips it compares two
+binaries running the old logic and produces byte-identical logs that read as "no regression".
+(2) `curated_cargo_probe_one.sh` previously reused an existing binary regardless of tree, so a
+base→head loop silently measured the base compiler — fixed in gunbc#8763 by keying both binaries on
+`git rev-parse HEAD`. (3) Report error blocks, distinct sites and grep mentions as three separate
+grains; a mention count includes rustc's `note:` and backtrace lines and is not comparable to a block
+count.
+
+## 22. `v2_compiler_parse.rs`: the "seven flat classes" are two mechanisms and three `.dag` defects (`neat-ferret-237`, 2026-08-21)
+
+**Dispatched question.** This file was picked as a FILE lane rather than a class lane on a
+scale-free property — 28 diagnostics over seven codes, top-class share 21%, five classes within
+1.5x of the top — i.e. the flattest board in the emitted corpus, with no code that a class lane
+would already own. The lane's question is what a flat file is actually made of.
+
+**Answer: it is not flat.** Read at MECHANISM grain instead of error-code grain, 19 of the
+surviving 21 diagnostics (90%) are **two** roots, and the seven-class spread is an artifact of
+one mechanism wearing three rustc codes and another wearing two.
+
+**Subject / ref / producer — and the two strings, because they differ here.**
+
+```
+OBSERVED ON:  03_ingest closure at ba63edc09b PLUS 61 uncommitted files,
+              including src/v1/05_emit_rust.dag (another lane's emitter WIP)
+CLAIM ABOUT:  v2_compiler_parse.rs, this file's own root partition
+```
+
+Producer `docs/probes/curated_cargo_probe_one.sh` with `CSSL_STD_SEED_LINK=1`; blocks attributed
+to a file by the `-->` line of each coded `error[E…]` block. **Every absolute total in this
+section is on that contaminated tree and is not a board figure** — see §22.3. What survives the
+contamination is the per-file *partition* and the *delta*, both of which are joined at site
+identity rather than counted.
+
+A characterization pass also ran at `531a107787` and produced the same **24 diagnostics with a
+byte-identical site list**. That is two runs agreeing, not two *trees* agreeing: an earlier
+revision of this sentence called that run a "clean worktree", which was a claim about the
+REQUESTING worktree and says nothing about what the runner was dirty with, since that run did not
+echo `git status`. The agreement is real and the adjective was unearned — the same conflation
+§22.3 exists to prevent, made one paragraph above it.
+
+**The brief's board was already one class stale, and this is the first thing to take from here.**
+It was measured at `6c3fbeb960` as `E0308:6 E0282:5 E0609:5 E0061:4 E0597:4 E0560:3 E0573:1` = 28.
+Live, the **E0597 column is zero** — gunbc#8799 ("E0597 … v2_compiler_parse.rs=4") landed after
+that measurement and closed all four. No delta is claimed against the other columns (§15.1); the
+E0597 claim is a join on the class being absent, not on counts moving.
+
+### 22.1 The partition (24 diagnostics, mechanism grain)
+
+| mechanism | diagnostics | source sites | codes worn |
+|---|---:|---:|---|
+| **T3 — `Set` modeled as a function-record, realized as `OrdSet`** | 11 | 7 | E0560:3 · E0609:5 · E0308:3 |
+| **RT-builtin — bare-name interception of `contains`** | 8 | 4 | E0061:4 · E0282:4 |
+| `.dag` type defects in `02_parse.dag` (fixed here) | 3 | 3 | E0573:1 · E0308:2 |
+| Optional collapse at a `witness_from_optional` argument | 1 | 1 | E0308:1 |
+| `fold_list` closure parameter uninferable | 1 | 1 | E0282:1 |
+
+**T3** is §11.18's root, and this file is a clean specimen of it: the emitter renders a `Set`
+literal as `Rc::new(Set { member: <closure> })` while every consumer position is typed
+`OrdSet<String>`, so the *same* construction yields E0560 (no field `member` on the
+`PointwisePower` it built), E0308 (`PointwisePower` where `OrdSet` was expected) and — at every
+read — E0609 (no field `member` on `OrdSet`). One decision, three codes, and a class lane keyed on
+any one of them sees a third of it.
+
+**RT-builtin** is §21's root, and its E0061/E0282 pairing is the mechanism, not two findings:
+`02_parse.dag` imports `v2.std.algebra.contains` explicitly (`contains<T>(xs, item, eq)`) and the
+emitter routes the call to the host builtin `v1_rt::contains(s: String, sub: String)` anyway. The
+arity mismatch is E0061; the `eq` closure that has nowhere to land is then uninferable, which is
+E0282 at the same call. **An import is evidence of visibility and the emitter overrode it** — so
+this is a resolution defect, and no amount of work in this file can reach it.
+
+### 22.2 What this lane fixed, and what it deliberately did not
+
+Fixed — three genuine type defects in `src/v2/compiler/02_parse.dag`, all inside
+`parse_expr_terminal`, none of them emitter behaviour:
+
+1. `stamp: StampClass` declared a **variant** as a parameter **type**. `StampClass` is a variant of
+   `TerminalStampMode`, the value is passed straight to `parse_stamp_terminal(stamp:
+   TerminalStampMode)`, and the sibling declaration two hundred lines up already spells it
+   correctly. (E0573)
+2. `occurrence_id: node_occurrence_minted(id: minted.id)` wrapped an `OccurrenceId` into a
+   `NodeOccurrenceId` for a callee that declares `OccurrenceId`. The wrapper is spurious at this
+   position; `minted.id` is already the right carrier. (E0308)
+3. `ParseExprRejected { diagnostics: d }` bound `Outcome`'s `NonEmptyDiagnostics` to a
+   `List<Diagnostic>` field. The module already declares the converter
+   (`parse_non_empty_diagnostics_to_list`) and uses it elsewhere. (E0308)
+
+Not fixed, and not this lane's to fix — **both roots have owners.** T3 (`Set` as function-record
+vs `OrdSet`) is `royal-dove-436`'s cluster, currently blocked on an identity question, and its
+renderers are not to be touched from here; the RT-builtin `contains` interception belongs to the
+callee-resolution class (§21). Patching their symptoms inside `02_parse.dag` — hand-rolling a
+membership list to dodge `Set`, renaming `contains` to dodge the interception — is the §5 unmarked
+workaround, and it would delete the specimens that make these two roots legible.
+
+**This file is now the cleanest unpatched specimen of both, and that is the deliverable those two
+lanes should take from here**, worth more than three fewer diagnostics: seven `Set` sites where one
+construction's three codes can be read side by side, and four `contains` sites where an explicit
+`import v2.std.algebra { contains }` is demonstrably overridden by the host builtin. A specimen has
+value to the lane that owns the root even when it is not the specimen-holder's to fix.
+
+### 22.3 Evidence — the delta is sound, the absolutes are NOT board figures
+
+Two arms, **one dispatch, one ambient tree**, so the contamination is common-mode and cancels:
+
+```
+ARM=BASE  TOTAL 431  v2_compiler_parse.rs 24
+ARM=HEAD  TOTAL 428  v2_compiler_parse.rs 21
+```
+
+Joined at SITE identity, not by count: the removed set is exactly
+`{E0573@1664:56, E0308@1675:62, E0308@1684:18}`. **Nothing was added**, in this file or any other,
+and every other file's count is identical across the arms — so the −3 total is the −3 in this file
+and not a class moving upstream. The site-identity join is what makes this defensible rather than
+hopeful, and it is why the claim survives the confound below intact.
+
+**431 and 428 ARE NOT COMPARABLE TO THE FLEET BOARD, and must never be differenced against it.**
+The fleet's figure on `ba63edc09b` is **399**, reproduced independently twice (`smart-ram-730`,
+`vivid-badger-696`) site-for-site under the same probe, subject and convention. The 32-diagnostic
+gap is the 61 ambient dirty files this lane's runner mirrored — a dirty `src/v1/05_emit_rust.dag`
+changes what gets emitted, which changes what rustc sees. So 431/428 are internally consistent
+with each other and **with nothing else**; differencing 428 against 399 would render this lane's
+−3 as some fiction like +29. A quotable absolute requires a fresh single arm that echoes both its
+ref and `git status --porcelain | wc -l` before the number is read.
+
+**The instrument gap that produced this, stated because it was general, not local.** The standard
+dispatch echoed `MARKER_REF`, which proves which COMMIT the runner is on and says nothing about
+what is dirty on top of it. A single-arm remote probe cannot be trusted to be measuring your tree
+unless it echoes its own HEAD **and** its status; `smart-ram-730` has added the status count to the
+standard dispatch for every lane on the strength of this run.
+
+Surviving board: `E0282:5 E0609:5 E0308:4 E0061:4 E0560:3`. The **E0573 column is now zero**, and
+the file's top-class share rises from 21% to 24% — i.e. fixing the singletons makes the file
+*flatter* by the code-grain metric while making it more concentrated by the mechanism-grain one.
+That is the same confound in miniature: **a code-grain histogram is not a root census**, and a
+lane picked off one should re-partition before it plans.

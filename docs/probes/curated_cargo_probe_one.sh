@@ -29,6 +29,31 @@
 #   and on harness refuse so a missing log after refuse is observable (not a prior run's file).
 #   Use a fresh PROBE_KEEP_LOG_DIR per orchestrated sweep when switching cohorts.
 #   PAIRED READING: publish a count beside any zero — a bare zero from this instrument is suspect.
+#   ROW COLUMNS (2026-08-21, appended — existing consumers read no positions past column 8, so
+#                        the five new fields are appended rather than inserted):
+#     1 module  2 emit_summary  3 cargo_verdict  4 first_error  5 mapped_gate  6 verdict
+#     7 error_histogram  8 raw_dup_pub_use  9 HEAD_SHA  10 CARGO_ERROR_TOTAL  11 HISTOGRAM_SUM
+#     12 PRODUCER_PATH  13 EMIT_COUNT_SRC
+#   WHY 9: a number published without its ref is a measurement of something nobody asked about,
+#          and PROBE_EXPECT_BASE_SHA only protects callers who remember to declare a baseline.
+#          The field protects every reader; the check protects a declared comparison. Both stay.
+#   WHY 10 AND 11 TOGETHER, NEVER ONE: cargo's own "due to N previous errors" line and the count
+#          of error lines are DIFFERENT INSTRUMENTS. Differencing one run's 10 against another's
+#          11 reads exactly like a delta and is not one. Emitting both from one run makes that
+#          confusion unrepresentable instead of merely warned against; a gap between them is
+#          itself a reading (cargo counts errors, the histogram counts coded error lines), never
+#          a discrepancy to reconcile. Both are "n/a" — deliberately not 0 — on any path that
+#          never reached cargo, because a zero there reads as a clean build to anything summing
+#          the column.
+#   WHY 12 AND 13: SUBJECT, REF, PRODUCER. Columns 1 and 9 carry the first two; nothing carried
+#          the third, and the instrument — not the ref — was the confounder every time this lane
+#          differenced two numbers that were never comparable. 12 names the stage chain the run
+#          ACTUALLY performed (accumulated as stages execute, so a skipped assembly or an absent
+#          shim is visible rather than asserted away), and 13 names which of the two producers
+#          inside column 2 supplied its count: the compiler's self-reported `compiled:` line, or
+#          this script's own `find -name '*.rs'`. A row that cannot say which instrument and
+#          which stage produced it cannot be safely differenced against anything, and no care at
+#          the reading end recovers that — it is a field, not a habit.
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
@@ -37,6 +62,14 @@
 #               1 = line-stop refuse (HARNESS_REFUSE or EMIT_REFUSE; HARNESS_REFUSE sets
 #                   residual_histogram instrument_down:1; SAME_BASE_REFUSE below shares this code);
 #               2 = usage error.
+#   STALE-BINARY (2026-08-21, royal-stag-736 found it, bright-moth-92 fixed it here): the probe
+#   previously rebuilt gunbc/cssl_assemble only when the file was ABSENT, so a base->head loop in a
+#   single dispatch silently re-used the base tree's binary for the head pass and reported a FALSE
+#   IDENTICAL — "my fix changed nothing", with no failure arm. Both binaries are now keyed on
+#   `git rev-parse HEAD` via a `<binary>.tree` stamp and rebuilt on a key miss. Set GUNBC=/path to
+#   pin a binary deliberately; an externally pinned binary carrying no stamp rebuilds rather than
+#   being trusted. This is the binary-side twin of PROBE_EXPECT_BASE_SHA below: that pins the TREE,
+#   this pins the COMPILER, and a confident number needs both.
 #   SAME-BASE REFUSAL (2026-08-19, smart-ram-730): a measurement being compared against a prior
 #   baseline is only meaningful if both were taken at the same tree. PROBE_EXPECT_BASE_SHA=<sha> —
 #   when set, refuses BEFORE any build work if `git rev-parse HEAD` in ROOT does not match, naming
@@ -63,10 +96,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
+# The measured tree's sha, captured UNCONDITIONALLY and published as a row field. This is not the
+# same mechanism as PROBE_EXPECT_BASE_SHA below and does not replace it: that check refuses a run
+# against the wrong tree, this one makes it impossible to publish a number without its ref. The
+# check protects a declared comparison; the field protects every reader, including the ones who
+# never declare one. Measured cost of not having it (2026-08-21): three consecutive probe and emit
+# runs in one session were attributed to a ref that was not the ref they ran at — twice because
+# main advanced between checkout and dispatch, once because a `git checkout … || true` swallowed
+# its own failure — and each was caught only because that session happened to echo the sha from
+# inside its own wrapper. A per-caller habit is not a mechanism; the row is.
+HEAD_SHA="$(git rev-parse HEAD)"
+
+# PRODUCER, the third field every published number owes beside SUBJECT and REF (2026-08-21,
+# smart-ram-730). HEAD_SHA pins the TREE. It does not pin the INSTRUMENT, and the instrument was
+# the confounder in every reconciliation this lane lost time to: a raw `gunbc compile
+# --output-dir` counted 176 emitted files at the exact ref where this probe's EMIT_SUMMARY said
+# 177, and the two were differenced as a delta for forty minutes because neither output stated
+# which stage it had measured. PRODUCER_PATH is ACCUMULATED as stages actually execute, never
+# declared as a literal: CSSL_STD_SEED_LINK=0 skips assembly and a shim may or may not be
+# installed, so a static string would describe a pipeline the run did not perform. EMIT_COUNT_SRC
+# splits the second confounder, which lives INSIDE one column: EMIT_SUMMARY is either the
+# compiler's own self-reported `compiled:` line or this script's `find -name '*.rs' | wc -l`, and
+# those are two producers wearing one field name.
+PRODUCER_PATH="curated_cargo_probe_one"
+EMIT_COUNT_SRC="none"
+
 if [[ -n "${PROBE_EXPECT_BASE_SHA:-}" ]]; then
-  ACTUAL_SHA="$(git rev-parse HEAD)"
-  if [[ "$ACTUAL_SHA" != "$PROBE_EXPECT_BASE_SHA" ]]; then
-    echo "curated_cargo_probe: SAME_BASE_REFUSE — tree at $ACTUAL_SHA, comparison baseline expects $PROBE_EXPECT_BASE_SHA" >&2
+  if [[ "$HEAD_SHA" != "$PROBE_EXPECT_BASE_SHA" ]]; then
+    echo "curated_cargo_probe: SAME_BASE_REFUSE — tree at $HEAD_SHA, comparison baseline expects $PROBE_EXPECT_BASE_SHA" >&2
     exit 1
   fi
 fi
@@ -78,13 +135,32 @@ STD_SEED_LINK="${CSSL_STD_SEED_LINK:-0}"
 
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
 CSSL_ASSEMBLE="${CSSL_ASSEMBLE:-$ROOT/target/release/cssl_assemble}"
-if [[ ! -x "$GUNBC" ]]; then
+
+# The binary is a function of the tree it was built from, so it is KEYED on that tree.
+# `-x` alone asks "does a binary exist", which is a different question and the wrong one:
+# a base->head loop inside one dispatch leaves base's binary in place, and the head pass
+# then emits with the PRE-FIX compiler while reporting head's SHA. That reads as "the fix
+# changed nothing" — a false identical, with no failure arm anywhere.
+# Rebuilding on a key miss is a cache doing its job, not a fallback: the answer computed is
+# the correct one for the checked-out tree. An unreadable or absent stamp is a miss.
+probe_binary_tree_key() { git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "no-git"; }
+probe_binary_is_current() {
+  local bin="$1"
+  [[ -x "$bin" ]] || return 1
+  [[ -f "$bin.tree" ]] || return 1
+  [[ "$(cat "$bin.tree" 2>/dev/null)" == "$(probe_binary_tree_key)" ]] || return 1
+}
+probe_stamp_binary() { probe_binary_tree_key > "$1.tree"; }
+
+if ! probe_binary_is_current "$GUNBC"; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin gunbc >/dev/null
   GUNBC="$ROOT/target/release/gunbc"
+  probe_stamp_binary "$GUNBC"
 fi
-if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
+if [[ "$STD_SEED_LINK" == "1" ]] && ! probe_binary_is_current "$CSSL_ASSEMBLE"; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin cssl_assemble >/dev/null
   CSSL_ASSEMBLE="$ROOT/target/release/cssl_assemble"
+  probe_stamp_binary "$CSSL_ASSEMBLE"
 fi
 export GUNBC
 
@@ -131,13 +207,23 @@ EMIT_SUMMARY="emit_fail"
 if [[ "$EMIT_OK" -eq 1 ]]; then
   if grep -q 'compiled:' "$EMIT_LOG"; then
     EMIT_SUMMARY="$(grep -m1 'compiled:' "$EMIT_LOG" | sed 's/.*compiled: //')"
+    EMIT_COUNT_SRC="gunbc_compiled_line"
   else
     FILE_COUNT="$(find "$OUT" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
     EMIT_SUMMARY="${FILE_COUNT}files,unknown_diag"
+    EMIT_COUNT_SRC="probe_find_rs_files"
   fi
+fi
+if [[ "$EMIT_OK" -eq 1 ]]; then
+  PRODUCER_PATH="$PRODUCER_PATH+emit"
 fi
 
 CARGO_VERDICT="skip"
+# Defaults for the paths that never reach cargo. "n/a" is deliberately not "0": a run that did not
+# build has no error total, and a zero there would read as a clean build on any consumer that sums
+# the column.
+CARGO_ERROR_TOTAL="n/a"
+HISTOGRAM_SUM="n/a"
 FIRST_ERROR=""
 MAPPED_GATE=""
 ERROR_HISTOGRAM=""
@@ -195,8 +281,9 @@ PY
 emit_harness_refuse_row_and_exit() {
   ERROR_HISTOGRAM="instrument_down:1"
   clear_probe_keep_log
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE" \
+    "$HEAD_SHA" "$CARGO_ERROR_TOTAL" "$HISTOGRAM_SUM" "$PRODUCER_PATH" "$EMIT_COUNT_SRC"
   exit 1
 }
 
@@ -210,6 +297,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       VERDICT="HARNESS_REFUSE"
       emit_harness_refuse_row_and_exit
     fi
+    PRODUCER_PATH="$PRODUCER_PATH+seedlink"
   fi
 
   if [[ -n "$SHIM_LIB_REL" && -f "$ROOT/$SHIM_LIB_REL" ]]; then
@@ -221,6 +309,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       [[ "$base" == "lib.rs" ]] && continue
       cp "$f" "$OUT/src/$base"
     done
+    PRODUCER_PATH="$PRODUCER_PATH+shim"
   fi
 
   if ! render_cssl_probe_lib_cargo_toml "$ROOT" "$OUT/Cargo.toml"; then
@@ -232,12 +321,24 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
   fi
 
   BUILD_LOG="$OUT/cargo.log"
+  PRODUCER_PATH="$PRODUCER_PATH+cargo"
   if (cd "$OUT" && RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0 cargo build --release --lib 2>"$BUILD_LOG"); then
     CARGO_VERDICT="green"
     ERROR_HISTOGRAM="clean"
   else
     CARGO_VERDICT="refuse"
+    # BOTH TOTALS, ALWAYS, AND THIS IS THE POINT OF THE PAIR. cargo's own
+    # "due to N previous errors" line and the sum of this histogram are DIFFERENT INSTRUMENTS
+    # answering the same-sounding question, and differencing one against the other is a silent
+    # category error — it reads as a delta and is not one. Publishing exactly one of them is what
+    # made that mistake possible: a reader who receives "655" cannot tell which field produced it,
+    # and a later run that publishes the other field looks comparable. Emitting both, from one
+    # run, makes the ambiguity unrepresentable rather than merely warned about, and a gap between
+    # them is itself informative (cargo counts errors, the histogram counts coded error LINES).
+    CARGO_ERROR_TOTAL="$(grep -oE 'due to [0-9]+ previous error' "$BUILD_LOG" | grep -oE '[0-9]+' | head -1)"
+    CARGO_ERROR_TOTAL="${CARGO_ERROR_TOTAL:-unreported}"
     ERROR_HISTOGRAM="$(grep -oE '^error\[E[0-9]+\]' "$BUILD_LOG" | sort | uniq -c | sort -rn | awk '{printf "%s%s:%s", sep, $2, $1; sep=" "}' || true)"
+    HISTOGRAM_SUM="$(grep -cE '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || true)"
     UNCODED_SUFFIX="$(uncoded_histogram_suffix "$BUILD_LOG")"
     if [[ -z "$ERROR_HISTOGRAM" ]]; then
       ERROR_HISTOGRAM="${UNCODED_SUFFIX:-uncoded_only:0}"
@@ -294,8 +395,9 @@ elif [[ "$EMIT_OK" -eq 0 ]]; then
   clear_probe_keep_log
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE" \
+  "$HEAD_SHA" "$CARGO_ERROR_TOTAL" "$HISTOGRAM_SUM" "$PRODUCER_PATH" "$EMIT_COUNT_SRC"
 
 case "$VERDICT" in
   HARNESS_REFUSE | EMIT_REFUSE) exit 1 ;;

@@ -6,6 +6,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
+import extdeps.tools.chmod { chmod_add_executable_args, chmod_binary_path }
 import gunbc.cli_invoke { claim_executor_bin_name }
 import gunbc.cli_services
 import gunbc.output_policy { ExpectSuccess, OutcomeIsData }
@@ -51,8 +52,8 @@ fn claim_executor_path(root: String) -> String {
 fn make_probe_executable(path: String) -> Bool {
   let chmod = gunbc.WitnessBin.Run(
     workdir: "/",
-    bin_path: "/bin/chmod",
-    args: ["+x", path],
+    bin_path: chmod_binary_path as String,
+    args: chmod_add_executable_args(path: path),
     expect: ExpectSuccess,
   )
   chmod.success

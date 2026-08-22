@@ -50,11 +50,36 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, list_snoc_item, list_append }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
-import extdeps.tools.id { id_uid_argv, id_gid_argv }
+import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
+import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.tools.chown { chown_argv }
+import extdeps.tools.chmod { chmod_add_executable_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.posix.path_ownership {
+  PathOwnershipObservation,
+  PathOwnerObserved,
+  PathOwnerUnobserved,
+  PathOwnershipDecision,
+  OwnershipAlreadySatisfied,
+  OwnershipMutationRequired,
+  OwnershipDecisionRefused,
+  PathOwnershipEnsureOutcome,
+  PathAlreadyOwned,
+  PathOwnershipConvergedAfterAttempt,
+  ChownAttemptObservation,
+  ChownNotDispatched,
+  ChownReportedSuccess,
+  ChownReportedFailure,
+  PathOwnershipEnsureRefused,
+  path_ownership_decision,
+  path_ownership_verdict,
+}
+import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
+import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -130,7 +155,7 @@ import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_observe_runner_local_state,
   runner_lifecycle_realize_observe_github_runner_registration,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
+import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance, BuildCacheServerPlacement }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
@@ -169,6 +194,72 @@ import extdeps.cache.sccache {
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache_unit { render_build_cache_unit }
+import gunbc.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  DaemonStatsOk,
+  DaemonMisconfigured,
+  DaemonUnresponsive,
+  BuildCacheProvisionVerdict,
+  BuildCacheProvisionConverged,
+  BuildCacheProvisionRefused,
+  provision_build_cache_verdict,
+}
+import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.build_cache_ensure {
+  EnsureBuildCacheAdmission,
+  EnsureAlreadyConverged,
+  EnsureBuildCacheAdmitted,
+  EnsureBuildCacheRefused,
+  EndpointPreflight,
+  EndpointClearForBind,
+  EndpointClearedByUnlink,
+  admit_ensure_build_cache_instance,
+  ensure_admission_refusal_reason,
+}
+import gunbc.build_cache_endpoint_observe {
+  BuildCacheEndpointReads,
+  BuildCacheEndpointSurvey,
+  HostRead,
+  HostReadText,
+  HostReadFailed,
+  EndpointPathKind,
+  PathKindNoFilesystemPath,
+  EndpointListenerRead,
+  ListenerOwnerPid,
+  ListenerNone,
+  ListenerAmbiguous,
+  ListenerUndecided,
+  boot_id_read_argv,
+  endpoint_path_kind_argv,
+  proc_net_unix_read_argv,
+  EndpointInodeLookup,
+  ListenInodeFound,
+  NoListenEntryAtPath,
+  InodeLookupUndecided,
+  listen_inode_at_path,
+  fd_holder_of_find_output,
+  owner_cgroup_argv,
+  owner_proc_stat_argv,
+  owner_principal_argv,
+  owner_executable_argv,
+  path_kind_of_stat_read,
+  survey_build_cache_endpoint,
+}
+import gunbc.build_cache_endpoint_path {
+  EndpointPathState,
+  ObservationCurrency,
+  StaleSocketUnlinkAdmission,
+  StaleSocketUnlinkAdmitted,
+  StaleSocketUnlinkRefused,
+  StaleSocketUnlinkOutcome,
+  StaleSocketUnlinkCommandReady,
+  StaleSocketUnlinkCommandRefused,
+  admit_stale_socket_unlink,
+  stale_socket_unlink_command,
+}
 import gunbc.live_deploy.operations {
   systemctl_daemon_reload_command,
   systemctl_enable_command,
@@ -573,29 +664,35 @@ fn realize_boot_once_read_back_sleep_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-  let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
-    Present { value: sleep_path } =>
-      srv3_transport_witness_bin_success(
-        transport: transport,
-        workdir: "/",
-        bin_path: sleep_path,
-        args: [seconds],
+  match srv3_run_tool_by_name(
+    tool_name: sleep_cli_tool.name,
+    args: [seconds],
+    transport: transport,
+  ) {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3BootOnceReadBackSleep could not observe sleep on this transport, so the read-back delay was never taken and no verdict is claimed: ",
+          why,
+        ),
+        applied: intent,
+      }
+    Srv3PredicateHolds =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+        intent: intent,
       )
-    Absent => false
+    Srv3PredicateFails =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed",
+        },
+        intent: intent,
+      )
   }
-  srv3_shell_reconcile(
-    observed: ShellExecObserved {
-      exit_code: if success { 0 } else { 1 },
-      success: success,
-      stdout: "",
-      stderr: if success {
-        ""
-      } else {
-        "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed"
-      },
-    },
-    intent: intent,
-  )
 }
 
 fn realize_boot_once_read_back_sleep_on_host(
@@ -628,21 +725,92 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
 }
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_xorriso)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_xorriso))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
+// THE RECEIPT NAMES WHICH ARM THE ACTUATOR TOOK, so the probe that decides it must run BEFORE
+// the ensure. Probing after would make a fresh install re-observe Holds and report "Present",
+// collapsing the Present/Installed distinction on exactly the path where it carries information
+// -- a receipt that is true about the end state and false about what was done to reach it.
+//
+// The pre-state probe gets the same three-valued treatment as every other probe here: a
+// pre-state that could not be observed refuses the whole effect rather than defaulting to
+// was_present: false, which would claim an install happened on a host that was never asked.
+// The pre-state probe reaches presence and version through srv3_probe_present_then_version rather
+// than srv3_predicate_all: predicate_all takes a LIST, and a list argument is built eagerly, so
+// passing both probes to it runs the version probe even when presence has already failed. The
+// pre-cut code short-circuited through &&. Same class as the install-in-argument-position
+// regression on srv3_ensure_apt_tool -- read-only rather than privileged, so a cost defect not a
+// safety one, but DESIGN's bare-minimum-cost rule fixes a proven cost shape regardless of n.
 fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let was_present = srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport) && srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport)
-  let ensure_ok = srv3_ensure_apt_tool(
+  match srv3_probe_present_then_version(tool_name: xorriso_cli_tool.name, transport: transport) {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure could not observe xorriso's pre-state on this transport, so no install was attempted and no receipt is claimed: ",
+          why,
+        ),
+        applied: intent,
+      }
+    Srv3PredicateHolds =>
+      srv3_seeded_install_media_toolchain_ensure_after_pre(
+        was_present: true,
+        transport: transport,
+        intent: intent,
+      )
+    Srv3PredicateFails =>
+      srv3_seeded_install_media_toolchain_ensure_after_pre(
+        was_present: false,
+        transport: transport,
+        intent: intent,
+      )
+  }
+}
+
+fn srv3_seeded_install_media_toolchain_ensure_after_pre(
+  was_present: Bool,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match srv3_ensure_apt_tool(
     tool_name: xorriso_cli_tool.name,
     package: package_xorriso,
     require_version_probe: true,
     transport: transport,
-  )
+  ) {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure could not observe the ensure outcome for xorriso, so no receipt is claimed: ",
+          why,
+        ),
+        applied: intent,
+      }
+    Srv3PredicateHolds =>
+      srv3_seeded_install_media_toolchain_ensure_receipt(
+        was_present: was_present,
+        ensure_ok: true,
+        intent: intent,
+      )
+    Srv3PredicateFails =>
+      srv3_seeded_install_media_toolchain_ensure_receipt(
+        was_present: was_present,
+        ensure_ok: false,
+        intent: intent,
+      )
+  }
+}
+
+fn srv3_seeded_install_media_toolchain_ensure_receipt(
+  was_present: Bool,
+  ensure_ok: Bool,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let outcome = if was_present { "Present" } else { "Installed" }
   let stdout = srv3_seeded_install_media_toolchain_receipt_line(outcome: outcome as NonEmptyStr)
   srv3_shell_reconcile(
@@ -688,29 +856,35 @@ fn realize_bmcweb_session_login_body(
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
-  let success = match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
-    Present { value: curl_path } =>
-      srv3_transport_witness_bin_success(
-        transport: transport,
-        workdir: "/",
-        bin_path: curl_path,
-        args: curl_args,
+  match srv3_run_tool_by_name(
+    tool_name: curl_cli_tool.name,
+    args: curl_args,
+    transport: transport,
+  ) {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3BmcwebSessionLogin could not observe curl on this transport, so no login was attempted and no verdict is claimed: ",
+          why,
+        ),
+        applied: intent,
+      }
+    Srv3PredicateHolds =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+        intent: intent,
       )
-    Absent => false
+    Srv3PredicateFails =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: Srv3BmcwebSessionLogin curl login failed; fail-closed",
+        },
+        intent: intent,
+      )
   }
-  srv3_shell_reconcile(
-    observed: ShellExecObserved {
-      exit_code: if success { 0 } else { 1 },
-      success: success,
-      stdout: "",
-      stderr: if success {
-        ""
-      } else {
-        "host_effect_apply: Srv3BmcwebSessionLogin curl login failed; fail-closed"
-      },
-    },
-    intent: intent,
-  )
 }
 
 fn realize_bmcweb_session_login_on_host(
@@ -784,7 +958,7 @@ fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
-    Present { value: jq_path } => {
+    Srv3TokenObserved { value: jq_path } => {
       let jq_run = gunbc.WitnessBin.Run(
         workdir: "/",
         bin_path: jq_path,
@@ -819,7 +993,7 @@ fn realize_bmcweb_token_extract_body(
           )
       }
     }
-    Absent =>
+    Srv3TokenAbsent =>
       srv3_shell_reconcile(
         observed: ShellExecObserved {
           exit_code: 1,
@@ -829,6 +1003,14 @@ fn realize_bmcweb_token_extract_body(
         },
         intent: intent,
       )
+    Srv3TokenUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3BmcwebTokenExtract could not observe jq, so no extraction was attempted and no token file is claimed: ",
+          why,
+        ),
+        applied: intent,
+      }
   }
 }
 
@@ -1191,202 +1373,109 @@ fn realize_provision_codex_runtime(
 
 data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5). EmitArtifactThenThinRun defers execution to a materialized artifact run elsewhere, so an inline bin-witness probe has no host to observe; refusing here is a permanent boundary of that transport, not unmigrated debt.\\n\\nThe five probe leaves that used to build a concatenated shell command string (bin-witness success, test -x, which-based tool presence, which-based tool bin path, chown) now carry typed operation_argv rows and route SshShell and FleetSsh through typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh (gunbc.typed_argv_exec), the same wall the principal, sudo-probe and grant-list leaves already used. FleetSsh is admitted at realize_os_install_actuator_toolchain_ensure's entry gate.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. The FleetSsh arms are compile-verified only: the match is exhaustive and each arm demonstrably reaches typed dispatch, but NO EXECUTING WITNESS DISCRIMINATES THEM, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport these arms match on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
 
-// SITES 3 AND 4 OF typed_argv_refusal_collapse_sites. "Fail-closed backstop, not a silent
-// widen" in the note above is true about the WIDEN direction only: these return the same
-// `false`/`none` the outcome projections return, so at every consumer an unprobeable transport
-// and a measured negative are one value. See the rung block on srv3_typed_argv_outcome_success.
-fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
-  false
-}
 
-fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> String? {
-  none
-}
-
-// THE FIVE DECLARATIONS BELOW COLLAPSE A THREE-VALUED OBSERVATION ONTO A TWO-VALUED CARRIER,
-// AND THIS ROSTER IS THE JOIN. TypedArgvExecOutcome distinguishes ran-and-succeeded,
-// ran-and-failed, and could-not-be-run (TypedArgvExecRefused carries why); Bool and String? do
-// not, so the third state reaches every consumer as the second -- DESIGN §5's
-// empty-observation narrow at the evidence grain. The two outcome projections discard a REAL
-// refusal reason that was in hand; the three helper stubs synthesize the same negative for a
-// transport or workdir they cannot probe at all. Their own notes say "fail-closed backstop,
-// not a silent widen", which is true about the WIDEN direction only: at the consumer all five
-// are one indistinguishable `false`/`none`, so they are one class with five sites, not five
-// classes. The roster exists so that join is machine-readable and countable rather than a
-// sentence a reader has to reassemble from five separate comments.
-data typed_argv_refusal_collapse_sites: List<DeclarationRef> = [
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_typed_argv_outcome_success"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_typed_argv_outcome_stdout"),
-  decl_ref(
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "srv3_actuator_toolchain_emit_artifact_transport_helper_refused",
-  ),
-  decl_ref(
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt",
-  ),
-  decl_ref(
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "srv3_transport_witness_bin_nonroot_workdir_refused",
-  ),
-]
-
-// WHERE THE COLLAPSED NEGATIVE IS READ AS A MEASUREMENT. Each of these consumes one of the
-// sites above and cannot recover the distinction it lost, so a repair that changes the sites
-// without changing these has only moved the collapse one call deeper.
-data typed_argv_refusal_collapse_consumers: List<DeclarationRef> = [
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_witness_bin_success"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_test_executable"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_present"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_tool_bin_path"),
-  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_directory_to_current_user"),
-]
-
-// UNBOUND, AND DELIBERATELY SO. bound_dissolution would fire on a named declaration appearing,
-// which is the stronger form and is what this row should eventually carry -- but the
-// replacement's name is not decided, and binding a trigger to a name invented here is a
-// dissolution that silently never fires when the repair lands under a different one. That is
-// the §3 stale-citation decay, bought for a machine status this row does not need yet. So the
-// trigger is carried as an unbound description and reports DissolutionUnbound honestly.
-data typed_argv_refusal_collapse_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "DISSOLVES WHEN the sites in typed_argv_refusal_collapse_sites return an observation that preserves TypedArgvExecRefused's reason instead of Bool / String?, and srv3_shell_reconcile derives its stderr from that reason rather than from a per-site literal. At that point the two-valued projection has no constructor and this roster, its consumer list and this condition are deleted together (DESIGN §4b dissolution-on-climb). The same repair one layer up is gunbc.roadmap_dashboard_instance_apply path_observation_preserves_refusal_note.",
-)
-
-// SHAPE ONLY, AND THE LABEL IS THE POINT. This checks that the roster is nonempty and names
-// each site once -- it does NOT check that the refs resolve to declarations that exist, which
-// nothing reachable from a `fn` can do. A green here means the join is well-formed, never that
-// it is complete or that its referents are real.
-fn typed_argv_refusal_collapse_roster_is_well_formed() -> Bool {
-  let deduped = fold_list(
-    xs: typed_argv_refusal_collapse_sites,
-    empty: typed_argv_refusal_collapse_roster_empty(),
-    cons: fn(acc, r) {
-      if declaration_ref_in_list(target: r, refs: acc) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: r)
-      }
-    },
-  )
-  list_length(items: typed_argv_refusal_collapse_sites) > 0
-    && list_length(items: deduped) == list_length(items: typed_argv_refusal_collapse_sites)
-}
-
-fn typed_argv_refusal_collapse_roster_empty() -> List<DeclarationRef> {
-  []
-}
-
-// THE RUNG FOR THE COLLAPSE ROSTER ABOVE, STATED AT THE GRAIN §4b DEMANDS RATHER THAN THE ONE
-// THAT FLATTERS IT.
+// THE THREE-VALUED COLLAPSE IS CLOSED. This is where the roster of five collapse sites and six
+// consumers stood, together with its dissolution condition: "DISSOLVES WHEN the sites return an
+// observation that preserves TypedArgvExecRefused". They do now -- Srv3HostPredicate and
+// Srv3ObservedToken carry Unobserved with the reason the refusal already had -- so the roster and its
+// shape check are deleted rather than left standing beside the thing they described.
 //
-// AT THE EXECUTED-EVIDENCE GRAIN THE RUNG IS UNMEASURED. No discriminating RED refuses on the
-// real acceptance path, and the reason is structural rather than an omission: a
-// FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor,
-// which the KnownHostsAnchor seal admits alone, so a pure `test fn` cannot construct the
-// transport these arms match on (the cost srv3_actuator_toolchain_emit_artifact_transport_
-// helper_note already records), and SshShell needs a live host. §4b is explicit that a plan or
-// a comment establishes nothing, so this block does NOT report a measured rung and may not be
-// cited as one. Unmeasured is the honest state, in the sense the recovery analysis's own census
-// uses `Unknown` -- not a gap claim, and not a pass.
-//
-// WHAT IS ESTABLISHED IS THE CONTAINMENT, AND IT IS A DIFFERENT KIND OF CLAIM: a reading of
-// compile-visible dataflow, total over the consumer roster above, not a measurement. The false
-// direction is absorbing -- srv3_ensure_apt_tool, srv3_ensure_websocat and the realizer bodies
-// each map a false into exit_code 1 through srv3_shell_reconcile -- so no refusal reaches a
-// converged verdict and the line stops. If that reading is what a measurement would confirm,
-// the class sits at mitigatable; the reading is offered as the argument, and the measurement is
-// what is missing.
-//
-// THE CAUSE IS NOT CONTAINED EVEN UNDER THAT READING, and this is the part a stopped line does
-// not pay for. The stderr those bodies attach is a per-site literal naming the operation, so an
-// unreachable host is reported to an operator as a failed sleep; and
-// realize_seeded_install_media_toolchain_ensure_body's was_present goes false on a refusal,
-// stamping its receipt "Installed" for a host nothing was installed on. A misdirected cause is
-// a second wrong answer riding on the refusal, not a cost of refusing.
-//
-// CEILING: structurally impossible. The class is decidable and already grounded -- the reason
-// is on the value being matched -- so the collapse is representable only because a Bool carrier
-// is offered for a three-valued observation. The trigger is carried typed, on
-// typed_argv_refusal_collapse_dissolution, not in this block.
-//
-// WHY THIS IS PROSE AND THE ROSTER ABOVE IS NOT: §4c admits an annotation for irreducible
-// rationale about why a construction has the shape it has, and forbids it for machine-consumed
-// facts. The sites, the consumers and the dissolution condition are machine-consumed and are
-// declared. What is left here is the argument -- why the containment reading holds, why no
-// witness can run, why the ceiling is what it is -- which no row shape in this tree carries.
-// The ErrorClassGuarantee carrier §4b Stage 1 would file this against does not exist yet
-// (searched 2026-08-20: the name occurs once in the whole tree, in
-// docs/plans/compiler-guarantee-recovery-gap-analysis.md), and minting a repository-wide rung
-// carrier is a §3 single-authority decision, not a drive-by from a two-arm brief.
-fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
+// What the roster was right about, and what it could not make unwritable: it said a repair that
+// changed the sites without changing the consumers would only move the collapse one call deeper.
+// That is exactly what the first draft of this cut did, using a Bool projection to satisfy the
+// typechecker at a call site. The projection is gone; the consumers match all three arms, and
+// exhaustiveness is what keeps them matching them.
+
+
+// A host probe answers one of three things, and the third is not a shade of the second:
+// the predicate held, the predicate failed, or the transport could not carry the probe at all.
+// Collapsing Unobserved into Fails is what let a refused probe read as "the tool is absent" and
+// fall through to a privileged install on a host that had never been reached (DESIGN §5,
+// fabricated negative; the empty-observation narrow in the failure-mode list).
+type Srv3HostPredicate
+  = Srv3PredicateHolds
+  | Srv3PredicateFails
+  | Srv3PredicateUnobserved { reason: String }
+
+fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPredicate {
   match outcome {
-    TypedArgvExecConverged { result: r } => r.success
-    TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecConverged { result: r } =>
+      if r.success { Srv3PredicateHolds } else { Srv3PredicateFails }
+    TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
 
-// SAME DISCARD, OPTION-SHAPED: see srv3_typed_argv_outcome_success above for the rung, the
-// containment argument and the trigger. This arm additionally FUSES TWO ABSENCES that its
-// caller then cannot separate -- a command that ran and printed nothing, and a command that
-// never ran -- both leaving as Absent, which srv3_tool_bin_path hands on as "the tool has no
-// path here". Absent is load-bearing at three call sites (srv3_apt_tool_version_ok,
-// srv3_ensure_websocat, realize_boot_once_read_back_sleep_body), and each reads it as a
-// measured absence.
-fn srv3_typed_argv_outcome_stdout(outcome: TypedArgvExecOutcome) -> String? {
+// The same three states for a probe whose answer is a VALUE rather than a verdict -- a resolved
+// tool path, a uid, a gid: whatever single token the probe printed. Absent and Unobserved differ
+// in remedy: the first says the host answered and had nothing, the second says the question was
+// never put to the host.
+//
+// Named for the token and not for the tool path, because two consumers carry numeric ids through
+// it. A carrier named Srv3ToolPath with a uid in its `path` field is a name that lies about its
+// contents, which is the §3 concern applied to a field rather than a module (review 54189).
+type Srv3ObservedToken
+  = Srv3TokenObserved { value: String }
+  | Srv3TokenAbsent
+  | Srv3TokenUnobserved { reason: String }
+
+fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3ObservedToken {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        let out = trim(r.stdout)
-        if out == "" { none } else { Present { value: out } }
+        let out = trim(s: r.stdout)
+        if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
       } else {
-        none
+        Srv3TokenAbsent
       }
-    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
 
+data srv3_nonroot_workdir_unobservable_reason: String = "typed_argv_exec over ssh/fleet_ssh carries a bare argv with no working-directory channel, so a non-root workdir cannot be honoured and the probe is not run"
+
+// Same cost shape, same fix as extdeps.sudo.elevation: one append rather than a snoc per element.
 fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
-  fold_list(xs: args, empty: [bin_path], cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) })
+  list_append(left: [bin_path], right: args)
 }
 
-fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<String> {
-  ["-n", "/usr/bin/chown", owner, path]
-}
 
-data srv3_transport_witness_bin_nonroot_workdir_refused_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
-
-// THIS ARM IS SITE 5 OF typed_argv_refusal_collapse_sites. The note above is about why this
-// arm exists; the roster is about what its `false` costs downstream, which is the same cost the
-// two outcome projections impose -- at srv3_transport_witness_bin_success this false is
-// indistinguishable from a probe that ran and answered no. Repair it with the roster, not alone.
-fn srv3_transport_witness_bin_nonroot_workdir_refused() -> Bool {
-  false
-}
+data srv3_transport_witness_bin_nonroot_workdir_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
 
 fn srv3_transport_witness_bin_success(
   transport: HostEffectTransport,
   workdir: String,
   bin_path: String,
   args: List<String>,
-) -> Bool {
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_elevated_witness_bin_success"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_argv_success"),
+  ]
+{
   match transport {
     LocalShell =>
-      gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success
+      if gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success {
+        Srv3PredicateHolds
+      } else {
+        Srv3PredicateFails
+      }
     SshShell { ssh_host: h } =>
       if workdir == "/" {
-        srv3_typed_argv_outcome_success(
+        srv3_predicate_from_typed_argv(
           outcome: typed_argv_exec_over_ssh(
             host: h,
             argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
           ),
         )
       } else {
-        srv3_transport_witness_bin_nonroot_workdir_refused()
+        Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
     FleetSsh { target: t, context: c } =>
       if workdir == "/" {
-        srv3_typed_argv_outcome_success(
+        srv3_predicate_from_typed_argv(
           outcome: typed_argv_exec_over_fleet_ssh(
             target: t,
             context: c,
@@ -1394,22 +1483,29 @@ fn srv3_transport_witness_bin_success(
           ),
         )
       } else {
-        srv3_transport_witness_bin_nonroot_workdir_refused()
+        Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+      Srv3PredicateUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can run a witness binary",
+      }
   }
 }
 
-fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) -> Bool {
+fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
-    LocalShell => shell.Test.IsExecutable(path: path).executable
+    LocalShell =>
+      if shell.Test.IsExecutable(path: path).executable {
+        Srv3PredicateHolds
+      } else {
+        Srv3PredicateFails
+      }
     SshShell { ssh_host: h } =>
-      srv3_typed_argv_outcome_success(
+      srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: shell_test_is_executable_argv(path: path)),
       )
     FleetSsh { target: t, context: c } =>
-      srv3_typed_argv_outcome_success(
+      srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
@@ -1417,19 +1513,26 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+      Srv3PredicateUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can test an executable",
+      }
   }
 }
 
-fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
-    LocalShell => shell.PosixCommandV.Check(command: tool_name).exists
+    LocalShell =>
+      if shell.PosixCommandV.Check(command: tool_name).exists {
+        Srv3PredicateHolds
+      } else {
+        Srv3PredicateFails
+      }
     SshShell { ssh_host: h } =>
-      srv3_typed_argv_outcome_success(
+      srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
     FleetSsh { target: t, context: c } =>
-      srv3_typed_argv_outcome_success(
+      srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
@@ -1437,29 +1540,31 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+      Srv3PredicateUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can probe tool presence",
+      }
   }
 }
 
-fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
+fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
       let found = shell.PosixCommandV.Check(command: tool_name)
       if found.exists {
         match found.path {
-          Present { value: tool_path } => Present { value: tool_path as String }
-          Absent => none
+          Present { value: tool_path } => Srv3TokenObserved { value: tool_path as String }
+          Absent => Srv3TokenAbsent
         }
       } else {
-        none
+        Srv3TokenAbsent
       }
     }
     SshShell { ssh_host: h } =>
-      srv3_typed_argv_outcome_stdout(
+      srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
     FleetSsh { target: t, context: c } =>
-      srv3_typed_argv_outcome_stdout(
+      srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
@@ -1467,102 +1572,441 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
         ),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
+      Srv3TokenUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can resolve a tool path",
+      }
   }
 }
 
-fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+// One place where "resolve the tool, then run it" is written, so the three states survive the
+// composition instead of being flattened once per call site.
+fn srv3_run_tool_by_name(
+  tool_name: NonEmptyStr,
+  args: List<String>,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
   match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
-    Present { value: tool_path } =>
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenObserved { value: resolved } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: resolved,
+        args: args,
+      )
+  }
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
+    Srv3TokenObserved { value: tool_path } =>
       srv3_transport_witness_bin_success(
         transport: transport,
         workdir: "/",
         bin_path: tool_path,
         args: ["--version"],
       )
-    Absent => false
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
 
-fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Bool {
+// ONE TRANSPORT-AWARE SINGLE-TOKEN READ, given a full argv. srv3_tool_bin_path and the `id`
+// probes each had their own transport match over the same four arms; the stat probes this cut adds
+// would have made a third. The argv is the parameter because that is exactly what differs --
+// everything else about "run this readonly command and take its one line of output" is identical.
+// WHAT MAY BE ASKED, not what may be run. Every token read this realizer performs is one of four
+// questions about the host, so the caller names the QUESTION and the argv is derived here. Before
+// this type existed the entry point took a List<String> and would run whatever it was handed --
+// the semantic request and the command serialization were one fact, so a new probe was authored by
+// passing a new argv rather than by declaring a new subject, and nothing distinguished a modeled
+// read from an arbitrary one.
+type Srv3TokenSubject
+  = Srv3EffectiveUserId
+  | Srv3EffectiveGroupId
+  | Srv3PathOwnerUser { path: String }
+  | Srv3PathOwnerGroup { path: String }
+
+// The single public token read. The argv never crosses this boundary in either direction: callers
+// hand in a subject and receive a typed observation.
+fn srv3_read_token(
+  subject: Srv3TokenSubject,
+  transport: HostEffectTransport,
+) -> Srv3ObservedToken {
+  srv3_transport_token(argv: srv3_token_argv(subject: subject), transport: transport)
+}
+
+// The serialization half, private to the two decls above by admission rather than by convention.
+fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "owner_halves_do_not_derive_the_same_command"),
+    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "the_path_subject_carries_its_own_path"),
+  ]
+{
+  match subject {
+    Srv3EffectiveUserId => id_uid_argv_absolute()
+    Srv3EffectiveGroupId => id_gid_argv_absolute()
+    Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
+    Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
+  }
+}
+
+// SEALED TO THE ONE SUBJECT-TAKING CALLER. This is the arm that will run any argv it is given, so
+// admission is what stops a future probe from re-opening the untyped surface: adding a read means
+// adding a Srv3TokenSubject variant, not calling through here with a fresh vector.
+fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
+  ]
+{
   match transport {
-    LocalShell => {
-      let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
-      let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
-      if uid.success && gid.success {
-        let owner = concat(uid.stdout, concat(":", gid.stdout))
-        gunbc.WitnessBin.Run(
-          workdir: "/",
-          bin_path: "/usr/bin/sudo",
-          args: srv3_actuator_toolchain_chown_args(owner: owner, path: path),
-        ).success
-      } else {
-        false
-      }
-    }
-    SshShell { ssh_host: h } => {
-      let uid = srv3_typed_argv_outcome_stdout(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
-      let gid = srv3_typed_argv_outcome_stdout(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
-      match uid {
-        Present { value: uid_value } =>
-          match gid {
-            Present { value: gid_value } =>
-              srv3_transport_witness_bin_success(
-                transport: transport,
-                workdir: "/",
-                bin_path: "/usr/bin/sudo",
-                args: srv3_actuator_toolchain_chown_args(
-                  owner: concat(uid_value, concat(":", gid_value)),
-                  path: path,
-                ),
-              )
-            Absent => false
-          }
-        Absent => false
-      }
-    }
-    FleetSsh { target: t, context: c } => {
-      let uid = srv3_typed_argv_outcome_stdout(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_uid_argv()),
+    LocalShell => srv3_local_token_from_argv(argv: argv)
+    SshShell { ssh_host: h } =>
+      srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
+    FleetSsh { target: t, context: c } =>
+      srv3_observed_token_from_typed_argv(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
       )
-      let gid = srv3_typed_argv_outcome_stdout(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_gid_argv()),
-      )
-      match uid {
-        Present { value: uid_value } =>
-          match gid {
-            Present { value: gid_value } =>
-              srv3_transport_witness_bin_success(
-                transport: transport,
-                workdir: "/",
-                bin_path: "/usr/bin/sudo",
-                args: srv3_actuator_toolchain_chown_args(
-                  owner: concat(uid_value, concat(":", gid_value)),
-                  path: path,
-                ),
-              )
-            Absent => false
-          }
-        Absent => false
-      }
-    }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+      Srv3TokenUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can read a command's output",
+      }
   }
 }
 
-fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Bool {
-  srv3_transport_witness_bin_success(
+// The local witness-bin surface takes a binary and its tail separately, so the argv is split here
+// rather than at every caller. An empty argv names no binary and is refused rather than run.
+fn srv3_local_token_from_argv(argv: List<String>) -> Srv3ObservedToken {
+  match argv {
+    Empty =>
+      Srv3TokenUnobserved { reason: "srv3 token read: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } => {
+      let r = gunbc.WitnessBin.Run(workdir: "/", bin_path: bin, args: rest)
+      srv3_token_from_run(success: r.success, stdout: r.stdout)
+    }
+  }
+}
+
+// EMPTY STDOUT IS ABSENT, NOT AN OBSERVATION OF "". A probe that exits zero having printed nothing
+// has not answered the question it was asked, and the caller must decide what that means rather
+// than receive an empty token that compares unequal to everything.
+//
+// LOCAL READS GO THROUGH THE SAME TRIM THE SSH ARMS USE. The local chown arm previously consumed
+// `.stdout` raw, so a trailing newline -- which `id` emits and every other arm trims -- was
+// concatenated straight into a privileged chown argument.
+fn srv3_token_from_run(success: Bool, stdout: String) -> Srv3ObservedToken {
+  if success {
+    let out = trim(s: stdout)
+    if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
+  } else {
+    Srv3TokenAbsent
+  }
+}
+
+// THE GID PROBE SITS INSIDE THE UID ARM, not beside it in a second `let`. Both are readonly, so
+// the harm is small, but the shape is the one that produced this file's two worst defects: an
+// effectful call outside the branch that decides whether it should happen runs anyway, and nothing
+// in the signature says so.
+fn srv3_effective_owner(transport: HostEffectTransport) -> Srv3EffectiveOwner {
+  match srv3_read_token(subject: Srv3EffectiveUserId, transport: transport) {
+    Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -u` produced no output" }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_read_token(subject: Srv3EffectiveGroupId, transport: transport) {
+        Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -g` produced no output" }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text)
+      }
+  }
+}
+
+// The absolute-path spellings. extdeps.tools.id's bare argv rows resolve through PATH, which is
+// right for a remote shell; the local witness-bin surface takes a binary path, and a sudoers rule
+// matches on one, so both spellings are real and neither is the other's nickname.
+fn id_uid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-u"]
+}
+
+fn id_gid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-g"]
+}
+
+type Srv3EffectiveOwner
+  = Srv3EffectiveOwnerObserved { owner: PosixOwnerSpec }
+  | Srv3EffectiveOwnerUnobserved { reason: String }
+
+// AN UNDECODABLE ID REFUSES; IT IS NOT CHOWNED TO. `id` printed SOMETHING and it is not a POSIX
+// id, which is a different state from "id printed nothing" and from "id was never run" -- and the
+// remedy differs: unparseable output means the probe's assumption about the host is wrong, and
+// retrying will produce the same text.
+fn srv3_owner_from_texts(uid_text: String, gid_text: String) -> Srv3EffectiveOwner {
+  match posix_user_id_from_text(text: uid_text) {
+    Absent =>
+      Srv3EffectiveOwnerUnobserved {
+        reason: concat("srv3 owner: `id -u` output is not a POSIX user id: ", uid_text),
+      }
+    Present { value: user } =>
+      match posix_group_id_from_text(text: gid_text) {
+        Absent =>
+          Srv3EffectiveOwnerUnobserved {
+            reason: concat("srv3 owner: `id -g` output is not a POSIX group id: ", gid_text),
+          }
+        Present { value: group } =>
+          Srv3EffectiveOwnerObserved {
+            owner: PosixOwnerSpec { user: user, group: group },
+          }
+      }
+  }
+}
+
+// THE PATH'S CURRENT OWNER, read independently of anything this process did to it.
+fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> PathOwnershipObservation {
+  match srv3_read_token(subject: Srv3PathOwnerUser { path: path }, transport: transport) {
+    Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      PathOwnerUnobserved {
+        reason: concat("srv3 owner: `stat -c %u` produced no output for ", path),
+      }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_read_token(subject: Srv3PathOwnerGroup { path: path }, transport: transport) {
+        Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          PathOwnerUnobserved {
+            reason: concat("srv3 owner: `stat -c %g` produced no output for ", path),
+          }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_path_owner_from_texts(uid_text: uid_text, gid_text: gid_text, path: path)
+      }
+  }
+}
+
+fn srv3_path_owner_from_texts(
+  uid_text: String,
+  gid_text: String,
+  path: String,
+) -> PathOwnershipObservation {
+  match srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text) {
+    Srv3EffectiveOwnerUnobserved { reason: why } =>
+      PathOwnerUnobserved { reason: concat(concat("srv3 owner of ", path), concat(": ", why)) }
+    Srv3EffectiveOwnerObserved { owner: o } => PathOwnerObserved { owner: o }
+  }
+}
+
+// OWNERSHIP IS ENSURED BY READBACK, NOT BY EXIT STATUS -- and this is the stage where that
+// distinction was previously absent. The predecessor ran an elevated chown and returned
+// Holds/Fails from the process result, so "the chown exited zero" and "the directory is owned by
+// us" were the same claim. They are not: a chown that followed a symlink, or that raced a replaced
+// path, or that ran under a sudoers rule permitting the binary but not the target, can exit zero
+// having converged nothing.
+//
+// The chown's own result is deliberately not consulted for the verdict. It cannot be: the verdict
+// comes from path_ownership_verdict, which takes the readback and the desired owner and has
+// nowhere to put a process result. A failed chown surfaces as the readback disagreeing.
+fn srv3_ensure_directory_owned_by_current_user(
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_effective_owner(transport: transport) {
+    Srv3EffectiveOwnerUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3EffectiveOwnerObserved { owner: desired } =>
+      srv3_converge_path_owner(
+        desired: desired,
+        decision: path_ownership_decision(
+          desired: desired,
+          observed: srv3_observe_path_owner(path: path, transport: transport),
+        ),
+        path: path,
+        transport: transport,
+      )
+  }
+}
+
+// THE ALREADY-SATISFIED ARM PERFORMS NO PRIVILEGED INVOCATION AT ALL, which on a converge that has
+// already run is every invocation this stage would have made.
+fn srv3_converge_path_owner(
+  desired: PosixOwnerSpec,
+  decision: PathOwnershipDecision,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match decision {
+    OwnershipDecisionRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+    OwnershipAlreadySatisfied { owner: _ } => Srv3PredicateHolds
+    OwnershipMutationRequired { current: _, desired: target } =>
+      srv3_chown_then_read_back(desired: target, path: path, transport: transport)
+  }
+}
+
+// THE MUTATION IS SEQUENCED BY A `let` INSIDE THIS ARM, NOT BY ARGUMENT POSITION. An earlier
+// revision passed the chown as an argument and defended it in a comment as "deliberately
+// load-bearing eagerness". That reinstates exactly the footgun this sequence of cuts exists to
+// remove: implicit evaluation order is not a sequencing authority, and the fact that eagerness
+// happened to be what I wanted this time does not make it one -- the next reader cannot tell a
+// deliberate one from the accident that put a privileged apt install in an argument (side-chat
+// review of #8760).
+fn srv3_chown_then_read_back(
+  desired: PosixOwnerSpec,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  let attempt = srv3_chown_attempt(
+    outcome: srv3_elevated_witness_bin_success(
+      transport: transport,
+      command: chown_argv(owner: desired, path: path),
+    ),
+  )
+  srv3_readback_after_attempt(
+    desired: desired,
+    attempt: attempt,
+    path: path,
     transport: transport,
-    workdir: "/",
-    bin_path: "/usr/bin/sudo",
-    args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
   )
 }
 
-fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+fn srv3_chown_attempt(outcome: Srv3HostPredicate) -> ChownAttemptObservation {
+  match outcome {
+    Srv3PredicateHolds => ChownReportedSuccess
+    Srv3PredicateFails => ChownReportedFailure
+    Srv3PredicateUnobserved { reason: why } => ChownNotDispatched { cause: why }
+  }
+}
+
+// A CHOWN THAT WAS NEVER DISPATCHED SKIPS THE READBACK. Not as an optimization: a readback there
+// would describe a host nobody touched, and reporting its answer as the result of an ensure that
+// never ran is the fabrication in miniature. Both DISPATCHED arms read back, and identically --
+// a reported failure is no more evidence about the filesystem than a reported success.
+fn srv3_readback_after_attempt(
+  desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match attempt {
+    ChownNotDispatched { cause: why } => Srv3PredicateUnobserved { reason: why }
+    ChownReportedSuccess =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+    ChownReportedFailure =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+  }
+}
+
+fn srv3_path_owner_readback(
+  desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  srv3_predicate_from_ownership_outcome(
+    outcome: path_ownership_verdict(
+      desired: desired,
+      attempt: attempt,
+      readback: srv3_observe_path_owner(path: path, transport: transport),
+    ),
+  )
+}
+
+fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) -> Srv3HostPredicate {
+  match outcome {
+    PathAlreadyOwned { owner: _ } => Srv3PredicateHolds
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => Srv3PredicateHolds
+    PathOwnershipEnsureRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+  }
+}
+
+// EVERY PRIVILEGED LEAF IN THIS FILE GOES THROUGH HERE, so sudo's calling convention is stated
+// once. Four call sites each carried `bin_path: "/usr/bin/sudo"` beside an args list beginning
+// with a bare "-n"; the binary and the flag are facts about sudo, not about chown, mkdir or
+// apt-get, and extdeps.sudo.elevation is where they belong.
+// THE EXECUTION SURFACE IS SEALED TO ITS NAMED CALLERS, and the seal's REACH IS MEASURED RATHER
+// THAN ASSERTED, because the obvious reading of `admit_callers` overstates what it does.
+//
+// WHAT IS CLOSED, confirmed by execution: no OTHER MODULE can run an argv on a transport, elevated
+// or not. A foreign caller refuses at resolve with a diagnostic naming the permitted set --
+// "constructor call admission refused: 'gunbc.host_effect_realize.srv3_elevated_witness_bin_success'
+// refuses call from 'test.claim.srv3_seal_probe.a_foreign_module_may_not_run_a_privileged_argv' --
+// permitted callers: [...]". That is the property this cut is for: a caller outside this module can
+// name a semantic operation (ensure this tool, ensure this owner) and cannot name the machinery
+// that executes it.
+//
+// WHAT IS NOT CLOSED, and this is the part a reader would get wrong: the wall does NOT confine
+// SAME-MODULE callers. A probe function added to this very module, absent from the admitted list,
+// calling srv3_elevated_witness_bin_success with ["/bin/rm", "-rf", "/"], typechecked and resolved
+// with no diagnostic at all. Both halves were measured on the same build; reporting only the
+// refusal would be the rung inflation DESIGN section 4b names as worse than sitting low.
+//
+// So the rung is MECHANICALLY PREVENTABLE at the module boundary and NOTHING at all within it. The
+// admitted lists below are therefore two facts at once: an enforced wall against foreign callers,
+// and a declaration of intent for in-module ones that no mechanism currently checks. NEXT-RUNG
+// TRIGGER: admission checked per caller rather than per module. Until that lands, an in-module
+// caller added to either of these functions is caught by review or by nothing.
+//
+// The lists were derived by walking the module rather than by reading the call sites: my first
+// hand-read attributed two calls to the wrong enclosing function and invented a fifth caller that
+// does not exist. Nothing would have caught that -- an in-module list the compiler does not check
+// is a list nothing verifies, which is the second reason the next-rung trigger matters.
+// THE ARGV-SHAPED SIBLING. Every extdeps tool row returns a complete argv, and the witness-bin
+// surface takes a binary and its tail separately, so each caller was splitting the argv back apart
+// by hand at the call site -- or, more often, not building one at all and passing a literal binary
+// beside a literal args list. This splits it once.
+fn srv3_transport_argv_success(
+  transport: HostEffectTransport,
+  argv: List<String>,
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+  ]
+{
+  match argv {
+    Empty =>
+      Srv3PredicateUnobserved { reason: "srv3 exec: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: bin,
+        args: rest,
+      )
+  }
+}
+
+fn srv3_elevated_witness_bin_success(
+  transport: HostEffectTransport,
+  command: List<String>,
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_privileged_apt_install"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_then_read_back"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_directory"),
+  ]
+{
+  let elevated = sudo_elevate(command: command)
+  srv3_transport_witness_bin_success(
+    transport: transport,
+    workdir: "/",
+    bin_path: elevated.bin_path,
+    args: elevated.args,
+  )
+}
+
+fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  srv3_elevated_witness_bin_success(
+    transport: transport,
+    command: srv3_actuator_toolchain_apt_install_command(package: package),
+  )
+}
+
+// THE COMMAND, NOT THE ELEVATED INVOCATION. This is the argv apt-get would take unprivileged;
+// elevation is applied to it rather than spelled inside it, so "which flag makes sudo
+// non-interactive" is not a fact this function has an opinion about.
+fn srv3_actuator_toolchain_apt_install_command(package: NonEmptyStr) -> List<String> {
   [
-    "-n",
     apt_get_binary_path as String,
     "install",
     "-y",
@@ -1578,8 +2022,9 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 }
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_curl))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
@@ -1594,103 +2039,606 @@ fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_names
   string_contains(s: websocat_install_path as String, pattern: concat(gunbc_bin_dir as String, "/"))
 }
 
+// THE ARM THIS FUNCTION MUST NOT TAKE is the install arm on an unobserved probe. Previously the
+// presence probe returned `Bool`, so a transport that could not run the probe at all answered
+// `false` and fell straight through to srv3_privileged_apt_install -- a privileged mutation of a
+// host whose current state was never established. `Srv3PredicateUnobserved` now refuses instead,
+// carrying the reason the probe could not be made.
+// THE INSTALL MUST SIT IN A BRANCH, NEVER IN AN ARGUMENT POSITION.
+//
+// This body once read srv3_version_gate_then(verdict: ..., otherwise: srv3_apt_install_then_reprobe(...)),
+// which reads correctly and is wrong: an argument is evaluated to build the call, so the PRIVILEGED
+// APT INSTALL RAN ON EVERY ENSURE of a present, correctly-versioned tool. The pre-cut code
+// short-circuited through if/else and never had this defect; the regression came from moving the
+// install out of a branch and into a parameter while every type stayed identical. A match arm is a
+// branch, so only the selected arm evaluates.
 fn srv3_ensure_apt_tool(
   tool_name: NonEmptyStr,
   package: NonEmptyStr,
   require_version_probe: Bool,
   transport: HostEffectTransport,
-) -> Bool {
-  if srv3_apt_tool_present(tool_name: tool_name, transport: transport)
-    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
-  {
-    true
-  } else {
-    srv3_privileged_apt_install(package: package, transport: transport)
-      && srv3_apt_tool_present(tool_name: tool_name, transport: transport)
-      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
+) -> Srv3HostPredicate {
+  match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateHolds =>
+      if require_version_probe == false {
+        Srv3PredicateHolds
+      } else {
+        match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+          Srv3PredicateHolds => Srv3PredicateHolds
+          Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+          Srv3PredicateFails =>
+            srv3_apt_install_then_reprobe(
+              tool_name: tool_name,
+              package: package,
+              require_version_probe: require_version_probe,
+              transport: transport,
+            )
+        }
+      }
+    Srv3PredicateFails =>
+      srv3_apt_install_then_reprobe(
+        tool_name: tool_name,
+        package: package,
+        require_version_probe: require_version_probe,
+        transport: transport,
+      )
   }
 }
 
-fn srv3_ensure_websocat(transport: HostEffectTransport) -> Bool {
-  let install_path = websocat_install_path as String
-  if srv3_transport_test_executable(path: install_path, transport: transport) {
-    true
-  } else {
-    match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
-      Present { value: curl_path } => {
-        let bin_dir = gunbc_bin_dir as String
-        let url = srv3_actuator_toolchain_websocat_release_download_url()
-        let mkdir = srv3_transport_witness_bin_success(
-          transport: transport,
-          workdir: "/",
-          bin_path: "/usr/bin/sudo",
-          args: ["mkdir", "-p", bin_dir],
-        )
-        let chown = srv3_chown_directory_to_current_user(path: bin_dir, transport: transport)
-        let curl = srv3_transport_witness_bin_success(
-          transport: transport,
-          workdir: "/",
-          bin_path: curl_path,
-          args: ["-fsSL", url, "-o", install_path],
-        )
-        let chmod = srv3_transport_witness_bin_success(
-          transport: transport,
-          workdir: "/",
-          bin_path: "/bin/chmod",
-          args: ["+x", install_path],
-        )
-        mkdir
-          && chown
-          && curl
-          && chmod
-          && srv3_transport_test_executable(path: install_path, transport: transport)
+fn srv3_probe_present_then_version(
+  tool_name: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails => Srv3PredicateFails
+    Srv3PredicateHolds =>
+      match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+        Srv3PredicateHolds => Srv3PredicateHolds
+        Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3PredicateFails => Srv3PredicateFails
       }
-      Absent => false
+  }
+}
+
+fn srv3_apt_install_then_reprobe(
+  tool_name: NonEmptyStr,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_privileged_apt_install(package: package, transport: transport) {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails => Srv3PredicateFails
+    Srv3PredicateHolds =>
+      match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+        Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3PredicateFails => Srv3PredicateFails
+        Srv3PredicateHolds =>
+          if require_version_probe == false {
+            Srv3PredicateHolds
+          } else {
+            match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+              Srv3PredicateHolds => Srv3PredicateHolds
+              Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+              Srv3PredicateFails => Srv3PredicateFails
+            }
+          }
+      }
+  }
+}
+
+
+// THE SEQUENCE IS A VALUE, SO THE EVIDENCE CAN ASSERT WHAT RAN.
+//
+// The defect this replaces: srv3_ensure_websocat bound mkdir, chown, curl and chmod as four lets
+// and then handed the results to srv3_predicate_all. In a strict language a let executes when it
+// is bound, so ALL FOUR MUTATIONS RAN REGARDLESS OF EACH OTHER -- a failed mkdir still downloaded
+// the file and chmod'd it -- and the readback sat in the argument list, so it ran after any of
+// them failed. srv3_predicate_all then classified the batch correctly AFTER THE FACT. The value
+// was right and the execution was wrong, which is why no witness in this file saw it: they all
+// assert the returned coproduct, and this class never changes it.
+//
+// Four of those unconditional mutations predate the three-valued cut; the eagerly-evaluated
+// readback was introduced by it. Both are closed here.
+//
+// The repair separates the SEQUENCING DECISION from the EXECUTION. websocat_after is a pure
+// total function -- given a stage and its outcome, what happens next -- so a test can assert the
+// whole transition table without a host. The driver performs effects and consumes that single
+// authority, which is what keeps the tested decision and the executed decision the same one.
+type WebsocatStage
+  = ObserveInstalled
+  | ResolveCurl
+  | EnsureDirectory
+  | EnsureOwnership
+  | Download
+  | EnsureExecutableMode
+  | Readback
+
+type WebsocatStep
+  = WebsocatContinue { next: WebsocatStage }
+  | WebsocatStop { verdict: Srv3HostPredicate }
+  | WebsocatAlreadySatisfied
+
+// A stage advances ONLY on Holds. Fails and Unobserved both stop, and they stop carrying their
+// own verdict rather than a shared one -- an unreachable host and a genuinely failed mkdir are
+// different states with different remedies, which is the distinction the three-valued carrier
+// exists to preserve.
+// Advancing and stopping are the same two shapes at every stage but the first and last, so they
+// are named once. `next` is a pure stage value, not an effect -- passing it as an argument is
+// safe, and the distinction is worth stating in a file whose defects were all about effects in
+// argument position: eager evaluation only matters when evaluating causes something to happen.
+fn websocat_advance(outcome: Srv3HostPredicate, next: WebsocatStage) -> WebsocatStep {
+  match outcome {
+    Srv3PredicateHolds => WebsocatContinue { next: next }
+    Srv3PredicateFails => WebsocatStop { verdict: Srv3PredicateFails }
+    Srv3PredicateUnobserved { reason: why } =>
+      WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+  }
+}
+
+fn websocat_terminal(outcome: Srv3HostPredicate) -> WebsocatStep {
+  match outcome {
+    Srv3PredicateHolds => WebsocatStop { verdict: Srv3PredicateHolds }
+    Srv3PredicateFails => WebsocatStop { verdict: Srv3PredicateFails }
+    Srv3PredicateUnobserved { reason: why } =>
+      WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+  }
+}
+
+// ObserveInstalled IS THE ONLY STAGE WHERE Fails MEANS PROCEED. "Is it already installed"
+// answering no is the whole reason to install, so that arm continues; every other stage's Fails is
+// a real failure and stops. Unobserved stops at every stage including that one -- a host that could
+// not be asked whether the binary exists must not be handed an install.
+fn websocat_after(stage: WebsocatStage, outcome: Srv3HostPredicate) -> WebsocatStep {
+  match stage {
+    ObserveInstalled =>
+      match outcome {
+        Srv3PredicateHolds => WebsocatAlreadySatisfied
+        Srv3PredicateFails => WebsocatContinue { next: ResolveCurl }
+        Srv3PredicateUnobserved { reason: why } =>
+          WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+      }
+    ResolveCurl => websocat_advance(outcome: outcome, next: EnsureDirectory)
+    EnsureDirectory => websocat_advance(outcome: outcome, next: EnsureOwnership)
+    EnsureOwnership => websocat_advance(outcome: outcome, next: Download)
+    Download => websocat_advance(outcome: outcome, next: EnsureExecutableMode)
+    EnsureExecutableMode => websocat_advance(outcome: outcome, next: Readback)
+    Readback => websocat_terminal(outcome: outcome)
+  }
+}
+
+// THE ACTION TRACE, derived from the same transition function the driver uses. Given the outcome
+// each stage would produce, this yields exactly the stages that execute -- so a witness can assert
+// "a failed mkdir means Download never runs" as a claim about EXECUTION rather than about the
+// value that came back.
+//
+// The walk CARRIES the next stage rather than re-deriving it from what already ran. An earlier
+// draft of this file derived it, which put the stage order in two places -- websocat_after and the
+// deriving function -- and that is the §3 fork this module keeps being about. websocat_after is
+// the only thing that knows what follows what.
+type WebsocatWalk {
+  stages: List<WebsocatStage>
+  current: WebsocatStage?
+  verdict: Srv3HostPredicate
+}
+
+data websocat_walk_start: WebsocatWalk = WebsocatWalk {
+  stages: [],
+  current: Present { value: ObserveInstalled },
+  verdict: Srv3PredicateFails,
+}
+
+fn websocat_walk_step(walk: WebsocatWalk, outcome: Srv3HostPredicate) -> WebsocatWalk {
+  match walk.current {
+    Absent => walk
+    Present { value: stage } => {
+      let ran = list_snoc_item(xs: walk.stages, item: stage)
+      match websocat_after(stage: stage, outcome: outcome) {
+        WebsocatAlreadySatisfied =>
+          WebsocatWalk { stages: ran, current: none, verdict: Srv3PredicateHolds }
+        WebsocatStop { verdict: v } =>
+          WebsocatWalk { stages: ran, current: none, verdict: v }
+        WebsocatContinue { next: n } =>
+          WebsocatWalk { stages: ran, current: Present { value: n }, verdict: walk.verdict }
+      }
     }
   }
+}
+
+fn websocat_trace_from_outcomes(outcomes: List<Srv3HostPredicate>) -> WebsocatWalk {
+  fold_list(
+    xs: outcomes,
+    empty: websocat_walk_start,
+    cons: fn(acc, outcome) { websocat_walk_step(walk: acc, outcome: outcome) },
+  )
+}
+
+fn websocat_stage_label(stage: WebsocatStage) -> String {
+  match stage {
+    ObserveInstalled => "observe-installed"
+    ResolveCurl => "resolve-curl"
+    EnsureDirectory => "ensure-directory"
+    EnsureOwnership => "ensure-ownership"
+    Download => "download"
+    EnsureExecutableMode => "ensure-executable-mode"
+    Readback => "readback"
+  }
+}
+
+fn websocat_trace_labels(walk: WebsocatWalk) -> List<String> {
+  list_map(xs: walk.stages, f: fn(st) { websocat_stage_label(stage: st) })
+}
+
+// THE DRIVER. Every effect sits inside a match arm, so it executes only when the preceding stage
+// held. Nothing is bound with `let` before its turn, and nothing effectful appears in an argument
+// or list position -- those were the two shapes that made the previous body run mutations it had
+// no business running.
+//
+// The chain is not a fold: each stage needs a different effect and some need values the previous
+// stage produced (the resolved curl path), so a uniform step function would have to carry a union
+// of every stage's inputs. The sequencing decision IS folded -- that is websocat_after, which this
+// driver and the trace witness both consume.
+// THE DRIVER DEPENDS ON THE STAGE websocat_after NAMED, rather than assuming it. This closes a
+// real fork that the first cut left open and the first mutation could not see: every driver site
+// matched `WebsocatContinue { next: _ }` and then ran the stage it expected, so websocat_after was
+// the sole authority for STOP-OR-CONTINUE while the stage EDGE was hardcoded a second time in the
+// driver. Rewriting an edge -- EnsureDirectory continuing to Download instead of EnsureOwnership --
+// would have reddened the trace, which follows `next`, while production carried on in its original
+// order. Two authorities agreeing today is not one authority (raised in side-chat review).
+//
+// Comparison goes through websocat_stage_label because that fold is already the total, exhaustive
+// projection of the stage type; adding a second equality over the same coproduct would be the fork
+// this function exists to remove.
+fn websocat_edge_admits(actual: WebsocatStage, expected: WebsocatStage) -> Bool {
+  websocat_stage_label(stage: actual) == websocat_stage_label(stage: expected)
+}
+
+// A DISAGREEMENT REFUSES; IT DOES NOT PROCEED AND IT DOES NOT GUESS. The driver cannot honour a
+// transition it does not implement, and running the stage it happens to have code for would be the
+// absorbing fallback -- carrying on because carrying on is available.
+fn websocat_edge_disagreement(actual: WebsocatStage, expected: WebsocatStage) -> Srv3HostPredicate {
+  Srv3PredicateUnobserved {
+    reason: join([
+      "srv3 websocat: the sequence authority named stage ",
+      websocat_stage_label(stage: actual),
+      " but this driver site implements ",
+      websocat_stage_label(stage: expected),
+      " -- the walk and the driver disagree about the stage order, so no host was touched",
+    ], ""),
+  }
+}
+
+fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
+  let install_path = websocat_install_path as String
+  match websocat_after(
+    stage: ObserveInstalled,
+    outcome: srv3_transport_test_executable(path: install_path, transport: transport),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: ResolveCurl) {
+        false => websocat_edge_disagreement(actual: n, expected: ResolveCurl)
+        true =>
+          match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+            Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+            Srv3TokenAbsent => Srv3PredicateFails
+            Srv3TokenObserved { value: curl_path } =>
+              srv3_websocat_install_from(
+                curl_path: curl_path,
+                install_path: install_path,
+                transport: transport,
+              )
+          }
+      }
+  }
+}
+
+// ONE FUNCTION PER STAGE, rather than one function nesting five matches. The nesting was not a
+// style problem: at depth five, adding the edge check to each site pushed the effect bodies far
+// enough right that the thing being guarded stopped being visible beside its guard. Each stage now
+// runs its own effect, consults the sequence authority, checks that the authority named the stage
+// this chain implements next, and calls it. The stage order therefore appears exactly once as data
+// (in websocat_after) and once as a call graph that refuses when the two disagree.
+fn srv3_websocat_install_from(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  websocat_stage_ensure_directory(
+    curl_path: curl_path,
+    install_path: install_path,
+    transport: transport,
+  )
+}
+
+fn websocat_stage_ensure_directory(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  let bin_dir = gunbc_bin_dir as String
+  match websocat_after(
+    stage: EnsureDirectory,
+    outcome: srv3_elevated_witness_bin_success(
+      transport: transport,
+      command: mkdir_parents_argv(path: bin_dir),
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureOwnership) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureOwnership)
+        true =>
+          websocat_stage_ensure_ownership(
+            curl_path: curl_path,
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_ensure_ownership(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: EnsureOwnership,
+    outcome: srv3_ensure_directory_owned_by_current_user(
+      path: gunbc_bin_dir as String,
+      transport: transport,
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Download) {
+        false => websocat_edge_disagreement(actual: n, expected: Download)
+        true =>
+          websocat_stage_download(
+            curl_path: curl_path,
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_download(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: Download,
+    outcome: srv3_transport_witness_bin_success(
+      transport: transport,
+      workdir: "/",
+      bin_path: curl_path,
+      args: [
+        "-fsSL",
+        srv3_actuator_toolchain_websocat_release_download_url(),
+        "-o",
+        install_path,
+      ],
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureExecutableMode) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureExecutableMode)
+        true =>
+          websocat_stage_ensure_executable_mode(
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_ensure_executable_mode(
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: EnsureExecutableMode,
+    outcome: srv3_transport_argv_success(
+      transport: transport,
+      argv: chmod_add_executable_argv(path: install_path),
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Readback) {
+        false => websocat_edge_disagreement(actual: n, expected: Readback)
+        true =>
+          websocat_after_readback(
+            outcome: srv3_transport_test_executable(
+              path: install_path,
+              transport: transport,
+            ),
+          )
+      }
+  }
+}
+
+// The readback is the ONLY thing that admits convergence. A successful chmod is not evidence the
+// binary is executable; the previous body treated the batch as the answer and re-observed only as
+// one more element of it.
+fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
+  match websocat_after(stage: Readback, outcome: outcome) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } => websocat_edge_disagreement(actual: n, expected: Readback)
+  }
+}
+
+// CONJUNCTION THAT DOES NOT LOSE THE THIRD STATE. `&&` over Bool answered false whether a step
+// failed or could not be run; this reports Unobserved if ANY step could not be observed, and
+// Fails only when every step was actually observed and one of them said no.
+// A SUMMARY, NOT A SEQUENCER, and the name now says so. It folds observations that have ALREADY
+// been made independently -- four separate tool ensures, none of which gates another -- and it
+// cannot sequence anything, because by the time a list reaches it every element has been
+// evaluated. Reading it as "run these in order, stopping on failure" is what let the websocat
+// path run four mutations unconditionally. Sequencing lives in websocat_after and nowhere else.
+fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Srv3HostPredicate {
+  fold_list(
+    xs: steps,
+    empty: Srv3PredicateHolds,
+    cons: fn(acc, step) {
+      match acc {
+        Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        _ =>
+          match step {
+            Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+            Srv3PredicateFails => Srv3PredicateFails
+            Srv3PredicateHolds => acc
+          }
+      }
+    },
+  )
+}
+
+// Total over all three states, so a receipt line can never render Unobserved as "fail".
+fn srv3_predicate_label(p: Srv3HostPredicate) -> String {
+  match p {
+    Srv3PredicateHolds => "ok"
+    Srv3PredicateFails => "fail"
+    Srv3PredicateUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+fn srv3_toolchain_observed(success: Bool, stdout: String) -> ShellExecObserved {
+  ShellExecObserved {
+    exit_code: if success { 0 } else { 1 },
+    success: success,
+    stdout: stdout,
+    stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
+  }
+}
+
+// HOW A TOOL IS ACQUIRED IS A ROW, NOT A CALL SITE. Four hand-written ensures sat here, three
+// calling the apt path and one calling the websocat path, so "which mechanism installs this tool"
+// was expressed only by which function the author happened to call -- and the receipt that reports
+// them was a hand-built concat chain naming each tool twice, once as a literal and once as a
+// variable. Adding a tool meant editing three places and remembering the fourth.
+//
+// require_version_probe lives INSIDE the apt variant rather than beside the acquisition, because
+// the release path has no version probe to require. As a peer field it was a value one variant
+// ignored -- a state the type admitted and the code silently dropped.
+type Srv3ToolAcquisition
+  = AcquireViaAptPackage { package: NonEmptyStr, require_version_probe: Bool }
+  | AcquireViaWebsocatRelease
+
+type Srv3ToolRow {
+  tool_name: NonEmptyStr
+  acquisition: Srv3ToolAcquisition
+}
+
+// THE DISPATCH IS THE ONLY PLACE A MECHANISM IS CHOSEN, and it is total over the acquisition
+// coproduct: a new mechanism is a variant, and this match refuses to compile until it is answered.
+fn srv3_ensure_tool(row: Srv3ToolRow, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match row.acquisition {
+    AcquireViaAptPackage { package: p, require_version_probe: needs_version } =>
+      srv3_ensure_apt_tool(
+        tool_name: row.tool_name,
+        package: p,
+        require_version_probe: needs_version,
+        transport: transport,
+      )
+    AcquireViaWebsocatRelease => srv3_ensure_websocat(transport: transport)
+  }
+}
+
+fn srv3_toolchain_rows() -> List<Srv3ToolRow> {
+  [
+    Srv3ToolRow {
+      tool_name: curl_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_curl, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: nbdkit_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_nbdkit, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: socat_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_socat, require_version_probe: false },
+    },
+    Srv3ToolRow {
+      tool_name: websocat_cli_tool.name,
+      acquisition: AcquireViaWebsocatRelease,
+    },
+  ]
+}
+
+type Srv3ToolObservation {
+  tool_name: NonEmptyStr
+  verdict: Srv3HostPredicate
+}
+
+// THE RECEIPT IS DERIVED FROM THE SAME ROWS THE ENSURE WALKED, so a tool cannot appear in one and
+// not the other, and its label cannot disagree with its row.
+fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
+  concat(
+    concat(observation.tool_name as String, "="),
+    srv3_predicate_label(p: observation.verdict),
+  )
+}
+
+fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
+  concat(
+    "OsInstallActuatorToolchainReceipt: ",
+    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+  )
 }
 
 fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_ok = srv3_ensure_apt_tool(
-    tool_name: curl_cli_tool.name,
-    package: package_curl,
-    require_version_probe: true,
-    transport: transport,
+  let observations = list_map(
+    xs: srv3_toolchain_rows(),
+    f: fn(row) {
+      Srv3ToolObservation {
+        tool_name: row.tool_name,
+        verdict: srv3_ensure_tool(row: row, transport: transport),
+      }
+    },
   )
-  let nbdkit_ok = srv3_ensure_apt_tool(
-    tool_name: nbdkit_cli_tool.name,
-    package: package_nbdkit,
-    require_version_probe: true,
-    transport: transport,
+  let verdict = srv3_summarize_independent_observations(
+    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
   )
-  let socat_ok = srv3_ensure_apt_tool(
-    tool_name: socat_cli_tool.name,
-    package: package_socat,
-    require_version_probe: false,
-    transport: transport,
-  )
-  let websocat_ok = srv3_ensure_websocat(transport: transport)
-  let success = curl_ok && nbdkit_ok && socat_ok && websocat_ok
-  let stdout = concat(
-    concat(
-      concat(
-        concat("OsInstallActuatorToolchainReceipt: curl=", if curl_ok { "ok" } else { "fail" }),
-        concat(" nbdkit=", if nbdkit_ok { "ok" } else { "fail" }),
-      ),
-      concat(" socat=", if socat_ok { "ok" } else { "fail" }),
-    ),
-    concat(" websocat=", if websocat_ok { "ok" } else { "fail" }),
-  )
-  let observed = ShellExecObserved {
-    exit_code: if success { 0 } else { 1 },
-    success: success,
-    stdout: stdout,
-    stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
+  let stdout = srv3_toolchain_receipt(observations: observations)
+  match verdict {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          concat(
+            "host_effect_apply: Srv3OsInstallActuatorToolchainEnsure could not observe one or more tools on this transport, so no ensure verdict is claimed: ",
+            why,
+          ),
+          concat(" | ", stdout),
+        ),
+        applied: effect_intent,
+      }
+    Srv3PredicateHolds =>
+      srv3_toolchain_ensure_reconcile(
+        observed: srv3_toolchain_observed(success: true, stdout: stdout),
+        intent: effect_intent,
+      )
+    Srv3PredicateFails =>
+      srv3_toolchain_ensure_reconcile(
+        observed: srv3_toolchain_observed(success: false, stdout: stdout),
+        intent: effect_intent,
+      )
   }
-  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
 }
 
 fn realize_os_install_actuator_toolchain_ensure(
@@ -1932,14 +2880,42 @@ fn realize_provision_build_cache_body(
                 applied: effect_intent,
               }
             Present { value: digest } => {
-              let observed = run_shell_transport(
-                script: retained_srvn(
-                  body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
-                  reason: "srvN build-cache provisioning (sccache daemon ensure)",
-                ),
-                transport: transport,
+              let survey = survey_build_cache_endpoint(
+                instance: instance,
+                reads: build_cache_endpoint_reads(instance: instance, transport: transport),
               )
-              provision_build_cache_reconcile(observed: observed, intent: effect_intent)
+              let admission = admit_ensure_build_cache_instance(
+                desired: instance,
+                placement: survey.placement,
+                observed_path: survey.path,
+                currency: survey.currency,
+              )
+              match admission {
+                EnsureAlreadyConverged { desired: _, unit: u } =>
+                  build_cache_already_converged(unit: u, effect_intent: effect_intent)
+                EnsureBuildCacheRefused { instance: _, reason: _ } =>
+                  NotConverged {
+                    reason: join(
+                      [
+                        "host_effect_apply: EnsureBuildCacheInstance refused before writing anything -- ",
+                        ensure_admission_refusal_reason(admission: admission),
+                      ],
+                      "",
+                    ),
+                    applied: effect_intent,
+                  }
+                EnsureBuildCacheAdmitted { desired: _, preflight: pf, unit_lines: _ } =>
+                  build_cache_unlink_then_ensure(
+                    instance: instance,
+                    preflight: pf,
+                    transport: transport,
+                    effect_intent: effect_intent,
+                    observed_path: survey.path,
+                    currency: survey.currency,
+                    token: token,
+                    digest: digest,
+                  )
+              }
             }
           }
       }
@@ -2987,5 +3963,385 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
+  }
+}
+
+data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
+
+fn build_cache_host_read(argv: List<String>, transport: HostEffectTransport) -> HostRead {
+  match build_cache_host_read_observed(argv: argv, transport: transport) {
+    BuildCacheReadRan { observed: o } =>
+      if o.success == true {
+        HostReadText { text: o.stdout }
+      } else {
+        HostReadFailed {
+          detail: join(
+            [
+              "the read exited ",
+              to_string(o.exit_code),
+              ": ",
+              if o.stderr == "" { o.stdout } else { o.stderr },
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    BuildCacheReadRefused { reason: why } => HostReadFailed { detail: why as NonEmptyStr }
+  }
+}
+
+type BuildCacheReadResult
+  = BuildCacheReadRan { observed: ShellExecObserved }
+  | BuildCacheReadRefused { reason: String }
+
+data every_read_is_one_argv_note: String = "EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and must not grow, so an observation added as a concat-built bash body would have grown precisely the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means the observation lands in the direction the dissolve-on points, and the remaining concat-shell body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect does than it was."
+
+fn build_cache_host_read_observed(
+  argv: List<String>,
+  transport: HostEffectTransport,
+) -> BuildCacheReadResult {
+  match transport {
+    LocalShell =>
+      match run_shell_command_capture(
+        command: ArgvCommand { argv: argv },
+        transport: LocalExec,
+      ) {
+        ProcessOutputPresent { text: t } =>
+          BuildCacheReadRan {
+            observed: ShellExecObserved { exit_code: 0, success: true, stdout: t, stderr: "" },
+          }
+        ProcessOutputAbsent =>
+          BuildCacheReadRan {
+            observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+          }
+        ProcessRefused { exit_code: code, stderr: err } =>
+          BuildCacheReadRan {
+            observed: ShellExecObserved { exit_code: code, success: false, stdout: "", stderr: err },
+          }
+      }
+    SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      BuildCacheReadRefused {
+        reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
+      }
+  }
+}
+
+fn build_cache_typed_argv_read(
+  argv: List<String>,
+  transport: HostEffectTransport,
+) -> BuildCacheReadResult {
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecConverged { result: r } =>
+      BuildCacheReadRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
+  }
+}
+
+fn build_cache_path_kind_read(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> EndpointPathKind {
+  match instance.endpoint {
+    SccacheServerTcpPort { port: _ } => PathKindNoFilesystemPath
+    SccacheServerUnixSocket { path: p } =>
+      match build_cache_host_read_observed(argv: endpoint_path_kind_argv(path: p), transport: transport) {
+        BuildCacheReadRefused { reason: why } =>
+          path_kind_of_stat_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
+        BuildCacheReadRan { observed: o } =>
+          path_kind_of_stat_read(
+            read: HostReadText { text: o.stdout },
+            exit_success: o.success,
+          )
+      }
+  }
+}
+
+data unread_owner_facts_are_failures_not_blanks_note: String = "WHEN NO OWNER RESOLVES, THE OWNER READS ARE NOT PERFORMED AND SAY SO. The alternative -- issuing cat /proc//cgroup against a pid that does not exist and letting it fail -- would reach the same arms by accident and cost four round trips per pass to do it. Filling them with a positively-named HostReadFailed keeps the decode on one path (gunbc.build_cache_endpoint_observe unreachable_is_a_read_state_not_a_short_circuit_note makes the same move for an unreachable host) while making the reason for the absence readable rather than inferred from a contrived errno."
+
+data owner_facts_unread_detail: NonEmptyStr = "no single listening owner resolved at the endpoint, so the owner's cgroup, start time, principal and executable were not read"
+
+data tcp_endpoint_observation_is_unmodeled_note: String = "A TCP-ENDPOINT INSTANCE REFUSES RATHER THAN BEING OBSERVED THROUGH THE UNIX CHAIN. /proc/net/unix answers for unix sockets only; the TCP equivalent is /proc/net/tcp with its own hex-encoded address columns and its own decode, which nothing in this repository has modeled. No BuildCacheInstance in the tree carries a TCP endpoint today -- both ci_cache_instance and session_cache_instance are unix sockets -- so this is an unbuilt arm rather than a live gap, and it is a POSITIVE typed refusal so that the day one is authored it stops the line instead of being silently classified through a table that cannot see it. An earlier revision reached ss for both shapes, which appeared to support TCP and was never exercised against one; an untested arm that answers is worse than one that refuses."
+
+fn build_cache_listen_inode_read(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> EndpointInodeLookup {
+  match instance.endpoint {
+    SccacheServerTcpPort { port: _ } =>
+      InodeLookupUndecided {
+        detail: "this instance's endpoint is a TCP port; endpoint ownership for TCP would be read from /proc/net/tcp, which this repository has not modeled. Refusing rather than reporting an unobserved placement." as NonEmptyStr,
+      }
+    SccacheServerUnixSocket { path: p } =>
+      listen_inode_at_path(
+        read: build_cache_host_read(argv: proc_net_unix_read_argv(), transport: transport),
+        path: p,
+      )
+  }
+}
+
+fn build_cache_fd_holder_read(
+  listen_inode: EndpointInodeLookup,
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> EndpointListenerRead {
+  match listen_inode {
+    InodeLookupUndecided { detail: d } => ListenerUndecided { detail: d }
+    ListenInodeFound { inode: n } =>
+      fd_holder_of_find_output(read: build_cache_socket_holder_read(inode: n, transport: transport))
+    NoListenEntryAtPath =>
+      match instance.endpoint {
+        SccacheServerTcpPort { port: _ } => ListenerNone
+        SccacheServerUnixSocket { path: p } =>
+          match build_cache_socket_inode_at_path(path: p, transport: transport) {
+            Absent => ListenerNone
+            Present { value: n } =>
+              fd_holder_of_find_output(read: build_cache_socket_holder_read(inode: n, transport: transport))
+          }
+      }
+  }
+}
+
+data holder_walk_runs_on_the_unlistened_socket_too_note: String = "WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is either stale (nothing holds it) or held open by a process that is not listening (unlinking severs it). Those two states are indistinguishable without asking whether any descriptor resolves to the file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and collapse them in the direction that unlinks a live process's socket."
+
+fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
+  match build_cache_host_read_observed(argv: ["stat", "-c", "%i", "--", path as String], transport: transport) {
+    BuildCacheReadRefused { reason: _ } => none
+    BuildCacheReadRan { observed: o } =>
+      if o.success == true {
+        match trim(o.stdout) {
+          "" => none
+          inode => Present { value: inode as NonEmptyStr }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTransport) -> HostRead {
+  match transport {
+    LocalShell => {
+      let r = shell.Find.SocketInodeHolders(inode: inode)
+      if r.success {
+        HostReadText { text: r.stdout }
+      } else {
+        HostReadFailed {
+          detail: concat("the /proc fd walk for this endpoint's socket inode failed: ", r.stderr) as NonEmptyStr,
+        }
+      }
+    }
+    SshShell { ssh_host: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostReadFailed {
+        detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
+      }
+  }
+}
+
+fn socket_inode_holder_argv(inode: NonEmptyStr) -> List<String> {
+  ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", concat("socket:?", concat(inode as String, "?"))]
+}
+
+fn build_cache_endpoint_reads(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> BuildCacheEndpointReads {
+  let boot_id = build_cache_host_read(argv: boot_id_read_argv(), transport: transport)
+  let path_kind = build_cache_path_kind_read(instance: instance, transport: transport)
+  let listen_inode = build_cache_listen_inode_read(instance: instance, transport: transport)
+  let listener = build_cache_fd_holder_read(listen_inode: listen_inode, instance: instance, transport: transport)
+  match listener {
+    ListenerOwnerPid { pid: pid } =>
+      BuildCacheEndpointReads {
+        boot_id: boot_id,
+        path_kind: path_kind,
+        listen_inode: listen_inode,
+        listener: listener,
+        owner_cgroup: build_cache_host_read(argv: owner_cgroup_argv(pid: pid), transport: transport),
+        owner_proc_stat: build_cache_host_read(argv: owner_proc_stat_argv(pid: pid), transport: transport),
+        owner_principal: build_cache_host_read(argv: owner_principal_argv(pid: pid), transport: transport),
+        owner_executable: build_cache_host_read(argv: owner_executable_argv(pid: pid), transport: transport),
+      }
+    ListenerNone =>
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
+    ListenerAmbiguous { candidate_count: _ } =>
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
+    ListenerUndecided { detail: _ } =>
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
+  }
+}
+
+fn build_cache_reads_without_owner(
+  boot_id: HostRead,
+  path_kind: EndpointPathKind,
+  listen_inode: EndpointInodeLookup,
+  listener: EndpointListenerRead,
+) -> BuildCacheEndpointReads {
+  BuildCacheEndpointReads {
+    boot_id: boot_id,
+    path_kind: path_kind,
+    listen_inode: listen_inode,
+    listener: listener,
+    owner_cgroup: HostReadFailed { detail: owner_facts_unread_detail },
+    owner_proc_stat: HostReadFailed { detail: owner_facts_unread_detail },
+    owner_principal: HostReadFailed { detail: owner_facts_unread_detail },
+    owner_executable: HostReadFailed { detail: owner_facts_unread_detail },
+  }
+}
+
+data unlink_is_a_separate_admitted_step_note: String = "THE UNLINK RUNS AS ITS OWN COMMAND BEFORE THE ENSURE, WHICH IS WHAT gunbc.build_cache_endpoint_path no_unconditional_execstartpre_note REQUIRES. Folding it into the unit as ExecStartPre would unlink in every path state rather than the one state where unlinking is correct -- harmless under an absent path, destructive under a conflict, and silently fatal under a live listener. Here it is reached only from EndpointClearedByUnlink, which admit_stale_socket_unlink produces only from an observed stale socket under a current boot id, and a failure to remove the file refuses the whole effect rather than proceeding into a bind that error 98 would fail anyway."
+
+fn build_cache_unlink_then_ensure(
+  instance: BuildCacheInstance,
+  preflight: EndpointPreflight,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+  observed_path: EndpointPathState,
+  currency: ObservationCurrency,
+  token: NonEmptyStr,
+  digest: Digest,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match preflight {
+    EndpointClearForBind =>
+      build_cache_ensure_step(
+        instance: instance, transport: transport, effect_intent: effect_intent,
+        token: token, digest: digest,
+      )
+    EndpointClearedByUnlink { stale_detail: _ } =>
+      match stale_socket_unlink_command(
+        admission: admit_stale_socket_unlink(instance: instance, observed: observed_path, currency: currency),
+      ) {
+        StaleSocketUnlinkCommandRefused { reason: why } =>
+          NotConverged {
+            reason: join(
+              ["host_effect_apply: EnsureBuildCacheInstance was admitted behind a stale-socket unlink that then refused to build a command -- ", why as String],
+              "",
+            ),
+            applied: effect_intent,
+          }
+        StaleSocketUnlinkCommandReady { command: cmd } =>
+          match build_cache_host_read_observed(argv: cmd.argv, transport: transport) {
+            BuildCacheReadRefused { reason: why } =>
+              NotConverged {
+                reason: join(["host_effect_apply: EnsureBuildCacheInstance could not run the admitted stale-socket unlink -- ", why], ""),
+                applied: effect_intent,
+              }
+            BuildCacheReadRan { observed: o } =>
+              if o.success == true {
+                build_cache_ensure_step(
+                  instance: instance, transport: transport, effect_intent: effect_intent,
+                  token: token, digest: digest,
+                )
+              } else {
+                NotConverged {
+                  reason: join(
+                    [
+                      "host_effect_apply: EnsureBuildCacheInstance refused -- the admitted stale-socket unlink exited ",
+                      to_string(o.exit_code),
+                      ", so the endpoint path is still occupied and a bind would fail with address-in-use: ",
+                      o.stderr,
+                    ],
+                    "",
+                  ),
+                  applied: effect_intent,
+                }
+              }
+          }
+      }
+  }
+}
+
+data both_authorities_are_consumed_and_neither_is_duplicated_note: String = "TWO AUTHORITIES, TWO DIFFERENT QUESTIONS, ONE EACH SIDE OF THE ACT. gunbc.build_cache_ensure admit_ensure_build_cache_instance is the PRECONDITION -- may this host be written to at all, given who owns the endpoint and what is at the path -- and it runs before the first mutation. gunbc.host_build_cache_provision provision_build_cache_verdict is the POSTCONDITION -- given what the ensure produced, is this host converged -- and it runs after. The shell-to-dag census C-note found both unconsumed and called them one wiring job; they are, and this is that job, but they are not one check applied twice: the precondition can refuse a host the postcondition would never see, and the postcondition catches the case that motivated it, an ensure that reports success while the endpoint ends up owned by something other than the unit just written.\n\nTHE PLACEMENT IN THE POSTCONDITION IS RE-OBSERVED, NOT CARRIED FORWARD FROM THE PREFLIGHT. Reusing the preflight's placement would be asserting a fact measured before the mutation about the state after it, which is the read-back that greens on evidence it produced, one step removed. So the endpoint is surveyed again and the second survey is what the verdict folds -- which is also what makes the check discriminating: the whole point is that the pre-state and the post-state can differ.\n\nONE RESIDUE, NAMED RATHER THAN DISCOVERED IN PRODUCTION: the post-survey races the unit start. systemctl restart returns when the unit is active, and the server binds its endpoint during its own startup, so there is a window in which the endpoint has no listener yet and the post-survey reads ServerPlacementAbsent -- a FALSE RefusalDaemonAbsent. It is bounded in the right direction: the failure is a loud refusal on an idempotent operation, so the next converge pass reads the settled state and converges, and no host is left silently misreported. It is NOT fixed here because fixing it properly means waiting on an observable readiness condition rather than sleeping, and a readiness predicate for this endpoint is its own piece of modeling. DISSOLVE-ON: an endpoint-readiness observation the ensure step can wait on, at which point the post-survey runs after it rather than after systemctl returns."
+
+fn build_cache_daemon_observation_of_receipt(
+  observed: ShellExecObserved,
+  placement: BuildCacheServerPlacement,
+) -> BuildCacheDaemonObservation {
+  if string_contains(s: observed.stdout, pattern: "observe=misconfigured fragment=") {
+    DaemonMisconfigured {
+      matched_fragment: "observe=misconfigured",
+      detail: observed.stdout as NonEmptyStr,
+    }
+  } else if observed.success && string_contains(s: observed.stdout, pattern: "read_back=ok") {
+    DaemonStatsOk { stats_line: observed.stdout, placement: placement }
+  } else if observed.success == true {
+    DaemonUnresponsive {
+      detail: "the build-cache ensure exited zero without printing its read_back=ok receipt, so the daemon was never confirmed to answer after the ensure" as NonEmptyStr,
+    }
+  } else {
+    DaemonUnresponsive {
+      detail: join(
+        [
+          "the build-cache ensure exited ",
+          to_string(observed.exit_code),
+          ": ",
+          if observed.stderr == "" { observed.stdout } else { observed.stderr },
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn build_cache_ensure_step(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+  token: NonEmptyStr,
+  digest: Digest,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let observed = run_shell_transport(
+    script: retained_srvn(
+      body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
+      reason: "srvN build-cache provisioning (sccache daemon ensure)",
+    ),
+    transport: transport,
+  )
+  let after = survey_build_cache_endpoint(
+    instance: instance,
+    reads: build_cache_endpoint_reads(instance: instance, transport: transport),
+  )
+  match provision_build_cache_verdict(
+    catalog_id: instance.implementation,
+    observed: build_cache_daemon_observation_of_receipt(observed: observed, placement: after.placement),
+  ) {
+    BuildCacheProvisionRefused { cause: _, reason: why } =>
+      NotConverged {
+        reason: join(
+          ["host_effect_apply: EnsureBuildCacheInstance ran its ensure and the read-back refused -- ", why as String],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } =>
+      provision_build_cache_reconcile(observed: observed, intent: effect_intent)
+  }
+}
+
+data already_converged_evidence_is_the_observation_note: String = "THE ALREADY-CONVERGED ARM RETURNS ShellEffectApplied WITH exit_code 0 AND NO SHELL HAVING RUN, and that is worth stating because it looks like a fabricated receipt and is not. HostEffectEvidence has two arms and neither names an observation, so the evidence carrier cannot yet distinguish 'a command ran and succeeded' from 'a read established that nothing needed to run'. What the receipt carries is the observation itself -- the unit found owning the endpoint -- rather than invented command output, so a reader sees WHY it converged. DISSOLVE-ON: a HostEffectEvidence arm for an observation-grounded convergence, at which point this arm names it and the exit_code 0 goes away. Until then the honest thing is to say so here rather than let the zero read as a process exit."
+
+fn build_cache_already_converged(
+  unit: NonEmptyStr,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  Converged {
+    evidence: ShellEffectApplied {
+      exit_code: 0,
+      stdout: join(
+        [
+          "BuildCacheProvisionReceipt: already_converged unit=",
+          unit as String,
+          " (observed owning AND listening on the configured endpoint; no unit written, no restart issued)",
+        ],
+        "",
+      ),
+      stderr: "",
+    },
+    applied: effect_intent,
   }
 }

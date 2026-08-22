@@ -1,16 +1,40 @@
 module v2.std.compilers.target_model
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution {
+  DissolutionCondition,
+  unbound_dissolution
+}
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, any, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid
+}
+import v2.std.algebra {
+  Equal,
+  Greater,
+  Less,
+  Ordering,
+  TailAbsent,
+  TailFound,
+  any,
+  fold_list,
+  fold_list_node,
+  fold_list_right,
+  is_empty,
+  length,
+  list_append,
+  list_snoc_item,
+  list_tail
+}
 import v2.std.collection {
   List,
   Map,
   empty_map,
   list_at_optional,
   map_get,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -55,7 +79,7 @@ import v2.std.find_witness {
   CandidateSet,
   PreservationPredicate,
   UniqueOnly,
-  find_witness,
+  find_witness
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -100,7 +124,9 @@ import v2.std.node {
   node_rebuild,
   SyntheticOccurrence
 }
-import v2.std.witness { StructuralPropertyWitness }
+import v2.std.witness {
+  StructuralPropertyWitness
+}
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
   coproduct_nullary_inhabitant_by_discriminant,
@@ -109,19 +135,36 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets
 }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
-import v2.std.logic { Bool }
-import v2.std.text { Char, String }
-import std.trait_derive_shape { ReprGroundingDeriveTrait }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_node
+}
+import v2.std.logic {
+  Bool
+}
+import v2.std.text {
+  Char,
+  String
+}
+
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
   configured_emit_host_runtime_row_from_target_row
 }
-import v2.std.integer { integer_decimal_magnitude_node_to_int }
-import v2.std.fold_assembly { node_list_from_node }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, UriScheme }
+import v2.std.integer {
+  integer_decimal_magnitude_node_to_int
+}
+import v2.std.fold_assembly {
+  node_list_from_node
+}
+import extdeps.external_authority {
+  ExternalAuthority
+}
+import extdeps.uri {
+  Uri,
+  UriScheme
+}
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow
@@ -9507,19 +9550,33 @@ data target_derive_supplemental_generic_bound_requirement_field_authority: Symbo
 data target_external_authority_field_uri_scheme: Symbol = ^target_external_authority_field_uri_scheme
 data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
 
-type RequiredTraitWitness
-  = TargetCollectionWitnessOrd { type_param: Symbol }
-  | TargetCollectionWitnessHash { type_param: Symbol }
-  | TargetCollectionWitnessEq { type_param: Symbol }
 
-type TargetDeriveTraitKey = Symbol where brand("TargetDeriveTraitKey")
+type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
+
+data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared HERE, in v2.std.compilers.target_model. B1 collapsed TargetDeriveTraitKey into it -- that brand was not an independent authority, every value of it came from one producer, so it was the section 3 nickname pair and it is gone. THE BRAND WAS BRIEFLY MOVED DOWN INTO std.trait_derive_shape AND MOVED BACK, and the round trip is recorded because the reason is structural rather than a change of mind. The brand carrier is Symbol, which is declared only in src/v2/std/node.dag; std.trait_derive_shape is inside the src/v1 regen import closure, whose roots are hardcoded to src/v1 and dag (cli_run.rs regen_source_roots), so a Symbol-carried brand cannot live there. required-regen refused before comparing any bytes, while zero blocking errors under three source roots and a 9687-witness green floor run all reported success. std now names NO carrier at all: its shape table and completeness predicate are parameterized on K, instantiated at TargetCapabilityKey by v2 consumers and at RustCapability by the seed path. That is stronger than moving the declaration -- a type parameter removes the dependency rather than relocating it, so the closure boundary is not something std can violate. THE SECTION 3 PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by everything that needs it. An intermediate revision additionally left a LOCAL declaration here while ALSO importing the identical one from std -- two byte-identical brand declarations, one shadowing the other in a single module. It compiled clean and was removed on sight, and nothing measured shows it caused any runtime failure."
+
+
+type TargetCapabilityRequirement {
+  representation_parameter: Symbol
+  capability_key: TargetCapabilityKey
+}
+
+type TargetCapabilityElementEligibility {
+  kernel_atoms: List<Symbol>
+}
+
+type TargetCapabilityEligibilityRow {
+  capability_key: TargetCapabilityKey
+  eligibility: TargetCapabilityElementEligibility
+}
+
 
 type TargetDeriveSupplementalGenericBoundRequirementAuthority {
   authority: ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementSet =
-  Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
+  Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
 
 type TargetRepresentationParameterSlot {}
 
@@ -9531,8 +9588,8 @@ type TargetDeriveSupplementalGenericBoundContractAuthority {
 type TargetRepresentationChoice {
   form: TargetRepresentation
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
-  constraints: List<RequiredTraitWitness>
-  supplemental_generic_bound_contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  constraints: List<TargetCapabilityRequirement>
+  supplemental_generic_bound_contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
 type TargetTextCarrier {
@@ -9546,42 +9603,33 @@ type TargetCollectionRealization {
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic
   text_carrier: Optional<TargetTextCarrier>
+  capability_eligibility: List<TargetCapabilityEligibilityRow>
 }
 
 type TargetDeriveSupplementalGenericBoundContract {
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
   authority: ExternalAuthority
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementWire {
   representation_parameter: Symbol
-  required_trait: ReprGroundingDeriveTrait
+  required_trait: TargetCapabilityKey
   authority: ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundContractWire {
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
   authority: ExternalAuthority
   requirements: List<TargetDeriveSupplementalGenericBoundRequirementWire>
 }
 
 type TargetDeriveSupplementalGenericBoundContractCatalog {
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
-fn target_grounding_derive_trait_discriminant(
-  derive_trait: ReprGroundingDeriveTrait
-) -> Symbol {
-  discriminant(v: derive_trait)
-}
-
-fn target_grounding_derive_trait_key(
-  derive_trait: ReprGroundingDeriveTrait
-) -> TargetDeriveTraitKey {
-  target_grounding_derive_trait_discriminant(derive_trait: derive_trait)
-}
+data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with coproduct_nullary_inhabitant_by_discriminant. TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -9599,19 +9647,19 @@ fn target_representation_parameter_slots_empty() -> Map<Symbol, TargetRepresenta
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   empty_map()
 }
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
-  derive_trait: ReprGroundingDeriveTrait,
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority,
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   map_insert(
     m: contracts,
-    key: target_grounding_derive_trait_key(derive_trait: derive_trait),
+    key: derive_trait,
     value: TargetDeriveSupplementalGenericBoundContractAuthority {
       authority: authority,
       requirements: requirements
@@ -9620,10 +9668,10 @@ fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requi
 }
 
 fn target_derive_supplemental_generic_bound_contract_authority_insert(
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
-  derive_trait: ReprGroundingDeriveTrait,
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
     contracts: contracts,
     derive_trait: derive_trait,
@@ -9721,22 +9769,18 @@ fn target_external_authority_from_node(node: Node) -> Outcome<ExternalAuthority>
 
 fn target_grounding_derive_trait_from_node(
   node: Node
-) -> Outcome<ReprGroundingDeriveTrait> {
+) -> Outcome<TargetCapabilityKey> {
   bind_outcome(
     o: target_collection_node_atom_identity(node: node),
     f: fn(derive_trait_id) {
-      coproduct_nullary_inhabitant_by_discriminant(
-        type_name: ^ReprGroundingDeriveTrait,
-        discriminant_of: target_grounding_derive_trait_discriminant,
-        wanted: derive_trait_id
-      )
+      outcome_accepted(derive_trait_id)
     }
   )
 }
 
 fn target_derive_supplemental_generic_bound_requirement_wire_node(
   representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
+  required_trait: TargetCapabilityKey,
   authority: ExternalAuthority
 ) -> Node {
   target_model_type_conj_node(
@@ -9748,9 +9792,7 @@ fn target_derive_supplemental_generic_bound_requirement_wire_node(
       target_model_named_edge(
         name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
         target: target_model_type_atom_node(
-          identity: target_grounding_derive_trait_discriminant(
-            derive_trait: required_trait
-          )
+          identity: required_trait
         )
       ),
       target_model_named_edge(
@@ -9762,7 +9804,7 @@ fn target_derive_supplemental_generic_bound_requirement_wire_node(
 }
 
 fn target_derive_supplemental_generic_bound_contract_wire_node(
-  derive_trait: ReprGroundingDeriveTrait,
+  derive_trait: TargetCapabilityKey,
   authority: ExternalAuthority,
   requirement_nodes: List<Node>
 ) -> Node {
@@ -9771,9 +9813,7 @@ fn target_derive_supplemental_generic_bound_contract_wire_node(
       target_model_named_edge(
         name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait,
         target: target_model_type_atom_node(
-          identity: target_grounding_derive_trait_discriminant(
-            derive_trait: derive_trait
-          )
+          identity: derive_trait
         )
       ),
       target_model_named_edge(
@@ -9970,7 +10010,7 @@ fn target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
 fn target_derive_supplemental_generic_bound_contract_requirements_insert(
   requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
   representation_parameter: Symbol,
-  required_key: TargetDeriveTraitKey,
+  required_key: TargetCapabilityKey,
   parameter_requirements: TargetDeriveSupplementalGenericBoundRequirementSet,
   authority: ExternalAuthority
 ) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
@@ -10004,9 +10044,7 @@ fn target_derive_supplemental_generic_bound_wire_requirement_apply(
             )
           )
         Present { value: _ } =>
-          let required_key = target_grounding_derive_trait_key(
-            derive_trait: requirement.required_trait
-          )
+          let required_key = requirement.required_trait
           let parameter_requirements = target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
             requirements: requirements,
             representation_parameter: requirement.representation_parameter
@@ -10062,9 +10100,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: catalog, diagnostics: _ } =>
-      let derive_key = target_grounding_derive_trait_key(
-        derive_trait: row.derive_trait
-      )
+      let derive_key = row.derive_trait
       match catalog.contracts.lookup(derive_key) {
         Present { value: _ } =>
           outcome_rejected(
@@ -10134,14 +10170,14 @@ fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
   contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> List<Node> {
   fold_list(
-    xs: contract_authority.requirements.keys(),
+    xs: map_keys(contract_authority.requirements),
     empty: Empty,
     cons: fn(acc, representation_parameter) {
       match contract_authority.requirements.lookup(representation_parameter) {
         Absent => acc
         Present { value: requirements } =>
           fold_list(
-            xs: requirements.keys(),
+            xs: map_keys(requirements),
             empty: acc,
             cons: fn(requirement_acc, required_key) {
               match requirements.lookup(required_key) {
@@ -10181,7 +10217,7 @@ fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
 }
 
 fn target_derive_supplemental_generic_bound_contract_node_from_key(
-  derive_key: TargetDeriveTraitKey,
+  derive_key: TargetCapabilityKey,
   contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> Node {
   target_model_type_conj_node(
@@ -10213,7 +10249,7 @@ fn target_representation_choice_parameters_bundle_node(
   choice: TargetRepresentationChoice
 ) -> Node {
   fold_list_node(
-    xs: choice.representation_parameters.keys(),
+    xs: map_keys(choice.representation_parameters),
     item_node: target_model_type_atom_node
   )
 }
@@ -10223,7 +10259,7 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
 ) -> Node {
   fold_list_node(
     xs: fold_list(
-      xs: choice.supplemental_generic_bound_contracts.keys(),
+      xs: map_keys(choice.supplemental_generic_bound_contracts),
       empty: Empty,
       cons: fn(acc, derive_key) {
         match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
@@ -10246,13 +10282,13 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
 fn target_derive_supplemental_generic_bound_requirement_authority(
   contract: TargetDeriveSupplementalGenericBoundContract,
   representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait
+  required_trait: TargetCapabilityKey
 ) -> Optional<ExternalAuthority> {
   match contract.requirements.lookup(representation_parameter) {
     Absent => Absent
     Present { value: requirements } =>
       match requirements.lookup(
-        target_grounding_derive_trait_key(derive_trait: required_trait)
+        required_trait
       ) {
         Absent => Absent
         Present { value: row } => Present { value: row.authority }
@@ -10273,9 +10309,9 @@ fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
 fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
   choice: TargetRepresentationChoice,
   source_carrier: Node,
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
-  let derive_key = target_grounding_derive_trait_key(derive_trait: derive_trait)
+  let derive_key = derive_trait
   match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
     Absent =>
       outcome_rejected(
@@ -10435,57 +10471,48 @@ fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation>
 fn target_derive_supplemental_generic_bound_contract_lookup_in_realization(
   row: TargetCollectionRealization,
   elem: Node,
-  derive_trait: ReprGroundingDeriveTrait
+  derive_trait: TargetCapabilityKey
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
-  match target_collection_select_choice(
-    primary: row.primary,
-    alternatives: row.alternatives,
-    elem: elem
-  ) {
-    Present { value: choice } =>
-      target_derive_supplemental_generic_bound_contract_lookup_in_choice(
-        choice: choice,
-        source_carrier: row.source_carrier,
-        derive_trait: derive_trait
-      )
-    Absent => outcome_rejected(row.fallback_diagnostic)
-  }
+  bind_outcome(
+    o: target_collection_select_choice(
+      eligibility_table: row.capability_eligibility,
+      primary: row.primary,
+      alternatives: row.alternatives,
+      elem: elem
+    ),
+    f: fn(selected) {
+      match selected {
+        Present { value: choice } =>
+          target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+            choice: choice,
+            source_carrier: row.source_carrier,
+            derive_trait: derive_trait
+          )
+        Absent => outcome_rejected(row.fallback_diagnostic)
+      }
+    }
+  )
 }
 
-fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {
+fn target_capability_requirement_from_node(node: Node) -> Outcome<TargetCapabilityRequirement> {
   bind_outcome(
     o: find_named_child(root: node, name: ^target_collection_witness_field_trait_name),
-    f: fn(trait_node) {
+    f: fn(capability_node) {
       bind_outcome(
-        o: target_collection_node_atom_identity(node: trait_node),
-        f: fn(trait_name) {
+        o: target_collection_node_atom_identity(node: capability_node),
+        f: fn(capability_key) {
           bind_outcome(
             o: find_named_child(root: node, name: ^target_collection_witness_field_type_param),
             f: fn(param_node) {
               bind_outcome(
                 o: target_collection_node_atom_identity(node: param_node),
-                f: fn(type_param) {
-                  if trait_name == ^target_collection_trait_ord {
-                    outcome_accepted(
-                      TargetCollectionWitnessOrd { type_param: type_param }
-                    )
-                  } else {
-                    if trait_name == ^target_collection_trait_hash {
-                      outcome_accepted(
-                        TargetCollectionWitnessHash { type_param: type_param }
-                      )
-                    } else {
-                      if trait_name == ^target_collection_trait_eq {
-                        outcome_accepted(
-                          TargetCollectionWitnessEq { type_param: type_param }
-                        )
-                      } else {
-                        outcome_rejected(
-                          target_collection_shape_malformed_diagnostic(node: node)
-                        )
-                      }
+                f: fn(representation_parameter) {
+                  outcome_accepted(
+                    TargetCapabilityRequirement {
+                      representation_parameter: representation_parameter,
+                      capability_key: capability_key
                     }
-                  }
+                  )
                 }
               )
             }
@@ -10513,72 +10540,228 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
   )
 }
 
-fn target_collection_element_ord_eligible(elem: Node) -> Bool {
-  match elem.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^target_collection_kernel_string
-        || id == ^target_collection_kernel_int
-        || id == ^target_collection_kernel_bool
-        || id == ^target_collection_kernel_unit
-    _ => false
+fn target_capability_eligibility_row_from_node(
+  node: Node
+) -> Outcome<TargetCapabilityEligibilityRow> {
+  bind_outcome(
+    o: find_named_child(root: node, name: ^target_capability_eligibility_field_capability),
+    f: fn(capability_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: capability_node),
+        f: fn(capability_key) {
+          bind_outcome(
+            o: find_named_child(
+              root: node,
+              name: ^target_capability_eligibility_field_kernel_atoms
+            ),
+            f: fn(atoms_node) {
+              bind_outcome(
+                o: node_list_from_node(
+                  node: atoms_node,
+                  decode_item: target_collection_node_atom_identity
+                ),
+                f: fn(kernel_atoms) {
+                  outcome_accepted(
+                    TargetCapabilityEligibilityRow {
+                      capability_key: capability_key,
+                      eligibility: TargetCapabilityElementEligibility {
+                        kernel_atoms: kernel_atoms
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_capability_eligibility_from_node(
+  node: Node
+) -> Outcome<List<TargetCapabilityEligibilityRow>> {
+  bind_outcome(
+    o: node_list_from_node(
+      node: node,
+      decode_item: target_capability_eligibility_row_from_node
+    ),
+    f: fn(rows) {
+      bind_outcome(
+        o: fold_list(
+          xs: rows,
+          empty: outcome_accepted(empty_map()),
+          cons: fn(acc, row) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: seen, diagnostics: _ } =>
+                match map_lookup(m: seen, key: row.capability_key) {
+                  Present { value: _ } =>
+                    outcome_rejected(
+                      target_capability_eligibility_duplicate_diagnostic(at: node)
+                    )
+                  Absent =>
+                    outcome_accepted(
+                      map_insert(m: seen, key: row.capability_key, value: row.eligibility)
+                    )
+                }
+            }
+          }
+        ),
+        f: fn(_validated) { outcome_accepted(rows) }
+      )
+    }
+  )
+}
+
+fn target_capability_eligibility_duplicate_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_capability_eligibility_row_duplicate,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn target_collection_element_hash_eligible(elem: Node) -> Bool {
-  target_collection_element_ord_eligible(elem: elem)
+fn target_capability_unknown_diagnostic(elem: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_capability_eligibility_row_absent,
+    at: node_locus(node: elem),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
-fn target_collection_element_eq_eligible(elem: Node) -> Bool {
-  target_collection_element_hash_eligible(elem: elem)
+fn target_capability_element_kernel_identity(elem: Node) -> Optional<Symbol> {
+  match elem.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
 }
 
-fn target_collection_trait_witness_satisfied(
-  witness: RequiredTraitWitness,
+fn target_capability_eligibility_admits(
+  eligibility: TargetCapabilityElementEligibility,
   elem: Node
 ) -> Bool {
-  match witness {
-    TargetCollectionWitnessOrd { type_param: _ } =>
-      target_collection_element_ord_eligible(elem: elem)
-    TargetCollectionWitnessHash { type_param: _ } =>
-      target_collection_element_hash_eligible(elem: elem)
-    TargetCollectionWitnessEq { type_param: _ } =>
-      target_collection_element_eq_eligible(elem: elem)
+  match target_capability_element_kernel_identity(elem: elem) {
+    Present { value: id } =>
+      fold_list(
+        xs: eligibility.kernel_atoms,
+        empty: false,
+        cons: fn(acc, admitted) { acc || admitted == id }
+      )
+    Absent => false
+  }
+}
+
+fn target_capability_eligibility_lookup(
+  rows: List<TargetCapabilityEligibilityRow>,
+  key: TargetCapabilityKey
+) -> Optional<TargetCapabilityElementEligibility> {
+  fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(found, row) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          if row.capability_key == key { optional_present(value: row.eligibility) }
+          else { optional_absent() }
+      }
+    }
+  )
+}
+
+fn target_capability_requirement_satisfied(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
+  requirement: TargetCapabilityRequirement,
+  elem: Node
+) -> Outcome<Bool> {
+  match target_capability_eligibility_lookup(rows: eligibility_table, key: requirement.capability_key) {
+    Present { value: eligibility } =>
+      outcome_accepted(
+        target_capability_eligibility_admits(eligibility: eligibility, elem: elem)
+      )
+    Absent =>
+      outcome_rejected(target_capability_unknown_diagnostic(elem: elem))
   }
 }
 
 fn target_collection_choice_constraints_satisfied(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
   choice: TargetRepresentationChoice,
   elem: Node
-) -> Bool {
+) -> Outcome<Bool> {
   fold_list(
     xs: choice.constraints,
-    empty: true,
-    cons: fn(acc, witness) {
-      acc && target_collection_trait_witness_satisfied(witness: witness, elem: elem)
+    empty: outcome_accepted(true),
+    cons: fn(acc, requirement) {
+      bind_outcome(
+        o: acc,
+        f: fn(satisfied_so_far) {
+          bind_outcome(
+            o: target_capability_requirement_satisfied(
+              eligibility_table: eligibility_table,
+              requirement: requirement,
+              elem: elem
+            ),
+            f: fn(satisfied) {
+              outcome_accepted(satisfied_so_far && satisfied)
+            }
+          )
+        }
+      )
     }
   )
 }
 
 fn target_collection_select_choice(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
   primary: TargetRepresentationChoice,
   alternatives: List<TargetRepresentationChoice>,
   elem: Node
-) -> Optional<TargetRepresentationChoice> {
-  if target_collection_choice_constraints_satisfied(choice: primary, elem: elem) {
-    optional_present(value: primary)
-  } else {
-    fold(alternatives, init: optional_absent(), f: fn(acc, choice) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if target_collection_choice_constraints_satisfied(choice: choice, elem: elem) {
-            optional_present(value: choice)
-          } else {
-            optional_absent()
+) -> Outcome<Optional<TargetRepresentationChoice>> {
+  bind_outcome(
+    o: target_collection_choice_constraints_satisfied(
+      eligibility_table: eligibility_table,
+      choice: primary,
+      elem: elem
+    ),
+    f: fn(primary_satisfied) {
+      if primary_satisfied {
+        outcome_accepted(optional_present(value: primary))
+      } else {
+        fold_list(
+          xs: alternatives,
+          empty: outcome_accepted(optional_absent()),
+          cons: fn(acc, choice) {
+            bind_outcome(
+              o: acc,
+              f: fn(found) {
+                match found {
+                  Present { value: _ } => outcome_accepted(found)
+                  Absent =>
+                    bind_outcome(
+                      o: target_collection_choice_constraints_satisfied(
+                        eligibility_table: eligibility_table,
+                        choice: choice,
+                        elem: elem
+                      ),
+                      f: fn(satisfied) {
+                        if satisfied {
+                          outcome_accepted(optional_present(value: choice))
+                        } else {
+                          outcome_accepted(optional_absent())
+                        }
+                      }
+                    )
+                }
+              }
+            )
           }
+        )
       }
-    })
-  }
+    }
+  )
 }
 
 fn target_collection_set_carrier_head(node: Node) -> Optional<Node> {

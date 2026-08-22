@@ -11,7 +11,9 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
+.github/workflows/corpus-type-judgment.yml merge=generated-artifact
 .github/workflows/fleet-converge.yml merge=generated-artifact
+.github/workflows/fleet-desired.yml merge=generated-artifact
 .github/workflows/witnesses.yml merge=generated-artifact
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
@@ -34,6 +36,7 @@ docs/plans/compile-clean-forcecheck.md merge=generated-artifact
 docs/plans/compute-envelope-model.md merge=generated-artifact
 docs/plans/construction-justification-rule.md merge=generated-artifact
 docs/plans/dag-v2-defork-audit.md merge=generated-artifact
+docs/plans/deploy-convergence-observed-side.md merge=generated-artifact
 docs/plans/discrete-cost-derivation.md merge=generated-artifact
 docs/plans/disposition-carrier.md merge=generated-artifact
 docs/plans/edge-b-rust-dag-provenance-brief.md merge=generated-artifact

@@ -1,0 +1,160 @@
+module test.claim.spark_serving_durability_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.spark.serving_durability {
+  spark_serving_boot_id_probe_argv,
+  spark_serving_boot_identity_from_probe,
+  spark_serving_reboot_transition,
+  spark_serving_durability_verdict,
+  spark_serving_durability_is_proven,
+  spark_serving_durability_wire,
+  BootIdentityObserved,
+  BootIdentityUnobserved,
+  BootIdentityChanged,
+  BootIdentityUnchanged,
+  RebootTransitionUnobserved,
+  DurabilityProven,
+  SurvivedRebootUnconverged,
+  SurvivedRebootNotServing,
+  RebootNotEstablished,
+  DurabilityUnobserved,
+  BootIdentityReading,
+}
+
+data boot_a: String = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+data boot_b: String = "9a8b7c6d-5e4f-4321-8765-fedcba987654"
+
+fn ok(out: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" }
+}
+
+fn reading(id: String) -> BootIdentityReading {
+  spark_serving_boot_identity_from_probe(probe: Present { value: ok(out: join([id, "\n"], "")) })
+}
+
+fn healthy() -> NonEmptyStr { "served the planned model" as NonEmptyStr }
+
+// THE WHOLE POINT: a changed boot identity plus a zero-action READ-ONLY plan plus a serving canary.
+// The kernel mints a fresh boot_id every boot, so this is the machine stating the previous boot
+// ended -- not an inference from timing, which is what the provenance window is and why the window
+// is a diagnostic rather than the proof.
+test fn a_changed_boot_id_with_nothing_pending_and_a_serving_host_is_durable() -> Bool {
+  let v = spark_serving_durability_verdict(
+    host: "srv6",
+    transition: spark_serving_reboot_transition(before: reading(id: boot_a), after: reading(id: boot_b)),
+    pending_action_count: 0,
+    serving_healthy: true,
+    health_cause: healthy(),
+  )
+  spark_serving_durability_is_proven(verdict: v)
+    && string_contains(spark_serving_durability_wire(verdict: v), "PROVEN")
+}
+
+// THE DISCRIMINATING NEGATIVE, and the reason the transition is the first condition: a host that is
+// serving perfectly and never rebooted is exactly the state both Sparks are in today. Judging
+// durability on convergence and health alone would call that proven, which is the claim this whole
+// receipt exists to refuse.
+test fn a_serving_converged_host_that_never_rebooted_is_not_durable() -> Bool {
+  let v = spark_serving_durability_verdict(
+    host: "srv6",
+    transition: spark_serving_reboot_transition(before: reading(id: boot_a), after: reading(id: boot_a)),
+    pending_action_count: 0,
+    serving_healthy: true,
+    health_cause: healthy(),
+  )
+  !spark_serving_durability_is_proven(verdict: v)
+    && match v {
+         RebootNotEstablished { host: _, boot_id: b } => (b as String) == boot_a
+         DurabilityProven { host: _, before: _, after: _ } => false
+         SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
+         SurvivedRebootNotServing { host: _, cause: _ } => false
+         DurabilityUnobserved { host: _, cause: _ } => false
+       }
+}
+
+// A host that DID reboot and came back needing work has an enablement defect. Kept distinct from the
+// case above because merging them would send someone to debug systemd units on a machine that never
+// went down.
+test fn a_rebooted_host_that_needs_actions_failed_durability_not_the_reboot() -> Bool {
+  match spark_serving_durability_verdict(
+    host: "srv6",
+    transition: spark_serving_reboot_transition(before: reading(id: boot_a), after: reading(id: boot_b)),
+    pending_action_count: 1,
+    serving_healthy: false,
+    health_cause: "unit inactive" as NonEmptyStr,
+  ) {
+    SurvivedRebootUnconverged { host: _, pending_action_count: n } => n == 1
+    DurabilityProven { host: _, before: _, after: _ } => false
+    SurvivedRebootNotServing { host: _, cause: _ } => false
+    RebootNotEstablished { host: _, boot_id: _ } => false
+    DurabilityUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// Resources can survive a reboot while the endpoint still does not serve, so the canary is its own
+// condition rather than something the plan implies.
+test fn a_rebooted_converged_host_that_does_not_serve_is_not_durable() -> Bool {
+  match spark_serving_durability_verdict(
+    host: "srv6",
+    transition: spark_serving_reboot_transition(before: reading(id: boot_a), after: reading(id: boot_b)),
+    pending_action_count: 0,
+    serving_healthy: false,
+    health_cause: "generation probe produced no output" as NonEmptyStr,
+  ) {
+    SurvivedRebootNotServing { host: _, cause: c } => string_contains(c as String, "no output")
+    DurabilityProven { host: _, before: _, after: _ } => false
+    SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
+    RebootNotEstablished { host: _, boot_id: _ } => false
+    DurabilityUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// AN UNREAD BOOT IDENTITY IS NEVER "THE BOOT DID NOT CHANGE". Comparing against a reading we never
+// obtained establishes nothing in either direction, and rendering it as unchanged would report a
+// host as un-rebooted precisely when we failed to look -- the empty-observation narrow.
+test fn an_unread_boot_identity_is_unobserved_and_never_unchanged() -> Bool {
+  let missing = spark_serving_boot_identity_from_probe(probe: none)
+  match spark_serving_reboot_transition(before: missing, after: reading(id: boot_b)) {
+    RebootTransitionUnobserved { cause: c } => string_contains(c as String, "pre-reboot")
+    BootIdentityUnchanged { boot_id: _ } => false
+    BootIdentityChanged { before: _, after: _ } => false
+  }
+    && match spark_serving_reboot_transition(before: reading(id: boot_a), after: missing) {
+         RebootTransitionUnobserved { cause: c } => string_contains(c as String, "post-reboot")
+         BootIdentityUnchanged { boot_id: _ } => false
+         BootIdentityChanged { before: _, after: _ } => false
+       }
+}
+
+// AN EMPTY READ IS A FAILED READ, not a boot with no identity. An empty string compares unequal to
+// every real identifier, so admitting it would let a broken probe manufacture the "changed" verdict
+// this transaction exists to establish -- the worst possible direction for this defect to fail in.
+test fn an_empty_boot_id_is_a_failed_read_not_a_changed_boot() -> Bool {
+  match spark_serving_boot_identity_from_probe(probe: Present { value: ok(out: "\n") }) {
+    BootIdentityUnobserved { cause: c } => string_contains(c as String, "failed read")
+    BootIdentityObserved { boot_id: _ } => false
+  }
+}
+
+// The probe is an unprivileged read of a kernel-published file: durability needs no authority to
+// observe, only to cause.
+test fn the_boot_identity_probe_is_an_unprivileged_read() -> Bool {
+  let argv = spark_serving_boot_id_probe_argv()
+  !any(argv, w => w == "sudo")
+    && any(argv, w => w == "/proc/sys/kernel/random/boot_id")
+}
+
+// Every non-proven verdict says why in its own words, so a failed durability run never reduces to
+// one undifferentiated red.
+test fn each_failure_verdict_states_its_own_cause() -> Bool {
+  string_contains(spark_serving_durability_wire(verdict: RebootNotEstablished {
+    host: "srv6", boot_id: boot_a as NonEmptyStr,
+  }), "no reboot occurred")
+    && string_contains(spark_serving_durability_wire(verdict: SurvivedRebootUnconverged {
+         host: "srv6", pending_action_count: 2,
+       }), "did not survive the boot")
+    && string_contains(spark_serving_durability_wire(verdict: DurabilityUnobserved {
+         host: "srv6", cause: "leg refused" as NonEmptyStr,
+       }), "UNOBSERVED")
+}

@@ -1,12 +1,14 @@
 module test.claim.spark_serving_observe_witness_test
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int, Bool }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.spark_serving_release {
+import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
+import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
+import gunbc.spark.serving_release {
   SparkServingObservation, SparkServingAbsent, SparkServingObserved,
   SparkServingObservationRefused,
 }
-import gunbc.spark_serving_loaded_release {
+import gunbc.spark.serving_loaded_release {
   SparkServingReadback,
   SparkServingUnitActive,
   SparkServingUnitInactive,
@@ -15,7 +17,7 @@ import gunbc.spark_serving_loaded_release {
   derive_spark_serving_observation,
   derive_loaded_spark_serving_release_identity,
 }
-import gunbc.spark_serving_readback_parse {
+import gunbc.spark.serving_readback_parse {
   SparkServingReadbackAbsent,
   SparkServingReadbackPresent,
   SparkServingReadbackRefused,
@@ -27,12 +29,20 @@ import extdeps.ollama.binary_release {
   ollama_v0_32_9_jetpack5_release,
 }
 import gunbc.ollama_runtime_bundle {
-  ollama_runtime_closure_digest,
-  ollama_runtime_closure_digest_for_observed_release,
-  ollama_runtime_closure_digest_for_required_release,
+  ollama_runtime_materialization_identity,
+  ollama_runtime_materialization_identity_for_observed_release,
+  ollama_runtime_materialization_identity_for_required_release,
 }
-import gunbc.spark_serving_observe {
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.spark.serving_observe {
+  ManagedAccountAbsent,
+  ManagedAccountKeyFileUnread,
+  ManagedAccountObserved,
+  ManagedAccountProbeRefused,
+  spark_serving_account_observation_from_probes,
+  spark_serving_nvidia_driver_probe_words,
   spark_serving_unit_outcome_from_probe_results,
+  spark_serving_runtime_materialization_receipt_probe_argv,
   SparkServingObservationReportRefused,
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
@@ -40,18 +50,23 @@ import gunbc.spark_serving_observe {
   spark_serving_observation_was_made,
   spark_serving_report_observations_were_made,
   spark_serving_observation_report_from_observations,
+  spark_serving_readback_line,
+  spark_serving_boot_provenance_from_probes,
+  SparkServingHostObservation,
+  spark_serving_observation_report_text,
 }
-import gunbc.spark_serving_runtime_receipt {
+import gunbc.spark.serving_runtime_receipt {
   spark_serving_parse_runtime_receipt_json,
   spark_serving_runtime_receipt_field_from_probe,
   spark_serving_runtime_receipt_probe_words,
+  spark_serving_materialization_receipt_field_from_probe,
 }
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 
 data witness_jetpack5_release_asset_digest_hex: String = "721af44a33380893cb35c2124832e64563e9abbd40b4c0280167110ff390dead"
 
-fn witness_runtime_release_asset_digest_present(hex: String) -> SparkServingReadbackPresent {
+fn witness_runtime_materialization_identity_present(hex: String) -> SparkServingReadbackPresent {
   SparkServingReadbackPresent { value: hex }
 }
 
@@ -78,12 +93,14 @@ fn readback_absent() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitAbsent,
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -94,12 +111,14 @@ fn readback_unreachable() -> SparkServingReadback {
       cause: "unit LoadState probe leg did not run" as NonEmptyStr,
     },
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -108,12 +127,14 @@ fn readback_active_incomplete() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -122,12 +143,14 @@ fn readback_active_complete() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
 }
 
@@ -225,6 +248,49 @@ test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
   }
 }
 
+// THE TWO RECEIPTS ARE TWO SUBJECTS ON TWO MACHINES, and this pair of claims is what keeps them
+// from being confused again. The archive-admission receipt below records which release archive THE
+// EXECUTOR admitted; the materialization receipt records which closure was published to THE TARGET.
+// The read-only observation asks the second question, and for a while it asked it by cat-ing the
+// first receipt's path over SSH on a host where nothing writes it -- measured on srv6 as
+// `state=refused cause=... ollama-runtime-receipt.json: No such file or directory` while the
+// converge path called the same host converged.
+test fn the_materialization_receipt_probe_reads_the_runtime_root_not_the_executor_receipt() -> Bool {
+  let words = spark_serving_runtime_materialization_receipt_probe_argv()
+  words.length() == 2
+    && words.first() == "cat"
+    && !string_contains(s: words.skip(n: 1).first(), pattern: "ollama-runtime-receipt.json")
+    && string_contains(s: words.skip(n: 1).first(), pattern: "/runtimes/")
+}
+
+// A materialization receipt that exists but is EMPTY names no closure, so it refuses rather than
+// presenting an empty identity that every comparison would then treat as a real one.
+test fn an_empty_materialization_receipt_refuses_rather_than_presenting_nothing() -> Bool {
+  match spark_serving_materialization_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult { exit_code: 0, success: true, stdout: "  \n", stderr: "" },
+    },
+  ) {
+    SparkServingReadbackRefused { cause: c } => string_contains(s: c as String, pattern: "empty")
+    SparkServingReadbackPresent { value: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
+// The positive control, so the refusal above is not this reader refusing everything: bare digest
+// content is taken as the identity, trimmed, with no JSON structure invented around it.
+test fn a_materialization_receipt_presents_its_bare_digest() -> Bool {
+  match spark_serving_materialization_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult { exit_code: 0, success: true, stdout: "abc123\n", stderr: "" },
+    },
+  ) {
+    SparkServingReadbackPresent { value: v } => v == "abc123"
+    SparkServingReadbackRefused { cause: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
 test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
   let words = spark_serving_runtime_receipt_probe_words()
   words.length() == 2
@@ -252,12 +318,14 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     Absent => true
     Present { value: _ } => false
@@ -269,12 +337,14 @@ test fn different_runtime_version_refuses_observation() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: _ } => true
     SparkServingObserved { host: _, loaded_release: _ } => false
@@ -308,7 +378,7 @@ test fn active_incomplete_readback_refuses_observation() -> Bool {
       h == "srv5"
         && (
           string_contains(s: c as String, pattern: "fingerprint")
-            || string_contains(s: c as String, pattern: "runtime_release_asset_digest")
+            || string_contains(s: c as String, pattern: "runtime_materialization_identity")
             || string_contains(s: c as String, pattern: "install receipt")
         )
     SparkServingAbsent { host: _ } => false
@@ -321,7 +391,7 @@ test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackRefused {
+    runtime_materialization_identity: SparkServingReadbackRefused {
       cause: "runtime install receipt probe failed exit=1 stderr=No such file" as NonEmptyStr,
     },
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
@@ -329,6 +399,8 @@ test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "install receipt")
@@ -364,12 +436,14 @@ test fn inactive_unit_readback_refuses_observation() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitInactive,
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       h == "srv6" && string_contains(s: c as String, pattern: "inactive")
@@ -385,12 +459,14 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
     runtime_version: SparkServingReadbackRefused {
       cause: "ollama /api/version body is not parseable JSON" as NonEmptyStr,
     },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "not parseable JSON")
@@ -407,17 +483,27 @@ test fn observation_report_refused_is_not_success() -> Bool {
   )
 }
 
+// The report carries readback + observation together; these fixtures only vary the observation, so
+// the readback is a fixed bare one and the wrapping stays out of every assertion below.
+fn ho(observation: SparkServingObservation) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: readback_absent(),
+    observation: observation,
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+  }
+}
+
 test fn per_host_refusal_report_is_not_success() -> Bool {
   match derive_spark_serving_observation(readback: readback_active_complete()) {
     SparkServingObserved { host: _, loaded_release: loaded } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: SparkServingObserved { host: "srv5", loaded_release: loaded },
+          first: ho(observation: SparkServingObserved { host: "srv5", loaded_release: loaded }),
           more: [
-            SparkServingObservationRefused {
+            ho(observation: SparkServingObservationRefused {
               host: "srv6",
               cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
-            },
+            }),
           ],
         },
       )
@@ -431,12 +517,14 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "unobserved")
@@ -450,12 +538,14 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "below minimum")
@@ -469,17 +559,19 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: SparkServingObservationRefused { host: h, cause: c },
+          first: ho(observation: SparkServingObservationRefused { host: h, cause: c }),
           more: [],
         },
       )
@@ -502,12 +594,14 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }) {
     Absent => true
     Present { value: _ } => false
@@ -515,13 +609,13 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
 }
 
 test fn jetpack5_asset_digest_does_not_match_required_closure_digest() -> Bool {
-  match ollama_runtime_closure_digest_for_observed_release(
+  match ollama_runtime_materialization_identity_for_observed_release(
     version: witness_pinned_runtime_version_wire,
     asset_digest_hex: witness_jetpack5_release_asset_digest_hex,
   ) {
     Present { value: jetpack_digest } =>
-      (jetpack_digest.digest as String) != (ollama_runtime_closure_digest_for_required_release().digest as String)
-        && (jetpack_digest.digest as String) == (ollama_runtime_closure_digest(rel: ollama_v0_32_9_jetpack5_release).digest as String)
+      (jetpack_digest.digest as String) != (ollama_runtime_materialization_identity_for_required_release().digest as String)
+        && (jetpack_digest.digest as String) == (ollama_runtime_materialization_identity(rel: ollama_v0_32_9_jetpack5_release).digest as String)
     Absent => false
   }
 }
@@ -549,12 +643,12 @@ test fn absent_observation_was_made_though_it_did_not_succeed() -> Bool {
 test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
       more: [
-        SparkServingObservationRefused {
+        ho(observation: SparkServingObservationRefused {
           host: "srv6",
           cause: "ssh exec refused" as NonEmptyStr,
-        },
+        }),
       ],
     },
   ) == false
@@ -563,8 +657,8 @@ test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Boo
 test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
-      more: [SparkServingAbsent { host: "srv6" }],
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
     },
   )
 }
@@ -582,4 +676,247 @@ test fn a_refused_report_is_never_read_as_observed() -> Bool {
       cause: "no host was probed" as NonEmptyStr,
     },
   ) == false
+}
+
+// THE COMMA IS ADMITTED AND THE BRACE IS NOT, asserted as a pair because a widening argued on paper
+// and unchecked in the tree is the specification-without-execution trap. The comma is inert in POSIX
+// sh; brace expansion is the one context that gives it meaning, and it needs braces, which stay
+// refused. If a future edit widens the alphabet toward `{`, this goes red.
+test fn the_word_alphabet_admits_a_comma_and_still_refuses_a_brace() -> Bool {
+  match portable_remote_words(raws: ["nvidia-smi", "--format=csv,noheader"]) {
+    Absent => false
+    Present { value: _ } =>
+      match portable_remote_words(raws: ["echo", "\{a,b}"]) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// THE PROBE THAT FORCED IT, asserted against the real argv rather than a hand-written stand-in: the
+// read-only observation's nvidia leg had been refused at the transport since it was written, and
+// nothing could report why until the refusal reason was carried.
+test fn the_nvidia_driver_probe_is_portable() -> Bool {
+  match portable_remote_words(raws: spark_serving_nvidia_driver_probe_words) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The observation LINE is the production consumer: boot provenance that never reached the emitted
+// receipt would be a carrier nobody reads. Asserting the two live cases render differently is what
+// makes the field load-bearing rather than present.
+test fn the_readback_line_carries_boot_provenance() -> Bool {
+  string_contains(
+    spark_serving_readback_line(readback: readback_active_complete()),
+    "boot-provenance=",
+  )
+    && string_contains(
+         spark_serving_readback_line(readback: readback_active_complete()),
+         "boot-provenance=unobserved",
+       )
+}
+
+// An absent leg is unobserved on the leg's OWN behalf and never a durability verdict, asserted here
+// on the wiring rather than only on the classifier it delegates to.
+test fn an_absent_boot_probe_leg_is_unobserved_at_the_wiring() -> Bool {
+  match spark_serving_boot_provenance_from_probes(active_enter: none, uptime: none) {
+    BootProvenanceUnobserved { cause: c } =>
+      string_contains(c as String, "ActiveEnterTimestampMonotonic probe leg did not run")
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+  }
+}
+
+// THE WET RECEIPT IS THE CONSUMER, and this witness exists because the first version of this work
+// had none: the field was required, witnessed, and rendered by a function the emitted report never
+// called, so a canary run reported a host observed and said nothing about durability. Asserting on
+// the report TEXT is the difference between a fact that reaches the operator and one that does not.
+test fn the_emitted_report_text_carries_boot_provenance_per_host() -> Bool {
+  let text = spark_serving_observation_report_text(
+    report: SparkServingObservationsProduced {
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
+    },
+    probed_at: "2026-08-20T00:00:00Z",
+    attempt_raw: "fixture",
+    materialization_receipt: "",
+  )
+  string_contains(text, "boot-provenance=")
+    && string_contains(text, "observation host=srv5")
+    && string_contains(text, "observation host=srv6")
+}
+
+// The grant standing rides the same receipt, because a host that is serving but cannot be rebooted
+// is a fact about that host, and the run that reads everything else about it is where an operator
+// will look. Asserting on the text keeps it from becoming another renderer nobody calls.
+test fn the_emitted_report_text_carries_the_grant_standing() -> Bool {
+  let text = spark_serving_observation_report_text(
+    report: SparkServingObservationsProduced {
+      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      more: [],
+    },
+    probed_at: "2026-08-20T00:00:00Z",
+    attempt_raw: "fixture",
+    materialization_receipt: "",
+  )
+  string_contains(text, "grant-standing host=srv5")
+    && string_contains(text, "converged=false")
+    && string_contains(text, "standing=unobserved")
+}
+
+// ── the managed-account observation ─────────────────────────────────────────────────────────────
+//
+// These decode real command output shapes rather than a shape invented for the test: `getent passwd`
+// emits the seven-field colon record, and `stat -c '%a %U %G'` emits three space-separated fields.
+// The arms are asserted apart, because the whole point of the coproduct is that an account that does
+// not exist and an account whose key file could not be read are different states with different
+// remedies.
+
+fn account_probe(exit_code: Int, success: Bool, stdout: String) -> SshSessionExecResult? {
+  Present {
+    value: SshSessionExecResult { exit_code: exit_code, success: success, stdout: stdout, stderr: "" },
+  }
+}
+
+data fixture_passwd_row: String = "gunbc-automation:x:1002:1002::/home/gunbc-automation:/bin/bash"
+
+test fn a_passwd_row_and_a_stat_line_decode_to_an_observed_account() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: fixture_passwd_row),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw-------  1 gunbc-automation gunbc-automation 96 Aug 10 19:51 /home/gunbc-automation/.ssh/authorized_keys"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      (l as String) == "gunbc-automation"
+        && (u as String) == "1002"
+        && (g as String) == "1002"
+        && (sh as String) == "/bin/bash"
+        && (m as String) == "-rw-------"
+        && (o as String) == "gunbc-automation"
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED for the field positions. A passwd record's shell is field SEVEN and its uid
+// is field THREE; an off-by-one in either would still produce a well-formed ManagedAccountObserved
+// carrying plausible strings, which is exactly the failure a shape-only assertion cannot see. So this
+// asserts the VALUES land in the right fields, on a row whose fields are all distinguishable.
+test fn the_passwd_fields_are_read_at_their_real_positions() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "LOGIN:x:UIDFIELD:GIDFIELD:GECOS:/home/dir:SHELLFIELD",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "drwx------ 2 owner group 4096 Aug 10 19:51 /home/x/.ssh"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: _, authorized_keys_owner: _ } =>
+      (l as String) == "LOGIN"
+        && (u as String) == "UIDFIELD"
+        && (g as String) == "GIDFIELD"
+        && (sh as String) == "SHELLFIELD"
+    _ => false
+  }
+}
+
+test fn a_missing_account_is_absent_and_not_a_refusal() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 2, success: false, stdout: ""),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountAbsent { detail: _ } => true
+    _ => false
+  }
+}
+
+// PARTIAL IS HONEST. The account exists and was read; only the key file could not be stat'd, so the
+// arm carries what was measured and names what was not, rather than discarding the account fields or
+// filling the key fields with a default.
+test fn an_unreadable_key_file_keeps_the_account_fields_it_did_measure() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: fixture_passwd_row),
+    key_probe: account_probe(exit_code: 1, success: false, stdout: ""),
+  ) {
+    ManagedAccountKeyFileUnread { login: l, uid: _, gid: _, shell: sh, cause: _ } =>
+      (l as String) == "gunbc-automation" && (sh as String) == "/bin/bash"
+    _ => false
+  }
+}
+
+test fn a_leg_that_never_ran_is_a_refusal_and_not_an_absent_account() -> Bool {
+  match spark_serving_account_observation_from_probes(passwd_probe: none, key_probe: none) {
+    ManagedAccountProbeRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// TOTALITY on a malformed row: a truncated passwd record must not crash the observation, because a
+// probe that returns garbage is an observation too. Short fields read empty rather than throwing.
+// THIS TEST USED TO ASSERT THE DEFECT. Its earlier form matched a truncated row into
+// ManagedAccountObserved and checked that uid and shell came back as the EMPTY STRING out of
+// NonEmptyStr fields -- so a test written to prove the decoder was robust was in fact the thing
+// pinning a laundered carrier in place, and it is what let the defect reach review. Review 54471
+// caught it. The test now asserts the distinction the decoder is supposed to make.
+test fn a_truncated_passwd_row_is_refused_not_observed() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(exit_code: 0, success: true, stdout: "onlylogin"),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "onlylogin")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING HALF. A truncated row must NOT be distinguishable-in-principle-only: the pair
+// below differ by exactly one thing -- whether the passwd row has its seven fields -- and they must
+// land in different variants. Asserting only the malformed case would pass on a decoder that
+// refused everything.
+test fn a_well_formed_passwd_row_still_observes() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && (g as String) == "1001" && (sh as String) == "/bin/bash"
+        && (m as String) == "-rw-------" && (o as String) == "x"
+    _ => false
+  }
+}
+
+// AN EMPTY COLUMN IS AS UNUSABLE AS A MISSING ONE, and this is the test that says so. The row below
+// has all seven fields; the shell is simply blank. It must refuse, or the empty string reaches a
+// NonEmptyStr again by a different route than the one just closed.
+test fn an_empty_passwd_column_is_refused_like_a_missing_one() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "gunbc-automation")
+    _ => false
+  }
+}
+
+// UNDECODABLE `ls -ld` OUTPUT IS A KEY FILE WE COULD NOT READ, not a malformed account. The passwd
+// facts survive; only the mode and owner are missing. This asserts the decoder routes it to the arm
+// whose remedy actually matches.
+test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw-------"),
+  ) {
+    ManagedAccountKeyFileUnread { login: l, uid: u, gid: _, shell: _, cause: c } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && string_contains(s: c as String, pattern: "does not decode")
+    _ => false
+  }
 }

@@ -1,4 +1,8 @@
 module gunbc.ci_spec
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -28,8 +32,13 @@ import gunbc.cli_invoke {
   CiFloorPlan,
   CiPlanArtifactPlan,
   plan_function_name,
-  claim_executor_verify_artifacts_shell,
-  gunbc_run_shell
+  claim_executor_verify_artifacts_shell
+}
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script,
+  gunbc_run_step_script_with_prelude,
+  gunbc_run_invocation_script_with_env,
+  gunbc_invoke_step_emit_pipeline
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
@@ -274,7 +283,7 @@ data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler
 fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
@@ -282,7 +291,7 @@ fn ci_retry_body_run(command: String) -> Run {
 
 fn ci_retry_exhausted_pipeline() -> Pipeline {
   Pipeline {
-    steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
     on_failure: FailFast
   }
 }
@@ -452,36 +461,18 @@ data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_prea
 // on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
 // only downstream of the required check succeeding in the same run), advance
 // refs/fleet/desired to the merged revision by CAS: --force-with-lease names the exact
-// observed prior (gunbc.fleet_main_revision admit_fleet_desired_advance's from side), so
+// observed prior (gunbc.fleet_main_revision decide_fleet_desired_advance's from side), so
 // a race with a concurrent advance refuses rather than overwriting; ref creation is the
 // from=none arm. Hosts follow the ref; no host is contacted here.
-data gunbc_ci_fleet_reach_probe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_reach_probe_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_reach_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.host_reach_identity_probe probe_fleet_reach_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the probe step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_fleet_reach_probe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/host_reach_identity_probe.dag",
-          function: "probe_fleet_reach_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-reach-probe-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    function: "probe_fleet_reach_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-reach-probe-receipt.txt"
   )
 }
 
@@ -491,24 +482,14 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
 // job so it reuses the one WIF/agent materialization (gunbc_ci_fleet_key_agent_script);
 // fleet_multi_principal_probe_wet uses typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not
 // a second Secret Manager fetch from gunbc run. Its receipt is a separate file.
-data gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_multi_principal_probe.dag",
-          function: "fleet_multi_principal_probe_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-multi-principal-probe-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_multi_principal_probe.dag",
+    function: "fleet_multi_principal_probe_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
   )
 }
 
@@ -520,18 +501,22 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // written under a durable HOME, and no digest of it is printed. The only stdout is the
 // identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh
 // children inherit them; the job's always() cleanup step kills the agent.
-data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_key_agent_script",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect")
-
-// Repairs #3 and #4 (operator scan of #8083, 2026-08-09):
+// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, AND THIS ROW RECORDS WHY BEFORE
+// DELETING IT (parent-session finding, 2026-08-21). It read "DISSOLVES WHEN the typed
+// secret-materialization effect... lands on host_effect_apply" — but host_effect_apply's
+// HostEffectIntent.target is a NodeControlPlane, and both its arms require a ComputeHost.
+// An ephemeral GitHub Actions runner is not a ComputeHost the fleet models; there was no
+// host_effect_apply arm this step could ever land on, so the condition named could never
+// occur. That is the same defect class as the trigger corrected alongside it this session
+// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777) — a marker naming a
+// condition that sounds like progress but is not reachable from where the code actually
+// runs.
+//
+// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String
+// where typed orchestration emit belongs (DESIGN section 4c: prose the substrate can see,
+// not program data hidden in a joined literal), the same debt PR #8777 discharged for the
+// spark credential. Repairs #3 and #4 below (operator scan of #8083, 2026-08-09) are
+// preserved verbatim in the Do/Run steps that replace the join:
 // #3 FAILURE-SAFE CLEANUP — a `trap cleanup EXIT` is armed BEFORE the key touches disk,
 //    so any failure in curl/base64/chmod/keygen/agent/add removes the key file and kills
 //    the agent regardless of where set -e aborts. The outer always() step stays as
@@ -542,29 +527,195 @@ data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionConditi
 //    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
 //    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
 //    host-auth failure. The comparison is against the repo's single fingerprint authority.
+//
+// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The
+// agent this step starts is read by five mutually-exclusive mode-gated steps
+// (spark_grants/observe/linger/reboot/durability, all via fleet_multi_principal_probe),
+// selected only at workflow-dispatch runtime by github.event.inputs.mode; plan/apply touch
+// no SSH at all. Folding this script into all five would author the same script five times
+// (DESIGN section 2). What genuinely crosses the step boundary is the AGENT — a background
+// daemon plus its socket path and pid, neither of which is secret material — via
+// SSH_AUTH_SOCK/SSH_AGENT_PID over GITHUB_ENV, exactly as before. The private key file
+// itself already never crossed a step boundary (ssh-add then rm, in that order, before the
+// trap disarms): that was measured directly against this function's body and found
+// correct, not a defect this change is fixing.
+//
+// The Scaffold and DissolutionCondition rows that stood here are deleted rather than
+// corrected-in-place: the typed-orchestration-emit condition they should have named is
+// fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
+// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
+// would be created and discharged in the same diff — ceremony, not a standing obligation.
+fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
+    Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
+    Do {
+      run: ci_retry_body_run(
+        command: "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          fleet_automation_privkey_sm_access_url(),
+          "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join(["EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\""], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\""
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ",
+          fleet_automation_privkey_version_segment(),
+          " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
+    Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
+    Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "trap - EXIT") },
+    Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
+    Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\""
+      )
+    }
+  ]
+}
+
 fn gunbc_ci_fleet_key_agent_script() -> String {
-  join([
-    "# ", dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n",
-    "set -euo pipefail\n",
-    "umask 077\n",
-    "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"\n",
-    "AGENT_STARTED=0\n",
-    "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }\n",
-    "trap cleanup EXIT\n",
-    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", fleet_automation_privkey_sm_access_url(), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
-    "chmod 600 \"$KEY_FILE\"\n",
-    "EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\"\n",
-    "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\"\n",
-    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ", fleet_automation_privkey_version_segment(), " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
-    "eval \"$(ssh-agent -s)\" >/dev/null\n",
-    "AGENT_STARTED=1\n",
-    "ssh-add \"$KEY_FILE\" 2>/dev/null\n",
-    "rm -f \"$KEY_FILE\"\n",
-    "trap - EXIT\n",
-    "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"\n",
-    "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"\n",
-    "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\"\n",
-  ], "")
+  gunbc_invoke_step_emit_pipeline(
+    p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+  )
+}
+
+// A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step
+// above and deliberately not a variation on it: WIF token from the google_auth_action step by env,
+// one PINNED secret version, a 0600 file under RUNNER_TEMP, and a trap armed BEFORE the credential
+// touches disk so any failure removes it regardless of where set -e aborts.
+//
+// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An environment variable holding the
+// password would be readable by every child process the job spawns and printed by any diagnostic
+// that dumps the environment — and this repository's own receipts print argv. A path discloses
+// nothing to anyone who cannot already read the file.
+//
+// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease that
+// authorizes it cannot name different versions. There is no fingerprint check as there is for the
+// key: a password has no derivable public half to compare against, so the identity evidence is
+// sudo's own accept-or-reject, which the privileged step classifies as its own outcome.
+//
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED, and the first cut of this step got that wrong in a
+// way that cost a run to discover. It piped `curl -sSf` straight into a decoder and checked the file
+// size afterwards, so a 403 surfaced as a JSON decode traceback followed by "produced no payload" --
+// a sentence true of the file and false about the world. Unreadable and enrolled-but-blank have
+// different remedies, and neither is discoverable from an empty file.
+//
+// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut of this step claimed it did:
+// "an access grant and not a missing secret". Secret Manager answers 403 both for a version that
+// exists and is not readable and for one that does not exist -- it hides existence from principals
+// who may not read it. gunbc.spark.bootstrap_provision already records exactly this ambiguity about
+// exactly this API, having been burned by reading an empty testIamPermissions response as proof of
+// denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
+// covers both arms, rather than picking the arm that happens to fit the current guess.
+// THE SPARK ADMINISTRATOR CREDENTIAL PRELUDE, folded into the ONE step that consumes it. The
+// former two-step shape (a separate "materialize" step exporting a path via GITHUB_ENV, plus an
+// always()-gated cleanup step) is gone: the five steps that once sat between them all carry
+// mutually exclusive mode == '...' guards against this step's own mode == 'spark_grants' guard,
+// so on the only path this credential is ever fetched, nothing genuinely ran between fetch and
+// consumption -- the two-step shape was YAML-adjacent, not runtime-adjacent. One shell script now
+// fetches, decodes, and hands the credential to the grant-install invocation entirely within its
+// own process tree: one trap (armed for the whole script, never disarmed, because nothing needs
+// the file to survive past this script's own exit), one CRED_FILE, a shell-local export instead
+// of GITHUB_ENV so the path never crosses a step boundary.
+fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\"' EXIT") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          secret_ref_access_url(ref: spark_administrator_password_secret_ref),
+          "\" || echo 000)\""
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " answered 403 to ", spark_bootstrap_cloud_principal_member(),
+          ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "; contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join(["export ", spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"spark-admin-credential: materialized from ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " to a 0600 run-local file, consumed and removed within this one step\""
+        ], "")
+      )
+    }
+  ]
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
@@ -592,123 +743,100 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 
 data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
 
-data gunbc_ci_fleet_converge_plan_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_converge_plan_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
 
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      gunbc_run_shell(
-        source_roots: witness_layer_roots,
-        entry: "dag/gunbc/fleet_converge_plan_cli.dag",
-        function: "fleet_converge_plan_wet",
-        rooted: true,
-        claim_run: false
-      )
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+    function: "fleet_converge_plan_wet",
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
 data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
 
-data gunbc_ci_fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_converge_apply_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+data gunbc_ci_fleet_converge_apply_plan_hash_predicate_note: String = "THE PLAN-HASH GUARD IS NOT TYPED, AND THIS ROW SAYS WHY RATHER THAN LETTING THE Do LINES READ AS AN OVERSIGHT. The guard is now three orchestration steps inside the same Pipeline as the invocation (it was a join of raw string literals beside it), so it is emitted rather than concatenated -- but its condition is still an opaque Run leaf rather than v2.std.orchestration Or/Not/StrEmpty/StrEq. THE BLOCKER, measured against the emitter rather than assumed: orch_emit_predicate refuses any test operand outside orch_shell_test_operand_alphabet (v2.compiler.emit_orchestration), whose members are the alphanumerics plus underscore, dot, slash, hyphen, at-sign, dollar, double-quote and the two brace characters. The operand this guard needs is the POSIX default-substitution form of EXPECTED_HASH -- which is exactly how the guard tolerates the variable being unset under set -u instead of aborting -- and the colon that form requires is not in that alphabet. Spelling the operand as a bare EXPECTED_HASH reference instead would make an unset EXPECTED_HASH abort under set -u BEFORE the guard could report PlanArtifactHashMismatch, which is a different failure with a different diagnostic, so that is a semantic loss and not a respelling. Widening the alphabet by one character was declined: the alphabet is the fail-closed wall against metacharacter injection in test operands, and a per-site widening to admit one construct is the workaround class DESIGN section 5 names -- the substrate answer is a typed parameter-expansion carrier, default-substitution as a variant rather than a character in a string, which makes the whole construct emittable without loosening the wall for anything else. Dissolve-on below."
+
+data gunbc_ci_fleet_converge_apply_plan_hash_predicate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_plan_hash_prelude — RUNG: mitigatable, and stated rather than left to be read off the Pipeline it now sits inside. The guard executes and its refusal is typed and located at RUNTIME (PlanArtifactHashMismatch naming both hashes, exit 1 before any actuation), but the condition itself is an opaque Run leaf, so nothing at emit time can tell a correct comparison from a lying one — a mistyped operand emits happily and fails open on the runner. CEILING: structurally guaranteed. The property is decidable and the emitter already refuses malformed operands for every predicate it can carry; this one is outside what the carrier can express, not outside what is decidable. NEXT-RUNG TRIGGER, the one named thing that moves it: v2.std.orchestration Predicate operands take a typed shell-word carrier with a default-substitution variant, so the POSIX default-substitution form this guard needs becomes a constructor rather than a character sequence that v2.compiler.emit_orchestration orch_shell_test_operand_alphabet must be widened to admit. At that point the guard becomes Or/Not/StrEmpty/StrEq and Exit, the alphabet check on this construct is unwritable-by-construction, and this row and the three Do lines delete together. NOT BLOCKED ON ANYTHING ELSE: this is can-climb-after-one-grounding, not cannot-climb.")
+
+fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2; exit 1; fi"
+      )
+    }
+  ]
+}
 
 fn gunbc_ci_fleet_converge_apply_invoke() -> String {
-  join([
-    "# ", dissolution_description(condition: gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger), "\n",
-    "set -euo pipefail\n",
-    "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"\n",
-    "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then\n",
-    "  echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2\n",
-    "  exit 1\n",
-    "fi\n",
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: "dag/gunbc/fleet_converge_plan_cli.dag",
-      function: "fleet_converge_apply_wet",
-      rooted: true,
-      claim_run: false
-    ),
-  ], "")
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+    function: "fleet_converge_apply_wet",
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
-data gunbc_ci_spark_serving_converge_slice_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_spark_serving_converge_slice_invoke",
-    field: WholeDeclaration
-  }
+
+
+fn gunbc_ci_spark_serving_reboot_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_reboot_probe.dag",
+    function: "spark_serving_reboot_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-reboot-receipt.txt"
+  )
 }
 
-data gunbc_ci_spark_serving_converge_slice_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
-
-data gunbc_ci_spark_serving_observe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_spark_serving_observe_invoke",
-    field: WholeDeclaration
-  }
+fn gunbc_ci_spark_serving_durability_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_durability.dag",
+    function: "spark_serving_durability_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-durability-receipt.txt"
+  )
 }
 
-data gunbc_ci_spark_serving_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_serving_observe_invoke — foreign-executor shell invoking spark_serving_observe_ci_wet (runner-side, read-only: unit state, ollama version, model tags, driver); DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+fn gunbc_ci_spark_grant_install_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/grant_install.dag",
+    function: "spark_grant_install_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-grant-install-receipt.txt"
+  )
+}
+
 
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_spark_serving_observe_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_serving_observe.dag",
-          function: "spark_serving_observe_ci_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/spark-serving-observe-ci-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_observe.dag",
+    function: "spark_serving_observe_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-observe-ci-receipt.txt"
   )
 }
 
 fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_spark_serving_converge_slice_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/spark_serving_converge_slice_wet.dag",
-          function: "spark_serving_converge_slice_ci_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/spark-serving-converge-slice-wet-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
+    function: "spark_serving_converge_slice_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-converge-slice-wet-receipt.txt"
   )
 }
 
@@ -717,211 +845,121 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
 // main pushes downstream of the required ci check, from srv1 (inside the fleet, over
 // the typed SSH probe seam), so the collector->fold composition executes on a real
 // cadence and its collect receipt is printed into the job log.
-data gunbc_ci_collect_fleet_convergence_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_collect_fleet_convergence_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_collect_fleet_convergence_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_receipt_collector collect_fleet_convergence_wet plus a cat of the typed collect receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_receipt_collector.dag",
-          function: "collect_fleet_convergence_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-converge-collect-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_receipt_collector.dag",
+    function: "collect_fleet_convergence_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-converge-collect-receipt.txt"
   )
 }
 
 // Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
 // enroll applies the committed registry; both srv1-dispatched, receipts catted.
-data gunbc_ci_fleet_host_key_scan_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_host_key_scan_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_fleet_host_key_scan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_host_key_scan_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_scan_wet plus a cat of the typed scan receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_host_key_scan_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-          function: "fleet_host_key_scan_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-host-key-scan-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+    function: "fleet_host_key_scan_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-host-key-scan-receipt.txt"
   )
 }
 
-data gunbc_ci_fleet_host_key_enroll_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_host_key_enroll_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_fleet_host_key_enroll_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_host_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_enroll_wet plus a cat of the typed enroll receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_host_key_enroll_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-          function: "fleet_host_key_enroll_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-host-key-enroll-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+    function: "fleet_host_key_enroll_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
   )
 }
 
-data gunbc_ci_probe_identity_observe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_probe_identity_observe_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_probe_identity_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_probe_identity_observe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_probe_identity_observe fleet_probe_identity_observe_wet plus a cat of the typed receipt (READ-ONLY observation; no secret payloads); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_probe_identity_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_probe_identity_observe_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_probe_identity_observe.dag",
-          function: "fleet_probe_identity_observe_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-probe-identity-observe-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_probe_identity_observe.dag",
+    function: "fleet_probe_identity_observe_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-probe-identity-observe-receipt.txt"
   )
 }
 
-data gunbc_ci_authorized_key_enroll_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_authorized_key_enroll_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_authorized_key_enroll_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_authorized_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_authorized_key_self_enroll_wet plus a cat of the typed receipt (PUBLIC key only; idempotent exact-line enrollment); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_authorized_key_enroll_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_authorized_key_enroll_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        gunbc_run_shell(
-          source_roots: witness_layer_roots,
-          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
-          function: "fleet_authorized_key_self_enroll_wet",
-          rooted: true,
-          claim_run: false
-        )
-      ),
-      "\ncat \"$ROOT/target/fleet-authorized-key-enroll-receipt.txt\""
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+    function: "fleet_authorized_key_self_enroll_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-authorized-key-enroll-receipt.txt"
   )
 }
 
-// gunbc_ci_advance_fleet_desired_script, its Scaffold disposition and its dissolution
-// trigger were DELETED HERE with the deploy workflow authority. The function rendered a
-// shell CAS advance -- git ls-remote, then a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
-// on the create branch with no lease at all -- and its only two consumers were
-// gunbc.live_deploy_workflow and that module's witness file, both deleted in the same cut.
+// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point rather than a
+// tidy-up. What stood here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step
+// that pushed $GITHUB_SHA onto refs/fleet/desired -- with a compare-and-swap on the observed prior
+// on the advance branch, and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
+// carrying no lease at all, which is the branch that runs when the ref does not yet exist.
 //
-// It is not preserved for a future actuator. gunbc.fleet_desired_admission is the admitted
-// replacement: it advances the ref only behind a modeled decision over a completed floor
-// run, and renders the push from typed values rather than from $GITHUB_SHA. Keeping a
-// function that can still emit the raw form would leave the unsafe spelling one call site
-// away from returning, which is the same leaf-versus-root error that let the deleted
-// workflow regenerate itself.
+// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires the
+// desired revision to derive from merged, FLOOR-GREEN main and models that gate as
+// decide_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
+// own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
+// advance the authority names as its prevented class, and it reached further than the ref:
+// gunbc.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
+// whatever last landed made that gate agree unconditionally and pass in silence.
+//
+// The replacement is gunbc.fleet_desired_admission, whose decision consults the modeled gate with a
+// floor conclusion observed from the floor run's own workflow_run payload, and which renders the
+// authorized push itself so the surrounding shell carries no ref, revision or prior of its own. It
+// is cut at the root rather than kept beside the replacement: two answers to how the fleet's
+// admitted revision advances is the fork DESIGN section 3 forbids, and the weaker one was the live
+// one. Keeping a function that can still render the raw form would leave the unsafe spelling one
+// call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
+// its witness file, both deleted with the deploy workflow authority.
+//
+// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
+// went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
+// where the remaining shell actually lives, not inherited here.
+//
+// This annotation was itself a merge conflict: the root cut and the admission change each deleted
+// this script and each wrote their own account of why. Two annotations for one deletion is the
+// duplication section 3 forbids, so they are merged here rather than stacked, and the accompanying
+// `data ..._deleted_note: String` row is dropped -- a String declaration whose sole purpose is
+// commentary is the misplaced data section 4c names, and the annotation above already carries it.
 
-data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_srv1_tasks_observation_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold")
+
 
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger), "\n")),
-    concat(
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      gunbc_run_shell(
-        source_roots: witness_layer_roots,
-        entry: gunbc_ci_srv1_tasks_observation_entry,
-        function: gunbc_ci_srv1_tasks_observation_function,
-        rooted: true,
-        claim_run: false
-      )
-    ),
-    "\ncat \"$ROOT/target/srv1-tasks-preapply-receipt.txt\""
-  )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_srv1_tasks_observation_entry,
+    function: gunbc_ci_srv1_tasks_observation_function,
+    claim_run: false,
+    receipt_rel: "target/srv1-tasks-preapply-receipt.txt"
   )
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: stage.entry,
-      function: stage.function,
-      rooted: true,
-      claim_run: false
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: stage.entry,
+    function: stage.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -932,15 +970,12 @@ data ci_heal_generated_artifact_regen_function: String = "main_wet"
 data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold — a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing — the loop terminates in one heal. That fixed point is the enforced contract of generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point (committed bytes == artifact_generate), so a non-terminating heal loop is unwritable while that witness stays green."
 
 fn gunbc_ci_heal_regen_invoke() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: ci_heal_generated_artifact_gate_entry,
-      function: ci_heal_generated_artifact_regen_function,
-      rooted: true,
-      claim_run: false
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: ci_heal_generated_artifact_gate_entry,
+    function: ci_heal_generated_artifact_regen_function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -949,30 +984,15 @@ data ci_heal_repo_local_git_config_function: String = "converge"
 
 data ci_heal_repo_local_git_config_note: String = "Immediately after the release gunbc binary is unpacked, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact rows govern the remedy merge rather than dying as unresolved conflicts. Ordering is after unpack (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (that step's git merge is the first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent: already-converged checkouts are a no-op."
 
-data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_heal_repo_local_git_config_invoke",
-    field: WholeDeclaration
-  }
-}
 
-data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold")
 
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_heal_repo_local_git_config_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      gunbc_run_shell(
-        source_roots: witness_layer_roots,
-        entry: ci_heal_repo_local_git_config_entry,
-        function: ci_heal_repo_local_git_config_function,
-        rooted: true,
-        claim_run: false
-      )
-    )
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: ci_heal_repo_local_git_config_entry,
+    function: ci_heal_repo_local_git_config_function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -980,15 +1000,15 @@ data ci_heal_dispatch_entry: String = "dag/tools/ci_heal_dispatch.dag"
 data ci_heal_dispatch_function: String = "main"
 
 fn gunbc_ci_heal_dispatch_invoke() -> String {
-  concat(
-    "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\" GUNBC_HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\" ",
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: ci_heal_dispatch_entry,
-      function: ci_heal_dispatch_function,
-      rooted: true,
-      claim_run: false
-    )
+  gunbc_run_invocation_script_with_env(
+    env: [
+      EnvSet { name: "GUNBC_HEALED_HEAD", value: "\"$HEALED_HEAD\"" },
+      EnvSet { name: "GUNBC_HEAL_BRANCH_REF", value: "\"$\{{ github.head_ref || github.ref_name \}}\"" }
+    ],
+    source_roots: witness_layer_roots,
+    entry: ci_heal_dispatch_entry,
+    function: ci_heal_dispatch_function,
+    claim_run: false
   )
 }
 
