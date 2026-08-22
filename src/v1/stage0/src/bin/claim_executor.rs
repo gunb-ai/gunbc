@@ -10716,7 +10716,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     // only the first is coverage, so a population it cannot read FAILS rather than greening over
     // an unknown denominator.
     if required_cited_symbol_mode {
-        let rows = match cited_symbol_census(&source_roots) {
+        let (ctx, _entry) = match cited_symbol_lens_context(&source_roots) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        let rows = match cited_symbol_census(&ctx) {
             Ok(rows) => rows,
             Err(e) => {
                 eprintln!("cited-symbol: refused: {e}");
@@ -10734,7 +10741,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             );
             return Err(ExitCode::from(1));
         }
-        return match cited_symbol_population(&source_roots) {
+        return match cited_symbol_population(&ctx) {
             Ok(checked) => {
                 eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
                 Ok(ExitCode::SUCCESS)
@@ -20459,7 +20466,7 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
 /// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
 /// report a false green about them, so it does not speak about them at all.
-/// THE CITED-SYMBOL CENSUS, RUN AS A PHASE BECAUSE IT CANNOT BE RUN AS A CLAIM.
+/// THE CITED-SYMBOL CENSUS, RUN AS ITS OWN REQUIRED CHECK BECAUSE IT CANNOT BE RUN AS A CLAIM.
 ///
 /// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
 /// authors -- hand-authored doc binds, the generated design document's references, and the roster
@@ -20472,8 +20479,10 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
 /// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
 /// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
-/// The route is therefore a phase, which is not a claim: it sits outside both the per-claim safety
-/// deadline and the live-tree arm, exactly as the parse, regen and fixed-point phases do.
+/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
+/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
+/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
+/// byte-unchanged.
 ///
 /// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
 /// refused it -- so the failure names what to fix rather than reporting a count.
@@ -20481,9 +20490,8 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 ///
 /// An empty refusal list is returned both when every reference resolves and when there are no
 /// references at all; those are different states and only the first is coverage.
-fn cited_symbol_population(source_roots: &[String]) -> Result<i64, String> {
-    let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
-    match run_value(&ctx, "cited_symbol_production_reference_count") {
+fn cited_symbol_population(ctx: &InterpContext) -> Result<i64, String> {
+    match run_value(ctx, "cited_symbol_production_reference_count") {
         Ok(Value::Int(n)) => Ok(n),
         Ok(other) => Err(format!(
             "cited_symbol_production_reference_count must be an Int, got {other:?}"
@@ -20492,9 +20500,12 @@ fn cited_symbol_population(source_roots: &[String]) -> Result<i64, String> {
     }
 }
 
-/// The lens's evaluation context, built once and shared by both readers of it -- the refusal report
-/// and the population count. Two constructions would be two chances to answer from different trees,
-/// and the denominator is only meaningful for the census it accompanies.
+/// The lens's evaluation context. The caller builds it ONCE and lends it to both readers -- the
+/// refusal report and the population count -- which is why they take a `&InterpContext` rather
+/// than source roots: two constructions would be two reads of a tree that can change between them,
+/// and a denominator is only meaningful for the census it accompanies. An earlier revision said
+/// this while both helpers built their own; the comment was true of the intent and false of the
+/// code, which is the stale-claim class this very census exists to catch (found in review 54581).
 fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
     const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
     let entry = source_roots
@@ -20516,9 +20527,8 @@ fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, 
     Ok((ctx, entry))
 }
 
-fn cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
-    let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
-    match run_value(&ctx, "cited_symbol_unresolved_reference_report") {
+fn cited_symbol_census(ctx: &InterpContext) -> Result<Vec<String>, String> {
+    match run_value(ctx, "cited_symbol_unresolved_reference_report") {
         Ok(Value::List(rows)) => {
             let mut out = Vec::new();
             for row in rows.iter() {
