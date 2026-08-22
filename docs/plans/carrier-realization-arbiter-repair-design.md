@@ -34,7 +34,14 @@ reference-layer rendering**, and two candidate repairs are already refuted:
   `rust_host_text_carrier_elem_name(n) == "Char"`, a syntactic read of the authored element spelling
   decided *before* instantiation. A generic `T` is never spelled `Char`.
 
-## The authority exists, is correct, and is unreachable
+## The authority exists, is unreachable, and is MIS-KEYED
+
+*An earlier revision of this heading said "is correct". That was wrong, and wrong in the
+direction that matters: the authority's **logic** was checked and its **key** was not. A total
+function over a wrong key does not fail — it returns a confidently wrong answer. The key defect
+is `type_reference_decl_file`'s fallback arm, traced in the section beginning "the identity key
+is a LOCATION" below; the retraction is restated here because a reader who stops at this heading
+must not leave with the superseded claim.*
 
 `type_realization_decision` **does have consumers** — `v1.compiler.coercion` `lookup_checkpoint` is a
 thin derivation of it for every `decl_file != ""` caller. (An earlier revision of this lane's PR body
