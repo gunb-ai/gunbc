@@ -4208,6 +4208,16 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
+// THE PARAMETER IS THE NODE-LEVEL OCCURRENCE, NOT THE RAW ID. It is assigned straight into
+// Node.occurrence_id, which is a NodeOccurrenceId -- the coproduct of SyntheticOccurrence and
+// MintedOccurrence. A bare OccurrenceId is the PAYLOAD INSIDE one of those arms, never a member of
+// the coproduct itself, which is the whole modeling error in one line.
+// Declaring the raw OccurrenceId here meant a caller could satisfy the signature
+// with an unwrapped id and build a Node whose occurrence field held a value outside the coproduct;
+// every downstream match over the two variants then failed at run time with a non-exhaustive
+// pattern on OccurrenceId, which is what took the required floor red at #8833. Every real caller
+// was already passing a NodeOccurrenceId (SyntheticOccurrence at the fixtures, node.occurrence_id
+// in the body-lowering fold), so this declaration was the outlier, not them.
 fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
