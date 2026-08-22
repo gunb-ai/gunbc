@@ -1,0 +1,442 @@
+module gunbc.emit_summary_map_consumer_partition
+
+import std.types { List, String, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE READ SIDE OF THE EMIT SUMMARY MAP, PARTITIONED ON TWO QUESTIONS RATHER THAN ONE.
+//
+// SUBJECT. `v1.compiler.infer_emit_info` `build_emit_graph_info` folds every module in the closure
+// into one Map<String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
+// arm: two declarations sharing a spelling resolve last-write-wins in fold order. That map is the
+// denominator gunbc.bare_name_identity_consumer_census ranks first, and this carrier is the
+// measurement that must precede re-keying it.
+//
+// THE TWO COLUMNS, AND WHY ONE IS NOT ENOUGH. Whether a consumer HOLDS a resolved node at the
+// moment it queries the map (the ASK) is a different question from whether the summary it gets back
+// is then re-keyed on a spelling (the USE). A site that passes the first and fails the second is
+// not repaired by an identity-keyed map: it looks up correctly, then throws the identity away one
+// line later. Scoring only the ask would have sized this lane as "most sites are fine".
+//
+// NOTHING HERE IS REPAIRED. Per the sequencing rule gunbc.bare_name_identity_consumer_census states
+// for its own roster, the sweep precedes the refusal; a refusal landed ahead of its population
+// trades an uncounted silence for an uncounted red.
+
+// WHAT THE CONSUMER HOLDS AT THE ASK.
+//
+// NodeHeldAtAsk is the repairable arm: a Node whose resolved declaration identity is derivable is
+// in scope at the call, so the lookup could pass identity if the key accepted it. A row may not
+// claim it without naming the expression that holds the node.
+//
+// CompositeOfTwoSpellings is the enum-name-plus-variant-name key. The lookup side has already
+// conceded here that one spelling is insufficient, so the call shape survives an identity key
+// unchanged -- but only if BOTH parts get one, and the enum half arrives from a bare-name-derived
+// map (variant_to_enum), so this arm is not self-sufficient.
+//
+// SpellingOnlyFromMapValue is the severed arm: the key is a String the consumer pulled out of a
+// TypeSummary field, and nothing declaration-shaped is in scope. It names WHERE the severance
+// happened, because that is where the repair is, not here.
+//
+// NoKeyWholeMapScan is not a key question at all: the site iterates every summary. It is on the
+// roster because its ANSWER is a name, so it re-enters the bare-name world at its output rather
+// than at its input, and a re-key alone does not reach it.
+type AskIdentity
+  = NodeHeldAtAsk { holder_expression: String }
+  | CompositeOfTwoSpellings { parts: String, second_part_source: String }
+  | SpellingOnlyFromMapValue { severed_at: DeclarationRef, map_field: String }
+  | NoKeyWholeMapScan { what_is_scanned: String }
+
+// WHAT HAPPENS TO THE SUMMARY ONCE THE SITE HAS IT.
+//
+// TerminalAtSite is the only arm an identity-keyed map repairs on its own: the summary decides a
+// Bool or is consumed structurally, and no spelling leaves the site.
+//
+// ReKeyedIntoSameMap is the kind-3 class wearing a better hat: the site queried with a node in hand
+// and then keys a SECOND lookup on a String drawn out of the summary it just received.
+//
+// SpellingEscapesToCaller is the same defect one frame up: the site RETURNS a name out of the
+// summary and its caller decides on that spelling.
+//
+// ReKeyedIntoForeignNameTable is the arm re-keying cannot reach at all: the spelling leaves this
+// map and keys a different bare-name authority, which has no identity parameter to accept one.
+type UseDisposition
+  = TerminalAtSite { what_is_decided: String }
+  | ReKeyedIntoSameMap { second_key_source: String, second_lookup_decides: String }
+  | SpellingEscapesToCaller { escapes_as: String, consumed_by: DeclarationRef }
+  | ReKeyedIntoForeignNameTable { table: DeclarationRef, why_a_rekey_cannot_reach_it: String }
+
+type SummaryMapConsumer {
+  site: DeclarationRef
+  keys_on: String
+  ask: AskIdentity
+  use: UseDisposition
+  lookup_expression_count: Int
+}
+
+// THE ROSTER. Every row was read in the live tree on 2026-08-22; the selector and its blind spot are
+// in emit_summary_map_partition_basis below, and the method is in
+// docs/probes/emit-summary-map-consumer-partition-2026-08-22.md. Rows are ordered by module and
+// then by position in it, never by severity.
+data emit_summary_map_consumers: List<SummaryMapConsumer> = [
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "lookup_emit_type_summary"),
+    keys_on: "the bare type_name parameter",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- this is the shared accessor, and it accepts only a String, so every caller is forced through a spelling whatever it holds" },
+    use: SpellingEscapesToCaller { escapes_as: "the whole TypeSummary, to four callers scored separately below", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "positional_payload_scrut_type") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_belongs_to_enum"),
+    keys_on: "the bare enum_name, then the variant spelling against that summary's variant_name_set",
+    ask: CompositeOfTwoSpellings { parts: "enum_name and variant_name, as two String parameters", second_part_source: "callers pass a variant spelling read off a record-literal head or a match pattern" },
+    use: TerminalAtSite { what_is_decided: "a Bool -- whether this variant belongs to that enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_enum_in_summaries"),
+    keys_on: "the bare type_name",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- a String parameter with no node beside it in the signature" },
+    use: TerminalAtSite { what_is_decided: "a Bool -- whether the name is an enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "type_summary_reaches_fn"),
+    keys_on: "the bare name, then recursively on every name in the summary's field_type_map and field_import_surface_names",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"), map_field: "field_type_map and field_import_surface_names" },
+    use: ReKeyedIntoSameMap { second_key_source: "the field type names carried in the summary just fetched", second_lookup_decides: "the whole transitive closure -- this is a fixpoint over spellings, so one collision anywhere in the closure is inherited by every type that reaches it" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    keys_on: "every key of the map in turn",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_keys(summaries), rewriting has_fn_fields for each" },
+    use: ReKeyedIntoSameMap { second_key_source: "type_summary_reaches_fn on that same key", second_lookup_decides: "has_fn_fields, which decides whether the emitted struct derives serde" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
+    keys_on: "nothing -- it folds every summary and re-keys the RESULT on the bare variant spelling",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(summaries), reading variant_name_set off each enum summary" },
+    use: SpellingEscapesToCaller { escapes_as: "a Map from bare variant spelling to bare enum spelling, with the empty string written where two enums claim one spelling", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_qualify_type_leaf_name") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
+    keys_on: "nothing -- it scans every summary asking whether ANY enum has this variant spelling",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), testing each variant_name_set for the name" },
+    use: TerminalAtSite { what_is_decided: "a Bool, deliberately quantified over the whole closure -- so the more collisions the map holds, the more often it answers true" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "enum_variant_shape_sets_for_item"),
+    keys_on: "authored_name_at of the item being folded",
+    ask: NodeHeldAtAsk { holder_expression: "item -- the declaration Node itself, together with its own module's source_indices" },
+    use: SpellingEscapesToCaller { escapes_as: "concat(item_name, colon-colon, variant name) inserted into the fielded and positional_payload sets", consumed_by: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_has_fields") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types"),
+    keys_on: "nothing -- it folds every summary and emits a Set of bare names",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), selecting names whose repr and recursion make them Rc-shared" },
+    use: SpellingEscapesToCaller { escapes_as: "a Set<String> of bare names, later tested with set_contains at every render site", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_from_children") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "anonymous_record_lit_surface_name"),
+    keys_on: "the authored name of the literal's resolved type node, as a membership test",
+    ask: NodeHeldAtAsk { holder_expression: "rt -- resolved_type(n: n), guarded by rt.ident_span != none on the same line" },
+    use: SpellingEscapesToCaller { escapes_as: "the bare name, returned as the struct head the emitter will render", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "record_lit_variant_payload_struct_surfaces"),
+    keys_on: "variant_summary_key of the enum and variant spellings",
+    ask: CompositeOfTwoSpellings { parts: "enum_name and variant_name", second_part_source: "enum_name comes from variant_to_enum, itself keyed on the bare variant spelling" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_values(summary.field_type_map)", second_lookup_decides: "which field types are structs and therefore need a use-line" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_anonymous_record_lit_heads"),
+    keys_on: "emit_inferred_type_leaf_name of the literal, as a membership test",
+    ask: NodeHeldAtAsk { holder_expression: "n -- the record-literal expression node the walk is standing on" },
+    use: SpellingEscapesToCaller { escapes_as: "the head name, admitted as an attested use-line candidate", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_use_lines") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_items_field_import_surface_names"),
+    keys_on: "a surface type name, then variant_summary_key when the first lookup misses",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"), map_field: "field_import_surface_names, produced by a node walk that returns List<String>" },
+    use: ReKeyedIntoSameMap { second_key_source: "summary.field_import_surface_names", second_lookup_decides: "which of those names are structs" },
+    lookup_expression_count: 3,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_record_lit_field_struct_surfaces"),
+    keys_on: "variant_record_lit_summary_key of the parent literal",
+    ask: CompositeOfTwoSpellings { parts: "the parent's enum and variant spellings", second_part_source: "variant_to_enum again" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_get(summary.field_type_map, field_name)", second_lookup_decides: "whether that field's type is a struct" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "expand_variant_payload_struct_imports"),
+    keys_on: "variant_summary_key built from a bare name and its variant_to_enum parent",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set, projected into variant_to_enum by derive_variant_to_enum" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_values(summary.field_type_map)", second_lookup_decides: "which payload field types are structs" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
+    keys_on: "the bare enum_name",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set" },
+    use: ReKeyedIntoSameMap { second_key_source: "each variant spelling from variant_name_set, looked up in variant_to_enum", second_lookup_decides: "whether the module spells a variant that binds unambiguously back to this enum" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "module_data_field_struct_import_names"),
+    keys_on: "the authored name of a data item's type annotation",
+    ask: NodeHeldAtAsk { holder_expression: "ta -- the type_annotation node of the data item being folded" },
+    use: ReKeyedIntoSameMap { second_key_source: "summary.field_import_surface_names", second_lookup_decides: "which field types are structs, before an export-surface proof" },
+    lookup_expression_count: 2,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_has_fn_fields"),
+    keys_on: "the bare name parameter",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- a String parameter, though its own caller emit_struct_from_children is rendering a declaration it holds" },
+    use: TerminalAtSite { what_is_decided: "a Bool that decides whether the emitted struct derives serde" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "positional_payload_scrut_type"),
+    keys_on: "variant_summary_key of the parent enum and variant, falling back to the bare variant name when no parent is known",
+    ask: CompositeOfTwoSpellings { parts: "parent_enum and variant_name", second_part_source: "the parent arrives as String? from the match arm; Absent degrades the key to the bare variant spelling" },
+    use: SpellingEscapesToCaller { escapes_as: "field_type_map slot zero, returned as the scrutinee TYPE NAME", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_pattern_rc_prelude_parent_enums") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_optional_struct_field"),
+    keys_on: "the bare struct_name",
+    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), map_field: "none -- callers pass variant_summary_name, a spelling assembled earlier in emit_typed_record_lit" },
+    use: TerminalAtSite { what_is_decided: "whether the field value is wrapped in Some(..)" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_field_value_with_context"),
+    keys_on: "authored_name_at of the struct node, guarded by its ident_span",
+    ask: NodeHeldAtAsk { holder_expression: "struct_node -- the resolved type node of the enclosing literal" },
+    use: ReKeyedIntoSameMap { second_key_source: "map_get(summary.field_type_map, field_name), whose value is then passed to variant_belongs_to_enum as enum_name", second_lookup_decides: "which enum a nested variant literal is corrected to -- a THIRD hop keyed on the spelling the second returned" },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "struct_candidates_by_field_names"),
+    keys_on: "nothing -- it scans every summary matching on field-name sets",
+    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), filtered by field-name signature" },
+    use: SpellingEscapesToCaller { escapes_as: "summary.name, returned as the canonical struct head for an anonymous literal", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "find_struct_name_by_fields") },
+    lookup_expression_count: 1,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
+    keys_on: "the resolved type's authored name as a membership test, the chosen head name as a second membership test, and variant_summary_name for the defaults pass",
+    ask: NodeHeldAtAsk { holder_expression: "resolved_type -- held throughout, and already gated on resolved_type.ident_span != none" },
+    use: ReKeyedIntoForeignNameTable { table: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_zero_value"), why_a_rekey_cannot_reach_it: "the field type spelling from field_type_map is passed to a name-keyed zero-value table that takes no identity parameter, so an identity-keyed summary map changes nothing at this hop until that table is keyed too" },
+    lookup_expression_count: 3,
+  },
+]
+
+fn consumer_holds_node_at_ask(c: SummaryMapConsumer) -> Bool {
+  match c.ask {
+    NodeHeldAtAsk { holder_expression: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_spelling_only(c: SummaryMapConsumer) -> Bool {
+  match c.ask {
+    SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_composite(c: SummaryMapConsumer) -> Bool {
+  match c.ask {
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_ask_is_scan(c: SummaryMapConsumer) -> Bool {
+  match c.ask {
+    NoKeyWholeMapScan { what_is_scanned: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_is_terminal(c: SummaryMapConsumer) -> Bool {
+  match c.use {
+    TerminalAtSite { what_is_decided: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_rekeys(c: SummaryMapConsumer) -> Bool {
+  match c.use {
+    ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_escapes(c: SummaryMapConsumer) -> Bool {
+  match c.use {
+    SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => true
+    _ => false
+  }
+}
+
+fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> Bool {
+  match c.use {
+    ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => true
+    _ => false
+  }
+}
+
+fn partition_member_count() -> Int {
+  emit_summary_map_consumers |> count
+}
+
+fn partition_lookup_expression_total() -> Int {
+  emit_summary_map_consumers |> fold(init: 0, f: (acc, c) => acc + c.lookup_expression_count)
+}
+
+fn partition_holds_node_count() -> Int {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c)) |> count
+}
+
+fn partition_spelling_only_count() -> Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_spelling_only(c: c)) |> count
+}
+
+fn partition_composite_count() -> Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_composite(c: c)) |> count
+}
+
+fn partition_scan_count() -> Int {
+  emit_summary_map_consumers |> filter(c => consumer_ask_is_scan(c: c)) |> count
+}
+
+fn partition_terminal_use_count() -> Int {
+  emit_summary_map_consumers |> filter(c => consumer_use_is_terminal(c: c)) |> count
+}
+
+// THE CELL THE BRIEF ASKS FOR, AND THE ONE THAT CHANGES THE SIZING: a site that holds a node at the
+// ask and STILL re-keys on a spelling afterwards. Scoring the ask alone files these as repaired by
+// the re-key; they are not.
+fn partition_holds_node_but_rekeys() -> List<SummaryMapConsumer> {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && !consumer_use_is_terminal(c: c))
+}
+
+// THE SET AN IDENTITY-KEYED MAP REPAIRS BY ITSELF: identity obtainable at the ask, and nothing
+// spelling-shaped leaving the site. Everything outside it needs the summary's own VALUES to carry
+// identity, not just its keys.
+fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
+  emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && consumer_use_is_terminal(c: c))
+}
+
+// WHERE THE IDENTITY WAS DISCARDED. Every spelling-only row above is severed at one of these folds,
+// and each fold holds the resolved node on the line it stores a name -- so the repair is upstream
+// and shared, not one campaign per consumer. holder_at_discard names the binding that is in scope
+// at the discarding expression; a row without one would be a claim a reader cannot check.
+type SeverancePoint {
+  fold: DeclarationRef
+  holder_at_discard: String
+  stores_instead: String
+  fills_summary_field: String
+}
+
+data emit_summary_map_severance_points: List<SeverancePoint> = [
+  {
+    fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"),
+    holder_at_discard: "ft, bound by the arm Present { value: Resolved { node: ft } } on the child's inferred type",
+    stores_instead: "authored_name_at of normalize_access_type_node(n: ft)",
+    fills_summary_field: "field_type_map",
+  },
+  {
+    fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"),
+    holder_at_discard: "peeled, and the Resolved rt it recurses into",
+    stores_instead: "authored_name_at of each, accumulated as a List<String>",
+    fills_summary_field: "field_import_surface_names",
+  },
+  {
+    fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"),
+    holder_at_discard: "child, each variant declaration node of the item being summarised",
+    stores_instead: "authored_name_at of the variant, as a map key",
+    fills_summary_field: "variant_name_set",
+  },
+  {
+    fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"),
+    holder_at_discard: "item, together with the typed module the fold is standing in",
+    stores_instead: "summary.name, the bare authored declaration name, as the map key",
+    fills_summary_field: "the map key itself",
+  },
+]
+
+// THE JOIN BETWEEN THE TWO ROSTERS, derived here so a spelling-only row cannot name a fold that the
+// severance roster does not carry. Without it a row could file "the identity is gone" without
+// saying where it went.
+fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> Bool {
+  match c.ask {
+    SpellingOnlyFromMapValue { severed_at: sa, map_field: _ } =>
+      emit_summary_map_severance_points |> any(s => s.fold.decl_name == sa.decl_name && s.fold.module_path == sa.module_path)
+    _ => true
+  }
+}
+
+fn partition_severance_point_count() -> Int {
+  emit_summary_map_severance_points |> count
+}
+
+// THE COLLISION POPULATION, MEASURED BEFORE ANY REFUSAL AND BOUNDED HONESTLY.
+//
+// The refusal a re-key would arm fires when two declarations in ONE EMITTED CLOSURE share a
+// spelling. That population is not measurable without running the emitter over a closure, so what
+// is carried here is the CORPUS-WIDE upper bound: distinct type names declared in more than one
+// file anywhere in the tree. It is an upper bound and not the refusal population, because no
+// closure contains every file -- and it is not a lower bound either, since the count is over `type`
+// declarations only and says nothing about the composite variant keys.
+type CollisionPopulation
+  = CorpusWideUpperBound { distinct_colliding_names: Int, total_type_declarations: Int, measurement: String, why_not_the_refusal_population: String }
+  | ClosureMeasured { closure_entry: String, distinct_colliding_names: Int, measurement: String }
+
+data emit_summary_map_collision_population: CollisionPopulation = CorpusWideUpperBound {
+  distinct_colliding_names: 97,
+  total_type_declarations: 9474,
+  measurement: "every module-scope `type NAME` declaration under dag/ and src/ on 2026-08-22, grouped by name, counting names declared in two or more DISTINCT files (116 before the same-file duplicates are removed)",
+  why_not_the_refusal_population: "the map is built per emitted closure, not per corpus, so this bounds the refusal from above; the closure-grain number requires executing build_emit_graph_info and is the measurement that must precede landing the refusal",
+}
+
+// BASIS AND BLIND SPOT. The selector is mechanical, so it can be re-run: every expression in the v1
+// compiler that reads the summary map -- map_get or map_contains_key against type_summaries, every
+// call of lookup_emit_type_summary, and every map_values or map_keys scan of it -- with the
+// enclosing top-level fn as the row.
+//
+// WHAT IT DOES NOT REACH, named rather than left silent: a consumer that reads a value DERIVED from
+// the map (variant_to_enum, shared_types, fielded_variants, positional_payload_variants) without
+// touching the map itself is outside the selector. Those derived carriers inherit the bare key and
+// have their own consumers, several of them counted only indirectly here through the escape arm.
+type PartitionBasis
+  = SweptByMechanicalSelector { selector: String, modules_read: String, known_blind_spot: String }
+  | DerivedByLens { lens: String }
+
+data emit_summary_map_partition_basis: PartitionBasis = SweptByMechanicalSelector {
+  selector: "map_get or map_contains_key against type_summaries, every lookup_emit_type_summary call, and every map_values or map_keys scan of the map, grouped by enclosing top-level fn",
+  modules_read: "v1.compiler.infer_emit_info, v1.compiler.infer, v1.compiler.emit_rust, v1.compiler.emit, v1.compiler.coercion",
+  known_blind_spot: "consumers of the maps DERIVED from this one -- variant_to_enum, shared_types, fielded_variants, positional_payload_variants -- inherit the bare key without reading the map, and are outside the selector",
+}
+
+// RUNG. The CLASS is unchanged by this carrier and sits at mitigatable: nothing refuses on a
+// collision anywhere in the read side. The CARRIER is a hand sweep of a mechanical selector, so a
+// newly authored lookup moves no number here and nothing detects the omission.
+//
+// What this carrier holds by construction rather than by trust: an ask cannot be scored as
+// node-holding without naming the expression that holds the node, a spelling-only ask cannot be
+// filed without naming the fold that severed it, and the use column has no arm meaning "not
+// followed" -- so a row cannot be filed by scoring the ask alone, which is the failure this lane
+// exists to avoid.
+data emit_summary_map_partition_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the summary map is keyed on a resolved declaration identity and its values carry identity rather than spellings, so the ask and use columns have no remaining spelling arm to score and this partition has nothing left to report. Not satisfied by re-keying the map alone: the rows filed as ReKeyedIntoSameMap, SpellingEscapesToCaller and ReKeyedIntoForeignNameTable each still decide from a spelling after a correct lookup, and the derived carriers named in the basis blind spot inherit the bare key independently.")
