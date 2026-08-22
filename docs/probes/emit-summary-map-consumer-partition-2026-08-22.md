@@ -223,11 +223,21 @@ and leave **one** key.
 declarations is not co-residency of two summaries**, and I conflated them. `Bool` (coproduct vs
 coproduct, in the live three) is the specimen that survives.
 
-**The static bound narrows, and this number is this document's own.** Of the 116 whole-tree colliding
-names, only **79** have both sides in a summary-producing form (record or coproduct); **13** have
-exactly one, so the collision is invisible to this map by construction; **24** have neither. 79 is
-the upper bound the map can be exposed to at all, before closure membership narrows it — and the live
-closure narrows it to 3.
+**The static bound narrows, and the narrowing is robust while the number is not.** Of the 116
+whole-tree colliding names, only those with **both** sides in a summary-producing form can reach the
+map at all. Two independent textual classifiers over the same 116 disagree: **79 / 13 / 24** here
+against **83 / 11 / 22** from the lane that reproduced it. Both sum to 116 — four names are
+classified differently, and the gap is exactly the width of the proxy, because **both classifiers are
+textual stand-ins for a connective neither read**. `build_type_summary`'s real predicate is
+`item.connective == NoConnective || Arrow || transport present`. So: **roughly 80, by two classifiers
+that disagree by four** — not 79 as an exact figure.
+
+One disputed shape *is* settled, by reading the producer instead of guessing: a bodyless `type X` —
+no brace, no `=` — is built by `v1.compiler.parse` with `connective: NoConnective` and an inferred
+leaf type (the `EatUnchanged` arm of the type-body parse), so it produces **no** summary. Both
+classifiers happened to count it that way, so it is not the gap. What would settle the rest is
+reporting `item.connective` per colliding declaration — the predicate itself rather than a stand-in —
+which is the other lane's probe with its filename filter removed.
 
 **Pricing, both directions.** The 3 is one closure's live damage: a **floor**, not a ceiling. It
 refutes "the static census measures live damage"; it does not establish that live damage is small,

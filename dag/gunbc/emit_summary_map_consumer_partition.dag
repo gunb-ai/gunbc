@@ -624,11 +624,27 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // I conflated them. Bool is the specimen that survives: coproduct against coproduct, both
 // summary-producing, and in the live three.
 //
-// THE STATIC BOUND NARROWS ACCORDINGLY, and this is the number this carrier owns. Of the 116
-// whole-tree colliding names, only 79 have BOTH sides in a form that produces a summary at all
-// (record or coproduct); 13 have exactly one such side, so the collision is invisible to this map by
-// construction; 24 have neither. So 79 is the upper bound the map can even be exposed to, before any
-// closure-membership narrowing -- and the live closure measured above narrows it much further, to 3.
+// THE STATIC BOUND NARROWS, AND THE NARROWING IS ROBUST WHILE THE NUMBER IS NOT. Of the 116
+// whole-tree colliding names, the ones the map can be exposed to at all are those whose BOTH sides
+// are in a summary-producing form; the rest are invisible to it by construction. Two INDEPENDENT
+// textual classifiers were run over the same 116 and they disagree: 79 both-sides / 13 one-side / 24
+// neither here, against 83 / 11 / 22 from the lane that reproduced it. Both partitions sum to 116, so
+// neither dropped rows -- four names are classified differently, and the gap is exactly the width of
+// the proxy, because BOTH classifiers are textual stand-ins for a CONNECTIVE that neither read.
+// build_type_summary's real predicate is item.connective == NoConnective || Arrow || transport
+// present. So the honest statement is ROUGHLY 80, by two classifiers that disagree by four, and this
+// carrier does not quote 79 as exact.
+//
+// ONE PART OF IT IS SETTLED BY READING THE PRODUCER RATHER THAN GUESSING, and it is the shape that
+// was in dispute: a bodyless `type X` -- no brace, no equals -- is built by v1.compiler.parse with
+// connective: NoConnective and an inferred leaf type (the EatUnchanged arm of the type-body parse),
+// so it produces NO summary. Both classifiers happened to count it that way, so it is not the gap;
+// it is recorded because it was decidable from the parser and was being guessed at from the text.
+//
+// WHAT WOULD SETTLE THE REST is reporting item.connective per colliding declaration -- the predicate
+// itself instead of a stand-in for it. That probe exists in the other lane and needs only its
+// filename filter removed. Until it runs, the narrowing is a mechanism-level fact and the count is an
+// approximation, and this carrier says which is which.
 //
 // PRICING, IN BOTH DIRECTIONS. The 3 is ONE closure's live damage: it is a FLOOR, not a ceiling. It
 // refutes "the static census measures live damage"; it does not establish that live damage is small,
