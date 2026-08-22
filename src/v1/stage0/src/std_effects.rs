@@ -20,7 +20,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-compile_error!("trait_derive_emit: generic item 'EffectShape' has a field applying type 'std.effects.CreateCause', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'EffectShape' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EffectShape<K> {

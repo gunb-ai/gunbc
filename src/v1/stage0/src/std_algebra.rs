@@ -226,7 +226,6 @@ pub struct PointwisePower<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
-compile_error!("trait_derive_emit: generic item 'FreeSemigroup' has a field applying type 'std.algebra.FreeMonoid', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'FreeSemigroup' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreeSemigroup<T: Clone> {
     pub head: T,
