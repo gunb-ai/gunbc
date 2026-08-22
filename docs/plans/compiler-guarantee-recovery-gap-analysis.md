@@ -2379,6 +2379,14 @@ enforces end to end.
    deliberately not guessed: no instrument in the repository can currently answer it. The row
    records a population and a blindness, not a defect count.
 
+   NOT THE SAME AS THE #8865 FINDING, and the two are easy to conflate because both say "record
+   literal". This row is about a record literal standing as an ACTUAL at a direct call, whose
+   ARGUMENT type is never judged. gunbc#8865 is about a coproduct payload inhabiting a FIELD
+   declared as its parent coproduct *inside* a record literal (`CppHolder { subject: cpp_inner() }`,
+   accepted by typing, `PatternMatchFailure` at runtime) — a construction seam, in ordinary
+   non-`v2` modules, which neither this row nor `module_skips_direct_call_arg_check` reaches.
+   Two seams have now been measured; the number of seams is NOT known to be two (gunbc#8868).
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap

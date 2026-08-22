@@ -152,6 +152,16 @@ it is blind returns 0 on a planted defect too. This one does not.
   hide there and this measurement cannot see it.
 - **Nothing about the method/pipe seam**, constructor sealing, record-literal checking, return
   conformance, or field access. The exemption does not reach them and neither does this census.
+- **This is ONE SEAM, and it is not known how many there are.** A second seam has since been
+  measured independently (`gentle-eagle-360`, gunbc#8865): a coproduct PAYLOAD inhabits a field
+  declared as its parent COPRODUCT through a RECORD LITERAL — `CppHolder { subject: cpp_inner() }`
+  accepted by typing and dying at runtime as `PatternMatchFailure`, against a positive control
+  differing only by the wrap — **in an ordinary non-`v2` module**. A record literal in a field
+  position is not the direct-call seam, so the exemption neither explains that finding nor would
+  deleting the exemption close it. **Read this document's residue-zero as: the DIRECT-CALL seam
+  is clean once aliases are made transparent.** It says nothing about seam two, and nobody has
+  enumerated whether there is a seam three — the tracking row for that is gunbc#8868, which
+  states explicitly that *two* is what has been measured, not the count.
 - **`WouldDiagnose` is not promoted to `SourceDefect` anywhere in this document.** On this
   canary the promotion would have been wrong 115 times out of 115.
 - **Not comparable, by unit, to a guard-removal count.** A flip-off arm counts DIAGNOSTICS
@@ -201,29 +211,40 @@ The `judged` column is byte-identical across both arms (1,100 / 1,093 / 0 / 7), 
 expected signature of a shared non-`v2.*` sub-closure and a second, incidental check that the
 instrument is deterministic across runs.
 
-## The ceiling row — held open, deliberately unfilled
+## The ceiling row — UNTAKEN, and why nobody should wait for it
 
-A guard-removal arm (exemption rewritten to `false`, whole-tree compile-clean histogram,
-cold, two-arm on one tree) is the **upper bound** on this population and is owned by
-`gentle-fox-223`. **As of this document it has not landed**, so the row cites a pending
-measurement rather than a number of mine — filling it with anything derived here would be
-the fabricated-plausible-output failure, since a ceiling I compute myself is not a ceiling.
+A guard-removal arm (exemption rewritten to `false`, whole-tree compile-clean histogram, cold,
+two-arm on one tree) would be the **upper bound** on this population. **It was attempted twice
+by `gentle-fox-223` and it was not obtained.** This row records that as a failed measurement,
+not a pending one — an earlier revision of this document held the row open citing a
+forthcoming number, and a row waiting on something that has already failed twice is worse than
+a row that says plainly that no upper bound exists.
 
-Two things are known about it in advance and both are recorded so the eventual number is
-read rather than inherited:
+- **Attempt 1** — the remote dispatch was piped through `tail -5`; the runner streams its whole
+  log at the end, so the tail kept the cleanup footer and discarded both arms.
+- **Attempt 2, the informative one** — **ARM A, the unmodified baseline, was OOM-killed on the
+  runner** (`Killed`, rc 137) after `compile.frontend` and `compile.normalize`. ARM B then hit
+  the 45-minute remote cap with no output.
 
-- **It cannot partition.** That instrument has exactly two outcomes — a diagnostic appeared
-  or it did not — so every representation-gap false positive lands in it as though it were a
-  defect. It bounds; the adjudication above is what makes a bound mean anything.
+**The honest reading is that the instrument is wrong for this subject, not that the run was
+unlucky.** The arm that died carried *no modification at all*, so this is not the flip
+surfacing so many diagnostics that the process blew up. `compile_clean_diagnostic_histogram`
+carries its own whole-tree-resolve OOM warning, and the whole-tree closure is what was
+denominated over — the widest possible subject, chosen to bound a population that lives in
+`src/v2`. **The lesson for anyone re-attempting it: do not denominate over the whole tree for
+this.** A narrower closure — this document's per-entry shape, or a per-entry sweep — is what
+can actually be taken.
+
+Two properties of that instrument are worth keeping on record regardless, because they explain
+why its absence costs less than it appears to:
+
+- **It could not have partitioned.** It has exactly two outcomes — a diagnostic appeared or it
+  did not — so every representation-gap false positive would have landed in it as though it
+  were a defect. It bounds; the adjudication above is what makes a bound mean anything, and the
+  adjudication is the half that survived.
 - **It is a different unit.** It counts DIAGNOSTICS produced with the guard removed; this
-  counts RELATION ROWS classified `WouldDiagnose`. One relation can produce no diagnostic if
-  a sibling arm already refused the call. Same order of magnitude is the agreement to look
-  for; a wide divergence is first a unit question, not a finding.
-
-The falsifiable prediction sent to that lane before its run finished: its delta on this
-closure should be dominated by the same two alias families and led by `v2.compiler.eval`.
-A family in the delta that is **not** an alias pair would be the first evidence this
-document's zero is closure-dependent.
+  counts RELATION ROWS classified `WouldDiagnose`. One relation can produce no diagnostic if a
+  sibling arm already refused the call, so the two were never going to agree numerically.
 
 ## A population NEITHER arm covers, named because nobody owns it
 
@@ -244,7 +265,7 @@ for two questions that were open this morning:
    reclassifies out from under them. A reclassification would have moved work; its absence
    confirms the current allocation instead of leaving it assumed.
 2. **The exemption is hiding exactly the representation-gap class it was introduced for, and
-   nothing else.** Its stated justification was never measured against the live corpus. It is
+   nothing else** — at the direct-call seam, which is the only seam it gates. Its stated justification was never measured against the live corpus. It is
    now: 115 and 111 candidates, 100% transparent aliases, zero residue. There is no hidden
    population of real defects behind the guard on these closures — which also means the
    argument-type wall, once the alias relation is grounded, can be restored without a
