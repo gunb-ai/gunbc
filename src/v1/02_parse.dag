@@ -2878,7 +2878,7 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
       "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Present { value: r3.expr }, rate_limit: rate_limit, retry: retry)
       "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Present { value: r3.expr }, retry: retry)
       "retry" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Present { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      _ => ConfigResult { config: dummy_cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("service config has no field `", fname, "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`"), span: r.span) } }
     }
   }
 }
@@ -2971,7 +2971,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
       let field = make_field_init_node(name: fname, value: r3.expr, span: no_span(), name_span: no_span())
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
-      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport rest has no field `", fname, "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`"), span: r.span) } }
     }
   }
 }
@@ -3009,11 +3009,7 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
       let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
       parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Present { value: r3.expr })
     } else {
-      let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
-      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-      let e = eat(tokens: r3.tokens, expected: ExpectComma)
-      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
-      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: stdin)
+      TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport shell has no field `", fname, "`; the declared fields are `argv` and `stdin`"), span: r.span) } }
     }
   }
 }
@@ -3027,11 +3023,12 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
-    let bp = match base_path {
-      Present { value: e } => e
-      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
+    match base_path {
+      Present { value: bp } =>
+        TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
+      Absent =>
+        TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "transport file declares no `path:` field; a file transport must name the path it reads or writes", span: span) } }
     }
-    TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3047,7 +3044,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
     } else if fname == "verb" {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: Present { value: r3.expr })
     } else {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: verb)
+      TransportResult { transport: dummy, tokens: tokens, ctx: r3.ctx, err: Present { value: parse_error(msg: concat("transport file has no field `", fname, "`; the declared fields are `path` and `verb`"), span: r.span) } }
     }
   }
 }

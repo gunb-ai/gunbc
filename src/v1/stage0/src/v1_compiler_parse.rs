@@ -7509,7 +7509,12 @@ pub fn parse_config_fields(
                     continue;
                 }
                 _ => {
-                    continue;
+                    break Rc::new(ConfigResult {
+    config: dummy_cfg.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`".to_string()), r.span.clone())),
+});
                 }
             }
         }
@@ -7868,9 +7873,12 @@ pub fn parse_rest_fields(
                                                 continue;
                                             }
                                         } else {
-                                            {
-                                                continue;
-                                            }
+                                            break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("transport rest has no field `".to_string(), fname.clone()), "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`".to_string()), r.span.clone())),
+});
                                         }
                                     }
                                 }
@@ -8002,25 +8010,21 @@ pub fn parse_shell_fields(
                         continue;
                     }
                 } else {
-                    let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-                    if has_err(r3.err.clone()) {
-                        return Rc::new(TransportResult {
-                            transport: dummy.clone(),
-                            tokens: r3.tokens.clone(),
-                            ctx: r3.ctx.clone(),
-                            err: r3.err.clone(),
-                        });
-                    }
-                    let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
-                    tokens = match (*e.clone()).clone() {
-                        EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
-                    };
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport shell has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `argv` and `stdin`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }
@@ -8047,25 +8051,24 @@ pub fn parse_file_fields(
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
         {
-            let bp = match base_path.clone() {
-                Some(e) => e.clone(),
-                None => make_expr_node(
-                    Rc::new(ExprData::ExprLiteral {
-                        value: Rc::new(LiteralValue::LitStr {
-                            value: "".to_string(),
-                        }),
-                    }),
-                    Rc::new(vec![]),
-                    None,
-                    no_span(),
-                ),
-            };
-            break Rc::new(TransportResult {
-                transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: None,
-            });
+            match base_path.clone() {
+                Some(bp) => {
+                    break Rc::new(TransportResult {
+                        transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: None,
+                    });
+                }
+                None => {
+                    break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("transport file declares no `path:` field; a file transport must name the path it reads or writes".to_string(), span.clone())),
+});
+                }
+            }
         } else {
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -8118,11 +8121,21 @@ pub fn parse_file_fields(
                         continue;
                     }
                 } else {
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: tokens.clone(),
+                        ctx: r3.ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport file has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `path` and `verb`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }

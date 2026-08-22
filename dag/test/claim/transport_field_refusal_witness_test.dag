@@ -1,0 +1,89 @@
+module test.claim.transport_field_refusal_witness
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Regression control for the parser's transport/config field refusals (DESIGN §5: a failure arm
+// must refuse, never widen or fabricate). Three reflexes are pinned here, each with a positive
+// control beside it so a harness that always returned false could not fake the reds.
+//
+// The class this closes: parse_file_fields substituted an empty string literal for an omitted
+// `path:`, so `transport file \{ \}` and `transport file \{ path: "" \}` produced byte-identical
+// nodes and the rust realization emitted a write to "" with zero diagnostics. is_file_transport is
+// DEFINED as "carries a base_path", so no downstream arm could ever see the absence -- the
+// fabrication made the state unobservable, not merely unchecked. The refusal belongs at parse,
+// where an absent path is decidable from the tokens alone.
+//
+// The sibling reflex is the silent drop: every field-loop's fallthrough arm parsed an
+// unrecognized field and threw it away, so a mis-authored key was accepted and erased. That was
+// not hypothetical -- extdeps.cloud.gcp authored `transport file \{ op: READ, path: ... \}` and the
+// `op: READ` was swallowed whole, never resolved, never reported.
+//
+// base_url and endpoint deliberately do NOT refuse on absence and are not tested here: an omitted
+// rest `base_url` is the norm (the base comes from the service config), an empty base plus a
+// full-URL path template is the authored absolute-form idiom recorded in
+// extdeps.transports.rest, and `config \{ \}` is legal for services with no endpoint at all.
+// Their fabricated "" is a state-space conflation with its own lane, not a refusal this parser
+// can make from the tokens.
+
+data file_ok_source: String = "module tfr_file_ok\nservice Fs \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
+
+data file_no_path_source: String = "module tfr_file_no_path\nservice Fs \{\n  operation Write \{\n    input \{ content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ verb: \"write\" \}\n  \}\n\}\n"
+
+data file_unknown_source: String = "module tfr_file_unknown\nservice Fs \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ op: READ, path: \"\{path\}\" \}\n  \}\n\}\n"
+
+data shell_ok_source: String = "module tfr_shell_ok\nservice shell.Run \{\n  operation Exec \{\n    input \{ script: String \}\n    output \{ result: String \}\n    transport shell \{ argv: [\"sh\", \"-lc\", \"\{script\}\"] \}\n    mock_response \{\n      0 => \"done\" \"result\"\n    \}\n  \}\n\}\n"
+
+data shell_unknown_source: String = "module tfr_shell_unknown\nservice shell.Run \{\n  operation Exec \{\n    input \{ script: String \}\n    output \{ result: String \}\n    transport shell \{ argv: [\"sh\", \"-lc\", \"\{script\}\"], env: \"PATH\" \}\n    mock_response \{\n      0 => \"done\" \"result\"\n    \}\n  \}\n\}\n"
+
+data rest_ok_source: String = "module tfr_rest_ok\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\" \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+data rest_unknown_source: String = "module tfr_rest_unknown\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\", timeout: 5 \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+data config_unknown_source: String = "module tfr_config_unknown\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n    timeout: 5\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\" \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+fn compiles(source: String, out_path: String) -> Bool {
+  compile_dag_rust_emit_check(source, out_path, [], [])
+}
+
+// Positive controls -- the harness accepts well-formed sources, so the reds below are refusals of
+// the authored defect and not a check that is false for everything.
+test fn w_control_file_transport_with_path_compiles() -> Bool {
+  compiles(source: file_ok_source, out_path: "src/tfr_file_ok.rs")
+}
+
+test fn w_control_shell_transport_compiles() -> Bool {
+  compiles(source: shell_ok_source, out_path: "src/tfr_shell_ok.rs")
+}
+
+test fn w_control_rest_transport_compiles() -> Bool {
+  compiles(source: rest_ok_source, out_path: "src/tfr_rest_ok.rs")
+}
+
+// RED 1 -- an omitted `path:` refuses instead of fabricating "". Before the fix this compiled
+// clean and emitted a filesystem write against the empty path.
+test fn w_red_file_transport_without_path_refuses() -> Bool {
+  !compiles(source: file_no_path_source, out_path: "src/tfr_file_no_path.rs")
+}
+
+// RED 2 -- an unrecognized file-transport field refuses instead of being dropped. This is the
+// exact shape extdeps.cloud.gcp carried in tree.
+test fn w_red_file_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: file_unknown_source, out_path: "src/tfr_file_unknown.rs")
+}
+
+// RED 3 -- the same reflex in the shell field loop.
+test fn w_red_shell_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: shell_unknown_source, out_path: "src/tfr_shell_unknown.rs")
+}
+
+// RED 4 -- the same reflex in the rest field loop.
+test fn w_red_rest_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: rest_unknown_source, out_path: "src/tfr_rest_unknown.rs")
+}
+
+// RED 5 -- the same reflex in the service config field loop.
+test fn w_red_service_config_unknown_field_refuses() -> Bool {
+  !compiles(source: config_unknown_source, out_path: "src/tfr_config_unknown.rs")
+}
