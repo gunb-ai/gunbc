@@ -1,0 +1,49 @@
+module test.claim.emitter_variant_tag_reference_witness_test
+
+data emitter_variant_tag_reference_witness_note: String = "PERMANENT REGRESSION CONTROL for the variant-tag-reference lowering in v1.compiler.emit_rust (emit_discriminant_call_lowering / discriminant_zero_field_variant_tag).\n\nTHE DEFECT. `discriminant(v: X {})` is the corpus-wide idiom for naming a coproduct variant to obtain its stable tag identity; the frontend sanctions exactly this shape as a TAG REFERENCE rather than a construction (v1.compiler.infer zero_field_variant_tag_reference_frontier_note, operator Ruling 1a, 2026-07-15). The Rust lowering did not honour the same reading: it emitted the argument as an ordinary expression and matched over it, so a fieldless variant lowered to a valid empty struct literal and compiled, while a variant carrying required fields lowered to `Parent::X {}` -- unwritable in Rust, rustc E0063. Measured population at the repair: 162 sites of the idiom corpus-wide, of which 145 name a FIELDLESS variant (the six ModelCorePrimitiveFactAxis arms) and 17 name a FIELDED one (CanonicalOperation and TargetOperatorShape, all in src/v2/std/compilers/target_model.dag). The 17 were the visible tip; the class was the idiom, not the file.\n\nTHE REPAIR IS A FOLD, NOT A RENDERING FIX. The variant is named statically at every one of the 162 sites, so its discriminant is a compile-time constant. The lowering now folds to that name and emits NO construction at all -- which is why it is stated as a DESIGN section 2 point rather than a section 5 one: constructing an instance to read a name the source already wrote is a second representation of that name, and it is only for a FIELDED variant that the redundancy also happens to be unwritable. The 145 fieldless sites are repaired in the same motion; they were never broken, they were paying for a construction and a match to recover a constant.\n\nWHAT THESE ROWS DO AND DO NOT ESTABLISH. Row one is the discriminating RED: it is red on the unrepaired emitter (which emits `Fielded {` and no folded literal) and green after. Row two is the negative control that keeps the fold from being satisfiable by folding EVERY discriminant call: a discriminant over a runtime VALUE has no static tag and must still lower to a match over the scrutinee, so it requires the match and forbids a folded literal. Without row two a lowering that answered every discriminant with the first variant name it could find would pass row one.\n\nNeither row observes the 162 production sites; they exercise the lowering through a controlled fixture, which is what makes them a control rather than a snapshot of the corpus."
+
+// THE DISCRIMINATING RED, and BOTH ARMS ARE MEASURED rather than one measured and one
+// assumed. The forbidden spelling is the CONSTRUCTOR WITH EMPTY BRACES, and it is that
+// narrow for a reason established by reading the emitted bytes under each emitter:
+//
+//   pre-repair   pub fn tag_of_fielded() -> String {
+//                    (match &*(Rc::new(Shape::Fielded {})) {
+//                        Shape::Bare => "Bare".to_string(),
+//                        Shape::Fielded { .. } => "Fielded".to_string(),
+//                    })
+//                }
+//   post-repair  pub fn tag_of_fielded() -> String {
+//                    "Fielded".to_string()
+//                }
+//
+// An earlier draft of this row forbade `Shape::Fielded` anywhere in the module and was
+// UNSATISFIABLE BY ANY EMITTER: the module also carries Shape's synthesised accessor, whose
+// arm `Shape::Fielded { token: __val, .. }` is correct output. That draft returned false
+// before AND after the repair, which is not a red -- it is a row that cannot pass. The
+// defect was the row's SCOPE: a global must-not-contain asserts about every byte of the
+// module while the claim is about one construction site, and correct output elsewhere lives
+// in that gap. Empty braces are the narrowest spelling that only the construction produces.
+//
+// The must-contain half is deliberately NOT discriminating on its own -- the pre-repair
+// match arm also produced `"Fielded".to_string()`, as the arm's answer rather than as the
+// whole lowering. It is asserted so the row cannot pass by emitting nothing at all.
+test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module vtag\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Fielded { token: String }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: Fielded {})\n}\n",
+    "src/vtag.rs",
+    ["\"Fielded\".to_string()"],
+    ["Shape::Fielded {}"]
+  )
+}
+
+// THE NEGATIVE CONTROL. A discriminant over a runtime value has no static tag, so the
+// match over the scrutinee must survive. A fold that fired here would be answering a
+// question the source does not decide.
+test fn discriminant_of_a_value_still_lowers_to_a_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module vval\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Other\n\nfn tag_of(s: Shape) -> String {\n  discriminant(v: s)\n}\n",
+    "src/vval.rs",
+    ["match", "Shape::Bare =>"],
+    []
+  )
+}
