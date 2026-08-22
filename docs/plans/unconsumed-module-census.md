@@ -19,16 +19,16 @@ not residue.
 | additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 79 | DistinctModuleCount |
 | reachable from those roots through imports **and qualified calls** | 3518 | DistinctModuleCount |
 | **unreachable on imports, qualified calls, entry rows and seed mirrors** | **298** | DistinctModuleCount |
-| — of those, **consumed by bare-symbol whole-pool reference** (§2 defects 6 and 7, re-scored 2026-08-22) | **93** | DistinctModuleCount |
-| **unreachable after the re-score — the population as it now stands** | **205** | DistinctModuleCount |
+| — of those, **consumed by bare-symbol whole-pool reference** (§2 defects 6 and 7, re-scored 2026-08-22) | **92** | DistinctModuleCount |
+| **unreachable after the re-score — the population as it now stands** | **206** | DistinctModuleCount |
 
-**The 298 is an over-count by at least 93 modules — roughly 31% — and the correction is
+**The 298 is an over-count by at least 92 modules — roughly 31% — and the correction is
 concentrated in the batch this document proposed to delete first.** The number is stated in
 the headline table rather than a footnote because the headline number is the one anyone
-acts on. 205 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
+acts on. 206 is itself still `LowerBoundOnly` (§6) for the same reason 298 was: every
 undecoded surface can only lower it further. See §2 defect 6 for the method, the buckets,
 and what the re-score deliberately does *not* claim. **The actionable residue list is 117,
-not 205** — see §4h, and note that 117 is what a deletion lane consumes, while 205 is the
+not 206** — see §4h, and note that 117 is what a deletion lane consumes, while 206 is the
 unresolved population.
 
 Every number in this document carries its unit, and two units are deliberately never
@@ -230,7 +230,8 @@ class that was **observed, not anticipated**:
 **Each filter is reported with what it cost, because the intermediate values are what let
 a reader judge them:** the raw pass scored **98**, excluding qualified-tail and
 field/label identifiers took it to **93**, and the character-scanner string strip took it
-to **91**; defect 7's variant extraction and its three corrections then took it to **93**.
+to **91**; defect 7's variant extraction and its three corrections took it to **93**, and
+the (e)/(f) corrections below took it to **92**.
 A bare final number would hide the fact that no single filter dominates — which is itself
 evidence that none of them is a fudge factor tuned to a target.
 
@@ -240,9 +241,9 @@ symbol declared by several does not, and is never counted as consumption here.
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| **CONSUMED-DECISIVE** | **93** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
+| **CONSUMED-DECISIVE** | **92** | a uniquely-owned symbol named bare by a **reachable** `.dag` file. Consumed. |
 | DEAD-CONSUMER-ONLY | 34 | named bare only by other modules *inside* the 298 — the island shape of §4a, still residue. **Deletes as a group or not at all**, see below |
-| AMBIGUOUS-SHARED-ONLY | 87 | named bare only via symbols several modules declare; no attribution possible |
+| AMBIGUOUS-SHARED-ONLY | 88 | named bare only via symbols several modules declare; no attribution possible |
 | STILL-UNCONSUMED | 83 | no bare reference on any surface |
 | MISSING-FILE | 1 | appendix row whose path no longer exists |
 
@@ -258,7 +259,7 @@ the six import the module or qualify the name.**
 | disposition (§3) | population | consumed via defect 6 |
 | --- | --- | --- |
 | RESIDUE-EMPTY | 8 | **0** |
-| RESIDUE-UNMENTIONED | 67 | **13** |
+| RESIDUE-UNMENTIONED | 67 | **12** |
 | RESIDUE-DOC-ONLY | 28 | 12 |
 | FROZEN-PENDING-RE-ADD | 13 | 10 |
 | PROSE-NAMED | 79 | 36 |
@@ -268,7 +269,7 @@ the six import the module or qualify the name.**
 residue"* and §5 sequences it as batch B2 on the grounds that it is *"least exposed to the
 blind spots, because a module named nowhere in any surface is not waiting on a surface to
 be decoded."* That reasoning was sound and its premise was false: the surface it was
-waiting on had not been decoded yet, and **13 of those 67 are consumed by live callers**.
+waiting on had not been decoded yet, and **12 of those 67 are consumed by live callers**.
 The batch selected *because* it was the safest is the one carrying the most concentrated
 risk of deleting working code. RESIDUE-EMPTY at 0 of 8 is the control that shows the
 instrument is not simply finding consumption everywhere — a module declaring no symbols
@@ -281,7 +282,7 @@ now*, by live witnesses — `tools.infer_semantics_witness_transport` is called 
 before them, the anchor was real and the conclusion was still wrong, because the instrument
 had not read the surface that settles it.
 
-**The ambiguity is a finding, not only instrument noise.** 87 modules are unresolvable
+**The ambiguity is a finding, not only instrument noise.** 88 modules are unresolvable
 because their symbols are not uniquely owned, and the distribution is not uniform:
 `extdeps_external_authority_anchor` is declared by **102 modules** (it is the boilerplate
 citation anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under
@@ -290,14 +291,14 @@ measures this class and reports it every run** — the floor prints
 `[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040 worst_scope=125`,
 so 72% of scopes carry at least one ambiguous bare name. That line is the corroborating
 instrument for this bucket, and it is independent of this census. What the ambiguity means
-for *this* document is narrow and worth stating plainly: those 87 rows are **unresolved,
+for *this* document is narrow and worth stating plainly: those 88 rows are **unresolved,
 not consumed** — they stay in the population, and no deletion should read their ambiguity
 as either evidence.
 
-**What this re-score does NOT claim.** Not that 205 is the true count: `DEAD-CONSUMER-ONLY`
+**What this re-score does NOT claim.** Not that 206 is the true count: `DEAD-CONSUMER-ONLY`
 and `AMBIGUOUS-SHARED-ONLY` are both unresolved rather than settled, the appendix rows were
 not individually re-read, and §6's `LowerBoundOnly` standing is unchanged and now applies to
-205. It claims one thing, and it is enough to block a deletion: **at least 93 of the 298
+206. It claims one thing, and it is enough to block a deletion: **at least 92 of the 298
 have a live caller.**
 
 7. **NEW — coproduct VARIANT CONSTRUCTORS are declared symbols, and declaration extraction
@@ -309,7 +310,7 @@ have a live caller.**
    being consumed. **Found by an independent instrument — the required floor, refusing a
    deletion with `unresolved type MergeReadinessVerdict` and `8x undefined variable Ready`
    — not by reasoning about the census.** Re-scoring with variants moves this document's
-   population: CONSUMED-DECISIVE 91 → **93**, STILL-UNCONSUMED 96 → **83**, and the §4h
+   population: CONSUMED-DECISIVE 91 → **92**, STILL-UNCONSUMED 96 → **83**, and the §4h
    residue list 131 → **117**.
 
    *Three further defects were found inside the fix itself, all by hand-verifying rows
@@ -343,6 +344,25 @@ have a live caller.**
    DEAD-CONSUMER-ONLY) — the bucket where a false residue would be dangerous contains none
    of them. Mechanism real, no victim here; a lane extending this instrument to another
    population must credit them.
+
+   **(f) A generic type PARAMETER is a binder, not a reference — one false consumption
+   claim, found while implementing (e).** `type GraphInvariant<Projection> { … }` binds
+   `Projection`; it does not reference `v2.std.projection`, which was that module's *only*
+   link and had scored it CONSUMED-DECISIVE. Excluding the parameter list of a generic
+   declaration moves it to AMBIGUOUS and takes CONSUMED-DECISIVE 93 → **92**. Note the
+   symmetry with defect 7's own bug (a): a generic header defeated *declaration*
+   extraction there and inflates *reference* extraction here, so the same construct broke
+   both halves of the instrument in opposite directions.
+
+   **(e) was implemented, and implementing it confirmed the zero rather than resting on
+   the measurement.** Crediting `operation`/`resource` names moved **zero** rows — the
+   earlier count-based prediction held. A first cut also credited the service's own short
+   name (`service gcp.Metadata` → `Metadata`), which produced a **false** consumption
+   claim for `extdeps.cloud.gcp.sts` via a generic parameter in a consumer, and was
+   withdrawn: a service's short name is not a symbol consumers name bare, and there is no
+   evidence in this corpus that it is. *Both of the wrong answers in this paragraph came
+   from the fix, not the defect* — which is now the pattern rather than the exception, and
+   the reason every row that moves is read before a number is published.
 
    **Two non-equivalent fixes for (c), worth distinguishing rather than reconciling.**
    Subtracting declaration-keyword names from the *consumer's* reference set (this
@@ -575,6 +595,51 @@ census.
   establishes — and it is the reason the claim survived unchallenged: nothing could refuse
   it. The class is in §2's common cause, one sighting of three.
 
+**h. The list the cleanup directive actually points at is 117, not 298 — and two rows in
+it are not what their names say.** Combining the re-score's buckets: **83 STILL-UNCONSUMED
+(no bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside*
+the population — §4a's island shape, which deletes as a group or not at all) = 117 modules
+that are residue on all three decoded surfaces.** That is the defensible starting point for
+the operator's *"clean up anything without consumers"* arm. The other 181 are not: 92 have
+live callers, and 88 are unresolvable at identity grain and need a per-row read before
+anything touches them. **The list was 131 before defect 7** — and the 14 that left it did
+*not* all become consumed: 2 did, and the rest moved to AMBIGUOUS, which means they are no
+longer provably unconsumed rather than proven consumed. That distinction is the whole
+reason the ambiguous bucket exists.
+
+Two observations from reading that population, neither of which the disposition classes
+capture:
+
+- **`v2.test.*` is a name, not an enrolment, and 23 of the 117 are the gap.** Floor
+  discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
+  discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
+  `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
+  `test fn`.** Most are ordinary support modules consumed by real witnesses; the 22 in this
+  population are the ones consumed by nothing, and their names and paths disagree —
+  `v2.test.language_model.go_r1` lives at `src/v2/extdeps/language_model/go_r1.dag`,
+  `v2.test.algebra_laws.zip_eq_list_equality` at `src/v2/std/algebra_laws/`. This subsumes
+  and sharpens finding **f**: those language-model rungs are not merely unclimbed, they are
+  named as tests, declare no test, sit outside any test path, and execute nowhere. **A name
+  that implies enrolment while the mechanism keys on something else is the more useful form
+  of that finding** — the ladder metaphor invites "climb it", and the measurement says
+  "nothing here was ever wired to run."
+**The 35 island rows carry a constraint that is not a preference, and it belongs on the
+row rather than in a report.** A per-module verdict over a mutually-referencing island is
+incoherent: **each member looks consumed until its neighbours go**, so scoring them one at
+a time returns "consumed" for every one of them and the island never becomes eligible.
+They delete as a group or not at all, and the group is the connected component, not the
+directory. Whoever takes the deletion lane will otherwise meet this as a surprising
+refusal partway through a batch — which is the census working, but expensively.
+
+- **`gunbc.spark.provisioning`'s appendix row no longer resolves** — the path it names does
+  not exist in the tree. It was one of the two rows §5 excluded from every batch as
+  `fierce-lynx-647`'s area. The deletion was deliberate — ruled by the lane that
+  commissioned this census, on the grounds that the model predated knowledge of the real
+  procedure — so the row, not the deletion, is the defect. Recorded rather than
+  silently dropped, because an appendix row pointing at nothing is the same staleness class
+  this document polices elsewhere, and because it is a receipt that the population has a
+  clock on it.
+
 **A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree of this
 repo can be **shallow-grafted** — the 2026-08-22 run found its clone rooted at a single
 4608-file import commit dated six days earlier, so `git log <file>` reported that graft
@@ -594,7 +659,7 @@ with `failed=` read and PASS counted against the roster.
 2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67). SUPERSEDED BY THE DEFECT-6
    RE-SCORE — do not run this batch as written.** The rationale was that an unmentioned
    module has no citation to repair and is least exposed to a blind spot; the re-score
-   (§2) found **13 of the 67 consumed by live bare-symbol callers**, so this batch would
+   (§2) found **12 of the 67 consumed by live bare-symbol callers**, so this batch would
    delete working code, and the ordering argument that put it first is exactly what made
    that risk invisible. It becomes eligible again only over the rows that survive the
    re-score, and B1 replaces it as the batch to establish the mechanics on (RESIDUE-EMPTY
@@ -640,7 +705,7 @@ This standing is why §5's batches are ordered as they are — and the 2026-08-2
 the case study for why the standing exists rather than a caveat about it. The original
 ordering argued RESIDUE-UNMENTIONED first because *"a module named nowhere in any surface
 is not waiting on a surface to be decoded."* The argument was valid; the premise was not,
-because a surface remained undecoded (§2, defect 6) and 13 of that batch turned out to have
+because a surface remained undecoded (§2, defect 6) and 12 of that batch turned out to have
 live callers. **A `LowerBoundOnly` standing is not compatible with treating any batch as
 blind-spot-free**, and the deletion order must follow from the standing rather than from a
 class name: B1 (RESIDUE-EMPTY) leads because a module declaring no symbols is unreachable by
