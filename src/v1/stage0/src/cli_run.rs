@@ -39523,6 +39523,12 @@ pub const CORPUS_JUDGMENT_PLANTED_MODULE: &str = "corpus_type_judgment_planted_c
 ///
 /// It is injected into the assembled subject rather than written to the tree, so the measurement
 /// leaves no artifact and cannot be forgotten in a working copy.
+///
+/// ITS NAMES ARE CHECKED-UNIQUE, not assumed so. The plant joins a FLAT namespace, so a name it
+/// declares that the corpus also declares would make the plant perturb the very population it
+/// vouches for — a control that changes the measurement is not a control. Measured 2026-08-22:
+/// `planted_caller` and `corpus_type_judgment_absent_callee_zzz` occur zero times across `dag/`
+/// and `src/v2/`. Keep any name added here equally distinctive.
 fn corpus_judgment_planted_source() -> Rc<v1_compiler_compile::SourceFile> {
     Rc::new(v1_compiler_compile::SourceFile {
         path: format!("<planted>/{CORPUS_JUDGMENT_PLANTED_MODULE}.dag"),
