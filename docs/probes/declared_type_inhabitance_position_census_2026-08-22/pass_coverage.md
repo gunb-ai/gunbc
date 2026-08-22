@@ -122,14 +122,35 @@ be larger than six rows and reported the check coming back empty.)
   arm measured so far accepts: exit-entry status pattern, service-input field default, argv element,
   and now a transport property value.
 
-  That is consistent with a single explanation — **no expression inside a `service` declaration is
-  inferred at all** — which would make four apparent members ONE fact wearing four spellings, and
-  would also contradict the table's `walked` row for transport properties. It is not yet
-  established: the discriminating pair is a RESOLVE-level refusal inside a service (an unresolved
-  type in `input`) against an INFER-level one (a type error in a property value), with the same
-  type error in a function body as the positive control. Until that returns, all four service rows
-  are FLAGGED, none is counted, and the `walked` classification for transport properties is
-  UNCONFIRMED rather than confirmed.
+  **ESTABLISHED, WITH EVERY CONTROL BEHAVING: A `service` DECLARATION IS RESOLVED AND NOT
+  INFERRED.**
+
+  | fixture | verdict |
+  |---|---|
+  | `takes_string(s: 1)` in a FUNCTION — the instrument's positive control | REFUSED, `type mismatch: expected 'Primitive(String)', got 'Primitive(Int)'` |
+  | unresolved type inside a service `input { arg: NoSuchTypeZzz }` | REFUSED, `unresolved type 'NoSuchTypeZzz'` |
+  | `transport shell { …, stdin: 1 }` inside a service | **ACCEPTED** |
+  | ordinary service | ACCEPTED |
+
+  The second arm proves RESOLVE reaches inside a service; the first proves inference refuses this
+  shape in a function; the third accepts it inside a service. Read with the earlier
+  `stdin: nosuchname_zzz` ACCEPT — and an UNDEFINED NAME needs no declared type to refuse, which is
+  what makes that arm the load-bearing one — the conclusion is that **inference does not run over a
+  service declaration's expressions.**
+
+  Stated caveat on the `stdin: 1` arm alone: whether a transport `stdin` property carries a declared
+  `String` type is not established here, so that arm by itself could be accepted because nothing was
+  expected rather than because nothing judged. The undefined-name arm does not have that weakness,
+  and it is the one the conclusion rests on.
+
+  **CONSEQUENCE FOR THE COUNT, AND IT SHRINKS IT.** The four service-shaped rows — exit-entry status
+  pattern, service-input field default, transport `children` (argv), transport `properties` — are
+  not four members. They are four spellings of one fact about `service`. Counting them separately
+  would have inflated the class exactly as a refusal count inflates the map-key cell. What survives
+  as INDEPENDENT members, each measured outside any service, is two: a **parameter default** (plain
+  `fn`) and a **field default** (plain `type`). The remaining flagged rows — item `properties` other
+  than `svc_auth_source`, and `uses` resource config args — sit on FUNCTION items, so the service
+  fact does not reach them and they stay flagged.
 
 - **Flagged by structure, not yet confirmed**: non-`svc_auth_source` item properties, `uses` config
   args, service exit-entry status patterns, transport children. None is counted as a member here.
