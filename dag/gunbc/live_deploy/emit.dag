@@ -87,11 +87,16 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
   membership_effects,
 }
+import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
+  deploy_stage_dir_var,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
   install_directory_command,
+  rm_force_command,
+  rm_empty_directory_command,
+  rm_force_recursive_command,
   install_directory_owned_command,
   install_file_owned_command,
   dpkg_status_command,
@@ -103,7 +108,7 @@ import gunbc.live_deploy.operations {
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
-  Do, If, Run,
+  Do, If, Run, Comment, Let, ExprCmdSubst,
   FailFast, ExitZero, Not, DiscardAll
 }
 import v2.std.collection { Absent, Present }
@@ -227,6 +232,39 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
   }
 }
 
+// The staging directory is a BINDING, not a command whose text happens to assign. PipelineStep
+// already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
+// three modeled parts instead of one quoted line an author assembled — and the variable name is
+// the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
+fn deploy_stage_directory_let_step() -> PipelineStep {
+  Let {
+    name: deploy_stage_dir_var,
+    value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
+  }
+}
+
+// THE TRAP LINE IS STILL A STRING, AND IT IS THE ONLY REMAINING ONE IN EITHER PREAMBLE.
+// v2.extdeps.languages.bash_build has no trap node and PipelineStep has no trap variant, so
+// there is nothing to build it from. It is left as authored text rather than approximated:
+// every nearby shape (a Do-run of `trap`, a subshell) either re-assembles the same quoting by
+// hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
+// PR's scope; naming the gap here is what keeps the next reader from reaching for the
+// approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
+data deploy_stage_trap_is_unmodelled_note: String = "trap 'rm -rf \"$_gunbc_stage\"' EXIT has no grammar row in v2.extdeps.languages.bash_build and no PipelineStep variant. It stays authored text until one exists."
+
+// The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
+// than a sentence assembled by concat, so a host identity carrying a space cannot split
+// `host=` from its value and turn one field into two.
+fn deploy_receipt_command(host: NonEmptyStr, fold: String) -> String {
+  shell_command_text_of_argv(argv: [
+    "echo",
+    "live-deploy-receipt",
+    concat("host=", host as String),
+    concat("fold=", fold),
+    "verdict=converged",
+  ])
+}
+
 fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
@@ -240,7 +278,7 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
 
 data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
-data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit is written through a heredoc whose delimiter is QUOTED (<<'GUNBC_UNIT_EOF'), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
+data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter heredoc when this was found, and the property that mattered survived the change), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
 
 type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: CommitSha }
@@ -572,16 +610,14 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q ':<port>'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join(
-    concat(["sudo", "-n", "tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-    " ",
+  deploy_raw(command: shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
 fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join(
-    concat(["sudo", "-n", "tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-    " ",
+  deploy_raw(command: shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
@@ -779,48 +815,53 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     SystemdUnit => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
-        deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
+        deploy_raw(command: rm_force_command(paths: [art.path as String])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
     BeltTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: join([
-          "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
-        ], "")),
+        deploy_raw(command: rm_force_command(paths: [
+          art.path as String,
+          deployment_belt_service_unit_path(names: spec.names) as String,
+        ])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
     FleetConvergeTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: join([
-          "sudo -n rm -f ", art.path as String, " ", deployment_fleet_converge_service_unit_path(names: spec.names) as String,
-        ], "")),
+        deploy_raw(command: rm_force_command(paths: [
+          art.path as String,
+          deployment_fleet_converge_service_unit_path(names: spec.names) as String,
+        ])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
     DeployedTreeRemoteUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
+        deploy_raw(command: rm_force_command(paths: [art.path as String])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
     DispatchWorktreeRoot => [
-      deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
+      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
     ]
     AttemptStateRoot => [
-      deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
+      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
     ]
     ServeBinary => [
-      deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
+      deploy_raw(command: rm_force_command(paths: [art.path as String])),
     ]
     GunbcSourceTree => [
-      deploy_raw(command: concat("sudo -n rm -f ", concat(tree_sync_unit_path(names: spec.names) as String, concat(" ", spec.names.tree_sync_env_path as String)))),
+      deploy_raw(command: rm_force_command(paths: [
+        tree_sync_unit_path(names: spec.names) as String,
+        spec.names.tree_sync_env_path as String,
+      ])),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: concat("sudo -n rm -rf ", art.path as String)),
+      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
     ]
   }
 }
@@ -865,11 +906,11 @@ fn apply_intent_from_effects(
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
-        deploy_raw(command: concat("# GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
-        deploy_raw(command: "# Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal."),
-        deploy_raw(command: "# Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service."),
-        deploy_raw(command: "# Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation."),
-        deploy_raw(command: "_gunbc_stage=\"$(mktemp -d)\""),
+        Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+        Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
+        Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
+        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
+        deploy_stage_directory_let_step(),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
       concat(
@@ -879,7 +920,7 @@ fn apply_intent_from_effects(
           concat(
             flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec, revision: revision)),
             [
-              deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
+              deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply")),
             ]
           )
         )
@@ -920,13 +961,13 @@ fn retract_intent_from_effects(
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
-        deploy_raw(command: concat("# GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
-        deploy_raw(command: "# owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged"),
-        deploy_raw(command: "# Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes"),
-        deploy_raw(command: "# /etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)."),
-        deploy_raw(command: "# Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm,"),
-        deploy_raw(command: "# empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall."),
-        deploy_raw(command: "_gunbc_stage=\"$(mktemp -d)\""),
+        Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+        Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
+        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
+        Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
+        Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
+        Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
+        deploy_stage_directory_let_step(),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
       concat(
@@ -937,7 +978,7 @@ fn retract_intent_from_effects(
             e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionNotInstalled),
           ),
           [
-            deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
+            deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract")),
           ]
         )
       )

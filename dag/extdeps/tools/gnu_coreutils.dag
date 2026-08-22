@@ -17,7 +17,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
-data rm_force_recursive_flags: NonEmptyStr = "-rf"
 
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
@@ -83,6 +82,38 @@ fn coreutils_install_directory_owned_argv(
     owner as String,
     coreutils_install_group_flag as String,
     group as String,
+    path,
+  ]
+}
+
+// rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
+// repository and the distinction between them is load-bearing, not stylistic: -f removes a file
+// and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY
+// directory and REFUSES a non-empty one, which is a fail-closed precondition rather than a
+// weaker rm -r; -rf removes a tree. Choosing -rf where -d was meant turns a loud refusal into
+// silent destruction, so the three carry separate names rather than a flags parameter a caller
+// fills in.
+data coreutils_rm_binary_name: NonEmptyStr = "rm"
+data coreutils_rm_force_flag: NonEmptyStr = "-f"
+data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"
+data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
+
+fn coreutils_rm_force_argv(paths: List<String>) -> List<String> {
+  concat([coreutils_rm_binary_name as String, coreutils_rm_force_flag as String], paths)
+}
+
+fn coreutils_rm_empty_directory_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_empty_directory_flag as String,
+    path,
+  ]
+}
+
+fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_force_recursive_flags as String,
     path,
   ]
 }
