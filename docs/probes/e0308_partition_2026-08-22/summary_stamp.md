@@ -14,13 +14,13 @@
 
 ## Clusters (site grain, this subject only) — every one a CANDIDATE root
 
-Repartitioned 2026-08-22 after a keying defect found by review; precedence between delta-keyed,
+Repartitioned 2026-08-22 after a keying defect found by review; R1's four delta values are published as four, because a two-bucket rollup erases the element arm and element depth is a separate producer root; precedence between delta-keyed,
 carrier-keyed and context-keyed arms is now declared in the classifier and in the receipt's
 *keying ruling*, not left to source order.
 
 | cluster | sites | % |
 |---|---:|---:|
-| R1 bare↔`Rc` wrap (19 outer / 15 type-argument depth) | 34 | 22.1% |
+| R1 bare↔`Rc` wrap (17 outer / 10 type-argument / 5 element / 2 outer-of-container) | 34 | 22.1% |
 | R2 Optional surface fork | 24 | 15.6% |
 | D alias arity / generic argument count | 16 | 10.4% |
 | T3 collection carrier fork | 14 | 9.1% |
