@@ -930,8 +930,8 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
 }
 
 // Moved here from the Rust backend by the transport-binding consolidation: the
-// binding reads the declared output projection target-neutrally, so these two
-// readers are shared rather than forked per target (DESIGN section 3).
+// binding reads each declared output field's `from` key target-neutrally, so
+// this reader is shared rather than forked per target (DESIGN section 3).
 fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
     Present { value: prop } => match field_init_node_value(n: prop).expr_data {
@@ -940,16 +940,6 @@ fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String
     }
     Absent => none
   }
-}
-
-fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = is_product_type(n: n)
-  if is_product && n.ident_span == none && n.children |> count == 1 {
-    match n.children |> first {
-      Present { value: field_node } => resolved_type(n: field_node)
-      Absent => n
-    }
-  } else { n }
 }
 
 
@@ -1146,17 +1136,22 @@ fn bind_file_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
-// A file operation whose declared output is not a product of `from`-keyed
-// fields has no projection to build, and refuses rather than defaulting to a
-// channel: picking one here is precisely the fabrication #8858 deleted.
+// Reads the declared output projection off the operation's resolved type
+// DIRECTLY, without unwrapping a single-field product first. That distinction is
+// load-bearing and cost a red witness to find: `unwrap_single_field_product`
+// collapses a one-field product to the field's own type, and a scalar is not a
+// product, so every `from` key on a single-field output became invisible and the
+// operation refused as if it had declared no channel at all. `emit_shell_return`
+// can unwrap because it falls back to the "stdout" channel by default; a file
+// operation has no defensible default channel to fall back TO, which is the
+// whole reason this refuses rather than guessing.
 //
-// Mirrors emit_shell_return's shape reading exactly -- a single-field product
-// projects one expression, a multi-field product projects a tuple in
-// declaration order -- so the file and shell projections read the declared
-// output through ONE rule rather than two that agree by coincidence.
+// A file operation whose declared output is not an anonymous product of
+// `from`-keyed fields refuses rather than defaulting to a channel: picking one
+// here is precisely the fabrication #8858 deleted.
 fn bind_file_result_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileResultFieldsResult {
-  let effective = unwrap_single_field_product(n: resolved_type(n: op_node))
-  let children = if is_product_type(n: effective) { effective.children } else { [] }
+  let rt = resolved_type(n: op_node)
+  let children = if is_product_type(n: rt) && rt.ident_span == none { rt.children } else { [] }
   if children |> count == 0 {
     FileFieldsUnbound { cause: FileTransportUndeclaredResultChannel }
   } else {

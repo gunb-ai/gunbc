@@ -66,7 +66,7 @@ pub use crate::v1_compiler_emit::{
     module_emit_scope, order_typed_call_args, render_node_type, render_tuple_parts,
     rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_ctors, service_field_decls, tco_reassign_core, transport_binding_refusal_reason,
-    typed_named_arg_matches, unwrap_single_field_product,
+    typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -30668,6 +30668,22 @@ pub fn emit_shell_argv_element(
             }
         }
         _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, source_indices.clone()),
+    }
+}
+
+pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+    {
+        let is_product = is_product_type(n.clone());
+        if ((is_product.clone() && (n.ident_span.clone() == None))
+            && ((n.children.clone().len() as i64) == 1))
+        {
+            match n.children.clone().first().cloned() {
+                Some(field_node) => resolved_type(field_node.clone()),
+                None => n.clone(),
+            }
+        } else {
+            n.clone()
+        }
     }
 }
 

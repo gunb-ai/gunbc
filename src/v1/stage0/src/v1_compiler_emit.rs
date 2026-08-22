@@ -2239,22 +2239,6 @@ pub fn child_from_key(
     }
 }
 
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_product = is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => resolved_type(field_node.clone()),
-                None => n.clone(),
-            }
-        } else {
-            n.clone()
-        }
-    }
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -2548,9 +2532,9 @@ pub fn bind_file_result_fields(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FileResultFieldsResult> {
     {
-        let effective = unwrap_single_field_product(resolved_type(op_node.clone()));
-        let children = if is_product_type(effective.clone()) {
-            effective.children.clone()
+        let rt = resolved_type(op_node.clone());
+        let children = if (is_product_type(rt.clone()) && (rt.ident_span.clone() == None)) {
+            rt.children.clone()
         } else {
             Rc::new(vec![])
         };
