@@ -22,7 +22,7 @@ import v2.workflow.floor_terminal_ledger {
 }
 import v2.workflow.floor_terminal_ledger_wire {
   SnapshotAdmitted,
-  SnapshotRefused,
+  SnapshotWireUnrecognized,
   admit_repository_snapshot_wire,
   LedgerRead,
   LedgerReadbackRow,
@@ -54,7 +54,7 @@ import v2.workflow.required_floor { SafetyInterrupted }
 fn fixture_snapshot(hex: String) -> RepositorySnapshot {
   match admit_repository_snapshot_wire(wire: hex) {
     SnapshotAdmitted { snapshot: s } => s
-    SnapshotRefused { offending: _ } => UnpublishedWorkingTree
+    SnapshotWireUnrecognized { offending: _ } => UnpublishedWorkingTree
   }
 }
 

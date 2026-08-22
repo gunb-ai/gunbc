@@ -132,14 +132,14 @@ fn render_repository_snapshot(snapshot: RepositorySnapshot) -> String {
 
 type RepositorySnapshotAdmission
   = SnapshotAdmitted { snapshot: RepositorySnapshot }
-  | SnapshotRefused { offending: String }
+  | SnapshotWireUnrecognized { offending: String }
 
 fn admit_repository_snapshot_wire(wire: String) -> RepositorySnapshotAdmission {
   if wire == ledger_unpublished_snapshot_wire {
     SnapshotAdmitted { snapshot: UnpublishedWorkingTree }
   } else {
     match git_object_id_from_untagged_hex(hex: wire) {
-      Absent => SnapshotRefused { offending: wire }
+      Absent => SnapshotWireUnrecognized { offending: wire }
       Present { value: oid } =>
         SnapshotAdmitted { snapshot: PublishedCommit { commit: oid } }
     }
@@ -806,7 +806,7 @@ fn render_ledger_from_seed(
     SeedRowAdmitted { row: _ } => []
   })
   match snapshot_admission {
-    SnapshotRefused { offending: offending } =>
+    SnapshotWireUnrecognized { offending: offending } =>
       LedgerUnrenderable {
         reason: "seed-repository-snapshot-unrecognized",
         offending: offending,
