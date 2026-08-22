@@ -14,6 +14,32 @@ type DeclarationRef {
 
 data decl_ref_constructor_authority_note: String = "The constructors live HERE, beside the type they construct — single authority (DESIGN section 3). Two parallel lanes each minted an identical fn decl_ref/decl_field_ref pair (std.primitive_identity and std.roster_frontier, both 2026-08-01), and because v1-seed fn names are not module-scoped, any closure containing both modules refused every bare decl_ref reference as ambiguous — the collision that redded the primitive_identity_join witness closure on main. Both duplicates are deleted in favor of these; a module needing a DeclarationRef imports the constructor from the type's own module, never re-mints it."
 
+// WHETHER A TRUE CITATION IS EVEN ASKABLE OF THE RESOLVER. Distinct from whether it resolves:
+// `v2.std.decl_index` `decl_facts` SKIPS TEST .dag FILES DELIBERATELY (gunbc.ci_layer_roots records
+// the exclusion in the row that exists because a second walk must NOT skip them), so a declaration
+// authored in a witness module is absent from the index while its MODULE is present in
+// `module_declaration_facts_live`. A reference to it is TRUE and UNRESOLVABLE at the same time, and
+// those are different facts: resolution answers "does this name a real declaration", coverage
+// answers "is this declaration inside the universe the resolver indexes".
+//
+// This exists so the second answer is CARRIED AND COUNTED rather than handled by dropping the row
+// from a population. A carrier that excluded its uncitable rows would report a green meaning
+// "nothing left to check"; carrying the disposition makes it mean "N resolved, M outside the index,
+// here is which and why" — the number stays readable, which is the whole difference.
+// One axis, one variant per reason a declaration sits outside the index — NOT a wrapper carrying a
+// nested class enum. A single-variant coproduct is read as a type ALIAS here, which is the §3
+// hollow-alias shape and, measured, does not even export its name.
+type CitationIndexCoverage
+  = CitableThroughDeclIndex
+  | OutsideDeclIndexTestWitnessModule
+
+fn citation_is_outside_index(coverage: CitationIndexCoverage) -> Bool {
+  match coverage {
+    CitableThroughDeclIndex => false
+    OutsideDeclIndexTestWitnessModule => true
+  }
+}
+
 fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
     module_path: module_path as NonEmptyStr,

@@ -1,6 +1,7 @@
 module extdeps.git.inspect
 
-import std.types { Bool, CommitSha, FilePath, GitRef, String }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, String }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -64,6 +65,43 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
 // return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
 // so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
+// MergeBase NAMES THE REPOSITORY IT INSPECTS, AND THE OPERAND IS REQUIRED.
+// An ambient operation answers about whichever checkout the process happens to occupy, so the
+// same call means different things depending on where it was invoked from -- and a wrong answer
+// is INDISTINGUISHABLE from a right one, because two repositories can hold refs that look
+// identical. An OPTIONAL operand would keep the ambient form writable, so it is required: the
+// state this replaces has no spelling.
+//
+// THIS IS THE REPOSITORY'S OWN ESTABLISHED ANSWER, NOT A NEW CONVENTION. extdeps.git RemoteUrlIn
+// already takes `repository_path` and renders `git -C {repository_path}`, for exactly this reason
+// -- it could otherwise confirm the remote of the wrong checkout. This operation is brought into
+// line with that authority rather than inventing a second way to say the same thing.
+//
+// WHY THE OPERAND SITS ON THE OPERATION AND NOT ON THE INVOCATION. "Which repository does this
+// inspect" is a fact about the git operation's SUBJECT; "what directory did the OS start this
+// process in" is a transport fact. Modeling the first as the second would push repository
+// selection into every handler that runs a command -- the N x M adapter shape. One
+// repository-addressed operation with one shell realization is not that.
+//
+// THE SIBLING POPULATION IS DECLARED RATHER THAN SILENTLY LEFT. Five operations in this service
+// are still repository-ambient by the same mechanism: HeadCommit, WorkingTreeStatus,
+// IgnoredFiles, ListTreePathsAtRevision and ShowTree. They are NOT ported here because each
+// carries its own consumer census and this cut is scoped to the operation whose ambient
+// repository blocked a wet observation. Toplevel is deliberately NOT in that list: its purpose IS
+// to discover the ambient repository, so naming one would be circular. RUNG for the five:
+// mitigatable, and the mitigation is only that production happens to run from the repository
+// root. NEXT TRIGGER: the first consumer that must inspect a repository other than its own
+// process position -- which is what forced this one.
+
+// MergeBase CARRIES ITS EXIT CODE BECAUSE THE Bool COLLAPSES AN ANSWER WITH AN ABSENCE OF ONE.
+// `git merge-base` exits 1 when the two commits genuinely share NO merge base -- unrelated
+// histories, which is a FACT about the pair -- and 128 when the ref is invalid or this is not a
+// repository, which is a failure to look. Both render `exit_success = false`, so a consumer
+// holding only the Bool must either refuse both (losing a real answer) or admit both (treating an
+// unreadable repository as proof that two revisions are unrelated). That operation's `exit` block
+// has always DECLARED the distinction; its output simply never surfaced it, so the declaration was
+// unreachable by any caller.
+
 // ResolveRefCommit is a SEPARATE operation from ShowTree rather than a format flag on it, and the
 // separation is the point: `%T` and `%H` answer different questions about the same ref. The tree is
 // the CONTENT at that ref; the commit is its identity INCLUDING ancestry, which the tree does not
@@ -137,14 +175,15 @@ service git.Inspect {
   }
 
   operation MergeBase {
-    input { left: GitRef, right: GitRef }
+    input { repository_path: String, left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
       success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "merge-base", "{left}", "{right}"] }
+    transport shell { argv: ["git", "-C", "{repository_path}", "merge-base", "{left}", "{right}"] }
     exit {
       0 => Unit
       1 => String "No merge base"
@@ -194,6 +233,65 @@ service git.Inspect {
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
+    }
+  }
+}
+
+// MERGE-BASE EXIT SEMANTICS ARE A FACT OF GIT, SO THEY ARE MODELED HERE BESIDE THE EXIT TABLE THAT
+// DECLARES THEM, and not re-derived by each consumer as bare integers compared with `==`. The
+// operation above already states the contract -- 0, 1, 128 with distinct meanings -- and a consumer
+// that mints its own `merge_base_exit_ok: Int = 0` beside it is holding a second representation of
+// this module's fact: the §2/§3 undeclared sum, free to drift from the exit table the day a fourth
+// code is declared, and free to be compared against the wrong operation's codes with no complaint
+// from anything.
+//
+// THE THREE OUTCOMES ARE NOT A RANKING AND THE MIDDLE ONE IS NOT AN ERROR. Exit 1 is a legitimate
+// ANSWER -- git looked and there is no common ancestor -- which is precisely what lets a consumer
+// distinguish "these histories never met" from "I could not find out", the distinction §5 forbids
+// collapsing. Exit 128 is the refusal: a bad object or a path that is not a repository, where
+// nothing about the two revisions has been established. Rendering 128 as NoCommonAncestor would
+// read an unreadable repository as proof that two revisions are unrelated.
+//
+// THE FIELD IS `base_hex`, NOT `stdout`, AND THAT RENAME IS THE ACTUAL FIX. It never held raw
+// stdout: the operation's output binding delivers `sha` already stripped of git's line terminator,
+// so a field named for the transport was describing something the transport does not hand over.
+//
+// THE NEWLINE CLAIM THIS PARAGRAPH ORIGINALLY MADE WAS FALSE AND IS CORRECTED BY MEASUREMENT.
+// Review 54424 reported that a future caller passing raw stdout would get an "undecodable" refusal
+// on a trailing newline, and I wrote a paragraph here asserting exactly that mechanism -- citing
+// `git merge-base` emitting a newline after the fortieth hex digit, which it does. What I had not
+// checked was whether that byte survives to this fold. It does not. Receipt: a recorded fixture's
+// stored `sha` is 40 characters with no terminator, and REMOVING the trim below leaves the whole
+// wet matrix green -- a mutation that changes nothing is the proof the guard was inert. The
+// caller's trim, which this change deleted, was equally inert for the same reason.
+//
+// So the trim stays as idempotent normalization at the boundary that owns the wire format, and it
+// is described as what it is: a total function over any string a caller hands this fold, NOT a
+// live defect being closed. Calling it the latter would have been a fabricated mechanism sitting
+// in a paragraph justifying its own code -- the same class as an inflated rung, and the reason the
+// measurement is recorded here rather than the conclusion alone.
+//
+// Decoding that hex into an object id still belongs to the consumer that owns the id type; this
+// module owns what git SAID and what its exit code MEANS, not how the caller names commits.
+type MergeBaseOutcome
+  = MergeBaseReported { base_hex: String }
+  | NoCommonAncestor
+  | MergeBaseRefused { exit_code: Int, stderr: String }
+
+data merge_base_exit_reported: Int = 0
+
+data merge_base_exit_no_common_ancestor: Int = 1
+
+// Total over every integer, deliberately: an undeclared exit code is a REFUSAL carrying the code
+// that produced it, never a fourth silent arm and never a default that resolves to an answer.
+fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBaseOutcome {
+  if exit_code == merge_base_exit_reported {
+    MergeBaseReported { base_hex: trim(s: stdout) }
+  } else {
+    if exit_code == merge_base_exit_no_common_ancestor {
+      NoCommonAncestor
+    } else {
+      MergeBaseRefused { exit_code: exit_code, stderr: stderr }
     }
   }
 }

@@ -5,9 +5,9 @@ import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
-  ProvidesCapability,
-  ConsumesCapability,
-  CapabilityNeutral,
+  capability_neutral,
+  provides_only,
+  consumes_only,
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
@@ -244,16 +244,19 @@ fn witness_floor_build_step() -> Step {
 // boundary sat where a function call belonged: `run_required_regen_fixed_point` has taken
 // `pass1_digest: Option<String>` all along and CI passed it `None`.
 //
-// `--required-ci` runs all four in one process, hands the digest over in memory, and reports
-// the complete ledger: every phase but the fixed point is independent, so an earlier failure
-// no longer skips a later phase and one defect can no longer hide the others. The line still
-// stops -- nonzero exit on any failed phase -- and a phase that could not run reports SKIPPED
-// as its own state, never as silence and never as a pass.
+// `--required-ci` runs the required phases in one process and reports the complete ledger:
+// the phases are independent, so an earlier failure no longer skips a later phase and one
+// defect can no longer hide the others. The line still stops -- nonzero exit on any failed
+// phase -- and a phase that could not run reports SKIPPED as its own state, never as silence
+// and never as a pass.
 //
-// NOT CLAIMED: this shares no COMPILE. Regen and its fixed point each call `compile_stage0`
-// and the second call stays, because re-emitting and comparing digests is exactly what the
-// fixed point measures. What is removed is process startup, the receipt round-trip, and the
-// job-level orchestration.
+// THE ROSTER IS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
+// sweep, the regen first-generation comparison, and the witness floor. The fixed point left
+// the required mode with the four other cut phases, and the in-memory digest handoff that
+// justified collapsing it went with it -- so the paragraph above describes the step ladder
+// this replaced, and the digest sentence is history rather than a live mechanism. The cut
+// capabilities keep their standalone entry points
+// (`--required-regen-fixed-point`, `--behavioral-receipt-*`); what ended is their enrolment.
 //
 // THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric_witness_run`
 // `floor_run_command`, the same ArgvCommand the fabric authorizes, rendered for this transport
@@ -345,7 +348,7 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor" },
+    name: Present { value: "Required CI: parse, regen, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -397,22 +400,22 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
-      role: CapabilityNeutral,
+      role: capability_neutral,
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: ProvidesCapability { capability: CargoCapability },
+      role: provides_only(capabilities: [CargoCapability]),
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(),
-      role: ConsumesCapability { capability: CargoCapability },
+      role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
     WitnessFloorBoundStep {
       step: witness_floor_run_step(),
-      role: CapabilityNeutral,
+      role: capability_neutral,
       step_name: "All witnesses (one prepared subject, one fold)",
     },
   ]
@@ -435,21 +438,20 @@ fn witness_floor_capability_closure_holds() -> Bool {
   )
 }
 
-// THE BEHAVIORAL RECEIPT IS NOT A STEP HERE, AND THAT IS THE POINT.
+// THE BEHAVIORAL RECEIPT IS NOT IN THIS JOB AT ALL (operator ruling, 2026-08-21).
 //
-// It was two steps until #8647 collapsed this job's step ladder into one invocation. Re-adding
-// two more would have rebuilt the ladder that PR removed: order in a YAML list, preconditions
-// naming another step's outcome, one process per phase. The receipt's two phases -- the
-// controlled-fixture control and the per-PR comparison against the modules a diff changed --
-// therefore live INSIDE `--required-ci`, sequenced by the program whose phases they are.
+// It was two steps until #8647 folded it into `--required-ci`, and this paragraph recorded that
+// relocation. The ruling then cut it from the required mode entirely, along with
+// merge-admission capture and stamping and the regen fixed point, so neither a step here nor a
+// phase inside the invocation exists -- and a paragraph explaining where it lives would name a
+// place it does not.
 //
-// The consequence worth recording, because it is a behavioural difference and not a relocation:
-// the per-PR phase used to be gated by `github.event_name == 'pull_request'` in this file. A
-// single invocation cannot carry a per-phase trigger condition, so the phase now decides for
-// itself from what it can OBSERVE -- when the merge base resolves to the head there is no diff
-// to read, and it reports SKIPPED with that reason rather than passing over an empty selection.
-// That is strictly better than the trigger name: it is derived from the state that actually
-// makes the observation impossible, so it holds on any trigger anyone adds later.
+// WHAT THAT MEANS FOR COVERAGE, kept because the fact outlives the mechanism: no required run
+// now compares a changed authority against its committed mirror. The comparison survives as
+// `--behavioral-receipt-plan` / `--behavioral-receipt-selftest` / `--behavioral-receipt-census`,
+// which have no automated consumer, so it is run deliberately or not at all. That is a declared
+// scope narrowing rather than a climb, and naming it here is what keeps its absence from
+// reading as coverage.
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,

@@ -22,14 +22,17 @@ use v1_compiler::v1_compiler_infer_patterns::{self, NodeLookupStatus};
 use v1_compiler::v1_compiler_infer_resolve::resolve_node;
 use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
 use v1_compiler::v1_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible, resolved_type,
+    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible,
+    nominal_type_ref, resolved_type, type_resolution_verdict, TypeResolutionVerdict,
 };
 use v1_compiler::v1_compiler_parse;
+use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
-    default_ident_span, leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality,
-    Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, MatchPattern, Node,
-    SourceSpan,
+    authored_container_spelling_verdict, build_newline_index, default_ident_span,
+    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
+    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
+    Node, SourceSpan,
 };
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -1416,9 +1419,9 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
         "lookup",
         "map_insert",
         "map_merge",
-        "has",
-        "keys",
-        "values",
+        "map_has",
+        "map_keys",
+        "map_values",
         "contains",
         "length",
     ];
@@ -1471,24 +1474,27 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     );
     let result = v1_compiler_infer_lookup::lookup_structural_method(
         m,
-        "keys".to_string(),
+        "map_keys".to_string(),
         empty_source_indices(),
     )
     .resolution
     .as_ref()
-    .expect("keys must resolve on Map<String,Int>")
+    .expect("map_keys must resolve on Map<String,Int>")
     .clone();
-    assert_eq!(result.result_type.name, "List", "keys should return List");
+    assert_eq!(
+        result.result_type.name, "List",
+        "map_keys should return List"
+    );
     assert_eq!(
         result.result_type.children.len(),
         1,
-        "keys result should have one child"
+        "map_keys result should have one child"
     );
     let elem_child = &result.result_type.children[0];
     let elem_type = resolved_type(elem_child.clone());
     assert_eq!(
         elem_type.name, "String",
-        "keys on Map<String,Int> should return List<String>"
+        "map_keys on Map<String,Int> should return List<String>"
     );
 }
 
@@ -1566,6 +1572,189 @@ fn is_fully_resolved_accepts_parameterized_container() {
 fn is_fully_resolved_ignores_unknown_type_names() {
     let widget = leaf_node("Widget".to_string());
     assert!(is_fully_resolved(widget, empty_source_indices()));
+}
+
+// ---------------------------------------------------------------------------
+// Container-lookup refusal: an unrecognized container spelling is a THIRD state.
+//
+// `container_expected_arity` returning None used to mean both "not a container"
+// and "a container spelling with no row", and `is_fully_resolved` read the second
+// as the first — answering "not under-parameterized" about a name whose arity it
+// did not know. These fixtures pin the discriminator that separates them, in both
+// directions: an AUTHORED qualified container spelling refuses, and the six
+// service operations whose last segment is a container name do not.
+// ---------------------------------------------------------------------------
+
+const PROBE_FILE: &str = "probe.dag";
+
+/// A source index a name can actually be read back out of. `type_node_name_is_authored`
+/// keys on exactly this: a span whose file is present here is authored source, and a
+/// synthesized `<kernel:…>` span never is.
+fn authored_source_indices(text: &str) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    let idx = build_newline_index(PROBE_FILE.to_string(), text.to_string());
+    Rc::new(im::HashMap::unit(PROBE_FILE.to_string(), idx))
+}
+
+/// A leaf type node whose ident span slices `name` out of `text` — i.e. a name a
+/// human wrote, as opposed to one the compiler minted.
+fn authored_leaf_node(name: &str, text: &str) -> Rc<Node> {
+    let start = text
+        .find(name)
+        .expect("probe text must contain the authored name");
+    let start = text[..start].chars().count() as i64;
+    let span = Rc::new(SourceSpan {
+        file: PROBE_FILE.to_string(),
+        start,
+        end: start + name.chars().count() as i64,
+    });
+    leaf_node_with_span(name.to_string(), span)
+}
+
+fn container_spelling_verdict_declared_for_kernel_container() {
+    let text = "data x: List";
+    let node = authored_leaf_node("List", text);
+    match &*authored_container_spelling_verdict(node, authored_source_indices(text)) {
+        ContainerSpellingVerdict::ContainerSpellingDeclared { arity } => assert_eq!(*arity, 1),
+        other => panic!("expected ContainerSpellingDeclared for List, got {other:?}"),
+    }
+}
+
+fn container_spelling_verdict_not_a_container_for_user_type() {
+    let text = "data x: Widget";
+    let node = authored_leaf_node("Widget", text);
+    match &*authored_container_spelling_verdict(node, authored_source_indices(text)) {
+        ContainerSpellingVerdict::NotAContainerSpelling => {}
+        other => panic!("expected NotAContainerSpelling for Widget, got {other:?}"),
+    }
+}
+
+fn container_spelling_verdict_unknown_for_qualified_container() {
+    let text = "data x: std.types.List";
+    let node = authored_leaf_node("std.types.List", text);
+    match &*authored_container_spelling_verdict(node, authored_source_indices(text)) {
+        ContainerSpellingVerdict::ContainerSpellingUnknown { container_leaf } => {
+            assert_eq!(container_leaf, "List")
+        }
+        other => panic!("expected ContainerSpellingUnknown for std.types.List, got {other:?}"),
+    }
+}
+
+/// The defect this lane exists for: before the refusal, an authored qualified
+/// container spelling reported FULLY RESOLVED, because the missing arity row took
+/// the same arm as "String is not a container". It is now refused — and refused
+/// distinctly from under-parameterization, which has a different remedy.
+fn type_resolution_verdict_refuses_unrecognized_container_spelling() {
+    let text = "data x: std.types.List";
+    let node = authored_leaf_node("std.types.List", text);
+    match &*type_resolution_verdict(node.clone(), authored_source_indices(text)) {
+        TypeResolutionVerdict::ContainerSpellingUnresolvable { name } => {
+            assert_eq!(name, "std.types.List")
+        }
+        other => panic!("expected ContainerSpellingUnresolvable, got {other:?}"),
+    }
+    assert!(
+        !is_fully_resolved(node, authored_source_indices(text)),
+        "a container spelling whose arity is unknown is not established as resolved"
+    );
+}
+
+/// The positive control the refusal must not swallow: a declared container that IS
+/// parameterized still resolves, so the fixture above measures the refusal and not
+/// a walk that stopped answering.
+fn type_resolution_verdict_accepts_authored_parameterized_container() {
+    let text = "data x: List";
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    match &*type_resolution_verdict(list_int, authored_source_indices(text)) {
+        TypeResolutionVerdict::FullyResolved => {}
+        other => panic!("expected FullyResolved for List<Int>, got {other:?}"),
+    }
+}
+
+/// Under-parameterization keeps its own arm: `List` with no argument is not the
+/// same finding as `std.types.List`, and collapsing the two would have made the
+/// refusal indistinguishable from the diagnostic that already existed.
+fn type_resolution_verdict_reports_under_resolved_separately_from_refusal() {
+    let text = "data x: List";
+    let bare_list = authored_leaf_node("List", text);
+    match &*type_resolution_verdict(bare_list, authored_source_indices(text)) {
+        TypeResolutionVerdict::UnderResolved => {}
+        other => panic!("expected UnderResolved for bare List, got {other:?}"),
+    }
+}
+
+/// THE SIX KNOWN FALSE-REFUSALS. Each is a service operation whose last segment is
+/// a container name; `check_service_field_access_node` renders one as a LEAF TYPE
+/// NODE via `nominal_type_ref`, so each does reach this walk. None is a container,
+/// so refusing any of them would be wrong, and the fix a refusal asks for —
+/// declare an arity row — would be the wrong action.
+///
+/// They are excluded by AUTHORSHIP, not by an exception list: a synthesized node
+/// carries a `<kernel:…>` span that is in no source index. A seventh service
+/// operation named after a container therefore needs no edit here.
+fn service_operations_named_after_containers_are_not_refused() {
+    let known_false_refusals = [
+        "cron.Tab.List",
+        "Filesystem.List",
+        "github.Pulls.List",
+        "tmux.Session.List",
+        "os.Hostname.Set",
+        "req.Header.Set",
+    ];
+    for op in known_false_refusals {
+        let node = nominal_type_ref(op.to_string());
+        match &*authored_container_spelling_verdict(node.clone(), empty_source_indices()) {
+            ContainerSpellingVerdict::NotAContainerSpelling => {}
+            other => panic!("service operation {op} must not be classified a container: {other:?}"),
+        }
+        assert!(
+            is_fully_resolved(node, empty_source_indices()),
+            "service operation {op} must not be refused as an unknown container spelling"
+        );
+    }
+}
+
+/// The same discriminator read from the other side: the identical spelling, when a
+/// human authored it in a type position, IS refused. Without this pair the fixture
+/// above would pass for a walk that had simply stopped refusing anything.
+fn authored_spelling_refuses_where_synthesized_one_does_not() {
+    let text = "data x: cron.Tab.List";
+    let authored = authored_leaf_node("cron.Tab.List", text);
+    match &*authored_container_spelling_verdict(authored, authored_source_indices(text)) {
+        ContainerSpellingVerdict::ContainerSpellingUnknown { container_leaf } => {
+            assert_eq!(container_leaf, "List")
+        }
+        other => panic!("an AUTHORED cron.Tab.List in type position must refuse, got {other:?}"),
+    }
+}
+
+fn keyed_map_verdict_undecidable_for_unrecognized_container_spelling() {
+    let text = "data x: std.types.Map";
+    let node = authored_leaf_node("std.types.Map", text);
+    match &*v1_type_expr_keyed_map_verdict(node, authored_source_indices(text)) {
+        KeyedMapVerdict::KeyedMapUndecidable { name } => assert_eq!(name, "std.types.Map"),
+        other => panic!("expected KeyedMapUndecidable for std.types.Map, got {other:?}"),
+    }
+}
+
+fn keyed_map_verdict_still_decides_the_kernel_map() {
+    let text = "data x: Map";
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    match &*v1_type_expr_keyed_map_verdict(m, authored_source_indices(text)) {
+        KeyedMapVerdict::KeyedMap => {}
+        other => panic!("expected KeyedMap for kernel Map<String,Int>, got {other:?}"),
+    }
+}
+
+fn keyed_map_verdict_not_keyed_for_element_collection() {
+    let text = "data x: List";
+    let list = container_node("List".to_string(), leaf_node("Int".to_string()));
+    match &*v1_type_expr_keyed_map_verdict(list, authored_source_indices(text)) {
+        KeyedMapVerdict::NotKeyedMap => {}
+        other => panic!("expected NotKeyedMap for List<Int>, got {other:?}"),
+    }
 }
 
 fn map_index_with_correct_key_type_succeeds() {
@@ -1974,6 +2163,50 @@ fn main() -> ExitCode {
         (
             "is_fully_resolved_ignores_unknown_type_names",
             is_fully_resolved_ignores_unknown_type_names,
+        ),
+        (
+            "container_spelling_verdict_declared_for_kernel_container",
+            container_spelling_verdict_declared_for_kernel_container,
+        ),
+        (
+            "container_spelling_verdict_not_a_container_for_user_type",
+            container_spelling_verdict_not_a_container_for_user_type,
+        ),
+        (
+            "container_spelling_verdict_unknown_for_qualified_container",
+            container_spelling_verdict_unknown_for_qualified_container,
+        ),
+        (
+            "type_resolution_verdict_refuses_unrecognized_container_spelling",
+            type_resolution_verdict_refuses_unrecognized_container_spelling,
+        ),
+        (
+            "type_resolution_verdict_accepts_authored_parameterized_container",
+            type_resolution_verdict_accepts_authored_parameterized_container,
+        ),
+        (
+            "type_resolution_verdict_reports_under_resolved_separately_from_refusal",
+            type_resolution_verdict_reports_under_resolved_separately_from_refusal,
+        ),
+        (
+            "service_operations_named_after_containers_are_not_refused",
+            service_operations_named_after_containers_are_not_refused,
+        ),
+        (
+            "authored_spelling_refuses_where_synthesized_one_does_not",
+            authored_spelling_refuses_where_synthesized_one_does_not,
+        ),
+        (
+            "keyed_map_verdict_undecidable_for_unrecognized_container_spelling",
+            keyed_map_verdict_undecidable_for_unrecognized_container_spelling,
+        ),
+        (
+            "keyed_map_verdict_still_decides_the_kernel_map",
+            keyed_map_verdict_still_decides_the_kernel_map,
+        ),
+        (
+            "keyed_map_verdict_not_keyed_for_element_collection",
+            keyed_map_verdict_not_keyed_for_element_collection,
         ),
         (
             "map_index_with_correct_key_type_succeeds",
