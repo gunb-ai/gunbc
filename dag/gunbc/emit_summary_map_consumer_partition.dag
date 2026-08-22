@@ -138,7 +138,7 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types"),
     keys_on: "nothing -- it folds every summary and emits a Set of bare names",
     ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), selecting names whose repr and recursion make them Rc-shared" },
-    use: SpellingEscapesToCaller { escapes_as: "a Set<String> of bare names, later tested with set_contains at every render site", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_from_children") },
+    use: SpellingEscapesToCaller { escapes_as: "a Set<String> of bare names, later tested with set_contains at 27 render sites -- of which only 6 pass an expression already reduced to a leaf, the rest passing a name binding that may be dotted (counted on main, 2026-08-22)", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_from_children") },
     lookup_expression_count: 1,
   },
   {
@@ -355,6 +355,25 @@ fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
 // THIRD, emit_typed_record_lit reaching rust_zero_value is not merely unkeyed but UNKEYABLE without
 // a signature change, which is what makes that row a PREREQUISITE for its consumer rather than a
 // peer of it. Same shape as emit_container, which is the useful pointer for whoever takes it.
+
+// THE build_shared_types ROW NOW HAS A PRODUCTION RECEIPT, and it is the strongest evidence on this
+// roster that a whole-map SCAN is not repaired by a better key. Measured by the namespace-cut lane
+// on 2026-08-22 (integration/namespace-cut, head 45fb8c80b8e), not by me: with names spelled dotted
+// on that branch, a dotted spelling missed the bare-keyed set, so the type rendered UNWRAPPED at
+// that site while a caller reaching the same type through a leaf-reduced site rendered it WRAPPED.
+// The emitted tree disagreed with itself about one type in both directions.
+//
+//   source_indices Rc-wrapped / unwrapped   main 717/0 -- before 343/371 -- after 714/0
+//
+// The split collapsing to zero in the direction main already holds is the discriminator: a fix that
+// merely moved the disagreement would not land on main's shape. What I verified independently is
+// the mechanism's surface on main -- 27 set_contains(shared_types, ..) sites, only 6 passing an
+// already-leaf-reduced expression. The 343/371 measurement is theirs and is cited, not re-derived.
+//
+// WHY IT BELONGS HERE RATHER THAN IN THEIR LANE: shared_types is FOLDED FROM this map and inherits
+// its bare key, and the failure is at the CONSUMPTION of a name the scan returned, not at any
+// lookup into the map. Re-keying the map's keys cannot reach it. That is the scan row's structural
+// claim with an artifact attached.
 
 // WHERE THE IDENTITY WAS DISCARDED. Every spelling-only row above is severed at one of these folds,
 // and each fold holds the resolved node on the line it stores a name -- so the repair is upstream

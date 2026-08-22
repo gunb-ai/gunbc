@@ -193,6 +193,27 @@ crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective}` — the path 
 correctly, because only one `Connective` is in main's pool. The deficit did not exist until the pool
 admitted the homonym.
 
+### `build_shared_types`: the scan row with a production receipt
+
+`shared_types` is folded *from* this map and inherits its bare key, then escapes as a `Set<String>`
+tested with `set_contains` at **27 sites on main — only 6 of which pass an already-leaf-reduced
+expression** (counted here). On `integration/namespace-cut` (head `45fb8c80b8e`), where those names
+are spelled dotted, a dotted spelling missed the bare-keyed set: the type rendered **unwrapped**
+there while a caller reaching the same type through a leaf-reduced site rendered it **wrapped** —
+the emitted tree disagreeing with itself about one type in both directions.
+
+| `source_indices` | Rc-wrapped | unwrapped |
+|---|---:|---:|
+| origin/main | 717 | 0 |
+| before | 343 | 371 |
+| after | 714 | 0 |
+
+(That measurement is the namespace-cut lane's, cited not re-derived.) The split collapsing to zero
+*in the direction main already holds* is the discriminator — a fix that merely moved the
+disagreement would not land on main's shape. It belongs on this roster because the failure is at the
+**consumption of a name the scan returned**, not at any lookup into the map: re-keying the map's
+keys cannot reach it.
+
 ## The two-part guard test, and why the check being well written is the wrong question
 
 A guard deserves system-level credit only if **both** hold:
