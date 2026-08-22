@@ -1845,6 +1845,7 @@ type FileEmissionRefusal
   | FilePathNotStaticallyRenderable
   | FileWriteMissingContentInput { verb: String }
   | FileOutputKeyNotModeled { key: String }
+  | FileOutputShapeNotModeled
 
 fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
   match refusal {
@@ -1862,6 +1863,8 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
     FileOutputKeyNotModeled { key: k } =>
       concat("file transport output key '", k,
         "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content")
+    FileOutputShapeNotModeled =>
+      "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering"
   }
 }
 
@@ -1891,19 +1894,26 @@ fn is_modeled_file_output_channel(key: String) -> Bool {
     || key == "byte_count" || key == "path" || key == "error" || key == "content"
 }
 
-fn file_operation_output_channels(op_node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let effective = unwrap_single_field_product(n: resolved_type(n: op_node))
-  if is_product_type(n: effective) {
-    effective.children |> map(ch => match child_from_key(ch: ch, source_indices: source_indices) {
-      Present { value: k } => k
-      Absent => authored_name_at(source_indices: source_indices, node: ch)
-    })
-  } else {
-    match child_from_key(ch: effective, source_indices: source_indices) {
-      Present { value: k } => [k]
-      Absent => ["content"]
-    }
+// The output FIELDS the emitted realization must answer for, read off the operation's declared
+// return type without unwrapping. The wall and the rust renderer both read the channels through
+// this pair, so "which key does this field carry" is decided once. Unwrapping a single-field
+// product here would lose the field's `from` key -- the shape a `from` key is most often
+// authored on -- and the renderer would silently answer the default channel for it.
+fn file_output_channel_fields(op_node: Node) -> List<Node> {
+  let rt = resolved_type(n: op_node)
+  if is_product_type(n: rt) { rt.children } else { [] }
+}
+
+fn file_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Present { value: k } => k
+    Absent => authored_name_at(source_indices: source_indices, node: ch)
   }
+}
+
+fn file_operation_output_channels(op_node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  file_output_channel_fields(op_node: op_node)
+    |> map(ch => file_output_channel_of_field(ch: ch, source_indices: source_indices))
 }
 
 fn file_transport_path_is_renderable(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1945,14 +1955,17 @@ fn file_emission_refusal(op_node: Node, t: Node, target: RenderTarget, source_in
         let verb_refusal = file_emission_verb_refusal(op_node: op_node, verb: verb, source_indices: source_indices)
         match verb_refusal {
           Present { value: r } => Present { value: r }
-          Absent => {
-            let unmodeled = file_operation_output_channels(op_node: op_node, source_indices: source_indices)
-              |> filter(k => !is_modeled_file_output_channel(key: k))
-            match unmodeled |> first {
-              Present { value: k } => Present { value: FileOutputKeyNotModeled { key: k } }
-              Absent => none
+          Absent =>
+            if !is_product_type(n: resolved_type(n: op_node)) {
+              Present { value: FileOutputShapeNotModeled }
+            } else {
+              let unmodeled = file_operation_output_channels(op_node: op_node, source_indices: source_indices)
+                |> filter(k => !is_modeled_file_output_channel(key: k))
+              match unmodeled |> first {
+                Present { value: k } => Present { value: FileOutputKeyNotModeled { key: k } }
+                Absent => none
+              }
             }
-          }
         }
       }
     }

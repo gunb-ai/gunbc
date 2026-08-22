@@ -147,7 +147,8 @@ import v1.compiler.emit {
   emit_unmodeled_file_transport_refusal_with_cause, file_emission_refusal,
   file_transport_declared_verb, file_operation_has_content_input,
   file_transport_verb_delete, file_transport_verb_list, file_transport_verb_write_owner_only,
-  child_from_key, unwrap_single_field_product
+  child_from_key, unwrap_single_field_product,
+  file_output_channel_fields, file_output_channel_of_field
 }
 import v1.compiler.languages {
   wrap_shared_type,
@@ -10850,7 +10851,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, transport: transport, inferred: inferred, op_node: op_node, source_indices: source_indices) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, transport: transport, op_node: op_node, source_indices: source_indices) }
   else { emit_local_call(op_name: op_name) }
 }
 
@@ -11520,15 +11521,15 @@ fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
 // verb dispatch, the same empty-path refusal, the same per-channel values. That correspondence is
 // the point (DESIGN §4 -- emission and interpretation are one procedure in two directions), and it
 // is what emit_file_action_block's channel bindings exist to keep readable side by side.
-fn emit_file_call(op_name: String, transport: Node, inferred: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_file_call(op_name: String, transport: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match file_emission_refusal(op_node: op_node, t: transport, target: Rust, source_indices: source_indices) {
     Present { value: refusal } =>
       emit_unmodeled_file_transport_refusal_with_cause(op_name: op_name, target: Rust, refusal: refusal)
     Absent => {
       let path_line = emit_file_path_line(transport: transport, source_indices: source_indices)
-      let empty_guard = concat("if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }")
+      let empty_guard = file_empty_path_guard
       let action = emit_file_action_block(transport: transport, op_node: op_node, source_indices: source_indices)
-      let return_line = emit_file_return(inferred: inferred, source_indices: source_indices)
+      let return_line = emit_file_return(op_node: op_node, source_indices: source_indices)
       [path_line, empty_guard, action, return_line] |> join(separator: "\n")
     }
   }
@@ -11573,6 +11574,10 @@ fn emit_file_path_line(transport: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
+// The interpreter refuses an empty resolved path (dispatch_file) rather than reading the
+// process working directory, so the emitted realization carries the same refusal.
+data file_empty_path_guard: String = "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }"
+
 data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = "
 
 fn emit_file_action_block(transport: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
@@ -11599,33 +11604,38 @@ data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
 
+// The FLOOR beneath the wall, in the same shape as emit_unmodeled_file_transport_refusal: a key
+// the wall admits must have an expression here, and a key it does not admit is unreachable. The
+// last arm therefore REFUSES rather than answering the content channel by default -- an
+// unrecognised key answered as content is the absorbing fallback DESIGN §5 forbids, and it would
+// hide exactly the wall/renderer disagreement this pair exists to make impossible.
 fn emit_file_channel_expr(channel: String, is_optional: Bool) -> String {
   let base = if channel == "write_success" || channel == "success" { "file_success" }
     else if channel == "bytes_written" || channel == "bytes" || channel == "byte_count" { "file_byte_count" }
     else if channel == "path" { "file_path.clone()" }
     else if channel == "error" { "file_error.clone()" }
-    else { "file_content.clone()" }
+    else if channel == "content" { "file_content.clone()" }
+    else { concat("compile_error!(\"file transport output key '", channel, "' reached the rust renderer without a modeled channel\")") }
   if is_optional { concat("Some(", base, ")") } else { base }
 }
 
-fn emit_file_return(inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let effective = unwrap_single_field_product(n: inferred)
-  let is_product = is_product_type(n: effective)
-  if is_product && effective.children |> count > 1 {
-    let field_exprs = effective.children |> map(ch =>
-      let channel = match child_from_key(ch: ch, source_indices: source_indices) {
-        Present { value: c } => c
-        Absent => authored_name_at(source_indices: source_indices, node: ch)
-      }
-      emit_file_channel_expr(channel: channel, is_optional: ch.return_cardinality == CardOptional)
-    )
-    concat("Ok((", field_exprs |> join(separator: ", "), "))")
+// Reads the SAME field list the wall's file_operation_output_channels reads (file_output_channel_fields
+// / file_output_channel_of_field), so an admitted operation is answered field by field in declared
+// order. It deliberately does NOT unwrap a single-field product first: the `from` key lives on the
+// FIELD, and unwrapping to the field's type loses it -- which would answer a declared
+// `success: Bool from "write_success"` with the content channel and emit a String against a bool.
+fn emit_file_return(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let fields = file_output_channel_fields(op_node: op_node)
+  let field_exprs = fields |> map(ch =>
+    emit_file_channel_expr(
+      channel: file_output_channel_of_field(ch: ch, source_indices: source_indices),
+      is_optional: ch.return_cardinality == CardOptional)
+  )
+  if fields |> count == 0 { "Ok(())" }
+  else if fields |> count == 1 {
+    concat("Ok(", field_exprs |> join(separator: ", "), ")")
   } else {
-    let channel = match child_from_key(ch: effective, source_indices: source_indices) {
-      Present { value: c } => c
-      Absent => "content"
-    }
-    concat("Ok(", emit_file_channel_expr(channel: channel, is_optional: effective.return_cardinality == CardOptional), ")")
+    concat("Ok((", field_exprs |> join(separator: ", "), "))")
   }
 }
 
