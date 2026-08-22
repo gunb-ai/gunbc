@@ -567,6 +567,44 @@ had not been written yet.** The second is not fixable by improving the instrumen
 three: 13 evidential, 1 structural, 1 temporal. Anyone tempted to read that chain as a
 derivation should read §4l instead.
 
+
+### 4m.1 The rule this produced was wrong on its dangerous half, and the correction is unilateral
+
+**First statement of the consequence: "a PR that deletes a module and merges main cleanly is not
+verified by that clean merge, so deleters owe a resolve pass."** True, and it told a sibling lane
+it was clear when it was not. `bright-ferret-335` checked its subtree on that rule, found no
+deletion lanes -- #8877, #8909 and #8882 are purely additive -- and concluded it had nothing to
+check. #8909 adds three files that all import `v2.workflow.floor2_prepared_subject`, the module
+§4m restores.
+
+**The hazard is symmetric and the ADDER is the worse side.** A deleter that merges main discovers
+an added consumer in its own resolve. An adder that merges main is *already green* when the
+deletion lands later and breaks it -- and an additive PR feels safe by construction, so its author
+has no reason to ask whether anything it imports is scheduled for deletion in someone else's open
+branch. The party in danger is the party without a prompt.
+
+**The proposed repair was an intersection requiring publication** -- the deleter cannot see
+unmerged additions, the adder cannot see unmerged deletions, so one side publishes a list. **The
+first clause is false**, and it was falsified by running it: open PR heads are on the remote,
+`gh pr list` enumerates them, `git fetch origin <sha>` retrieves them, and the intersection was run
+against all three sibling PRs from this side with no list. Zero real exposure: no qualified import
+of any of the 55, and of the 664 symbols declared solely by the 55 with no surviving declarer, one
+token hit -- `render_footer` in #8909, which declares its own and never depended on the deleted
+`tools.readme`. Deleting it *removes* a two-declarer whole-pool ambiguity rather than creating a
+break.
+
+**So the obligation is unilateral, and that is the whole point of restating it.** A rule requiring
+publication is a rule requiring coordination, and coordination fails silently when a lane is busy,
+blocked or archived; a rule one party can execute alone has no such failure mode. **The deleter
+owes the intersection against every open PR head at merge time. The adder owes nothing but
+pushing.** That places the duty on the party that knows it is dangerous -- which is the sibling
+lane's own argument for why the adder cannot be trusted to look, followed one step further: an
+adder who cannot be expected to look cannot be expected to publish either.
+
+The residue is real but strictly smaller than the version needing coordination: this reaches
+*pushed* work only. Work in a worktree that has never been pushed is unreachable by any mechanism,
+and that alone is what publication would buy.
+
 ## 5. The 55 deleted
 
 | module | path | bucket |
