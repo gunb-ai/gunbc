@@ -38,8 +38,8 @@ The detector follows the bound result to the end of its enclosing `fn`, flagging
 shape predicates, structural tests and direct field access. **It reproduces the known member at both
 its call sites, by the exact mechanism:**
 
-    src/v1/05_emit_rust.dag:10635   effective.children, effective.return_cardinality, is_product_type
-    src/v1/05_emit_rust.dag:10695   effective.children, is_product_type
+    v1.compiler.emit_rust  emit_shell_return   effective.children, effective.return_cardinality, is_product_type
+    v1.compiler.emit_rust  emit_file_call      effective.children, is_product_type
 
 A prior narrower version **missed** that member. No negative from an instrument that has not
 reproduced a known positive is worth anything.
@@ -76,18 +76,19 @@ caller asked for exactly the thing that was removed and there is no loss.
 
 | disposition | n | |
 |---|---:|---|
-| own recursion | 3 | `04_types.dag:708`, `complexity.dag:2066`, `:2071` — the normalizer's own descent |
+| own recursion | 3 | `04_types.dag` `normalize_access_type_node`; two sites in `src/v1/complexity.dag` — the normalizer's own descent |
 | contract promises normalized | 8 | 6 interior to `03_normalize`, plus `stage_normalize` and `program_assembly_read_to_normalized_root_prepared` |
 | **genuine candidate** | **2** | below |
 
 ```
-src/v1/04_infer.dag:4849   peel_alias_once_for_field_access
-                           inside expand_alias_chain_for_field_access
-src/v2/lens/vacuity.dag:324  normalize
-                           inside vacuity_witness_ingest_source_text
+v1.compiler.infer   peel_alias_once_for_field_access
+                    called from expand_alias_chain_for_field_access
+v2.lens.vacuity     normalize
+                    called from vacuity_witness_ingest_source_text
 ```
 
-**`04_infer.dag:4849` is the best probe available** and the place any lane should start: it is
+**`peel_alias_once_for_field_access` inside `expand_alias_chain_for_field_access` is the best
+probe available** and the place any lane should start: it is
 *simultaneously* an evidenced dependent (an `authored_name_at` read on the peeled node) **and** a
 frame escape, inside a function about *field access* rather than about normalizing — so the contract
 test does not excuse it.
@@ -102,7 +103,7 @@ the class itself is about.
 
 **A fifth instance surfaced inside the reporting of this audit.** An interim report named the 13
 frame-escapes by **basename**, and `complexity.dag` exists in *both* `src/v1` and `src/v2/lens` — so
-`complexity.dag:2066` collapsed two real files. A basename is **a shorter spelling substituted for a
+a basename-only citation collapsed two real files. A basename is **a shorter spelling substituted for a
 discriminating identity**, which is the same shape as the bare-keyed summary map collapsing two
 declarations that share a name, and as `type_reference_decl_file`'s `String` collapsing four states
 into two spellings. The prefix regex above is a third: it collapsed `stage_normalize` and
@@ -250,3 +251,35 @@ pass. The check that separated them — were the missed operations present at th
 audit's own head — cost one command and inverted the remedy.
 
 — smart-ram-730
+
+
+## CORRECTION 2026-08-22 (third) — citations converted to symbols, and the rot measured
+
+Every `file:line` citation in this document has been replaced with the module and
+symbol it names. This is the DESIGN §3 standing rule (*cite the symbol, not the
+position*) applied to an artifact that had violated it, and the conversion is also the
+repair the second correction asked for — it said the line anchors needed re-deriving
+against main, and the right repair is not fresher numbers but no numbers.
+
+**The rot was measured, not assumed.** Re-resolving the five cited positions against
+current main, four of five now land in unrelated code:
+
+    04_infer.dag:4849    cited peel_alias_once_for_field_access
+                         now lands in infer_variant_constructor_call
+    05_emit_rust.dag:10635/10695  cited the unwrap_single_field_product call sites
+                         now land in emit_service_struct / emit_service_new_method
+    04_types.dag:708     now lands in resolve_type_variables_from_template
+    vacuity.dag:324      still lands on a normalize( call — the one survivor
+
+**Every symbol-level claim survived; only the positions rotted.** The call really is
+made from `expand_alias_chain_for_field_access` (now line 5028), `normalize_access_type_node`
+really is in `04_types.dag` (now 762), and `unwrap_single_field_product` really does
+have exactly two call sites (now in `emit_shell_return` and `emit_file_call`). That is
+precisely the asymmetry §3 predicts: a name is decidable by grep and a line is not
+reachable from the containment tree at all, so the positional half decays silently
+while the symbolic half stays checkable.
+
+This document is therefore its own receipt for the rule. It carried seven positional
+citations, four of which were false within a day of being written, without a single
+edit to the sentences containing them — the decay required no author and produced no
+signal.
