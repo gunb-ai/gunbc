@@ -2699,8 +2699,13 @@ enforces end to end.
    v2.workflow.floor_preparation -> v2.workflow.floor_discovery -> extdeps.git.object_store -> (same tail)
    ```
 
-   The causal edge is a single import added to `dag/extdeps/git/git.dag` for
-   `git_config_local_set_command`. `floor_preparation` is COLLATERAL — it reaches `object_store`
+   The causal edge is a single line added to `dag/extdeps/git/git.dag` for
+   `git_config_local_set_command`:
+
+   ```dag
+   import extdeps.exec.command { ArgvCommand, argv_command }
+   ```
+ `floor_preparation` is COLLATERAL — it reaches `object_store`
    through `floor_discovery`, so one edge in one module moved two unrelated modules' closures.
 
    THE DENOMINATOR SWAP THAT PRODUCED THE WRONG VERSION, kept because it is the same failure this
@@ -2709,8 +2714,7 @@ enforces end to end.
    Two different populations. The corpus set genuinely did not gain `v2.std.collection`; each
    failing module's closure did.
 
-   **THE POPULATION IS 46, NOT 3.** Forty-six files corpus-wide call `map_get` and match
-   `Present`/`Absent` against it. Only three errored — the three whose closures now reach
+   **THE POPULATION IS 46, NOT 3.** Forty-six files corpus-wide contain the literal `match map_get(`. Only three errored — the three whose closures now reach
    `v2.std.collection`. **The other 43 are one import edge away from the identical failure**, each
    waiting on whichever future PR happens to connect them. Repairing the three fixes one breakage
    and leaves the class fully live.
