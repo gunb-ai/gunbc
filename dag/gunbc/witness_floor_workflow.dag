@@ -396,7 +396,11 @@ type WitnessFloorBoundStep {
   step_name: String
 }
 
-fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
+// ONE PREPARATION, RENDERED TWICE. Checkout, toolchain and build are byte-identical in both
+// jobs, so they are authored ONCE here and each job appends only the step that distinguishes it.
+// Two copies would be two definitions of one fact, free to drift the moment either is edited --
+// the §3 fork this file already closes for the step/role pair, reintroduced across jobs.
+fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
@@ -413,12 +417,20 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
-    WitnessFloorBoundStep {
-      step: witness_floor_run_step(),
-      role: capability_neutral,
-      step_name: "All witnesses (one prepared subject, one fold)",
-    },
   ]
+}
+
+fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(),
+    items: [
+      WitnessFloorBoundStep {
+        step: witness_floor_run_step(),
+        role: capability_neutral,
+        step_name: "All witnesses (one prepared subject, one fold)",
+      },
+    ],
+  )
 }
 
 fn witness_floor_steps() -> List<Step> {
@@ -458,7 +470,7 @@ fn witness_floor_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
-    needs: [],
+    needs: [cited_symbol_job_id],
     env: none,
     outputs: none,
     if_condition: none,
@@ -489,10 +501,34 @@ fn witness_floor_job() -> Job {
 //
 // THE COST OF A SECOND JOB, stated rather than hidden: it re-does checkout, toolchain and build.
 // The build is the same cargo invocation against the same self-hosted runner pool, so it is warm
-// in the ordinary case, and the census itself is ~2 minutes against a floor job of ~30. The two
-// jobs are independent by construction -- no `needs` edge -- so a red floor cannot silence this
-// census and a red census cannot silence the floor. That independence is the point: they answer
-// different questions and a reader must be able to see which one failed.
+// in the ordinary case, and the census itself is ~2 minutes against a floor job of ~30.
+//
+// THIS JOB RUNS FIRST AND THE FLOOR `needs` IT (operator ruling, 2026-08-22), which is a REVERSAL
+// of the independence an earlier revision of this comment claimed, and the reason is a measured
+// race rather than a preference. Both jobs are byte-identical through checkout, toolchain and
+// build, and when they started simultaneously on one self-hosted host both installs wrote the
+// SAME /home/ghrunner/.cargo/bin/rustc: `Text file busy`, ETXTBSY, exit 126, at a measured 1 run
+// in 5. The census step was skipped, so the job reported NO verdict rather than a wrong one --
+// honest, but the wrong thing to leave standing, because a required check that reds one run in
+// five for reasons unrelated to the diff teaches authors to rerun without reading, and reflexive
+// rerunning is how a real failure gets rerun away. A required check must be believable or it is
+// decorative.
+//
+// The ordering edge makes the overlap STRUCTURALLY IMPOSSIBLE rather than rare, which is the §5
+// construction move: the two setups cannot coincide, so there is no window to lose. The rejected
+// alternative was per-job CARGO_HOME/RUSTUP_HOME, which removes the collision by giving each job
+// its own toolchain and registry -- paying a cold build on EVERY run to avoid a collision on one
+// in five, and making the duplicated build more expensive rather than less.
+//
+// THE DIRECTION IS LOAD-BEARING: census FIRST, floor second. The census is minutes and the floor
+// is ~30, so a citation failure surfaces early; the other order reports the same failure half an
+// hour later for no gain.
+//
+// WHAT THE EDGE COSTS, named rather than buried: a red census now leaves the floor SKIPPED, so
+// that run yields no floor verdict. That is a real loss of information on a red census run, and
+// it is accepted deliberately -- the floor still runs on every green, and a red census is a
+// stop-the-line condition rather than a state to keep measuring around.
+
 fn cited_symbol_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
@@ -518,28 +554,16 @@ fn cited_symbol_run_step() -> Step {
 }
 
 fn cited_symbol_bound_steps() -> List<WitnessFloorBoundStep> {
-  [
-    WitnessFloorBoundStep {
-      step: witness_floor_checkout_step(),
-      role: capability_neutral,
-      step_name: "Checkout",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability]),
-      step_name: "Install Rust toolchain",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_build_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: "Build the witness fold",
-    },
-    WitnessFloorBoundStep {
-      step: cited_symbol_run_step(),
-      role: capability_neutral,
-      step_name: "Cited-symbol census (every authored DeclarationRef resolves)",
-    },
-  ]
+  append(
+    prepared_bound_steps(),
+    items: [
+      WitnessFloorBoundStep {
+        step: cited_symbol_run_step(),
+        role: capability_neutral,
+        step_name: "Cited-symbol census (every authored DeclarationRef resolves)",
+      },
+    ],
+  )
 }
 
 fn cited_symbol_step_annotations() -> List<CapabilityAnnotatedStep> {
@@ -615,7 +639,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [witness_floor_job(), cited_symbol_job()]
+  jobs: [cited_symbol_job(), witness_floor_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
