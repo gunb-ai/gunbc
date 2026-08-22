@@ -108,7 +108,7 @@ Once the expectation is nameless, `kernel_value_declared_type_mismatch` returns 
 even after the upstream one lands**: an upstream fix removes today's population, not the arm that
 converts a nameless expectation into silence for whatever produces one next.
 
-## The class is TWO rows, not one
+## The class is THREE rows, plus four census rows of settled disposition
 
 Two stacked defects, which is why every single-cause theory died in turn.
 
@@ -150,15 +150,42 @@ unrelated (`workflow CLI default`, `dag/gunbc/tools/review_codex.dag`). Patched:
   substitution now producing a real type, the expectation reaching the lambda body is the
   **function type instead of its return type**. That is the repair being *incomplete*, not wrong,
   and it is the single next thing to fix.
-- **4 × frontier-row count mismatch on receiver type `Primitive()`** — `any`/`map`/`flat_map` in
-  `dag/extdeps/mercurial.dag`, `dag/gunbc/scm_compatibility/mercurial.dag`,
-  `dag/extdeps/git/object_store.dag` (×2). Downstream census rows keyed on a receiver type that
-  changes once the expectation is real.
+- **4 × frontier-row count mismatch on receiver type `Primitive()`** — `extdeps.git.object_store`
+  (`map`, `flat_map`), `extdeps.mercurial` (`any`), `gunbc.scm_compatibility.mercurial` (`map`).
+  **These are not reds on correct code, and the row read is what establishes it.** Each is a
+  declared row in `v1.compiler.infer` `unresolved_method_frontier`, keyed on receiver shape
+  `Primitive()` — the `ReceiverTypeUnestablished` class, whose declared cause is deficit (2) in
+  `method_existence_wall_note`: *a lambda parameter receiver whose type never propagates from the
+  declared fn type it is bound under*, naming the `StoreObjectFold` lambdas in `object_store`
+  explicitly. That is precisely the population row (a) starts supplying real types to, and the row's
+  own diagnostic states the contract in both directions: fewer observed means *the deficit has
+  partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground*. So
+  these rows **encode the old, nameless answer**, and the ratchet firing is the repair working.
+
+  Two honesty limits on that, stated rather than assumed. The **direction is inferred, not
+  measured** — the counts ride on the diagnostic as fields and are absent from the captured message
+  text, so a rerun must confirm *fewer* rather than *more*. And the two `object_store` rows are
+  **confounded**: that module also carries two of the eight blocking empty-list errors, and a
+  blocking error truncates the diagnostic set, which lowers an observed count for a reason that has
+  nothing to do with the deficit. The two Mercurial rows carry **no** blocking error in the same
+  run, so they are the unconfounded pair and the ones to read first.
+
+  Not to be resolved by editing the counts. An expectation row edited to match new behaviour is
+  indistinguishable from one edited to silence a regression unless the correct receiver type is
+  established first — that is narrowing the wall in costume.
 
 The repair is recorded here rather than shipped because narrowing it until the corpus greens is how
 a wall keeps its name and loses its population. What the measurement actually shows is that **the
 instantiated path's silence was masking these representation gaps**, so the wall cannot land ahead
 of them.
+
+### Row (c) — expectation not projected through an arrow. NEW, 8 sites, exposed by (a).
+
+At a lambda body inside a **function-typed** generic field, the substituted expectation arrives as
+the *function* type rather than its *return* type, so `fn(_) { [] }` fails with `empty list literal:
+expected type is not a collection`. **A second finding, not a cost of the first** — the position was
+unreachable before, because nothing ever delivered a real type to it. Row (a) cannot land ahead of
+this, so this is where the next owner starts.
 
 ### Row (b) — type-parameter-typed field (`v: T`). OPEN.
 
@@ -210,7 +237,7 @@ the discriminators moved the cause off it — but a cleanup sweep would be entit
 ## Rung
 
 Source→acceptance, record-literal field type on a type declared with parameters: **below floor —
-not a rung** (§4b), for both rows. Row (a) has a cause and a measured repair blocked on the
-function-typed-field propagation above; row (b) has neither. The non-generic position is at least
+not a rung** (§4b), for both rows. Row (a) has a cause and a measured repair blocked on
+row (c); row (c) has a located population and no repair; row (b) has neither. The non-generic position is at least
 mechanically preventable. Class rung is the minimum across paths, so citing the non-generic path
 would be inflation.
