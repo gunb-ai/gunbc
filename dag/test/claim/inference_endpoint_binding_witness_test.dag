@@ -1,0 +1,72 @@
+module test.claim.inference_endpoint_binding_witness_test
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.inference_endpoint_binding {
+  InferenceWireProtocol,
+  OpenAiResponses,
+  OpenAiChatCompletions,
+  AnthropicMessages,
+  DialledEndpoint,
+  EndpointHostJoin,
+  JoinAssertedBy,
+  JoinObservedFromResponse,
+  inference_wire_protocol_wire,
+  endpoint_host_join_is_observed,
+  endpoint_host_join_wire,
+}
+
+fn tunnel_join() -> EndpointHostJoin {
+  JoinAssertedBy {
+    asserter: "operator workstation ssh tunnel" as NonEmptyStr,
+    basis: "ssh -N -L 11435:127.0.0.1:11434 to spark-a3ee" as NonEmptyStr,
+    asserted_at: "2026-08-22T19:00:00Z" as NonEmptyStr,
+  }
+}
+
+// THE ARM THIS TYPE EXISTS FOR: an asserted join must never report as observed. If this flips, a
+// receipt claims the response identified its server -- which on an identically-converged fleet no
+// response can do.
+fn a_asserted_join_is_not_observed() -> Bool {
+  endpoint_host_join_is_observed(j: tunnel_join()) == false
+}
+
+fn b_observed_join_is_observed() -> Bool {
+  endpoint_host_join_is_observed(
+    j: JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr },
+  )
+}
+
+// The two arms must not render alike: a reader of the receipt has to be able to tell an assertion
+// from an observation without consulting the type.
+fn c_join_arms_render_distinctly() -> Bool {
+  endpoint_host_join_wire(j: tunnel_join())
+    != endpoint_host_join_wire(
+         j: JoinObservedFromResponse { per_host_marker: "spark-a3ee" as NonEmptyStr },
+       )
+}
+
+// An asserted join must carry its asserter into the wire, or the receipt records a claim with
+// nobody attached to it.
+fn d_asserted_wire_names_its_asserter() -> Bool {
+  string_contains(s: endpoint_host_join_wire(j: tunnel_join()), pattern: "operator workstation ssh tunnel")
+}
+
+fn e_three_wire_protocols_render_distinctly() -> Bool {
+  if inference_wire_protocol_wire(p: OpenAiResponses) == inference_wire_protocol_wire(p: OpenAiChatCompletions) {
+    false
+  } else if inference_wire_protocol_wire(p: OpenAiChatCompletions) == inference_wire_protocol_wire(p: AnthropicMessages) {
+    false
+  } else {
+    inference_wire_protocol_wire(p: OpenAiResponses) != inference_wire_protocol_wire(p: AnthropicMessages)
+  }
+}
+
+// The dialled URL is a transport fact and must survive into the carrier unchanged -- it is the one
+// thing a tunnelled receipt can honestly state about where the request went.
+fn f_dialled_endpoint_carries_its_url() -> Bool {
+  let d = DialledEndpoint {
+    url: "http://127.0.0.1:11435" as NonEmptyStr,
+    wire: OpenAiResponses,
+  }
+  d.url as String == "http://127.0.0.1:11435"
+}

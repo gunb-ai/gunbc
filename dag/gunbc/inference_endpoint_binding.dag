@@ -1,0 +1,94 @@
+module gunbc.inference_endpoint_binding
+
+import std.types { String, NonEmptyStr, List }
+
+// WHY THIS IS NOT A FIELD ON ProviderInterfaceBinding OR CodexProviderRuntimeReceipt, and why two
+// independent searches for it returned a confident zero.
+//
+// THE CORPUS CARRIES TWO SENSES OF THE WORD "PROVIDER" and they are different subjects:
+//   (1) the coding-agent RUNTIME we install and control -- gunbc.provider_interface_binding
+//       ProviderInterfaceBinding (transport, executable, runtime identity, protocol schema) and
+//       gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt (host, placement,
+//       bundled executable, bundle identity, process fingerprint). Every field is about HOW A
+//       PROCESS IS INSTALLED AND CONTROLLED.
+//   (2) the INFERENCE BACKEND that process sends requests to -- which is upstream's own use of the
+//       word, as in codex's `model_providers` config key.
+//
+// Both carriers in sense (1) have "Provider" in their name and no field ranging over sense (2). So
+// searching them for an endpoint is searching the right word in the wrong subject, and the absence
+// found there reads as absence everywhere. That happened twice, independently, before anyone noticed
+// the homonym.
+//
+// This module therefore avoids the word in its own name. Putting an endpoint on either carrier
+// above would fuse process-control with model-backend -- one carrier answering for another subject,
+// which is the same authority-substitution the naming collision already caused at the search layer.
+data inference_endpoint_binding_note: String = "The binding between a coding harness and the inference endpoint it dials. Separate from gunbc.provider_interface_binding, which binds the harness PROCESS's control interface. Deliberately does not use the word provider: the corpus already spends it on the agent runtime while upstream spends it on the model backend."
+
+// WHICH WIRE A HARNESS SPEAKS IS NOT A FREE CHOICE PER CALL SITE -- it is a property of the
+// harness/backend pair, and both sides must agree. Kept as a closed set so a new one is a row.
+type InferenceWireProtocol
+  = OpenAiResponses
+  | OpenAiChatCompletions
+  | AnthropicMessages
+
+fn inference_wire_protocol_wire(p: InferenceWireProtocol) -> String {
+  match p {
+    OpenAiResponses => "openai-responses"
+    OpenAiChatCompletions => "openai-chat-completions"
+    AnthropicMessages => "anthropic-messages"
+  }
+}
+
+// THE URL A HARNESS WAS CONFIGURED TO DIAL IS A FACT ABOUT THE MACHINE RUNNING THE HARNESS, not
+// about any serving host. Under a direct bind the two coincide and a carrier fusing them looks
+// correct forever; the first tunnel, proxy or shared name breaks it silently. They are kept apart
+// here so the distinction cannot be lost later.
+type DialledEndpoint {
+  url: NonEmptyStr
+  wire: InferenceWireProtocol
+}
+
+// WHETHER A DIALLED URL REACHED A PARTICULAR HOST IS NOT DERIVABLE FROM THE RESPONSE ON THIS FLEET,
+// AND THAT IS A CONSEQUENCE OF CONVERGENCE RATHER THAN A GAP IN THE PROBE.
+//
+// srv5 and srv6 are byte-identically converged -- same runtime version, same model, same
+// materialization identity, same observation digest. Every fact a response could carry is exactly
+// what convergence was built to make identical, so no response can discriminate its origin. The
+// property we engineered is what forecloses the question.
+//
+// So this is NOT an Unobserved arm. An Unobserved arm carries an implicit promise that a better
+// probe closes it, and no probe can. It is an ASSERTION, and an assertion has an asserter, a basis
+// and a time. On a tunnel the basis is the tunnel's own configuration, which lives on the operator's
+// workstation and never enters the response.
+//
+// NEXT-RUNG TRIGGER, named so the arm is not an untracked stall: observing the join requires a
+// DELIBERATE ASYMMETRY -- a per-host marker the response can carry. That means deliberately
+// un-converging something, which is a design decision with a real cost, not a probe improvement.
+type EndpointHostJoin
+  = JoinAssertedBy {
+      asserter: NonEmptyStr
+      basis: NonEmptyStr
+      asserted_at: NonEmptyStr
+    }
+  | JoinObservedFromResponse {
+      per_host_marker: NonEmptyStr
+    }
+
+fn endpoint_host_join_is_observed(j: EndpointHostJoin) -> Bool {
+  match j {
+    JoinAssertedBy { asserter: _, basis: _, asserted_at: _ } => false
+    JoinObservedFromResponse { per_host_marker: _ } => true
+  }
+}
+
+fn endpoint_host_join_wire(j: EndpointHostJoin) -> String {
+  match j {
+    JoinAssertedBy { asserter: a, basis: b, asserted_at: t } =>
+      join([
+        "join=ASSERTED asserter=", a as String, " basis=", b as String, " at=", t as String,
+        " -- not observed from the response, and not observable while the fleet is identically converged",
+      ], "")
+    JoinObservedFromResponse { per_host_marker: m } =>
+      join(["join=OBSERVED per_host_marker=", m as String], "")
+  }
+}
