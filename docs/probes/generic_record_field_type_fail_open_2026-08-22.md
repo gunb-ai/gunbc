@@ -187,6 +187,41 @@ expected type is not a collection`. **A second finding, not a cost of the first*
 unreachable before, because nothing ever delivered a real type to it. Row (a) cannot land ahead of
 this, so this is where the next owner starts.
 
+### The `LexMatchThunk` row is NOT (a), (b) or (c) — refuted by source read plus execution
+
+The `v2.compiler.tokenize` `apply` frontier row (7 occurrences) was proposed as possibly being
+row (b). It is not, and the declaration settles it in one line:
+
+```
+type LexMatchThunk {
+  apply: fn(String) -> LexMatchResult
+}
+```
+
+**No type parameters, and `apply` is a concrete function type.** So `record_lit_instantiated_fields`
+never runs for it — row (a)'s repair could not reach it, which is exactly why it did not move — and
+there is no type-parameter-typed field for row (b) to be about.
+
+Three arms on the **baseline, unpatched** binary make the boundary sharp, and two of them were
+surprises:
+
+| arm | result |
+|---|---|
+| `apply: fn(String) -> String`, body `fn(s) { [] }` | RC=1, `expected type is not a collection` — **correct refusal** |
+| `apply: fn(String) -> List<String>`, body `fn(s) { [] }` | RC=0, clean — **the arrow IS projected** |
+| `apply: fn(String) -> String`, body `fn(s) { s \|> no_such_method() }` | RC=1, `not found on receiver type 'Primitive(String)'` — **the parameter type DOES propagate** |
+
+Two consequences. **Row (c) is specific to the substituted path** — the non-generic path projects
+through the arrow correctly, so the function-type-instead-of-return-type expectation is produced by
+the substitution, not inherited from a general defect. And **the minimal non-generic reproduction
+does not reproduce the frontier row at all**: a lambda parameter bound under a concrete fn-typed
+field gets a real receiver type here. So whatever puts those 7 occurrences at `Primitive()` is
+narrower than the class name `a lambda parameter receiver whose type never propagates from the
+declared fn type it is bound under` suggests — the real sites bind the thunk through `LexRule` and
+nested constructions, and one of those layers is where the type is lost. That is a **fourth
+mechanism**, unowned, and the minimal arms above are the starting point for it rather than the
+class description.
+
 ### Row (b) — type-parameter-typed field (`v: T`). OPEN.
 
 All six seams still RC=0 under the row (a) repair, and `Pair<A, B> { a: A, b: B }` with them.
