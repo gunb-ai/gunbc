@@ -686,3 +686,20 @@ key, `decl_file` on `TypeSummary`, or identity carried into `shared_types` — s
 R1 repair.** The honest statement is: *the collision mechanism explains a minority of R1, floor 8,
 upper bound unmeasured*, pending a re-key of the join on the diverging position rather than the outer
 type name.
+
+### The join-key tell, stated generally
+
+**If a value appears in a keyed column that cannot inhabit that column's domain, the key is wrong.**
+
+Here: `i64` appeared in a column of *declaration carriers*. `i64` is not a declaration — it is what
+`Nat` emits when the native alias fires. A value that cannot be a member of its column's domain is a
+category violation *in the data*, decidable by inspection, and it localizes the defect to the key
+rather than to any row.
+
+The underlying error is the same class this document keeps finding in the compiler, turned on the
+measurement instead: the join keyed on the **outer spelling** while the question was about the
+carrier at the **diverging position** — so it joined on a name *downstream of the very substitution
+being measured*. A guard is only as strong as the identity its input still carries.
+
+**Requirement for any future re-key, stated so it is not rediscovered:** key on the carrier at the
+diverging position, not the outer type name.
