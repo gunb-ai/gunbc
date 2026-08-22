@@ -2,9 +2,8 @@ module v2.workflow.floor_terminal_ledger_wire_test
 
 import std.content_hash { structural_content_hash }
 import v2.std.logic { Bool }
-import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
-  ClaimDisposition,
   ClaimTerminalRow,
   ExpectedRed,
   ExpectedToHold,
@@ -28,11 +27,17 @@ import v2.workflow.floor_terminal_ledger_wire {
   readback_digest_agrees,
   readback_disposition,
   readback_footer_count_agrees,
+  SeedLedgerRow,
   parse_readback_row,
+  render_disposition,
   render_ledger,
-  render_row
+  render_ledger_from_seed,
+  render_row,
+  render_terminal_detail,
+  render_terminal_tag,
+  render_expectation
 }
-import v2.workflow.required_floor { CompletedWithinSafetyLimits, SafetyInterrupted }
+import v2.workflow.required_floor { SafetyInterrupted }
 
 fn ident(f: String) -> WitnessIdentity {
   WitnessIdentity { module_path: "test.claim.example", function: f }
@@ -224,5 +229,81 @@ test fn a_ledger_in_an_unrecognized_format_is_unreadable_not_empty() -> Bool {
       footer_digest: _
     } => false
     LedgerUnreadable { reason: r, at: _ } => r == "ledger-format-unrecognized"
+  }
+}
+
+// THE SEED-FACING RENDERER AND THE TYPED ONE MUST PRODUCE THE SAME BYTES, or the module has two
+// renderers and the artifact has no single author. Asserted over EVERY terminal shape.
+fn seed_row_of(row: ClaimTerminalRow) -> SeedLedgerRow {
+  SeedLedgerRow {
+    qualified: witness_identity_qualified_name(identity: row.identity),
+    expectation_wire: render_expectation(expectation: row.expectation),
+    terminal_tag: render_terminal_tag(terminal: row.terminal),
+    terminal_detail: render_terminal_detail(terminal: row.terminal),
+    seed_disposition_wire: render_disposition(disposition: claim_disposition(row: row))
+  }
+}
+
+fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
+  match render_ledger_from_seed(
+    repository_snapshot: "0000000000000001",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: map(rows, r => seed_row_of(row: r))
+  ) {
+    LedgerUnrenderable { reason: _, offending: _ } => ""
+    LedgerRendered { text: t } => t
+  }
+}
+
+test fn the_seed_facing_renderer_produces_the_same_bytes_as_the_typed_one() -> Bool {
+  let rows = every_shape()
+  let typed = rendered_text(rows: rows)
+  typed != "" && seed_rendered_text(rows: rows) == typed
+}
+
+// THE MIRROR COMPARATOR'S DISCRIMINATING RED. The seed's disposition and this module's are two
+// INDEPENDENT derivations of one fact; a row where they disagree must stop the line rather than
+// publish whichever one the writer happened to send.
+test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let lying = SeedLedgerRow {
+    qualified: honest.qualified,
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: honest.terminal_detail,
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "0000000000000001",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: [honest, lying]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o } =>
+      r == "seed-disposition-disagrees" && o == honest.qualified
+  }
+}
+
+// A SEED BUILT AGAINST A VOCABULARY THIS MODULE DOES NOT KNOW CANNOT PUBLISH. It refuses rather
+// than rendering a row whose meaning the reader would derive differently.
+test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let futuristic = SeedLedgerRow {
+    qualified: honest.qualified,
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: "returned-superposed",
+    terminal_detail: "",
+    seed_disposition_wire: "passed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "0000000000000001",
+    prepared_subject: "0000000000000002",
+    roster_identity: "0000000000000003",
+    rows: [futuristic]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: _ } => r == "seed-terminal-tag-unrecognized"
   }
 }

@@ -10,7 +10,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.algebra { list_append }
 import v2.std.text { String }
-import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   BudgetRefusedBeforeVerdict,
   ClaimAttemptTerminal,
@@ -24,7 +24,6 @@ import v2.workflow.floor_terminal_ledger {
   RouteGapBeforeVerdict,
   RuntimeErroredBeforeVerdict,
   ClaimExpectation,
-  ClaimObservation,
   ClaimTerminalRow,
   LedgerBinding,
   BudgetRefused,
@@ -516,4 +515,128 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   } else {
     none
   }}}}}}}
+}
+
+// ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
+//
+// The seed holds the rows and performs the host write; the BYTES are produced here. Something
+// must still cross the boundary, because two type systems have to meet somewhere: the seed says
+// which terminal arm a claim reached, and it says it in this module's vocabulary rather than its
+// own. That crossing is the irreducible part. What is NOT irreducible is it being unchecked.
+//
+// `cli_run.rs` computes a disposition for every row from `ClaimOutcome` and `expected_red`. This
+// module computes one from the wire tag and the expectation. They are INDEPENDENT derivations of
+// the same fact over the same row, so the seed sends both its tag and its disposition, and a row
+// whose two answers disagree makes the whole ledger UNRENDERABLE with a typed reason.
+//
+// That is the mirror comparator the schema's debt note names, running in production on every row
+// rather than as an offline audit. It does not retire the declared debt -- the two
+// `ClaimDisposition` declarations are still hand-written beside each other, and this catches a
+// divergence in the MAPPINGS, not in the type declarations -- but it moves this seam from
+// "nothing detects a divergence" to "a divergence stops the line", which is *mitigatable* to
+// *mechanically preventable* for the part it covers. An unknown tag or an unknown disposition
+// label refuses on the same arm: a seed built against a newer vocabulary cannot publish a ledger
+// this module would read differently.
+type SeedLedgerRow {
+  qualified: String
+  expectation_wire: String
+  terminal_tag: String
+  terminal_detail: String
+  seed_disposition_wire: String
+}
+
+fn render_disposition(disposition: ClaimDisposition) -> String {
+  match disposition {
+    Passed => "passed"
+    Failed => "failed"
+    KnownRedHeld => "known-red-held"
+    KnownRedNowPassing => "known-red-now-passing"
+    BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
+    HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
+    RouteGapBeforeVerdict => "route-gap-before-verdict"
+    RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"
+    ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
+  }
+}
+
+type SeedRowAdmission
+  = SeedRowAdmitted { row: LedgerReadbackRow }
+  | SeedRowRefused { reason: Symbol, offending: String }
+
+fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
+  match parse_expectation(wire: row.expectation_wire) {
+    Absent => SeedRowRefused { reason: "seed-expectation-unrecognized", offending: row.qualified }
+    Present { value: expectation } => {
+      let readback = LedgerReadbackRow {
+        qualified: row.qualified,
+        expectation: expectation,
+        terminal_tag: row.terminal_tag,
+        terminal_detail: row.terminal_detail
+      }
+      match readback_disposition(row: readback) {
+        Absent => SeedRowRefused { reason: "seed-terminal-tag-unrecognized", offending: row.qualified }
+        Present { value: derived } =>
+          if render_disposition(disposition: derived) == row.seed_disposition_wire {
+            SeedRowAdmitted { row: readback }
+          } else {
+            SeedRowRefused { reason: "seed-disposition-disagrees", offending: row.qualified }
+          }
+      }
+    }
+  }
+}
+
+fn render_ledger_from_seed(
+  repository_snapshot: String,
+  prepared_subject: String,
+  roster_identity: String,
+  rows: List<SeedLedgerRow>,
+) -> LedgerRender {
+  let admissions = map(rows, r => admit_seed_row(row: r))
+  let admitted = flat_map(admissions, a => match a {
+    SeedRowRefused { reason: _, offending: _ } => []
+    SeedRowAdmitted { row: r } => [r]
+  })
+  let refusals = flat_map(admissions, a => match a {
+    SeedRowRefused { reason: reason, offending: offending } => [SeedRowRefused { reason: reason, offending: offending }]
+    SeedRowAdmitted { row: _ } => []
+  })
+  match refusals.first() {
+    Present { value: first_refusal } =>
+      match first_refusal {
+        SeedRowAdmitted { row: _ } =>
+          LedgerUnrenderable { reason: "unreachable-admitted-in-refusals", offending: "" }
+        SeedRowRefused { reason: reason, offending: offending } =>
+          LedgerUnrenderable { reason: reason, offending: offending }
+      }
+    Absent =>
+      match filter(
+        flat_map(admitted, r => [r.qualified, r.terminal_detail]),
+        field => !ledger_wire_field_is_clean(field: field)
+      ).first() {
+        Present { value: offending } =>
+          LedgerUnrenderable { reason: "field-carries-separator", offending: offending }
+        Absent =>
+          LedgerRendered {
+            text: ledger_wire_join_lines(
+              lines: list_append(
+                left: list_append(
+                  left: [ledger_wire_join(fields: [
+                    ledger_wire_format,
+                    repository_snapshot,
+                    prepared_subject,
+                    roster_identity
+                  ])],
+                  right: map(admitted, r => render_readback_row(row: r))
+                ),
+                right: [ledger_wire_join(fields: [
+                  ledger_wire_footer_tag,
+                  admitted.length() as String,
+                  readback_rows_digest(rows: admitted).digest
+                ])]
+              )
+            )
+          }
+      }
+  }
 }
