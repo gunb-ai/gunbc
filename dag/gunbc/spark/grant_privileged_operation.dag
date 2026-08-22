@@ -275,8 +275,8 @@ type BootstrapCredentialMaterialization
 //
 // AN INTERMEDIATE REVISION REMOVED ONE TRAILING LF OR CRLF, on the stated premise that the
 // materialization wrote it. That premise was false and the removal was a second silent corruption of
-// the same class. gunbc_ci_spark_admin_credential_script base64-decodes Secret Manager's payload
-// straight into the file and appends NOTHING, so a line break in that file is part of the enrolled
+// the same class. gunbc.ci_spec gunbc_ci_spark_grant_install_credential_prelude base64-decodes
+// Secret Manager's payload straight into the file and appends NOTHING, so a line break in that file is part of the enrolled
 // secret -- and stripping it would authenticate with a different credential than the one enrolled,
 // while reporting success. The producer is the authority on what the bytes are; this consumer does
 // not get to reinterpret them.

@@ -235,7 +235,10 @@ fn openbmc_path_result(
     if paths.length() == 0 {
       OpenBmcPathRefused { reason: "path response is empty" }
     } else if paths.length() == 1 {
-      OpenBmcPathObserved { path: paths.first() as NonEmptyStr }
+      match paths.first() {
+        Present { value: path } => OpenBmcPathObserved { path: path }
+        Absent => OpenBmcPathRefused { reason: "path response is empty" }
+      }
     } else {
       OpenBmcPathRefused {
         reason: "path response contains more than one non-empty path",
@@ -1235,11 +1238,15 @@ fn openbmc_file_sha256(
   } else {
     let words = split(s: trim(result.stdout), delimiter: " ")
       |> filter(word => word != "")
-    let hex = words.first()
-    if hex.length() != 64 {
-      OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is not 64 hexadecimal digits" }
-    } else {
-      OpenBmcDigestObserved { digest: sha256_digest(hex: hex as NonEmptyStr) }
+    match words.first() {
+      Absent =>
+        OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is empty" }
+      Present { value: hex } =>
+        if hex.length() != 64 {
+          OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is not 64 hexadecimal digits" }
+        } else {
+          OpenBmcDigestObserved { digest: sha256_digest(hex: hex) }
+        }
     }
   }
 }

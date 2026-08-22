@@ -22,8 +22,16 @@ fn systemctl_list_units_line_nonempty(line: String) -> Bool {
   systemctl_list_units_line_trimmed(line: line) != ""
 }
 
+// `first()` answers `String?` because the split may yield nothing, and this reached the token with
+// `as NonEmptyStr`, which does not eliminate the absence: a blank line produced a unit name whose
+// text was the word `Absent`. Callers filter blank lines through
+// `systemctl_list_units_line_nonempty`, so the absent arm is unreachable there; it is a loud word
+// rather than a plausible unit name so a receipt reader cannot mistake the failure for a unit.
 fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
-  split(s: systemctl_list_units_line_trimmed(line: line), delimiter: " ").first() as NonEmptyStr
+  match split(s: systemctl_list_units_line_trimmed(line: line), delimiter: " ").first() {
+    Present { value: unit } => unit as NonEmptyStr
+    Absent => "systemctl-unit-line-empty" as NonEmptyStr
+  }
 }
 
 fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {

@@ -16,6 +16,8 @@ data find_files_and_symlinks_positional_note: String = "The script body is a FIX
 data files_by_name_sorted_positional_note: String = "shell.Find.FilesByNameSorted: root and name_glob arrive as positional parameters ($1, $2) rather than being spliced into the script body, for the same reason as FilesAndSymlinksWithMode above — no path or glob can escape a quote. The pipe to sort stays inside the operation because the caller digests the listing into a manifest and needs traversal-order independence (SHELL-DAG dissolution of package_delivery.dag's protocol-schema-bundle file listing, previously a retained_foreign concat-built find | sort script)."
 
 
+data socket_inode_holder_bracket_note: String = "WHY THE PATTERN SPELLS THE BRACKETS AS `?` RATHER THAN ESCAPING THEM. A /proc fd symlink for a socket reads `socket:[N]`, and find's -lname argument is a GLOB, in which `[...]` is a character class -- so the obvious `-lname \"socket:[N]\"` silently matches nothing at all, which is the worst possible failure for a probe whose empty result is load-bearing evidence (it is exactly the clause that licenses unlinking a stale socket). Escaping the brackets works but puts backslashes through two layers of quoting; `?` matches the one literal bracket character in each position and is length-anchored, so `socket:?N?` matches `socket:[N]` and cannot match a different inode. Confirmed by execution 2026-08-21 against a live listening socket, WITH the negative control that a non-existent inode returns empty -- a probe whose only observed state is `found nothing` proves nothing, so the pair is the measurement."
+
 service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
@@ -61,6 +63,23 @@ service shell.Find {
     exit {
       0 => Unit
       nonzero => String "Find command failed"
+    }
+  }
+
+  operation SocketInodeHolders {
+    input { inode: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", "socket:?{inode}?"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "find over /proc fd links failed"
     }
   }
 
