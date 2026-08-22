@@ -61,6 +61,19 @@ import v2.workflow.required_floor {
 // artifact from becoming a THIRD representation beside the schema and the seed's mirror -- the
 // mirror is declared debt already, and answering it by minting another copy would be the fix
 // that deepens the defect.
+//
+// WHAT THAT COUPLES, DECLARED RATHER THAN DISCOVERED: once the bytes come from EVALUATING this
+// module, the evidence path depends on the interpreter. An interpreter defect makes the ledger
+// unwritable, and by this schema's own admission rule unwritable evidence is not green -- so a
+// run whose witnesses ALL PASSED still reds. That is the intended direction and not an oversight:
+// the alternative is a run that goes green while its evidence is silently missing, which is the
+// instrumentation being optional exactly when it fails. It is written here because the first
+// person to hit it will otherwise read it as the ledger being fragile rather than as a trade
+// somebody made on purpose.
+//
+// The failure is also not silent in the other direction: an interpreter defect that produced
+// WRONG bytes rather than none is caught by the round trip -- the digest is recomputed from the
+// rows a reader parses and compared to the footer the writer emitted.
 
 data ledger_wire_format: String = "gunbc-terminal-ledger/1"
 
