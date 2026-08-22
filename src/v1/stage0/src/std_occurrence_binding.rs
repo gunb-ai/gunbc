@@ -196,7 +196,7 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
     candidates: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
 ) -> Rc<OccurrenceBindingResult<N>> {
     {
-        let state = candidates.clone().iter().cloned().fold(
+        let state = candidates.iter().cloned().fold(
             Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldZero),
             |state: Rc<OccurrenceBindingFoldState<N>>, candidate: Rc<BindingCandidate<N>>| {
                 match (*state).clone() {

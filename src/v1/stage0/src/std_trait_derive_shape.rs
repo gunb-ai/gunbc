@@ -101,7 +101,7 @@ pub fn repr_grounding_derive_completeness_predicate<K: Clone + PartialEq>(
 ) -> bool {
     {
         let mut __all = true;
-        for k in required.clone().iter().cloned() {
+        for k in required.iter().cloned() {
             if !(repr_grounding_derive_shape_has_trait(table.clone(), shape.clone(), k.clone())) {
                 __all = false;
                 break;

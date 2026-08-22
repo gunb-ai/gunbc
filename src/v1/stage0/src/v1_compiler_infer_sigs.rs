@@ -94,7 +94,7 @@ pub fn flatten_parent_envs(
             }
             __result
         });
-        let dedup = ordered.clone().iter().cloned().fold(
+        let dedup = ordered.iter().cloned().fold(
             Rc::new(FlattenAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
@@ -276,7 +276,7 @@ pub fn collect_func_call_edges(
 ) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
+        for item in items.iter().cloned() {
             __result.extend(
                 (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                     collect_calls_in_expr(
@@ -354,7 +354,7 @@ pub fn func_reaches_self(
                     let mut __result = Vec::new();
                     for e in Rc::new({
                         let mut __result = Vec::new();
-                        for e in call_edges.clone().iter().cloned() {
+                        for e in call_edges.iter().cloned() {
                             if (e.caller.clone() == current.clone()) {
                                 __result.push(e);
                             }
@@ -370,7 +370,7 @@ pub fn func_reaches_self(
                 });
                 {
                     let mut __found = false;
-                    for c in callees.clone().iter().cloned() {
+                    for c in callees.iter().cloned() {
                         if if (c.clone() == root.clone()) {
                             true
                         } else {
@@ -393,7 +393,7 @@ pub fn func_reaches_self(
 }
 
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
-    names.clone().iter().cloned().fold(
+    names.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
@@ -479,7 +479,7 @@ pub fn topo_resolve_loop(
         }
         let ready = Rc::new({
             let mut __result = Vec::new();
-            for fn_name in remaining.clone().iter().cloned() {
+            for fn_name in remaining.iter().cloned() {
                 if {
                     let local_callees = Rc::new({
                         let mut __result = Vec::new();
@@ -487,7 +487,7 @@ pub fn topo_resolve_loop(
                             let mut __result = Vec::new();
                             for e in Rc::new({
                                 let mut __result = Vec::new();
-                                for e in call_edges.clone().iter().cloned() {
+                                for e in call_edges.iter().cloned() {
                                     if (e.caller.clone() == fn_name.clone()) {
                                         __result.push(e);
                                     }
@@ -512,7 +512,7 @@ pub fn topo_resolve_loop(
                     });
                     {
                         let mut __all = true;
-                        for c in local_callees.clone().iter().cloned() {
+                        for c in local_callees.iter().cloned() {
                             if !(v1_rt::map_get(&resolved, c.clone()) != None) {
                                 __all = false;
                                 break;
@@ -528,7 +528,7 @@ pub fn topo_resolve_loop(
         });
         if ((ready.clone().len() as i64) == 0) {
             {
-                let cycle_accum = remaining.clone().iter().cloned().fold(
+                let cycle_accum = remaining.iter().cloned().fold(
                     Rc::new(SigsAccum {
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -598,7 +598,7 @@ pub fn topo_resolve_loop(
                 });
             }
         }
-        let ready_accum = ready.clone().iter().cloned().fold(
+        let ready_accum = ready.iter().cloned().fold(
             Rc::new(SigsAccum {
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
@@ -637,7 +637,7 @@ pub fn topo_resolve_loop(
                 None => acc.clone(),
             },
         );
-        let ready_set = ready.clone().iter().cloned().fold(
+        let ready_set = ready.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, fn_name: String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
@@ -645,7 +645,7 @@ pub fn topo_resolve_loop(
         );
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
-            for fn_name in remaining.clone().iter().cloned() {
+            for fn_name in remaining.iter().cloned() {
                 if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) {
                     __result.push(fn_name);
                 }
@@ -678,7 +678,7 @@ pub fn resolve_func_sigs(
             let mut __result = Vec::new();
             for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in items.clone().iter().cloned() {
+                for item in items.iter().cloned() {
                     if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                         __result.push(item);
                     }
