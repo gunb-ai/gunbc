@@ -235,3 +235,46 @@ classification on `90986d19` with the board's classifier rather than this regex,
 at `2a2bd0ad` where the four reversals are known to exist. Until arm A shows a nonzero
 `T2_POSITIONS_BOTH_DIRECTIONS`, the intervention has no signal to move and re-running it costs 25
 minutes to learn nothing.
+
+---
+
+# Baseline discriminator: the bucketing is sound and the population changed
+
+The two candidates above are separated at zero cost, without a runner, by applying this
+extractor's own bucketing rules to the `2a2bd0ad` artifact's own `expected`/`found` rows.
+
+| quantity | this extractor's rules on the artifact | board's own labels |
+|---|---:|---:|
+| both-direction positions | **4** | **4** |
+| T2-like sites | 42 | 34 (`root == T2`) |
+| T3-like sites | 21 | 25 (`root == T3`) |
+
+Top signatures produced by these rules on that data: `Rc<Vector<_>> <- String` ×19,
+`String <- Rc<Vector<_>>` ×7, `Rc<Vector<i64>> <- String` ×4, `String <- Rc<Vector<i64>>` ×4 — the
+board's own top signatures at the board's own counts.
+
+**The discriminator reproduces exactly.** The site totals differ because this rule is deliberately
+broader than the board's `T2` label (it also admits pairs the board classified under other roots),
+but the quantity the intervention turns on — positions carrying both directions — agrees at 4.
+
+So the extractor buckets correctly, and **the population changed between the trees.** The earlier
+ranking in this document, which called bucketing the likelier suspect on the strength of
+`TOTAL_MISMATCH_SITES=134` against an independently measured `E0308=135`, was wrong. That agreement
+established that the extractor *reads* the whole population; it said nothing about how it *divides*
+it, and those are different properties.
+
+## The consequence, which is larger than this lane
+
+**The text-carrier reversal signature has no occurrences on current main.** At `2a2bd0ad`: 34 sites
+across those four signatures, 4 both-direction positions. At `90986d19`: zero `Rc<Vector<_>> <-
+String`, zero both-direction positions, and the surviving T2-like sites carry a different shape —
+`String <- Rc<Vector<String>>` ×8, with a *concrete* element type where the board had an inferred
+one.
+
+Not claimed: that anything repaired it. The board fell from 199 E0308 blocks to 135 across the same
+interval, and 34 of the missing sites are T2's, but whether they were fixed or moved into another
+error class is **not established here**.
+
+What this does establish is that the direction census at the top of this document is scoped to
+`2a2bd0ad` **load-bearingly**, not cautiously: its population does not exist on current main, and
+any plan that treats T2 as a live 34-site root on today's tree is planning against a stale board.
