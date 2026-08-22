@@ -165,3 +165,73 @@ before it was needed: zero within-position reversals, uniform modeled→host at 
 modules.
 
 Both arms will be reported with both numbers whether or not they match.
+
+---
+
+# Intervention result: controls PASS, predictions NOT INTERPRETABLE
+
+One dispatch, both arms, `MARKER_REF=90986d19469397098ddaa799dfc9e9087541cbf4`, empty dirty list.
+
+## Instrument controls — both pass
+
+| # | control | arm A | arm B | verdict |
+|---|---|---|---|---|
+| P4 | `sha256(target/release/gunbc)` (16) | `ea59c72fbac8f384` | `6d40b1d2a0417935` | **differ — PASS** |
+| P5 | fallback line as read on the runner | `_ => decl_identity_file(n.clone()),` | `_ => { let _ = &n; String::new() }` | **differ — PASS** |
+
+The patched compiler really was the one measured. Both arms ran to `PROBE_EXIT=0` with one cargo
+log each, and the extractor announced `TOTAL_MISMATCH_SITES` in both, so this is not the
+failed-instrument case.
+
+## The measurement
+
+| quantity | arm A | arm B |
+|---|---:|---:|
+| `TOTAL_MISMATCH_SITES` | 134 | **160** |
+| `T2_LIKE_SITES` | 21 | 21 |
+| `T2_POSITIONS_BOTH_DIRECTIONS` | **0** | **0** |
+| `T3_LIKE_SITES` | 14 | 14 |
+
+## Why no prediction may be read off this
+
+**P1 registered `arm A > 0`, and arm A is 0.** That is a pre-registered precondition failing, and
+it invalidates P1, P2 and P3 together: a predicted zero that is *also* zero in the control arm
+measures nothing. Had the predictions not been registered as exact values before the run, `arm B =
+0` would have read as clean confirmation of the mechanism. It is not.
+
+**Arm A does not reproduce its own baseline.** The 2026-08-21 artifact recorded 34 T2 sites, four
+positions carrying both directions, and a top signature of `expected Rc<Vector<_>>, found String`
+×19. Arm A here reports 21 T2-like sites, zero both-direction positions, and a top signature of
+`expected String, found Rc<Vector<String>>` ×8 — a different population with different signatures.
+By this lane's own standing rule, a walk that does not reproduce the known population as its
+diagnostic-producing subset is wrong and must not be published as a divergence count. So it is not
+published as one.
+
+**The cause of the baseline miss is not established.** At least two candidates, not separated:
+the artifact was taken at `2a2bd0ad` and this run at `90986d19`, and the board moved substantially
+between them (199 E0308 blocks then, 135 now), so the T2 population may genuinely have changed; and
+this extractor is a fresh regex over cargo logs, not the board's classifier, so it may simply bucket
+differently. `TOTAL_MISMATCH_SITES=134` against the parent lane's independently measured `E0308=135`
+suggests the *total* is very close to right, which makes the *bucketing* the more likely suspect —
+but that is a ranking, not a finding.
+
+## What does survive
+
+Arm B has **26 more** mismatch sites than arm A (134 → 160) while the T2-like and T3-like buckets
+are **byte-identical** between arms. So the fallback change demonstrably moved the emission — it is
+not inert — and it moved nothing this extractor counts as T2 or T3. That is consistent with the
+`integer.dag` regression `type_reference_identity_note` warns about (empty identity renders
+structurally, at sites that are not text carriers), and it is *not* evidence for or against the T2
+mechanism.
+
+**The mechanism stated in the addendum above is therefore still unconverted.** It remains consistent
+with every measurement and still makes its prediction; this run failed to test it, because the
+instrument could not see the signature it was built to move.
+
+## Next step, and what it must fix first
+
+Re-establish the baseline before re-running the intervention: either re-derive the board's own T2
+classification on `90986d19` with the board's classifier rather than this regex, or take both arms
+at `2a2bd0ad` where the four reversals are known to exist. Until arm A shows a nonzero
+`T2_POSITIONS_BOTH_DIRECTIONS`, the intervention has no signal to move and re-running it costs 25
+minutes to learn nothing.
