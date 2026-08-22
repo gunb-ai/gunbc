@@ -1711,12 +1711,29 @@ pub fn record_lit_fields_from_expected(
     }
 }
 
-pub fn field_declared_type_node(sf: Rc<Node>) -> Rc<Node> {
-    match sf.inferred.as_deref() {
-        Some(InferredNode::Resolved { node: rt }) => {
-            preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+pub fn field_type_expr_is_stripped_placeholder(
+    te: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    authored_name_at(source_indices.clone(), te.clone()) == *""
+        && te.children.len() == 0
+        && te.params.len() == 0
+}
+
+pub fn field_substitution_carrier(
+    sf: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let te = field_node_type_expr(sf.clone());
+    if field_type_expr_is_stripped_placeholder(te.clone(), source_indices.clone()) {
+        match sf.inferred.as_deref() {
+            Some(InferredNode::Resolved { node: rt }) => {
+                preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+            }
+            _ => te.clone(),
         }
-        _ => field_node_type_expr(sf.clone()),
+    } else {
+        te.clone()
     }
 }
 
@@ -1767,8 +1784,13 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
                                                     inferred: Some(Rc::new(
                                                         InferredNode::Resolved {
                                                             node: substitute_generics(
-                                                                field_declared_type_node(
+                                                                field_substitution_carrier(
                                                                     sf.clone(),
+                                                                    scope
+                                                                        .type_env
+                                                                        .clone()
+                                                                        .source_indices
+                                                                        .clone(),
                                                                 ),
                                                                 subst.clone(),
                                                                 scope
@@ -9872,7 +9894,15 @@ pub fn infer_record_lit_structural(
                     .first()
                     .cloned()
                     {
-                        Some(sf) => Some(field_declared_type_node(sf.clone())),
+                        Some(sf) => {
+                            let ft = match sf.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+                                }
+                                _ => field_node_type_expr(sf.clone()),
+                            };
+                            Some(ft.clone())
+                        }
                         None => None,
                     };
                     let field_expected = match field_declared_type.clone() {

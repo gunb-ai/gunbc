@@ -1112,11 +1112,20 @@ fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: I
   }
 }
 
-fn field_declared_type_node(sf: Node) -> Node {
-  match sf.inferred {
-    Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
-    _ => field_node_type_expr(n: sf)
-  }
+fn field_type_expr_is_stripped_placeholder(te: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: te) == ""
+    && te.children |> count == 0
+    && te.params |> count == 0
+}
+
+fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let te = field_node_type_expr(n: sf)
+  if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
+    match sf.inferred {
+      Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+      _ => te
+    }
+  } else { te }
 }
 
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
@@ -1146,7 +1155,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                     Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_declared_type_node(sf: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
+                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
                       return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                       transport: sf.transport, properties: sf.properties,
                       type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -5405,7 +5414,11 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     }
     let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
-        Present { value: field_declared_type_node(sf: sf) }
+        let ft = match sf.inferred {
+          Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+          _ => field_node_type_expr(n: sf)
+        }
+        Present { value: ft }
       Absent => none
     }
     let field_expected = match field_declared_type {
