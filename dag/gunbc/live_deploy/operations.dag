@@ -12,6 +12,9 @@ import extdeps.systemd.systemctl {
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
   coreutils_install_binary_name,
+  coreutils_rm_force_argv,
+  coreutils_rm_empty_directory_argv,
+  coreutils_rm_force_recursive_argv,
   coreutils_install_mode_flag,
   coreutils_install_file_owned_argv,
   coreutils_install_directory_owned_argv,
@@ -187,4 +190,19 @@ fn install_directory_owned_command(
   shell_privileged_command_text_of_argv(
     argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path),
   )
+}
+
+// Teardown removals. Each keeps rm(1)'s three shapes distinct all the way to the emitted text —
+// rm_empty_directory in particular is a REFUSAL when the directory is non-empty (a live agent
+// worktree root, per emit's teardown_worktree_rmdir_note), so it must never widen into -rf.
+fn rm_force_command(paths: List<String>) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_argv(paths: paths))
+}
+
+fn rm_empty_directory_command(path: String) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_empty_directory_argv(path: path))
+}
+
+fn rm_force_recursive_command(path: String) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_recursive_argv(path: path))
 }

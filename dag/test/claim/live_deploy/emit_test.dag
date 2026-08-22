@@ -48,12 +48,20 @@ import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
   tailscale_scoped_removal_capability,
+  TailscaleServeEndpoint,
+  tailscale_serve_enable_argv,
+  tailscale_serve_off_argv,
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.apt { apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
+  rm_force_command,
+  rm_empty_directory_command,
+  rm_force_recursive_command,
+  systemctl_disable_now_command,
   deploy_stage_install_command,
   deploy_stage_write_expansion_command,
   install_directory_owned_command,
@@ -63,6 +71,7 @@ import gunbc.live_deploy.operations {
   systemctl_restart_command,
 }
 import gunbc.live_deploy.emit {
+  deploy_receipt_command,
   RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   live_deploy_tree_sync_unit_for,
@@ -209,8 +218,8 @@ test fn witness_attempt_state_mode_derives_to_owner_only() -> Bool {
 test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
   let script = witness_retract_script()
   let path = srv1_dispatch_attempt_state_root as String
-  let empty_dir_removal = string_contains(s: script, pattern: join(["rm -d ", path], ""))
-  let recursive_removal = string_contains(s: script, pattern: join(["rm -rf ", path], ""))
+  let empty_dir_removal = string_contains(s: script, pattern: rm_empty_directory_command(path: path))
+  let recursive_removal = string_contains(s: script, pattern: rm_force_recursive_command(path: path))
   empty_dir_removal && !recursive_removal
 }
 
@@ -273,10 +282,10 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg --https=443 8080")
+    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
-    && string_contains(s: sh, pattern: "fold=apply verdict=converged")
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
 }
 
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
@@ -337,15 +346,18 @@ test fn witness_retract_script_owned_only() -> Bool {
   let sh = witness_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: sh, pattern: "then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "sudo -n rm -rf /opt/gunbc/gunbc")
-    && !string_contains(s: sh, pattern: "rm -rf /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "fold=retract verdict=converged")
+    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: sh, pattern: concat("then ", concat(systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true), "; fi")))
+    && string_contains(s: sh, pattern: rm_force_command(paths: ["/opt/gunbc/bin/gunbc"]))
+    && string_contains(s: sh, pattern: rm_empty_directory_command(path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/gunbc"))
+    && !string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: sh, pattern: rm_force_command(paths: [
+      "/etc/systemd/system/gunbc-tree-sync.service",
+      "/etc/gunbc-tree-sync.env",
+    ]))
+    && string_contains(s: sh, pattern: rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
 }
@@ -384,7 +396,7 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
     && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
-    && string_contains(s: sh, pattern: "fold=retract verdict=converged")
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
@@ -601,11 +613,11 @@ test fn twin_belt_timer_actuates_its_own_tree_not_productions() -> Bool {
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
   let twin = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  !string_contains(s: twin, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+  !string_contains(s: twin, pattern: rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "tailscale serve reset")
-    && !string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
+    && !string_contains(s: twin, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
 }
 
 
@@ -662,12 +674,12 @@ test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
   let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
   let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  string_contains(s: live_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
+  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && !string_contains(s: live_apply, pattern: "--set-path")
-    && string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 --set-path=/srv1-lab-codex-feedback-v0 18081")
-    && !string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
-    && string_contains(s: live_retract, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
+    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 off")
 }
 
@@ -754,4 +766,20 @@ test fn emit_RED_unit_files_are_not_written_through_here_documents() -> Bool {
 test fn emit_staged_unit_body_is_quoted_by_the_posix_authority() -> Bool {
   let sh = witness_apply_script()
   string_contains(s: sh, pattern: concat("'printf' '%s' ", concat("'", "[Unit]")))
+}
+
+// The tailscale endpoint spellings are DERIVED from extdeps.tailscale.serve's argv rows, the
+// same rows the emitter consumes, rather than transcribed. Transcribing them is what let an
+// invented `tailscale_serve_path` label sit in the model while the emitted command derived from
+// the port alone — endpoint_identity_is_the_collision_axis_note is the receipt.
+fn tailscale_enable_command(endpoint: TailscaleServeEndpoint) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: endpoint)),
+  )
+}
+
+fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: endpoint)),
+  )
 }
