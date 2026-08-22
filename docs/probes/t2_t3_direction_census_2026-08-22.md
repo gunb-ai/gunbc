@@ -278,3 +278,35 @@ error class is **not established here**.
 What this does establish is that the direction census at the top of this document is scoped to
 `2a2bd0ad` **load-bearingly**, not cautiously: its population does not exist on current main, and
 any plan that treats T2 as a live 34-site root on today's tree is planning against a stale board.
+
+## The signature was REMOVED, not relocated
+
+The section above left open whether the 34 missing T2 sites were repaired or had migrated into a
+different error class. The parent lane (`smart-ram-730`) answered it by joining two retained
+per-site boards that bracket the window, at site identity rather than by count:
+
+- `v2_compiler_tokenize.rs`, between `ba63edc09b` (399) and `629252b6df` (339): **24 E0308 sites
+  removed, 1 E0282 removed, zero added.** E0308 sites remaining in that file on current main: **0**.
+- Whole-board join for the same window: 328 same / 57 removed / **3 new**.
+
+A migration into another class would have surfaced as new sites somewhere in that join, and three
+new sites cannot absorb twenty-four. The removed line list includes `225:13 248:13 269:13 337:13` —
+the same construct family, at the same column, as the four both-direction positions recorded at the
+top of this document, offset by the line drift that file is known to carry.
+
+So the class was genuinely repaired. **Which of the six PRs merged in that window did it is not
+established** (#8825, #8829, #8831, #8818, #8828, #8832), and the −39 in E0308 is unattributed.
+
+## Standing of this lane
+
+The mechanism documented here explains a signature that **no longer occurs**. That does not refute
+it: the fallback arm still stands, the state-space conflation in it is still real, and the
+`integer.dag` precedent shows the class recurs at different aliases. But the lane is no longer
+repairing live sites — it is characterising a defect that has stopped firing at one alias for
+reasons nobody has identified.
+
+The intervention at `2a2bd0ad`, where the signal is known to exist, is therefore the last work this
+lane does. A mechanism that survives an intervention is a durable asset even at a current
+population of zero; one that fails it saves the next reader from believing it. Beyond that result
+there is no further investment here — no re-derivation on main, no repair design, and no
+counterfactual work against a population of zero.
