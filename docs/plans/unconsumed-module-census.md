@@ -378,10 +378,22 @@ have a live caller.**
    **(e) was implemented, and implementing it confirmed the zero rather than resting on
    the measurement.** Crediting `operation`/`resource` names moved **zero** rows — the
    earlier count-based prediction held. A first cut also credited the service's own short
-   name (`service gcp.Metadata` → `Metadata`), which produced a **false** consumption
-   claim for `extdeps.cloud.gcp.sts` via a generic parameter in a consumer, and was
-   withdrawn: a service's short name is not a symbol consumers name bare, and there is no
-   evidence in this corpus that it is. *Both of the wrong answers in this paragraph came
+   name (`service gcp.Metadata` → `Metadata`), was blamed for a **false** consumption
+   claim on `extdeps.cloud.gcp.sts`, and was withdrawn on that basis. **Both halves of
+   that were wrong, and the correction is recorded here rather than quietly reverted.**
+   The false claim was caused by **(f)** — the consumer named `Metadata` as a generic type
+   parameter — and the service credit was merely standing next to it; with (f2) scoped,
+   restoring the credit moves **zero rows** and `gcp.sts` stays non-consumed. And the
+   stated reason ("no evidence any consumer names a service bare") was refuted by the
+   deletion lane's seventh discriminator: **`dag/extdeps/realization/artifact_store_fs.dag`
+   writes `Filesystem.Write`, `Filesystem.Read` and `Filesystem.Delete` with no import
+   naming `Filesystem`** — a consumer bare-resolving an undotted service through the
+   whole-pool namespace. Worse, withdrawing the credit is the *own-nothing* direction:
+   `Filesystem` is declared **twice** — `service Filesystem` in
+   `extdeps/filesystem/filesystem_io.dag` and `resource Filesystem` in `std/resources.dag`
+   — so dropping the service credit hands `std.resources` **false sole ownership** of a
+   symbol another module visibly declares. The credit is restored, and its justification is
+   correctness of ownership rather than measured effect, since the measured effect is nil. *Both of the wrong answers in this paragraph came
    from the fix, not the defect* — which is now the pattern rather than the exception, and
    the reason every row that moves is read before a number is published.
 
