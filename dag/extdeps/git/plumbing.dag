@@ -1,0 +1,437 @@
+module extdeps.git.plumbing
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_eq, git_object_id_wire_hex }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs"
+  }
+}
+
+// WHY THIS MODULE EXISTS. `extdeps.git` models git's porcelain and read surface; git's
+// OBJECT-STORE PLUMBING surface -- hash-object, cat-file, read-tree, write-tree,
+// update-index, checkout-index, commit-tree, unpack-file, update-ref -- was modeled
+// nowhere, and the only realization of it in the tree was a private argv corpus inside
+// `gunbc.devboot`. That is one authority split at the surface grain (DESIGN section 3),
+// not an un-lifted operation, and this module is the half that was missing.
+//
+// It is a sibling module rather than more rows in `extdeps.git` for the reason
+// `extdeps.git.inspect` is one: a consumer pays for the upstream facts it consumes, and
+// plumbing is a different reading of git from porcelain even though it is the same
+// upstream product (DESIGN, external upstream decomposition -- one product may be
+// grounded by several modules; it may not be forked across several authorities).
+data git_plumbing_service_note: String = "Git's object-store plumbing surface: object database (hash-object, cat-file, unpack-file), index and tree (read-tree, update-index, write-tree, checkout-index), commit (commit-tree) and ref store (rev-parse --verify, update-ref). Every operation names its repository as a typed input rather than inheriting the process working directory, per extdeps.git remote_url_takes_its_repository_as_a_parameter_note. No plumbing argv is spelled outside this service."
+
+// EVERY OPERATION REPORTS `exit_code` AND `stderr`, NEVER A `success` BOOL. The seed
+// derives `exit_success` as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch
+// output-source match), so a pair would carry one fact twice and make a contradictory pair
+// writable -- see extdeps.git ls_remote_reports_termination_not_success_note for the
+// derivation and the sibling census. It matters more here than anywhere: `cat-file -e` and
+// `rev-parse --verify --quiet` use a NONZERO EXIT AS AN ANSWER rather than as a failure,
+// so an operation that pre-judged its exit code would have decided something only its
+// caller can.
+//
+// NO OPERATION DECLARES AN `exit` BLOCK, per extdeps.git ls_remote_carries_no_exit_block_note:
+// those arms are parsed, re-emitted, and never realized, so authoring one here would mint
+// fresh declared-but-unrealized instances rather than inherit existing ones.
+data git_plumbing_outcome_shape_note: String = "Operations report exit_code and stderr and declare no exit block. Two of them - CatFileExists and ObserveRef - answer a QUESTION with a nonzero exit, which is why pre-judging termination as success is not available to this layer at all."
+
+// REPOSITORY ADDRESSING IS ONE AXIS, NOT TWO OPERATION FAMILIES. Git accepts a repository
+// two ways and they are not interchangeable: `-C <path>` changes directory and then
+// discovers a repository from there (the worktree reading), while `--git-dir=<path>` names
+// the object/ref store directly (the bare reading, which is what a store with no worktree
+// requires). Modeling the choice as a parameter is DESIGN section 2 horizontal: one concept
+// spanning both breadths, rather than every operation below appearing twice.
+type GitRepositoryAddress
+  = GitWorktreeAt { path: FilePath }
+  | GitDirectoryAt { path: FilePath }
+
+fn git_repository_address_argv(address: GitRepositoryAddress) -> List<String> {
+  match address {
+    GitWorktreeAt { path } => ["-C", path as String]
+    GitDirectoryAt { path } => [concat("--git-dir=", path as String)]
+  }
+}
+
+// GIT_INDEX_FILE IS GIT'S OWN INTERFACE FOR "OPERATE ON THIS INDEX", and it is an
+// ENVIRONMENT variable rather than a flag -- git offers no `--index-file` option for the
+// commands below. So a realization that must name a non-default index has exactly one
+// spelling available, and `env` in argv position zero is that spelling.
+//
+// WHAT CHANGES BY PUTTING IT HERE. A call site that spells `env` itself names `env` as the
+// program it runs, and the git operation is a string in argument position two or three --
+// invisible to anything that reads programs rather than argument lists. Inside an operation
+// the identity is the DECLARATION NAME (`git.Plumbing.WriteTreeFromIndex`), and `env` is a
+// transport detail of it, which is the whole difference between an operation that has a
+// name and an argv that has a prefix.
+fn git_index_file_env_argv(index: FilePath) -> List<String> {
+  ["env", concat("GIT_INDEX_FILE=", index as String)]
+}
+
+// COMMIT PARENTS ARE A CLOSED SHAPE, NOT A POSSIBLY-EMPTY LIST OF FLAGS. `commit-tree`
+// takes zero or more `-p <commit>` pairs, and a parentless commit is a deliberate root
+// rather than a degenerate case of a parented one -- devboot builds them on purpose so a
+// client can clone one commit shallowly. Naming the two states keeps "this commit has no
+// history" distinguishable from "the caller had no parents to hand", which an empty list
+// would conflate.
+type GitCommitParents
+  = GitNoParents
+  | GitParents { first: NonEmptyStr, remaining: List<NonEmptyStr> }
+
+fn git_commit_parent_flag_argv(parent: NonEmptyStr) -> List<String> {
+  ["-p", parent as String]
+}
+
+fn git_commit_parents_argv(parents: GitCommitParents) -> List<String> {
+  match parents {
+    GitNoParents => []
+    GitParents { first, remaining } =>
+      concat(
+        git_commit_parent_flag_argv(parent: first),
+        remaining |> flat_map(p => git_commit_parent_flag_argv(parent: p)),
+      )
+  }
+}
+
+service git.Plumbing {
+  operation HashObjectWrite {
+    input { address: GitRepositoryAddress, path: FilePath }
+    output {
+      oid: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--", "{path}"] }
+  }
+
+  operation CatFileBlob {
+    input { address: GitRepositoryAddress, object: String }
+    output {
+      content: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "blob", "{object}"] }
+  }
+
+  operation CatFileExists {
+    input { address: GitRepositoryAddress, object: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "-e", "{object}"] }
+  }
+
+  operation CatFileSize {
+    input { address: GitRepositoryAddress, object: String }
+    output {
+      size: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "-s", "{object}"] }
+  }
+
+  operation UnpackObject {
+    input { address: GitRepositoryAddress, object: String }
+    output {
+      path: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "unpack-file", "{object}"] }
+  }
+
+  operation ReadTreeIntoIndex {
+    input { address: GitRepositoryAddress, index: FilePath, treeish: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "{treeish}"] }
+  }
+
+  operation ReadTreeIntoIndexPrefixed {
+    input { address: GitRepositoryAddress, index: FilePath, prefix: String, treeish: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "--prefix={prefix}", "{treeish}"] }
+  }
+
+  operation AddAllIntoIndex {
+    input { address: GitRepositoryAddress, index: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "add", "-A"] }
+  }
+
+  operation UpdateIndexCacheInfo {
+    input { address: GitRepositoryAddress, index: FilePath, mode: String, oid: String, path: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "update-index", "--add", "--cacheinfo", "{mode},{oid},{path}"] }
+  }
+
+  operation WriteTreeFromIndex {
+    input { address: GitRepositoryAddress, index: FilePath }
+    output {
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "write-tree"] }
+  }
+
+  operation CheckoutIndexToPrefix {
+    input { address: GitRepositoryAddress, index: FilePath, prefix: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
+  }
+
+  operation CommitTree {
+    input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
+    output {
+      commit: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "commit-tree", "{tree}", git_commit_parents_argv(parents: parents), "-m", "{message}"] }
+  }
+
+  operation InitAt {
+    input { address: GitRepositoryAddress, path: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "init", "--quiet", "{path}"] }
+  }
+
+  operation InitBareAt {
+    input { address: GitRepositoryAddress, path: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "init", "--bare", "--quiet", "{path}"] }
+  }
+
+  operation ObserveRef {
+    input { address: GitRepositoryAddress, ref_name: String }
+    output {
+      revision: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "rev-parse", "--verify", "--quiet", "{ref_name}"] }
+  }
+
+  operation CreateRefIfAbsent {
+    input { address: GitRepositoryAddress, ref_name: String, new: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "{ref_name}", "{new}", ""] }
+  }
+
+  operation AdvanceRefIfExpected {
+    input { address: GitRepositoryAddress, ref_name: String, new: String, expected_old: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "{ref_name}", "{new}", "{expected_old}"] }
+  }
+
+  operation DeleteRefIfExpected {
+    input { address: GitRepositoryAddress, ref_name: String, expected_old: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "-d", "{ref_name}", "{expected_old}"] }
+  }
+}
+
+// THE EMPTY-STRING OLD VALUE IS A TRANSPORT ENCODING, AND IT LIVES ONLY IN THE ARGV ABOVE.
+// git's `update-ref <ref> <new> <old>` treats an EMPTY old value as "this ref must not
+// exist"; it is git's wire spelling of a precondition, not a semantic value a caller could
+// hold. A caller-facing `expected_old: Optional<GitObjectId>` would conflate four states
+// with different remedies -- create-only, update unconditionally, the caller did not supply
+// the fact, and the caller does not know the current value -- which is the state-space
+// conflation DESIGN section 5 names. So the three transitions are three named arms and the
+// empty string appears exactly once, inside CreateRefIfAbsent's transport row.
+type GitExactRefMutation
+  = GitCreateRefIfAbsent { name: GitRefName, new: GitObjectId }
+  | GitAdvanceRefIfExpected { name: GitRefName, expected_old: GitObjectId, new: GitObjectId }
+  | GitDeleteRefIfExpected { name: GitRefName, expected_old: GitObjectId }
+
+// WHAT A REF READ CAN SAY. Three states, because `git rev-parse --verify --quiet` has three:
+// it exits 0 with an object id when the ref resolves, exits 1 when it does not, and exits
+// 128 when the repository itself could not be used (extdeps.git git_ref_missing_exit_code /
+// git_repository_unusable_exit_code). Collapsing the third into the second would report a
+// ref as ABSENT from a store that was never reached, and those have opposite remedies --
+// the first means create it, the second means stop.
+type GitRefObservation
+  = GitRefObserved { oid: GitObjectId }
+  | GitRefAbsent
+  | GitRefObservationRefused { exit_code: Int, stderr: String }
+
+// WHY THE OUTCOME IS DECIDED BY OBSERVATION AND NOT BY THE EXIT CODE ALONE. Losing a
+// precondition race and failing to reach the object store BOTH exit 128 from `update-ref`
+// (measured; gunbc.devboot.produce records the same finding against a live store), so the
+// exit code does not discriminate them and git's stderr text is not a structural interface.
+// The discriminator that does exist is the ref's value AFTER the attempt, read independently.
+//
+// `GitRefMutationApplied` is therefore unreachable without a read-back, which is what
+// git_modeled_ref_transition_boundary_note already requires of any executing consumer: a
+// modeled transition is never promoted to applied.
+type GitRefMutationOutcome
+  = GitRefMutationApplied { mutation: GitExactRefMutation }
+  | GitRefMutationPreconditionNotHeld { mutation: GitExactRefMutation, observed: GitRefObservation }
+  | GitRefMutationExecutionRefused { mutation: GitExactRefMutation, exit_code: Int, stderr: String }
+  | GitRefMutationObservationRefused { mutation: GitExactRefMutation, exit_code: Int, stderr: String }
+  | GitRefMutationReadBackMismatch { mutation: GitExactRefMutation, observed: GitRefObservation }
+
+fn git_exact_ref_mutation_name(mutation: GitExactRefMutation) -> GitRefName {
+  match mutation {
+    GitCreateRefIfAbsent { name, new } => name
+    GitAdvanceRefIfExpected { name, expected_old, new } => name
+    GitDeleteRefIfExpected { name, expected_old } => name
+  }
+}
+
+// The state the mutation intends to leave behind.
+fn git_exact_ref_mutation_desired(mutation: GitExactRefMutation) -> GitRefObservation {
+  match mutation {
+    GitCreateRefIfAbsent { name, new } => GitRefObserved { oid: new }
+    GitAdvanceRefIfExpected { name, expected_old, new } => GitRefObserved { oid: new }
+    GitDeleteRefIfExpected { name, expected_old } => GitRefAbsent
+  }
+}
+
+// The state the mutation's precondition asserts held BEFORE it ran.
+fn git_exact_ref_mutation_precondition(mutation: GitExactRefMutation) -> GitRefObservation {
+  match mutation {
+    GitCreateRefIfAbsent { name, new } => GitRefAbsent
+    GitAdvanceRefIfExpected { name, expected_old, new } => GitRefObserved { oid: expected_old }
+    GitDeleteRefIfExpected { name, expected_old } => GitRefObserved { oid: expected_old }
+  }
+}
+
+fn git_ref_observation_eq(left: GitRefObservation, right: GitRefObservation) -> Bool {
+  match left {
+    GitRefObserved { oid } =>
+      match right {
+        GitRefObserved { oid: other } => git_object_id_eq(left: oid, right: other)
+        GitRefAbsent => false
+        GitRefObservationRefused { exit_code, stderr } => false
+      }
+    GitRefAbsent =>
+      match right {
+        GitRefObserved { oid } => false
+        GitRefAbsent => true
+        GitRefObservationRefused { exit_code, stderr } => false
+      }
+    GitRefObservationRefused { exit_code, stderr } => false
+  }
+}
+
+// THE DECISION IS TOTAL OVER FIVE STATES AND NONE OF THEM WIDENS. Read as a table:
+//
+//   observation refused                          => ObservationRefused
+//   exit 0   + desired state observed            => Applied
+//   exit 0   + desired state NOT observed        => ReadBackMismatch
+//   nonzero  + precondition no longer holds      => PreconditionNotHeld
+//   nonzero  + precondition still holds          => ExecutionRefused
+//
+// The last two are the pair the exit code alone cannot separate, and they are the reason
+// this function takes an observation at all. ReadBackMismatch exists because a zero exit is
+// not a receipt either: it says the process ended, not that the store holds what was asked.
+fn git_ref_mutation_outcome(
+  mutation: GitExactRefMutation,
+  exit_code: Int,
+  stderr: String,
+  observed_after: GitRefObservation,
+) -> GitRefMutationOutcome {
+  match observed_after {
+    GitRefObservationRefused { exit_code: read_exit, stderr: read_stderr } =>
+      GitRefMutationObservationRefused {
+        mutation: mutation,
+        exit_code: read_exit,
+        stderr: read_stderr,
+      }
+    GitRefObserved { oid } =>
+      git_ref_mutation_outcome_observed(
+        mutation: mutation,
+        exit_code: exit_code,
+        stderr: stderr,
+        observed_after: observed_after,
+      )
+    GitRefAbsent =>
+      git_ref_mutation_outcome_observed(
+        mutation: mutation,
+        exit_code: exit_code,
+        stderr: stderr,
+        observed_after: observed_after,
+      )
+  }
+}
+
+fn git_ref_mutation_outcome_observed(
+  mutation: GitExactRefMutation,
+  exit_code: Int,
+  stderr: String,
+  observed_after: GitRefObservation,
+) -> GitRefMutationOutcome {
+  if exit_code == 0 {
+    if git_ref_observation_eq(
+      left: observed_after,
+      right: git_exact_ref_mutation_desired(mutation: mutation),
+    ) {
+      GitRefMutationApplied { mutation: mutation }
+    } else {
+      GitRefMutationReadBackMismatch { mutation: mutation, observed: observed_after }
+    }
+  } else if git_ref_observation_eq(
+    left: observed_after,
+    right: git_exact_ref_mutation_precondition(mutation: mutation),
+  ) {
+    GitRefMutationExecutionRefused {
+      mutation: mutation,
+      exit_code: exit_code,
+      stderr: stderr,
+    }
+  } else {
+    GitRefMutationPreconditionNotHeld { mutation: mutation, observed: observed_after }
+  }
+}
+
+fn git_ref_mutation_applied(outcome: GitRefMutationOutcome) -> Bool {
+  match outcome {
+    GitRefMutationApplied { mutation } => true
+    GitRefMutationPreconditionNotHeld { mutation, observed } => false
+    GitRefMutationExecutionRefused { mutation, exit_code, stderr } => false
+    GitRefMutationObservationRefused { mutation, exit_code, stderr } => false
+    GitRefMutationReadBackMismatch { mutation, observed } => false
+  }
+}
