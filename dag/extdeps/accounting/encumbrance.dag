@@ -53,7 +53,7 @@ type Encumbrance<Q, S> {
 
 type EncumbranceLedger<Q, S> {
   appropriation: extdeps.accounting.budget.Appropriation<Q, S>
-  entries: std.types.List<Encumbrance<Q, S>>
+  entries: List<Encumbrance<Q, S>>
 }
 
 // Committed funds are DERIVED from the entries, never stored. A stored balance
@@ -168,11 +168,11 @@ fn reserve_fresh_reference<Q, S>(
   }
 }
 
-fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: std.types.NonEmptyStr) -> std.types.List<Encumbrance<Q, S>> {
+fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: std.types.NonEmptyStr) -> List<Encumbrance<Q, S>> {
   ledger.entries |> filter(e => e.reference == reference)
 }
 
-fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> std.types.List<std.measure.Measure<Q, S, std.nat.Nat>> {
+fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<std.measure.Measure<Q, S, std.nat.Nat>> {
   match e.state {
     Held { maximum_liability: m } => [m]
     Expended { actual: _, settled_at: _ } => []

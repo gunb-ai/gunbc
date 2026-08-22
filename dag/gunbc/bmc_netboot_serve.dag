@@ -36,7 +36,7 @@ fn bmc_netboot_seed_datasource(plan: BmcNetbootServePlan) -> String {
   join(["nocloud-net;s=", extdeps.uri.uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/"))], "")
 }
 
-fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> std.types.List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
+fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
   [
     extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ip", value: "dhcp" },
     extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "url", value: extdeps.uri.uri_wire(uri: plan.bulk_iso_url) },
@@ -128,7 +128,7 @@ data bmc_netboot_provision_scaffold: std.disposition.Disposition = std.dispositi
 
 data bmc_netboot_provision_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. bmc_netboot_run_bmc and bmc_netboot_put_path no longer hand-roll their own retained_runtime/shell.Exec.Run heredoc glue (that was two bridge sites duplicating one pattern, §2/§3); both now call gunbc.command_runner.run_shell_command, the single authority for rendering an ArgvCommand+CommandTransport over the heredoc bridge — command_runner already carries its own dissolution obligation (command_runner_dissolution_trigger) for that bridge, so this module inherits rather than duplicates it. CORRECTED 2026-08-19 (this clause previously said the SshExec debt below was unchanged and out of scope; that is now false and is rewritten rather than left standing per DESIGN §3's stale-citation discipline): extdeps.exec.command command_over_transport's SshExec branch no longer composes ssh_exec_prefix ++ argv as a flat suffix. It folds the inner ArgvCommand through gunbc.remote_shell_command remote_exec_command_string into ONE RFC-4254-conformant, POSIX-single-quote-encoded command string (cited to IEEE 1003.1-2017 section 2.2.2), carried as ssh's single final argument — bmc_transport now names openbmc_dropbear_interpretation explicitly on SshExec so this fold runs, rather than refusing on Unknown. CORRECTED AGAIN (2026-08-20, this clause previously said the heredoc bridge -- command_runner's shell_exec_via_bash/retained_runtime hop -- was unchanged; that is now false too and is rewritten rather than left standing, same §3 discipline): command_runner's run site no longer matches on transport or hops through a bash heredoc for either arm -- it asks command_over_transport once for the outer ArgvCommand and hands it straight to shell.Exec.RunArgv. So this module's remaining debt is scoped to command_runner_dissolution_trigger's own first clause (host_effect_apply has not yet bound ArgvCommand execution), which command_runner still carries and this module inherits rather than duplicates. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc_netboot_serve.dag retires command_runner.run_shell_command in favor of host_effect_apply")
 
-func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: std.types.List<String>) -> std.process.ProcessExit
+func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   gunbc.command_runner.run_shell_command(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
@@ -218,7 +218,7 @@ fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: std.types.NonEmptySt
   join([plan.netboot_dir as String, "/", name as String], "") as std.types.NonEmptyStr
 }
 
-fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> std.types.List<BmcStagedFile> {
+fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> List<BmcStagedFile> {
   [
     BmcStagedFile {
       remote_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),

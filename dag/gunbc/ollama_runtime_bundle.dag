@@ -133,7 +133,7 @@ type RuntimeMaterializationObservation
   | RuntimeMaterializationIncomplete {
       identity: std.content_hash.Fnv1a64Structural
       first_defect: RuntimeMaterializationDefect
-      further_defects: std.types.List<RuntimeMaterializationDefect>
+      further_defects: List<RuntimeMaterializationDefect>
     }
   | RuntimeMaterializationComplete { identity: std.content_hash.Fnv1a64Structural }
   | RuntimeMaterializationObservationRefused { cause: std.types.NonEmptyStr }
@@ -143,7 +143,7 @@ type RuntimeMaterializationObservation
 // as a real observation -- the same head-plus-tail move the frozen operation rows use.
 fn runtime_materialization_defects(
   observation: RuntimeMaterializationObservation,
-) -> std.types.List<RuntimeMaterializationDefect> {
+) -> List<RuntimeMaterializationDefect> {
   match observation {
     RuntimeMaterializationIncomplete { identity: _, first_defect: d, further_defects: rest } =>
       concat([d], rest)
@@ -251,7 +251,7 @@ type ModelStoreObservation
   | ModelStoreIncomplete {
       manifest_identity: std.types.NonEmptyStr
       first_missing_blob: std.types.NonEmptyStr
-      further_missing_blobs: std.types.List<std.types.NonEmptyStr>
+      further_missing_blobs: List<std.types.NonEmptyStr>
     }
   | ModelStoreComplete {
       manifest_identity: std.types.NonEmptyStr
@@ -265,7 +265,7 @@ type ModelStoreObservation
 
 // Incomplete carries at least one missing blob BY CONSTRUCTION. "Incomplete with nothing missing" is
 // not a state, and an empty list would report exactly that while reading as a real observation.
-fn model_store_missing_blobs(observation: ModelStoreObservation) -> std.types.List<std.types.NonEmptyStr> {
+fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<std.types.NonEmptyStr> {
   match observation {
     ModelStoreIncomplete {
       manifest_identity: _,

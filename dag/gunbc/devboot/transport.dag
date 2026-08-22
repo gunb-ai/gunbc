@@ -151,7 +151,7 @@ fn devboot_witness_run(
   site: RetainedWitnessRun,
   workdir: std.types.String,
   bin_path: std.types.String,
-  args: std.types.List<std.types.String>,
+  args: List<std.types.String>,
 ) -> WitnessBinRunOutcome {
   let out = gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args)
   WitnessBinRunOutcome {

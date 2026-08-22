@@ -19,7 +19,7 @@ data usd_account: product.fabric.budget.MoneyAccount = product.fabric.budget.Mon
   leases: [],
 }
 
-fn advanced_account(o: product.fabric.budget.MoneyOutcome) -> std.types.List<product.fabric.budget.MoneyAccount> {
+fn advanced_account(o: product.fabric.budget.MoneyOutcome) -> List<product.fabric.budget.MoneyAccount> {
   match o {
     AccountAdvanced { account: a } => [a]
     MoneyRefused { refusal: _ } => []

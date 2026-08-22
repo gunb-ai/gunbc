@@ -32,10 +32,10 @@ type PxeNetworkStanding
       http_endpoint: std.decl_ref.DeclarationRef,
       isolation: PxeNetworkIsolation,
     }
-  | PxeNetworkGapped { gaps: std.types.List<PxeNetworkGap> }
+  | PxeNetworkGapped { gaps: List<PxeNetworkGap> }
   | PxeNetworkUnobserved
 
-fn pxe_network_reachability_gaps(observation: PxeNetworkObservation) -> std.types.List<PxeNetworkGap> {
+fn pxe_network_reachability_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
   concat(
     if observation.dhcp_offers_bootloader { [] } else { [DhcpBootfileNotOffered] },
     concat(
@@ -57,7 +57,7 @@ fn pxe_network_authority_gaps(
   tftp_endpoint: std.decl_ref.DeclarationRef?,
   http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
-) -> std.types.List<PxeNetworkGap> {
+) -> List<PxeNetworkGap> {
   concat(
     match dhcp_authority {
       Absent => [DhcpAuthorityUnobserved]
@@ -150,7 +150,7 @@ fn pxe_network_all_gaps(
   tftp_endpoint: std.decl_ref.DeclarationRef?,
   http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
-) -> std.types.List<PxeNetworkGap> {
+) -> List<PxeNetworkGap> {
   concat(
     pxe_network_reachability_gaps(observation: observation),
     pxe_network_authority_gaps(
@@ -243,7 +243,7 @@ fn spark_pxe_firmware_enablement_intervention() -> std.human_intervention.HumanI
   }
 }
 
-fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> std.types.List<SparkPxeFirmwareGap> {
+fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFirmwareGap> {
   concat(
     match config.secure_boot {
       SecureBootDisabledForPxe => []
@@ -311,7 +311,7 @@ type SparkUnattendedPxeBootAdmissionOutcome
   | SparkUnattendedPxeBootRefused { reason: SparkUnattendedPxeBootRefusalReason }
 
 type SparkUnattendedPxeBootRefusalReason
-  = UnattendedPxeBootNetworkStandingIncomplete { gaps: std.types.List<PxeNetworkGap> }
+  = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
   | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent

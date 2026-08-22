@@ -23,7 +23,7 @@ module gunbc.remote_operation
 // both SSH execution seams re-check them -- so the property is a fact about those paths, not about
 // this constructor.
 type RemoteOperation
-  = RemoteArgv { argv: std.types.List<String> }
+  = RemoteArgv { argv: List<String> }
   | RemoteFileBytes { write: gunbc.typed_remote_file_write.TypedRemoteFileWrite, mode: gunbc.typed_remote_file_write.RemoteFileMode }
 
 // A STEP HAS A NAME, because a receipt has to say WHICH one stopped.
@@ -128,7 +128,7 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
 // A file write has NO single argv on purpose: its realization is four invocations (stage, mode,
 // rename, read-back), so exposing one command for it would be a fiction a reader could mistake for
 // the whole operation.
-fn remote_operation_argv(operation: RemoteOperation) -> std.types.List<String>? {
+fn remote_operation_argv(operation: RemoteOperation) -> List<String>? {
   match operation {
     RemoteArgv { argv: words } => Present { value: words }
     RemoteFileBytes { write: _, mode: _ } => none
@@ -146,11 +146,11 @@ fn remote_operation_label(operation: RemoteOperation) -> String {
 // so a consumer counting ITS length is counting a different population than the one it was handed.
 // Callers wanting "how many operations" ask here; callers genuinely wanting the argv subset ask
 // below and are naming that choice.
-fn remote_operation_count(operations: std.types.List<RemoteOperation>) -> Int {
+fn remote_operation_count(operations: List<RemoteOperation>) -> Int {
   length(operations)
 }
 
-fn remote_operations_argv_only(operations: std.types.List<RemoteOperation>) -> std.types.List<std.types.List<String>> {
+fn remote_operations_argv_only(operations: List<RemoteOperation>) -> List<List<String>> {
   flat_map(operations, o =>
     match remote_operation_argv(operation: o) {
       Present { value: words } => [words]
@@ -159,7 +159,7 @@ fn remote_operations_argv_only(operations: std.types.List<RemoteOperation>) -> s
   )
 }
 
-fn remote_operation_file_write_count(operations: std.types.List<RemoteOperation>) -> Int {
+fn remote_operation_file_write_count(operations: List<RemoteOperation>) -> Int {
   length(flat_map(operations, o =>
     match o {
       RemoteFileBytes { write: _, mode: _ } => [o]
@@ -194,6 +194,6 @@ fn remote_operation_wire(operation: RemoteOperation) -> String {
   }
 }
 
-fn remote_operations_wire(operations: std.types.List<RemoteOperation>) -> String {
+fn remote_operations_wire(operations: List<RemoteOperation>) -> String {
   join(map(operations, o => remote_operation_wire(operation: o)), "|")
 }

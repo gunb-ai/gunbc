@@ -33,7 +33,7 @@ fn probe_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
 // places, so "the SAME fragments grouped two ways" was maintained by author discipline: one
 // grouping could drift while the flattening test kept passing. Both groupings and the flattening
 // check now derive from this list, which makes the keystone mechanically true instead of copied.
-fn probe_fragments() -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn probe_fragments() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^probe_dash_option },
     v2.std.compilers.target_model.FixedToken { token_class: ^probe_equals },
@@ -42,12 +42,12 @@ fn probe_fragments() -> std.types.List<v2.std.compilers.target_model.ConcreteSyn
 }
 
 // All fragments in ONE argument: within an argument, concatenation is CORRECT.
-fn joined_grouping() -> std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+fn joined_grouping() -> List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   [v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: probe_fragments() }]
 }
 
 // Each fragment its OWN argument: across arguments, concatenation DESTROYS.
-fn separated_grouping() -> std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+fn separated_grouping() -> List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   v2.std.algebra.fold_list(
     xs: probe_fragments(),
     empty: std.algebra.Empty,
@@ -59,7 +59,7 @@ fn separated_grouping() -> std.types.List<v2.std.compilers.cli_surface.CliArgume
 
 // Flatten a grouping back to the fragment sequence it was built from, so the keystone compares
 // the ACTUAL grouping values rather than a third hand-authored list.
-fn flatten_grouping(arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn flatten_grouping(arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   v2.std.algebra.fold_list(
     xs: arguments,
     empty: std.algebra.Empty,
@@ -67,7 +67,7 @@ fn flatten_grouping(arguments: std.types.List<v2.std.compilers.cli_surface.CliAr
   )
 }
 
-fn argument_texts(arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> std.types.List<String> {
+fn argument_texts(arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> List<String> {
   match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: arguments,
     lex: probe_lex_rules(),
@@ -120,7 +120,7 @@ test fn separated_fragments_render_three_arguments() -> Bool {
 // THE KEYSTONE. Both groupings flatten to the same source text, so the text carrier cannot tell
 // them apart at all. Grouping is therefore information the argv carrier holds and text does not
 // -- which is exactly the fact the 17 remote jq rows lose at the ssh seam.
-fn grouping_flat_text(arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> String {
+fn grouping_flat_text(arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> String {
   match v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: flatten_grouping(arguments: arguments),
     lex: probe_lex_rules(),

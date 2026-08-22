@@ -110,7 +110,7 @@ fn effect_reject_runtime(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2
 
 fn effect_call_primitive(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   effect_reject_runtime(node: node)

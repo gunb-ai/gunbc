@@ -99,7 +99,7 @@ fn infer_bounded_lattice_instance_gate(instance: v2.std.node.Node) -> v2.std.dia
   )
 }
 
-fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials: std.types.List<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials: List<v2.std.node.Node>) -> v2.std.logic.Bool {
   if v2.std.algebra.any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
       Named { name: sym } =>
@@ -117,7 +117,7 @@ fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials:
 
 fn infer_bounded_lattice_consumer_gate(
   consumer: v2.std.node.Node,
-  partials: std.types.List<v2.std.node.Node>,
+  partials: List<v2.std.node.Node>,
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold(consumer.children, init: v2.std.diagnostic.outcome_accepted(value: consumer), f: fn(acc, e) {
     match acc {
@@ -156,8 +156,8 @@ fn infer_bounded_lattice_consumer_gate(
   }
 }
 
-fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
-  let alg: v2.std.node.NodeFold<std.types.List<v2.std.node.Node>> = v2.std.node.NodeFold {
+fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> List<v2.std.node.Node> {
+  let alg: v2.std.node.NodeFold<List<v2.std.node.Node>> = v2.std.node.NodeFold {
       init: fn(n0) {
         match bounded_lattice_instance_completeness(instance: n0) {
           BoundedLatticePartial { missing: _ } => [n0]

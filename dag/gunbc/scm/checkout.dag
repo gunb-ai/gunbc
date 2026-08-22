@@ -32,7 +32,7 @@ type CheckoutOutcome
 // under a positional discipline the order IS the program. A dropped or doubled reverse would rebuild
 // `f(x, y)` as `f(y, x)` silently.
 type CheckoutEdgeAcc {
-  edges: std.types.List<v2.std.node.Edge>
+  edges: List<v2.std.node.Edge>
   refusal: CheckoutRefusal?
 }
 

@@ -254,7 +254,7 @@ fn spark_serving_tags_model_fold_step(
   }
 }
 
-fn spark_serving_tags_model_search(elements: std.types.List<extdeps.languages.json.emit.JsonValue>, want_wire: String) -> SparkServingTagsModelSearch {
+fn spark_serving_tags_model_search(elements: List<extdeps.languages.json.emit.JsonValue>, want_wire: String) -> SparkServingTagsModelSearch {
   let folded = fold(
     elements,
     init: SparkServingTagsModelFoldEmpty,
@@ -402,7 +402,7 @@ fn spark_serving_readback_field_label(field: SparkServingReadbackField) -> Strin
 }
 
 fn spark_serving_first_readback_refusal(
-  fields: std.types.List<SparkServingReadbackField>,
+  fields: List<SparkServingReadbackField>,
 ) -> std.types.NonEmptyStr? {
   fold(
     fields,

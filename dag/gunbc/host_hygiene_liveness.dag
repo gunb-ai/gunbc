@@ -46,9 +46,9 @@ fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> std.types.NonEmptyStr
 
 type FleetListeningVerdict
   = FleetListeningGreen
-  | FleetListeningRed { unhealthy: std.types.List<SlotListeningVerdict> }
+  | FleetListeningRed { unhealthy: List<SlotListeningVerdict> }
 
-fn fleet_listening_verdict(verdicts: std.types.List<SlotListeningVerdict>) -> FleetListeningVerdict {
+fn fleet_listening_verdict(verdicts: List<SlotListeningVerdict>) -> FleetListeningVerdict {
   let unhealthy = filter(verdicts, v => !slot_listening_verdict_healthy(v: v))
   if unhealthy.length() == 0 {
     FleetListeningGreen
@@ -57,7 +57,7 @@ fn fleet_listening_verdict(verdicts: std.types.List<SlotListeningVerdict>) -> Fl
   }
 }
 
-fn fleet_green_from_listening(verdicts: std.types.List<SlotListeningVerdict>) -> Bool {
+fn fleet_green_from_listening(verdicts: List<SlotListeningVerdict>) -> Bool {
   match fleet_listening_verdict(verdicts: verdicts) {
     FleetListeningGreen => true
     FleetListeningRed { unhealthy: _ } => false
@@ -68,7 +68,7 @@ type FleetListeningEvidence {
   slot_count: Int
 }
 
-fn fleet_listening_check_reason(verdicts: std.types.List<SlotListeningVerdict>) -> String? {
+fn fleet_listening_check_reason(verdicts: List<SlotListeningVerdict>) -> String? {
   match fleet_listening_verdict(verdicts: verdicts) {
     FleetListeningGreen => none
     FleetListeningRed { unhealthy: u } =>
@@ -84,7 +84,7 @@ fn fleet_listening_check_reason(verdicts: std.types.List<SlotListeningVerdict>) 
   }
 }
 
-fn ground_fleet_listening(verdicts: std.types.List<SlotListeningVerdict>) -> std.realization_reconcile.Grounding<FleetListeningEvidence> {
+fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> std.realization_reconcile.Grounding<FleetListeningEvidence> {
   match fleet_listening_check_reason(verdicts: verdicts) {
     Absent =>
       std.realization_reconcile.Grounds {
@@ -97,7 +97,7 @@ fn ground_fleet_listening(verdicts: std.types.List<SlotListeningVerdict>) -> std
 }
 
 fn reconcile_fleet_listening(
-  read: std.realization_reconcile.ShowEffectiveRead<std.types.List<SlotListeningVerdict>>,
+  read: std.realization_reconcile.ShowEffectiveRead<List<SlotListeningVerdict>>,
 ) -> std.realization_reconcile.Reconciliation<String, FleetListeningEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -117,7 +117,7 @@ fn reconcile_fleet_listening(
 
 data gunbc_host_hygiene_liveness_bound: std.measure.Second = std.measure.second(1800)
 
-data gunbc_host_hygiene_liveness_show_effective_read: std.realization_reconcile.ShowEffectiveRead<std.types.List<SlotListeningVerdict>> = std.realization_reconcile.ReadAbsent {
+data gunbc_host_hygiene_liveness_show_effective_read: std.realization_reconcile.ShowEffectiveRead<List<SlotListeningVerdict>> = std.realization_reconcile.ReadAbsent {
   reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot journal read runs through gunbc.host_hygiene_liveness_observe.gunbc_host_hygiene_liveness_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
 }
 

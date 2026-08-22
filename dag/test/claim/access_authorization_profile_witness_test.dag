@@ -3,7 +3,7 @@ module test.claim.access_authorization_profile_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn string_set(a: String, b: String) -> std.types.Set<String> {
+fn string_set(a: String, b: String) -> Set<String> {
   set_insert(set_insert(empty_set(), a), b)
 }
 

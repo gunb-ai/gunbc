@@ -79,7 +79,7 @@ fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> v2
   }
 }
 
-fn v2_eval_empty_bindings() -> std.types.Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+fn v2_eval_empty_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
   std.types.Map {
     lookup: v2_eval_binding_lookup_miss
   }
@@ -252,7 +252,7 @@ fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> v2.std.logic.Bool {
 
 fn v2_eval_call_primitive(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if v2_eval_transform_is_int_add(node: node) {

@@ -63,7 +63,7 @@ type TrackedReferenceResolution<Reference, Evidence> sole_constructor {
   resolved_identity: std.content_hash.ContentHash
   resolved_at: std.types.Timestamp
   first_evidence: Evidence
-  further_evidence: std.types.List<Evidence>
+  further_evidence: List<Evidence>
 }
 
 // The only mint. sole_constructor already refuses construction outside this module; this is the
@@ -73,7 +73,7 @@ fn tracked_reference_resolution<Reference, Evidence>(
   resolved_identity: std.content_hash.ContentHash,
   resolved_at: std.types.Timestamp,
   first_evidence: Evidence,
-  further_evidence: std.types.List<Evidence>,
+  further_evidence: List<Evidence>,
 ) -> TrackedReferenceResolution<v2.lens.grounding_ledger.Reference, Evidence> {
   TrackedReferenceResolution {
     reference: reference,
@@ -88,7 +88,7 @@ fn tracked_reference_resolution<Reference, Evidence>(
 // have to know that the first one is stored in a different field than the rest.
 fn tracked_reference_resolution_evidence<Reference, Evidence>(
   resolution: TrackedReferenceResolution<v2.lens.grounding_ledger.Reference, Evidence>,
-) -> std.types.List<Evidence> {
+) -> List<Evidence> {
   concat([resolution.first_evidence], resolution.further_evidence)
 }
 
@@ -233,7 +233,7 @@ fn pin_value_eq<Subject>(a: extdeps.pin.Pin<extdeps.coverage.Subject>, b: extdep
     && (a.selection == b.selection)
 }
 
-data pin_frontier_rows: std.types.List<std.roster_frontier.FrontierRow> = [
+data pin_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "PinSelection"),
     reason: "refresh_window_days is a bare PositiveInt count of days rather than a day-typed magnitude",

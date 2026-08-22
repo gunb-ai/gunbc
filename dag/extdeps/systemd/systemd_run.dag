@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data systemd_run_authority: extdeps.external_authority.ExternalAuthority = extdeps.systemd.systemd_run.extdeps_external_authority_anchor
 
-fn systemd_run_transient_unit_argv(unit: std.types.NonEmptyStr, command_argv: std.types.List<String>) -> std.types.List<String> {
+fn systemd_run_transient_unit_argv(unit: std.types.NonEmptyStr, command_argv: List<String>) -> List<String> {
   fold(
     command_argv,
     init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
@@ -19,7 +19,7 @@ fn systemd_run_transient_unit_argv(unit: std.types.NonEmptyStr, command_argv: st
 
 service systemd.SystemdRun {
   operation RunTransient {
-    input { unit: std.types.NonEmptyStr, command_argv: std.types.List<String> }
+    input { unit: std.types.NonEmptyStr, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

@@ -15,7 +15,7 @@ type DeclFactQualifiedNameResolution
   | DeclFactResolvedMissing { qualified_name: String }
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
-fn decl_facts_matching_qualified_name(qn: String, facts: std.types.List<v2.std.decl_index.DeclFact>) -> std.types.List<v2.std.decl_index.DeclFact> {
+fn decl_facts_matching_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
   v2.std.algebra.list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
       std.algebra.Cons { head: fact, tail: acc }
@@ -26,7 +26,7 @@ fn decl_facts_matching_qualified_name(qn: String, facts: std.types.List<v2.std.d
 }
 
 fn resolve_decl_fact_by_qualified_name(
-  facts: std.types.List<v2.std.decl_index.DeclFact>,
+  facts: List<v2.std.decl_index.DeclFact>,
   qn: String
 ) -> DeclFactQualifiedNameResolution {
   let matches = decl_facts_matching_qualified_name(qn: qn, facts: facts)
@@ -62,13 +62,13 @@ fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMars
   }
 }
 
-fn node_skeleton_edge_targets(node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn node_skeleton_edge_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   v2.std.algebra.list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
     std.algebra.Cons { head: e.target, tail: acc }
   }))
 }
 
-fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> std.types.List<SkeletonMarshalAtomLexeme> {
+fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = v2.std.algebra.fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
     empty: std.algebra.Empty,
@@ -152,8 +152,8 @@ fn decl_fact_skeleton_for_resolution(
 // this derivation, not add an exclusion lexeme here — an exclusion list is the shape
 // filter this function exists to avoid, reintroduced one lexeme at a time.
 type AtomLexemeCensus {
-  all_atom_lexemes: std.types.List<SkeletonMarshalAtomLexeme>
-  construction_spelling_lexemes: std.types.List<SkeletonMarshalAtomLexeme>
+  all_atom_lexemes: List<SkeletonMarshalAtomLexeme>
+  construction_spelling_lexemes: List<SkeletonMarshalAtomLexeme>
   self_is_atom: Bool
   self_lexeme: SkeletonMarshalAtomLexeme
 }
@@ -204,7 +204,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
   v2.std.node.fold_node(n: n, algebra: alg)
 }
 
-fn node_skeleton_authored_non_construction_atom_lexemes(node: v2.std.node.Node) -> std.types.List<SkeletonMarshalAtomLexeme> {
+fn node_skeleton_authored_non_construction_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMarshalAtomLexeme> {
   let census = skeleton_atom_lexeme_census_fold(n: node)
   filter(census.all_atom_lexemes, fn(lex) {
     !contains(xs: census.construction_spelling_lexemes, item: lex, eq: fn(a, b) { a == b })

@@ -31,7 +31,7 @@ fn lbe_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationE
   v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
-fn lbe_call_primitive(_node: v2.std.node.Node, _args: std.types.List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn lbe_call_primitive(_node: v2.std.node.Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected {
     diagnostics: v2.std.diagnostic.diagnostics_singleton(d: lbe_runtime_diagnostic(n: _node))
   }

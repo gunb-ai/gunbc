@@ -866,7 +866,7 @@ fn verilog_module_declaration(name: v2.std.node.Symbol, ports: v2.std.node.Node,
   ])
 }
 
-fn verilog_emit_layout_transforms() -> std.types.Map<v2.std.node.Symbol, fn(String) -> String> {
+fn verilog_emit_layout_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(
@@ -960,7 +960,7 @@ fn verilog_interlock_emitted() -> v2.std.node.Node {
 // The spellings the bound slots resolve to. The two directions pad to equal width because the
 // oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
 // like the transforms.
-fn verilog_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
+fn verilog_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(
@@ -1241,7 +1241,7 @@ fn verilog_identifier_is_admissible(spelling: String) -> Bool {
 // boolean operators. A product supplies the spellings for ITS identifiers and merges them over
 // these, so no consumer has to know that "input" is padded to align with "output" or that the
 // conjunction renders with surrounding spaces. Those are layout decisions and they stay here.
-fn verilog_base_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
+fn verilog_base_spellings() -> Map<v2.std.node.Symbol, String> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(

@@ -119,7 +119,7 @@ type JqExitPolicy
 
 type JqInvocation {
   program: JqProgram
-  bindings: std.types.List<JqBinding>
+  bindings: List<JqBinding>
   input: JqInput
   output_encoding: JqOutputEncoding
   exit_policy: JqExitPolicy
@@ -208,8 +208,8 @@ fn jq_cli_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
 // carried here rather than smuggled into the arguments, so a consumer physically cannot route the
 // JSON payload through argv by mistake.
 type JqProcessPlan {
-  arguments: std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax>
-  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
+  arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax>
+  binding_spellings: Map<v2.std.node.Symbol, String>
   process_input: JqProcessInput
 }
 
@@ -257,7 +257,7 @@ fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
 
 // Options first, then the program operand. Order is jq's, not the caller's: POSIX guideline 9
 // puts options before operands, and jq does not deviate.
-fn jq_option_arguments(invocation: JqInvocation) -> std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+fn jq_option_arguments(invocation: JqInvocation) -> List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   v2.std.algebra.list_snoc_item(
     xs: v2.std.algebra.list_append(
       left: jq_selected_option_argument(selection: jq_selection_for_output_encoding(encoding: invocation.output_encoding)),
@@ -269,7 +269,7 @@ fn jq_option_arguments(invocation: JqInvocation) -> std.types.List<v2.std.compil
   )
 }
 
-fn jq_selected_option_argument(selection: JqCliSelection) -> std.types.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+fn jq_selected_option_argument(selection: JqCliSelection) -> List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   match selection {
     JqCliNoOptionRequired => std.algebra.Empty
     JqCliOptionSelected { option: chosen } =>

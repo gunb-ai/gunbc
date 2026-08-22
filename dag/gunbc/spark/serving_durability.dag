@@ -27,7 +27,7 @@ type BootIdentityReading
   = BootIdentityObserved { boot_id: std.types.NonEmptyStr }
   | BootIdentityUnobserved { cause: std.types.NonEmptyStr }
 
-fn spark_serving_boot_id_probe_argv() -> std.types.List<String> {
+fn spark_serving_boot_id_probe_argv() -> List<String> {
   ["cat", "/proc/sys/kernel/random/boot_id"]
 }
 

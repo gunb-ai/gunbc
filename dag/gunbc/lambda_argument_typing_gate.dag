@@ -85,7 +85,7 @@ type GateMiss
   = NearMissOfARosterName { roster_name: String }
   | AbsentFromRoster
 
-data lambda_typing_gate_sites: std.types.List<LambdaTypingGateSite> = [
+data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
   {
     caller: decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_lexeme_digest"),
     index_coverage: CitableThroughDeclIndex,

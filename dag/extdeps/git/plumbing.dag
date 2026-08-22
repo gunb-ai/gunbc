@@ -56,7 +56,7 @@ type GitRepositoryAddress
   = GitWorktreeAt { path: std.types.FilePath }
   | GitDirectoryAt { path: std.types.FilePath, run_in: std.types.FilePath }
 
-fn git_repository_address_argv(address: GitRepositoryAddress) -> std.types.List<std.types.String> {
+fn git_repository_address_argv(address: GitRepositoryAddress) -> List<std.types.String> {
   match address {
     GitWorktreeAt { path } => ["-C", path as std.types.String]
     GitDirectoryAt { path, run_in } =>
@@ -75,7 +75,7 @@ fn git_repository_address_argv(address: GitRepositoryAddress) -> std.types.List<
 // the identity is the DECLARATION NAME (`git.Plumbing.WriteTreeFromIndex`), and `env` is a
 // transport detail of it, which is the whole difference between an operation that has a
 // name and an argv that has a prefix.
-fn git_index_file_env_argv(index: std.types.FilePath) -> std.types.List<std.types.String> {
+fn git_index_file_env_argv(index: std.types.FilePath) -> List<std.types.String> {
   ["env", concat("GIT_INDEX_FILE=", index as std.types.String)]
 }
 
@@ -87,13 +87,13 @@ fn git_index_file_env_argv(index: std.types.FilePath) -> std.types.List<std.type
 // would conflate.
 type GitCommitParents
   = GitNoParents
-  | GitParents { first: std.types.NonEmptyStr, remaining: std.types.List<std.types.NonEmptyStr> }
+  | GitParents { first: std.types.NonEmptyStr, remaining: List<std.types.NonEmptyStr> }
 
-fn git_commit_parent_flag_argv(parent: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn git_commit_parent_flag_argv(parent: std.types.NonEmptyStr) -> List<std.types.String> {
   ["-p", parent as std.types.String]
 }
 
-fn git_commit_parents_argv(parents: GitCommitParents) -> std.types.List<std.types.String> {
+fn git_commit_parents_argv(parents: GitCommitParents) -> List<std.types.String> {
   match parents {
     GitNoParents => []
     GitParents { first, remaining } =>

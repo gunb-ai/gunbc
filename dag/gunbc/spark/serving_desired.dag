@@ -1,7 +1,7 @@
 module gunbc.spark.serving_desired
 
 
-data spark_serving_desired_hosts: std.types.List<product.placement_supply.HostIdentity> = [
+data spark_serving_desired_hosts: List<product.placement_supply.HostIdentity> = [
   operator_host_srv5,
   operator_host_srv6,
 ]
@@ -113,7 +113,7 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
 data spark_serving_desired_admission: SparkServingDesiredAdmission = spark_serving_desired_release_admission()
 
 type SparkServingFleetDesired
-  = SparkServingFleetDesiredReady { occurrences: std.types.List<gunbc.spark.serving_release.SparkServingOccurrence> }
+  = SparkServingFleetDesiredReady { occurrences: List<gunbc.spark.serving_release.SparkServingOccurrence> }
   | SparkServingFleetDesiredRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: gunbc.spark.serving_release.SparkServingRelease) -> gunbc.spark.serving_release.SparkServingOccurrence {

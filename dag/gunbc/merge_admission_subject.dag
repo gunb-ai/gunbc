@@ -113,7 +113,7 @@ fn render_tested_subject_wire(subject: TestedSubject) -> String {
   ], "\n")
 }
 
-fn receipt_wire_lines(text: String) -> std.types.List<String> {
+fn receipt_wire_lines(text: String) -> List<String> {
   split(s: text, delimiter: "\n")
 }
 

@@ -180,7 +180,7 @@ fn spark_bcell(role: String, member: String) -> extdeps.cloud.gcp.iam.GcpIamBind
 // The owned universe is a set of CELLS. This model owns owned-a and owned-b under the accessor
 // role only; it deliberately does NOT own either of them under admin, so an admin binding on a
 // member we otherwise recognise is still someone else's grant.
-fn spark_owned_universe() -> std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
+fn spark_owned_universe() -> List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
   [
     spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
     spark_bcell(role: spark_accessor_role(), member: spark_owned_b())
@@ -637,7 +637,7 @@ fn demand_executor() -> gunbc.spark_bootstrap_provision.FleetCloudPrincipalKey {
   gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }
 }
 
-fn demand_cells_of(sel: std.types.List<gunbc.spark_bootstrap_provision.SelectedSparkEffect>) -> std.types.List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> {
+fn demand_cells_of(sel: List<gunbc.spark_bootstrap_provision.SelectedSparkEffect>) -> List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> {
   match spark_plan_demand(selected: sel, executor: demand_executor(), context: spark_fixture_context()) {
     DemandDerived { cells: c } => c
     DemandIncomplete { step: _, operation: _, cause: _ } => []

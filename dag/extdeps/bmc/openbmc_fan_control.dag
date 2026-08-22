@@ -30,10 +30,10 @@ type OpenBmcSelection<T>
 type OpenBmcCollection<T>
   = OpenBmcCollectionZero
   | OpenBmcCollectionOne { value: T }
-  | OpenBmcCollectionMany { values: std.types.List<T> }
+  | OpenBmcCollectionMany { values: List<T> }
 
 fn openbmc_collection_from_values<T>(
-  values: std.types.List<T>,
+  values: List<T>,
 ) -> OpenBmcCollection<T> {
   if values.length() == 0 {
     OpenBmcCollectionZero
@@ -50,8 +50,8 @@ type OpenBmcStepwiseController {
   sensor_failsafe_duty: std.measure.Percent
   positive_hysteresis: std.measure.CelsiusDelta
   negative_hysteresis: std.measure.CelsiusDelta
-  readings: std.types.List<std.measure.Celsius>
-  outputs: std.types.List<std.measure.Percent>
+  readings: List<std.measure.Celsius>
+  outputs: List<std.measure.Percent>
 }
 
 fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBmcFanConfigDesired) -> String {
@@ -84,7 +84,7 @@ fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBm
 
 type OpenBmcFanController {
   name: std.types.NonEmptyStr
-  inputs: std.types.List<std.types.NonEmptyStr>
+  inputs: List<std.types.NonEmptyStr>
 }
 
 type OpenBmcFanConfigObservation {
@@ -870,7 +870,7 @@ fn openbmc_object_mapper_services_rec(
   content: String,
   index: Int,
   count: Int,
-  built: std.types.List<std.types.NonEmptyStr>,
+  built: List<std.types.NonEmptyStr>,
 ) -> OpenBmcSensorServicesResult {
   if index >= count {
     OpenBmcSensorServicesObserved {
@@ -1154,11 +1154,11 @@ type OpenBmcStringResult
   | OpenBmcStringRefused { reason: String }
 
 type OpenBmcIntegerListResult
-  = OpenBmcIntegerListObserved { values: std.types.List<Int> }
+  = OpenBmcIntegerListObserved { values: List<Int> }
   | OpenBmcIntegerListRefused { reason: String }
 
 type OpenBmcFanControllerListResult
-  = OpenBmcFanControllerListObserved { values: std.types.List<OpenBmcFanController> }
+  = OpenBmcFanControllerListObserved { values: List<OpenBmcFanController> }
   | OpenBmcFanControllerListRefused { reason: String }
 
 type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
@@ -1227,7 +1227,7 @@ fn openbmc_fan_config_integer_list_rec(
   series: OpenBmcFanSeries,
   index: Int,
   count: Int,
-  built: std.types.List<Int>,
+  built: List<Int>,
 ) -> OpenBmcIntegerListResult {
   if index >= count {
     OpenBmcIntegerListObserved { values: built }
@@ -1288,7 +1288,7 @@ fn openbmc_fan_input_list_rec(
   fan_index: Int,
   input_index: Int,
   count: Int,
-  built: std.types.List<std.types.NonEmptyStr>,
+  built: List<std.types.NonEmptyStr>,
 ) -> OpenBmcFanControllerListResult {
   if input_index >= count {
     match openbmc_fan_config_string(
@@ -1357,7 +1357,7 @@ fn openbmc_fan_controllers_rec(
   config_path: std.types.NonEmptyStr,
   index: Int,
   count: Int,
-  built: std.types.List<OpenBmcFanController>,
+  built: List<OpenBmcFanController>,
 ) -> OpenBmcFanControllerListResult {
   if index >= count {
     OpenBmcFanControllerListObserved { values: built }
@@ -1407,7 +1407,7 @@ fn openbmc_fan_controllers(
 }
 
 fn openbmc_fan_controller_collection(
-  values: std.types.List<OpenBmcFanController>,
+  values: List<OpenBmcFanController>,
 ) -> OpenBmcCollection<OpenBmcFanController> {
   if values.length() == 0 {
     OpenBmcCollectionZero
@@ -1421,8 +1421,8 @@ fn openbmc_fan_controller_collection(
 fn openbmc_fan_config_queries_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  queries: std.types.List<extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery>,
-  built: std.types.List<Int>,
+  queries: List<extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery>,
+  built: List<Int>,
 ) -> OpenBmcIntegerListResult {
   if queries.length() == 0 {
     OpenBmcIntegerListObserved { values: built }

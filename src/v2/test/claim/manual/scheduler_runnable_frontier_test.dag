@@ -52,18 +52,18 @@ data scheduler_test_to_emit_dependency: v2.std.dependency.DependencyView = v2.st
   usage_site: scheduler_emit_node
 }
 
-data scheduler_fixture_nodes: std.types.List<v2.std.node.Node> = [
+data scheduler_fixture_nodes: List<v2.std.node.Node> = [
   scheduler_build_node,
   scheduler_test_node,
   scheduler_emit_node
 ]
 
-data scheduler_fixture_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_dependencies: List<v2.std.dependency.DependencyView> = [
   scheduler_build_to_emit_dependency,
   scheduler_test_to_emit_dependency
 ]
 
-data scheduler_fixture_reversed_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_reversed_dependencies: List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_emit_node,
     dependent: scheduler_build_node,
@@ -85,13 +85,13 @@ data scheduler_contains_noise_dependency: v2.std.dependency.DependencyView = v2.
   usage_site: scheduler_build_node
 }
 
-data scheduler_fixture_dependencies_with_contains_noise: std.types.List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_dependencies_with_contains_noise: List<v2.std.dependency.DependencyView> = [
   scheduler_build_to_emit_dependency,
   scheduler_test_to_emit_dependency,
   scheduler_contains_noise_dependency
 ]
 
-data scheduler_missing_prerequisite_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
+data scheduler_missing_prerequisite_dependencies: List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_emit_node,
     dependent: scheduler_build_node,
@@ -100,7 +100,7 @@ data scheduler_missing_prerequisite_dependencies: std.types.List<v2.std.dependen
   }
 ]
 
-data scheduler_mixed_runnable_blocked_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
+data scheduler_mixed_runnable_blocked_dependencies: List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_missing_source_node,
     dependent: scheduler_test_node,

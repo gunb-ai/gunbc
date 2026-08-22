@@ -69,7 +69,7 @@ data bandwidth_axis: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   decl_name: "build_memory_bandwidth_axis",
 )
 
-fn build_selection_axes() -> std.types.List<std.pareto.SelectionAxis> {
+fn build_selection_axes() -> List<std.pareto.SelectionAxis> {
   [
     std.pareto.SelectionAxis { identity: capacity_axis, goal: std.pareto.HigherIsBetter },
     std.pareto.SelectionAxis { identity: cash_axis, goal: std.pareto.LowerIsBetter },
@@ -89,14 +89,14 @@ type BuildCandidate {
   memory_capacity: std.measure.ByteSize
   wall_power: std.measure.Watt
   memory_bandwidth: std.measure.Bandwidth
-  resolutions: std.types.List<product.build_fulfillment.LineResolution>
+  resolutions: List<product.build_fulfillment.LineResolution>
   cash: product.build_fulfillment.CashProjection
   ceiling: product.build_fulfillment.ConstructibleCeiling
 }
 
-fn one_missing(name: std.types.NonEmptyStr) -> std.types.List<std.types.NonEmptyStr> { [name] }
+fn one_missing(name: std.types.NonEmptyStr) -> List<std.types.NonEmptyStr> { [name] }
 
-data no_missing: std.types.List<std.types.NonEmptyStr> = []
+data no_missing: List<std.types.NonEmptyStr> = []
 
 // WHAT MAKES A CANDIDATE INCOMPARABLE, stated by the projector rather than
 // substituted for. Every one of these is a fact the candidate does not yet
@@ -106,7 +106,7 @@ data no_missing: std.types.List<std.types.NonEmptyStr> = []
 // wall the brief asks for: an unread compatibility yields pending evidence,
 // never a candidate that quietly ranks well because the axis it would lose on
 // could not be computed.
-fn line_missing(acc: std.types.List<std.types.NonEmptyStr>, r: product.build_fulfillment.LineResolution) -> std.types.List<std.types.NonEmptyStr> {
+fn line_missing(acc: List<std.types.NonEmptyStr>, r: product.build_fulfillment.LineResolution) -> List<std.types.NonEmptyStr> {
   match r {
     LineRefused { line: l, cause: _ } =>
       concat(acc, one_missing(name: join(["line ", l.display_label as String, " refused"], "") as std.types.NonEmptyStr))
@@ -130,7 +130,7 @@ fn line_missing(acc: std.types.List<std.types.NonEmptyStr>, r: product.build_ful
 // a missing input rather than being ranked against it — the same wall the
 // deleted memory_part_selection held at its own admission, kept here where the
 // pipeline actually compares.
-fn cash_missing(declared: std.currency.CurrencyCode, cash: product.build_fulfillment.CashProjection) -> std.types.List<std.types.NonEmptyStr> {
+fn cash_missing(declared: std.currency.CurrencyCode, cash: product.build_fulfillment.CashProjection) -> List<std.types.NonEmptyStr> {
   match cash {
     CashDerived { cash: c } =>
       if c.currency != declared {
@@ -144,7 +144,7 @@ fn cash_missing(declared: std.currency.CurrencyCode, cash: product.build_fulfill
   }
 }
 
-fn ceiling_missing(ceiling: product.build_fulfillment.ConstructibleCeiling) -> std.types.List<std.types.NonEmptyStr> {
+fn ceiling_missing(ceiling: product.build_fulfillment.ConstructibleCeiling) -> List<std.types.NonEmptyStr> {
   match ceiling {
     CeilingDerived { builds: _, bottlenecks: _, bottleneck_units: _ } => no_missing
     CeilingUnconstrainedByAnyLine =>
@@ -153,7 +153,7 @@ fn ceiling_missing(ceiling: product.build_fulfillment.ConstructibleCeiling) -> s
   }
 }
 
-fn candidate_missing_inputs(candidate: BuildCandidate, declared: std.currency.CurrencyCode) -> std.types.List<std.types.NonEmptyStr> {
+fn candidate_missing_inputs(candidate: BuildCandidate, declared: std.currency.CurrencyCode) -> List<std.types.NonEmptyStr> {
   concat(
     concat(
       fold(candidate.resolutions, init: no_missing, f: fn(acc, r) { line_missing(acc: acc, r: r) }),
@@ -195,7 +195,7 @@ fn ceiling_reading(ceiling: product.build_fulfillment.ConstructibleCeiling) -> B
   }
 }
 
-fn candidate_readings(candidate: BuildCandidate, declared: std.currency.CurrencyCode) -> std.types.List<BuildAxisReading> {
+fn candidate_readings(candidate: BuildCandidate, declared: std.currency.CurrencyCode) -> List<BuildAxisReading> {
   [
     BuildAxisReading { axis: capacity_axis, magnitude: MagnitudeBytes { bytes: candidate.memory_capacity } },
     cash_reading(cash: candidate.cash, declared: declared),
@@ -214,13 +214,13 @@ fn project_entry(candidate: BuildCandidate, declared: std.currency.CurrencyCode)
   }
 }
 
-fn project_field(candidates: std.types.List<BuildCandidate>, declared: std.currency.CurrencyCode) -> std.types.List<std.pareto.ParetoEntry> {
+fn project_field(candidates: List<BuildCandidate>, declared: std.currency.CurrencyCode) -> List<std.pareto.ParetoEntry> {
   map(candidates, c => project_entry(candidate: c, declared: declared))
 }
 
 fn build_standing(
   subject: BuildCandidate,
-  field: std.types.List<BuildCandidate>,
+  field: List<BuildCandidate>,
   declared: std.currency.CurrencyCode,
 ) -> std.pareto.ParetoStanding {
   std.pareto.entry_standing(

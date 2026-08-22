@@ -153,7 +153,7 @@ type CorpusTypeJudgmentBoundStep {
   step_name: std.types.String
 }
 
-fn corpus_type_judgment_bound_steps() -> std.types.List<CorpusTypeJudgmentBoundStep> {
+fn corpus_type_judgment_bound_steps() -> List<CorpusTypeJudgmentBoundStep> {
   [
     CorpusTypeJudgmentBoundStep {
       step: corpus_type_judgment_checkout_step(),
@@ -178,11 +178,11 @@ fn corpus_type_judgment_bound_steps() -> std.types.List<CorpusTypeJudgmentBoundS
   ]
 }
 
-fn corpus_type_judgment_steps() -> std.types.List<extdeps.github.actions.Step> {
+fn corpus_type_judgment_steps() -> List<extdeps.github.actions.Step> {
   v2.std.algebra.list_map(xs: corpus_type_judgment_bound_steps(), f: fn(b) { b.step })
 }
 
-fn corpus_type_judgment_step_annotations() -> std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
+fn corpus_type_judgment_step_annotations() -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
   v2.std.algebra.list_map(
     xs: corpus_type_judgment_bound_steps(),
     f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },

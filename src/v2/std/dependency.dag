@@ -63,7 +63,7 @@ fn dependency_view_relation(view: DependencyView) -> DependencyRelation<v2.std.n
   }
 }
 
-fn dependency_view_relations(views: std.types.List<DependencyView>) -> std.types.List<DependencyRelation<v2.std.node.Node>> {
+fn dependency_view_relations(views: List<DependencyView>) -> List<DependencyRelation<v2.std.node.Node>> {
   fold(views, init: [], f: fn(acc, v) {
     list_snoc_item(xs: acc, item: dependency_view_relation(view: v))
   })
@@ -144,7 +144,7 @@ fn classified_dependency_view_eq<C>(
 
 type DependencyFoldState {
   current: v2.std.node.Node
-  dependencies: std.types.List<DependencyView>
+  dependencies: List<DependencyView>
 }
 
 fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) -> DependencyKind {
@@ -179,7 +179,7 @@ fn dependency_view_for_edge(parent: v2.std.node.Node, edge: v2.std.node.Edge) ->
   }
 }
 
-fn append_dependency_views(left: std.types.List<DependencyView>, right: std.types.List<DependencyView>) -> std.types.List<DependencyView> {
+fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
   list_append(left: left, right: right)
 }
 
@@ -207,11 +207,11 @@ fn dependency_fold_algebra() -> v2.std.node.NodeFold<DependencyFoldState> {
   }
 }
 
-fn dependency_fold_dependencies(state: DependencyFoldState) -> std.types.List<DependencyView> {
+fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyView> {
   state.dependencies
 }
 
-fn dependency_lens(root: v2.std.node.Node) -> std.types.List<DependencyView> {
+fn dependency_lens(root: v2.std.node.Node) -> List<DependencyView> {
   dependency_fold_dependencies(
     state: fold_node(
       n: root,
@@ -225,13 +225,13 @@ fn dependency_lens(root: v2.std.node.Node) -> std.types.List<DependencyView> {
 // compiler schedules Nodes and host convergence schedules planned operations, and layering is one
 // concept rather than one per subject.
 type ReadinessLayer<Subject> {
-  ready: std.types.List<extdeps.coverage.Subject>
+  ready: List<extdeps.coverage.Subject>
 }
 
 type ReadinessFoldState {
   current: v2.std.node.Node
-  ready: std.types.List<v2.std.node.Node>
-  layers: std.types.List<ReadinessLayer<v2.std.node.Node>>
+  ready: List<v2.std.node.Node>
+  layers: List<ReadinessLayer<v2.std.node.Node>>
 }
 
 fn readiness_fold_init(n: v2.std.node.Node) -> ReadinessFoldState {
@@ -257,11 +257,11 @@ fn ready_set_algebra() -> v2.std.node.NodeFold<ReadinessFoldState> {
   }
 }
 
-fn readiness_fold_ready(state: ReadinessFoldState) -> std.types.List<v2.std.node.Node> {
+fn readiness_fold_ready(state: ReadinessFoldState) -> List<v2.std.node.Node> {
   state.ready
 }
 
-fn ready_set(graph_node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn ready_set(graph_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   readiness_fold_ready(
     state: fold_node(
       n: graph_node,
@@ -270,7 +270,7 @@ fn ready_set(graph_node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   )
 }
 
-fn append_nodes(left: std.types.List<v2.std.node.Node>, right: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
+fn append_nodes(left: List<v2.std.node.Node>, right: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   list_append(left: left, right: right)
 }
 
@@ -301,11 +301,11 @@ fn topological_layers_algebra() -> v2.std.node.NodeFold<ReadinessFoldState> {
   }
 }
 
-fn readiness_fold_layers(state: ReadinessFoldState) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
+fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer<v2.std.node.Node>> {
   state.layers
 }
 
-fn topological_layers(graph_node: v2.std.node.Node) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
+fn topological_layers(graph_node: v2.std.node.Node) -> List<ReadinessLayer<v2.std.node.Node>> {
   readiness_fold_layers(
     state: fold_node(
       n: graph_node,
@@ -314,6 +314,6 @@ fn topological_layers(graph_node: v2.std.node.Node) -> std.types.List<ReadinessL
   )
 }
 
-fn append_readiness_layers(left: std.types.List<ReadinessLayer<v2.std.node.Node>>, right: std.types.List<ReadinessLayer<v2.std.node.Node>>) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
+fn append_readiness_layers(left: List<ReadinessLayer<v2.std.node.Node>>, right: List<ReadinessLayer<v2.std.node.Node>>) -> List<ReadinessLayer<v2.std.node.Node>> {
   list_append(left: left, right: right)
 }

@@ -65,7 +65,7 @@ type TwoDpcRateCeiling {
 }
 
 type TwoDpcRateCeilingTable {
-  rows: std.types.List<TwoDpcRateCeiling>
+  rows: List<TwoDpcRateCeiling>
 }
 
 fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {

@@ -6,11 +6,11 @@ data gunbc_host_hygiene_liveness_observe_scope_disposition: std.disposition.Disp
 
 data host_hygiene_listening_marker: String = "Listening for Jobs"
 
-fn host_hygiene_journal_lines(stdout: String) -> std.types.List<String> {
+fn host_hygiene_journal_lines(stdout: String) -> List<String> {
   filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != "")
 }
 
-fn host_hygiene_journal_matching_lines(stdout: String) -> std.types.List<String> {
+fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
   filter(host_hygiene_journal_lines(stdout: stdout), l => string_contains(s: l, pattern: host_hygiene_listening_marker))
 }
 
@@ -64,7 +64,7 @@ fn host_hygiene_observe_slot_listening(unit: std.types.NonEmptyStr, now_epoch_se
 }
 
 type FleetListeningObserveReceipt
-  = FleetListeningObserved { outcomes: std.types.List<SlotListeningReadOutcome> }
+  = FleetListeningObserved { outcomes: List<SlotListeningReadOutcome> }
   | FleetListeningObserveRefused { cause: String }
 
 fn observe_all_slot_listening() -> FleetListeningObserveReceipt {
@@ -95,7 +95,7 @@ fn slot_listening_read_outcome_observation(o: SlotListeningReadOutcome) -> gunbc
 // Mirrors gunbc.host_hygiene_reaper_observe.residual_fleet_observed_slots: any single-unit
 // read refusal refuses the WHOLE fleet observation rather than narrowing to the units that
 // happened to answer — the empty-observation-narrow failure mode DESIGN section 5 names.
-fn fleet_observed_listening_slots(outcomes: std.types.List<SlotListeningReadOutcome>) -> std.types.List<gunbc.host_hygiene_liveness.SlotListeningObservation>? {
+fn fleet_observed_listening_slots(outcomes: List<SlotListeningReadOutcome>) -> List<gunbc.host_hygiene_liveness.SlotListeningObservation>? {
   let observed = fold(outcomes, init: [], f: fn(acc, o) {
     match slot_listening_read_outcome_observation(o: o) {
       Present { value: obs } => concat(acc, [obs])
@@ -106,7 +106,7 @@ fn fleet_observed_listening_slots(outcomes: std.types.List<SlotListeningReadOutc
   if length(refused) > 0 { none } else { Present { value: observed } }
 }
 
-fn gunbc_host_hygiene_liveness_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<std.types.List<gunbc.host_hygiene_liveness.SlotListeningVerdict>> {
+fn gunbc_host_hygiene_liveness_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<List<gunbc.host_hygiene_liveness.SlotListeningVerdict>> {
   match observe_all_slot_listening() {
     FleetListeningObserveRefused { cause: why } => std.realization_reconcile.ReadAbsent { reason: why }
     FleetListeningObserved { outcomes: outs } =>

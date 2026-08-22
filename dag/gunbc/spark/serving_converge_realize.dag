@@ -13,7 +13,7 @@ data spark_serving_converge_realize_authority_note: String = "Seam 2 realization
 // Ordering is load-bearing for these effects (write the unit file, reload the manager, enable the
 // unit), and a fused argv erases it.
 type SparkServingInstallRemoteCommandsVerdict =
-    SparkServingInstallRemoteCommandsPresent { steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep> }
+    SparkServingInstallRemoteCommandsPresent { steps: List<gunbc.remote_operation.PlannedRemoteStep> }
   | SparkServingInstallRemoteCommandsRefused { reason: String }
 
 // A STEP IS NAMED WHERE IT IS BUILT, because that is the only place its meaning is known. Deriving
@@ -26,7 +26,7 @@ fn spark_serving_step(identity: std.types.NonEmptyStr, operation: gunbc.remote_o
 
 fn spark_serving_admit_portable_remote_argv(
   identity: std.types.NonEmptyStr,
-  raws: std.types.List<String>,
+  raws: List<String>,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match portable_remote_words(raws: raws) {
     Present { value: words } =>
@@ -241,7 +241,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
 // checking afterwards would leave a corrupt file at the name the store reads, and the observe side
 // answers presence by filename. Staged, verified, then moved -- so a blob that exists under its
 // digest name is a blob that hashed to it.
-fn spark_serving_materialize_blob_steps(blob: gunbc.ollama_model_resolution.OllamaBlobDigest) -> std.types.List<SparkServingInstallRemoteCommandsVerdict> {
+fn spark_serving_materialize_blob_steps(blob: gunbc.ollama_model_resolution.OllamaBlobDigest) -> List<SparkServingInstallRemoteCommandsVerdict> {
   [
     spark_serving_admit_portable_remote_argv(
       identity: concat("fetch-blob-", blob.hex as String) as std.types.NonEmptyStr,
@@ -549,7 +549,7 @@ fn spark_serving_admit_typed_file_step(
 // ONE REFUSAL REFUSES THE WHOLE SEQUENCE. A partially admitted install is not a shorter install: it
 // is an install that would run its prefix and report the effect applied.
 fn spark_serving_concat_step_verdicts(
-  verdicts: std.types.List<SparkServingInstallRemoteCommandsVerdict>,
+  verdicts: List<SparkServingInstallRemoteCommandsVerdict>,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   fold(verdicts, init: SparkServingInstallRemoteCommandsPresent { steps: [] }, f: fn(acc, v) {
     match acc {
@@ -609,7 +609,7 @@ fn realize_spark_serving_install_effect_command(
 // shape: each effect contributes one or more complete argvs, and the list preserves the order
 // the effects were frozen in.
 fn realize_spark_serving_install_effect_commands(
-  effects: std.types.List<gunbc.spark.serving_realization.ServingInstallEffect>,
+  effects: List<gunbc.spark.serving_realization.ServingInstallEffect>,
   executor_login: std.types.NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   fold(
@@ -650,7 +650,7 @@ fn spark_serving_default_executor_login() -> std.types.NonEmptyStr {
 // a command sequence must select the command it means; this deliberately refuses a sequence of
 // any length other than one rather than comparing against a flattened join, which is the
 // comparison that would have hidden the fused-argv defect.
-fn spark_serving_enable_linger_argv_matches_expected(argv: std.types.List<String>) -> Bool {
+fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool {
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_default_executor_login(),
   ) {

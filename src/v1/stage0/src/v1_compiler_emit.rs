@@ -109,7 +109,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockEmitState {
-    pub text: Vec<String>,
+    pub text: Rc<Vec<String>>,
     pub scope: Rc<InferScope>,
 }
 
@@ -122,17 +122,17 @@ pub struct TcoFrame {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoReassignInput {
-    pub args: Vec<Rc<Node>>,
+    pub args: Rc<Vec<Rc<Node>>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
 
 pub fn derive_module_imports(
-    items: Vec<Rc<Node>>,
-    import_rules: Vec<Rc<ImportRule>>,
+    items: Rc<Vec<Rc<Node>>>,
+    import_rules: Rc<Vec<Rc<ImportRule>>>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
-) -> Vec<String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let has_async = {
             let mut __found = false;
@@ -202,9 +202,9 @@ pub fn derive_module_imports(
 }
 
 pub fn collect_type_names_from_items(
-    items: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
-) -> Vec<String> {
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.clone().iter().cloned() {
@@ -220,8 +220,8 @@ pub fn collect_type_names_from_items(
 
 pub fn collect_type_names_from_node(
     n: Rc<Node>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
-) -> Vec<String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_name = if (n.ident_span.clone() != None) {
             Rc::new(vec![crate::v1_std_core::authored_name_at(
@@ -255,7 +255,7 @@ pub struct InterpPart {
 pub fn emit_simple_expr(
     expr: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -421,9 +421,9 @@ pub fn emit_simple_expr(
 }
 
 pub fn emit_simple_string_interp(
-    parts: Vec<Rc<StringPart>>,
+    parts: Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -614,7 +614,10 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
     }
 }
 
-pub fn lookup_item(registry: HashMap<String, Rc<ItemInfo>>, name: String) -> Option<Rc<ItemInfo>> {
+pub fn lookup_item(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    name: String,
+) -> Option<Rc<ItemInfo>> {
     v1_rt::map_get(&registry, name.clone())
 }
 
@@ -634,7 +637,7 @@ pub fn lookup_func_sig_in_scope(
 pub fn typed_named_arg_matches(
     arg: Rc<Node>,
     name: String,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let n = crate::v1_std_core::arg_name_at(arg.clone(), source_indices.clone());
@@ -647,10 +650,10 @@ pub fn typed_named_arg_matches(
 }
 
 pub fn order_typed_call_args(
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     func: String,
     scope: Rc<InferScope>,
-) -> Vec<Rc<Node>> {
+) -> Rc<Vec<Rc<Node>>> {
     {
         let has_unnamed = {
             let mut __found = false;
@@ -750,7 +753,7 @@ pub fn order_typed_call_args(
 
 pub fn has_nested_records_node(
     mut n: Rc<Node>,
-    mut source_indices: HashMap<String, Rc<NewlineIndex>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let is_product = (n.connective.clone() == Connective::Conj);
@@ -818,7 +821,7 @@ pub enum EmitterOutcome {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum JsonFragmentsAccum {
-    FragmentsAccumulated { pieces: Vec<String> },
+    FragmentsAccumulated { pieces: Rc<Vec<String>> },
     FragmentsRefused { reason: String },
 }
 
@@ -881,7 +884,7 @@ pub fn accumulate_json_field(
 
 pub fn emit_data_value_json(
     value: Rc<Node>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<EmitterOutcome> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
@@ -1212,7 +1215,7 @@ pub fn escape_python_interp_text(s: String) -> String {
     }
 }
 
-pub fn apply_escape_pairs(s: String, pairs: Vec<Rc<EscapePair>>) -> String {
+pub fn apply_escape_pairs(s: String, pairs: Rc<Vec<Rc<EscapePair>>>) -> String {
     pairs
         .clone()
         .iter()
@@ -1399,7 +1402,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 pub fn emit_node_type(
     n: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     render_node_type(
         n.clone(),
@@ -1409,7 +1412,7 @@ pub fn emit_node_type(
     )
 }
 
-pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Vec<String> {
+pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec<String>> {
     match inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: var_id, .. }) => Rc::new(vec![var_id.clone()]),
         Some(InferredNode::Resolved { node: rt, .. }) => named_type_vars_in_node(rt.clone()),
@@ -1417,7 +1420,7 @@ pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Vec<St
     }
 }
 
-pub fn named_type_vars_in_node(n: Rc<Node>) -> Vec<String> {
+pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_vars = named_type_vars_in_inferred(n.inferred.clone());
         let child_vars = Rc::new({
@@ -1448,7 +1451,7 @@ pub fn named_type_vars_in_node(n: Rc<Node>) -> Vec<String> {
 pub fn render_named_type_base(
     n: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let tn = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -1496,7 +1499,7 @@ pub fn render_node_type(
     n: Rc<Node>,
     target: RenderTarget,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tn = crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
@@ -1975,7 +1978,7 @@ pub fn render_node_type(
     })
 }
 
-pub fn render_tuple_parts(parts: Vec<String>, target: RenderTarget) -> String {
+pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         let ts = spec.tuple_syntax.clone();
@@ -2049,8 +2052,8 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 
 pub fn service_has_rest(
     fallback_transport: Rc<Node>,
-    op_children: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let from_fallback = crate::v1_std_core::is_rest_transport(
@@ -2078,7 +2081,7 @@ pub fn service_has_rest(
     }
 }
 
-pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>) -> bool {
+pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let from_fallback = crate::v1_std_core::is_shell_transport(fallback_transport.clone());
         let from_ops = {
@@ -2101,8 +2104,8 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>
 
 pub fn service_has_file(
     fallback_transport: Rc<Node>,
-    op_children: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let from_fallback = crate::v1_std_core::is_file_transport(
@@ -2132,8 +2135,8 @@ pub fn service_has_file(
 
 pub fn service_has_rest_auth(
     fallback_transport: Rc<Node>,
-    op_children: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let fallback_is_rest = crate::v1_std_core::is_rest_transport(
@@ -2178,9 +2181,9 @@ pub fn service_has_rest_auth(
 }
 
 pub fn extract_modifier_names(
-    properties: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
-) -> Vec<String> {
+    properties: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in properties.clone().iter().cloned() {
@@ -2212,8 +2215,8 @@ pub struct ServiceFieldSet {
 
 pub fn compute_service_fields(
     fallback_transport: Rc<Node>,
-    op_children: Vec<Rc<Node>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> ServiceFieldSet {
     ServiceFieldSet {
         has_rest: service_has_rest(
@@ -2235,7 +2238,7 @@ pub fn compute_service_fields(
     }
 }
 
-pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Vec<String> {
+pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
     {
         let result = Rc::new(vec![]);
         let result = if fs.has_rest.clone() {
@@ -2262,7 +2265,7 @@ pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
     }
 }
 
-pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Vec<String> {
+pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
     {
         let result = Rc::new(vec![]);
         let result = if fs.has_rest.clone() {
@@ -2292,11 +2295,12 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 pub fn emit_unified_transport_dispatch(
     transport: Rc<Node>,
     op_name: String,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
     target: RenderTarget,
-    render_rest: impl Fn(String, Rc<Node>, i64, HashMap<String, Rc<NewlineIndex>>) -> String + Clone,
-    render_shell: impl Fn(String, Rc<Node>, i64, HashMap<String, Rc<NewlineIndex>>) -> String + Clone,
+    render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
+    render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
+        + Clone,
     render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     if crate::v1_std_core::is_rest_transport(transport.clone(), source_indices.clone()) {
@@ -2334,9 +2338,9 @@ pub fn emit_unified_operation_method(
     fallback_transport: Rc<Node>,
     op_node: Rc<Node>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-    render_transport_body: impl Fn(Rc<Node>, String, HashMap<String, Rc<NewlineIndex>>, i64) -> String
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
 ) -> String {
     {
@@ -2438,11 +2442,11 @@ pub fn emit_unified_operation_method(
 pub fn emit_unified_service_def(
     item: Rc<Node>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-    render_service_fields: impl Fn(String, Rc<Node>, Vec<Rc<Node>>, HashMap<String, Rc<NewlineIndex>>) -> String
+    render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_transport_body: impl Fn(Rc<Node>, String, HashMap<String, Rc<NewlineIndex>>, i64) -> String
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
 ) -> String {
     {
@@ -2563,7 +2567,7 @@ pub enum FuncBodyShape {
         rest: Option<Rc<Node>>,
     },
     FuncBodyBlock {
-        stmts: Vec<Rc<Node>>,
+        stmts: Rc<Vec<Rc<Node>>>,
     },
     FuncBodyExpr {
         expr: Rc<Node>,
@@ -2572,7 +2576,7 @@ pub enum FuncBodyShape {
 
 pub fn classify_func_body(
     body: Rc<Node>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FuncBodyShape> {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -2597,7 +2601,7 @@ pub fn classify_func_body(
 pub enum TcoExprShape {
     TcoCall {
         func: String,
-        args: Vec<Rc<Node>>,
+        args: Rc<Vec<Rc<Node>>>,
     },
     TcoIf {
         condition: Rc<Node>,
@@ -2606,7 +2610,7 @@ pub enum TcoExprShape {
     },
     TcoMatch {
         scrutinee: Rc<Node>,
-        arms: Vec<Rc<Node>>,
+        arms: Rc<Vec<Rc<Node>>>,
     },
     TcoLet {
         name: String,
@@ -2614,7 +2618,7 @@ pub enum TcoExprShape {
         body: Option<Rc<Node>>,
     },
     TcoBlock {
-        stmts: Vec<Rc<Node>>,
+        stmts: Rc<Vec<Rc<Node>>>,
     },
     TcoOther {
         expr: Rc<Node>,
@@ -2623,7 +2627,7 @@ pub enum TcoExprShape {
 
 pub fn classify_tco_expr(
     texpr: Rc<Node>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TcoExprShape> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => Rc::new(TcoExprShape::TcoCall {
@@ -2667,7 +2671,7 @@ pub fn classify_tco_expr(
     }
 }
 
-pub fn block_stmts_init(stmts: Vec<Rc<Node>>) -> Vec<Rc<Node>> {
+pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     if ((stmts.clone().len() as i64) <= 1) {
         Rc::new(vec![])
     } else {
@@ -2685,8 +2689,8 @@ pub fn block_stmts_init(stmts: Vec<Rc<Node>>) -> Vec<Rc<Node>> {
 pub fn is_tco_eligible(
     name: String,
     body: Rc<Node>,
-    registry: HashMap<String, Rc<ItemInfo>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match lookup_item(registry.clone(), name.clone()) {
         Some(info) => {
@@ -2710,8 +2714,8 @@ pub fn is_tco_eligible(
 pub fn is_self_recursive(
     name: String,
     body: Rc<Node>,
-    registry: HashMap<String, Rc<ItemInfo>>,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match lookup_item(registry.clone(), name.clone()) {
         Some(info) => info.is_self_recursive.clone(),
@@ -2724,15 +2728,15 @@ pub fn is_self_recursive(
 }
 
 pub fn tco_reassign_core(
-    ordered_args: Vec<String>,
-    param_names: Vec<String>,
+    ordered_args: Rc<Vec<String>>,
+    param_names: Rc<Vec<String>>,
     temp_var_prefix: String,
     temp_decl_prefix: String,
     temp_assign_op: String,
     stmt_terminator: String,
     continue_str: String,
     line_prefix: String,
-) -> Vec<String> {
+) -> Rc<Vec<String>> {
     {
         let temp_lets = Rc::new({
             let mut __result = Vec::new();
@@ -2913,7 +2917,7 @@ pub fn shared_tco_non_self_call(
     frame: Rc<TcoFrame>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_call: impl Fn(String, Vec<Rc<Node>>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -2942,7 +2946,7 @@ pub fn shared_tco_non_self_call(
 pub fn shared_tco_if(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
@@ -3018,7 +3022,7 @@ pub fn shared_tco_if(
 pub fn shared_tco_let(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
@@ -3057,10 +3061,10 @@ pub fn shared_tco_let(
 pub fn shared_tco_block(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    emit_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -3102,8 +3106,8 @@ pub fn shared_tco_block(
 }
 
 pub fn shared_tco_reassign(
-    ordered_args: Vec<String>,
-    param_names: Vec<String>,
+    ordered_args: Rc<Vec<String>>,
+    param_names: Rc<Vec<String>>,
     spec: Rc<LanguageSpec>,
 ) -> String {
     {
@@ -3126,12 +3130,12 @@ pub fn unified_tco_recurse(
     scope: Rc<InferScope>,
     depth: i64,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     emit_unified_tco_expr(
         Rc::new(TcoFrame {
@@ -3152,12 +3156,12 @@ pub fn unified_tco_recurse(
 pub fn emit_unified_tco_expr(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -3270,14 +3274,14 @@ pub fn emit_unified_tco_expr(
 pub fn emit_unified_tco_body(
     texpr: Rc<Node>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -3300,12 +3304,12 @@ pub fn emit_unified_tco_body(
 }
 
 pub fn emit_unified_init_block_stmts(
-    remaining: Vec<Rc<Node>>,
-    text: Vec<String>,
+    remaining: Rc<Vec<Rc<Node>>>,
+    text: Rc<Vec<String>>,
     scope: Rc<InferScope>,
     depth: i64,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     {
@@ -3342,14 +3346,14 @@ pub fn emit_unified_init_block_stmts(
 
 pub fn emit_tco_match_go(
     scrutinee_str: String,
-    arms: Vec<Rc<Node>>,
+    arms: Rc<Vec<Rc<Node>>>,
     depth: i64,
     fn_name: String,
-    params: Vec<Rc<Node>>,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -3451,11 +3455,11 @@ pub fn emit_tco_match_go(
 pub fn emit_unified_tco_match(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -3540,13 +3544,13 @@ pub fn emit_unified_tco_match(
 pub fn emit_unified_tco_match_arm(
     arm: Rc<Node>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    render_init_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let bs = crate::v1_compiler_emit_core_support::language_spec(target.clone())
@@ -3621,9 +3625,9 @@ pub fn emit_unified_tco_match_arm(
 pub fn emit_tco_unified(
     texpr: Rc<Node>,
     fn_name: String,
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
@@ -3685,7 +3689,7 @@ pub fn emit_tco_unified(
 pub fn emit_unified_typed_func_body(
     body: Rc<Node>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
 ) -> String {
@@ -3849,7 +3853,7 @@ pub fn emit_unified_typed_func_body(
 pub fn is_tco_candidate(
     texpr: Rc<Node>,
     func_name: String,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -3925,7 +3929,7 @@ pub fn is_tco_candidate(
 pub fn suffix_escape_collides_with_reserved_chain(
     mut name: String,
     mut suffix: String,
-    mut keywords: Vec<String>,
+    mut keywords: Rc<Vec<String>>,
 ) -> bool {
     loop {
         let suffix_len = v1_rt::string_length(&suffix);
@@ -3968,7 +3972,7 @@ pub fn suffix_escape_collides_with_reserved_chain(
 pub fn emit_suffix_escape_ident(
     converted: String,
     suffix: String,
-    keywords: Vec<String>,
+    keywords: Rc<Vec<String>>,
 ) -> String {
     {
         let is_reserved = {
@@ -4185,7 +4189,10 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
     }
 }
 
-pub fn apply_bridge_method_overrides(name: String, overrides: HashMap<String, String>) -> String {
+pub fn apply_bridge_method_overrides(
+    name: String,
+    overrides: Rc<HashMap<String, String>>,
+) -> String {
     match v1_rt::lookup(&overrides, name.clone()) {
         Some(replacement) => replacement.clone(),
         None => name.clone(),
@@ -4300,7 +4307,7 @@ pub fn unmodeled_file_transport_operation_diagnostics(
     tm: Rc<TypedModule>,
     item: Rc<Node>,
     target: RenderTarget,
-) -> Vec<Rc<ErrorNode>> {
+) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let env = tm.type_env.clone();
         let si = env.source_indices.clone();
@@ -4347,7 +4354,7 @@ pub fn unmodeled_file_transport_operation_diagnostics(
 pub fn unmodeled_file_transport_diagnostics(
     typed: Rc<ResolvedGraph>,
     target: RenderTarget,
-) -> Vec<Rc<ErrorNode>> {
+) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for tm in typed.modules.clone().iter().cloned() {
@@ -4408,7 +4415,7 @@ pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarg
     )
 }
 
-pub fn emit_lambda_params(param_names: Vec<String>, target: RenderTarget) -> String {
+pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         let param_strs = Rc::new({
@@ -4425,7 +4432,7 @@ pub fn emit_lambda_params(param_names: Vec<String>, target: RenderTarget) -> Str
     }
 }
 
-pub fn emit_list_lit_expr(element_strs: Vec<String>, target: RenderTarget) -> String {
+pub fn emit_list_lit_expr(element_strs: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         if ((element_strs.clone().len() as i64) == 0) {
@@ -4456,7 +4463,7 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
 pub fn emit_expr_var_shared(
     expr: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let n = crate::v1_std_core::expr_var_name_at(expr.clone(), source_indices.clone());
@@ -4476,7 +4483,7 @@ pub fn emit_expr_field_access_shared(
     expr: Rc<Node>,
     target: RenderTarget,
     emit_field: impl Fn(Rc<Node>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if crate::v1_compiler_infer_service::is_typed_service_call_receiver(
         expr.clone(),
@@ -4496,7 +4503,7 @@ pub fn emit_expr_field_access_shared(
     }
 }
 
-pub fn extract_string_interp_parts(expr: Rc<Node>) -> Vec<Rc<StringPart>> {
+pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
     Rc::new({
         let mut __result = Vec::new();
         for child in expr.children.clone().iter().cloned() {
@@ -4525,7 +4532,7 @@ pub fn emit_typed_cast_shared(
     cast_target_node: Rc<Node>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let expr_str = recurse(expr.clone());
@@ -4568,7 +4575,7 @@ pub fn emit_typed_for_each_shared(
     body: Rc<Node>,
     target: RenderTarget,
     depth: i64,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     scope: Rc<InferScope>,
 ) -> String {
@@ -4645,7 +4652,7 @@ pub fn emit_typed_index_shared(
     index: Rc<Node>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -4691,7 +4698,7 @@ pub fn emit_typed_slice_shared(
     end: Rc<Node>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -4734,7 +4741,7 @@ pub fn emit_typed_slice_shared(
 pub fn emit_shared_expr(
     texpr: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     wrap_result: impl Fn(String) -> String + Clone,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
     emit_var: impl Fn(Rc<Node>) -> String + Clone,
@@ -4834,7 +4841,7 @@ pub fn emit_shared_expr(
 pub fn emit_default_bin_op(
     texpr: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
     wrap_result: impl Fn(String) -> String + Clone,
 ) -> String {
@@ -4884,8 +4891,8 @@ pub fn emit_default_bin_op(
 }
 
 pub fn emit_block_stmts_shared(
-    mut remaining: Vec<Rc<Node>>,
-    mut text: Vec<String>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
@@ -4931,8 +4938,8 @@ pub fn emit_block_stmts_shared(
 }
 
 pub fn emit_init_block_stmts_shared(
-    mut remaining: Vec<Rc<Node>>,
-    mut text: Vec<String>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
@@ -5025,7 +5032,7 @@ pub fn emit_typed_if_shared(
     if_result_type: Option<Rc<Node>>,
     depth: i64,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
 ) -> String {
     {
@@ -5126,7 +5133,7 @@ pub fn emit_typed_if_shared(
 pub fn emit_param_shared(
     param: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let ty = emit_node_type(
@@ -5152,9 +5159,9 @@ pub fn emit_param_shared(
 }
 
 pub fn emit_params_shared(
-    params: Vec<Rc<Node>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -5181,7 +5188,7 @@ pub fn emit_params_shared(
 pub fn emit_inferred_shared(
     inferred: Rc<Node>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if crate::v1_compiler_emit_core_support::language_spec(target.clone())
         .expression_semantics
@@ -5214,10 +5221,10 @@ pub fn emit_inferred_shared(
 }
 
 pub fn emit_typed_block_join(
-    stmts: Vec<Rc<Node>>,
+    stmts: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    emit_block_stmts: impl Fn(Vec<Rc<Node>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let state = emit_block_stmts(stmts.clone(), scope.clone(), depth.clone());
@@ -5225,7 +5232,9 @@ pub fn emit_typed_block_join(
     }
 }
 
-pub fn method_template_emit_for_target(target: RenderTarget) -> Option<HashMap<String, String>> {
+pub fn method_template_emit_for_target(
+    target: RenderTarget,
+) -> Option<Rc<HashMap<String, String>>> {
     match target.clone() {
         RenderTarget::Rust => Some(crate::extdeps_languages_rust_emit::rust_method_templates()),
         RenderTarget::Python => {
@@ -5262,7 +5271,7 @@ pub fn emit_algebra_method_template(
 }
 
 pub fn emit_typed_first_arg_shared(
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
@@ -5273,7 +5282,7 @@ pub fn emit_typed_first_arg_shared(
 }
 
 pub fn emit_typed_string_interp_unified(
-    parts: Vec<Rc<StringPart>>,
+    parts: Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
@@ -5392,9 +5401,9 @@ if has_interpolations.clone() {
 
 pub fn emit_typed_record_lit_unified(
     type_name: Option<String>,
-    fields: Vec<Rc<Node>>,
+    fields: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
@@ -5493,7 +5502,7 @@ pub fn is_go_v2rt_free_function(name: String) -> bool {
     }
 }
 
-pub fn emit_go_v2rt_free_call(func: String, arg_strs: Vec<String>) -> String {
+pub fn emit_go_v2rt_free_call(func: String, arg_strs: Rc<Vec<String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -5514,9 +5523,9 @@ pub fn emit_go_v2rt_free_call(func: String, arg_strs: Vec<String>) -> String {
 
 pub fn emit_typed_call_unified(
     func: String,
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
@@ -5622,7 +5631,7 @@ pub fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> 
 pub fn emit_algebra_method_call_unified(
     method_name: String,
     receiver: Rc<Node>,
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     first_arg_str: String,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
@@ -5668,7 +5677,7 @@ pub fn emit_algebra_method_call_unified(
 pub fn emit_plain_method_call_unified(
     receiver: Rc<Node>,
     method: String,
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
@@ -5701,10 +5710,10 @@ pub fn emit_plain_method_call_unified(
 pub fn emit_typed_method_call_unified(
     receiver: Rc<Node>,
     method: String,
-    args: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
     method_semantics: Option<Rc<MethodSemantics>>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
@@ -5833,7 +5842,7 @@ pub fn emit_typed_method_call_unified(
 pub fn emit_unified_pattern(
     pattern: Rc<MatchPattern>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
@@ -5867,9 +5876,9 @@ pub fn go_variant_case_type(name: String, parent_enum: Option<String>) -> String
 pub fn emit_unified_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    field_bindings: Vec<Rc<Node>>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let es = crate::v1_compiler_emit_core_support::language_spec(target.clone())
@@ -6010,7 +6019,7 @@ pub fn emit_arm_guard(
 pub fn emit_go_match_arm_bindings(
     arm: Rc<Node>,
     indent_level: i64,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
         MatchPattern::VariantPattern {
@@ -6062,11 +6071,11 @@ pub fn emit_go_match_arm_bindings(
 
 pub fn emit_typed_match_go(
     scrutinee_str: String,
-    arms: Vec<Rc<Node>>,
+    arms: Rc<Vec<Rc<Node>>>,
     depth: i64,
     recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
@@ -6133,12 +6142,12 @@ pub fn emit_typed_match_go(
 
 pub fn emit_typed_match_unified(
     scrutinee_str: String,
-    arms: Vec<Rc<Node>>,
+    arms: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     depth: i64,
     recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match target.clone() {
         RenderTarget::Go => emit_typed_match_go(
@@ -6251,7 +6260,7 @@ pub fn emit_field_access_unified(
 pub fn emit_unified_typed_expr(
     texpr: Rc<Node>,
     target: RenderTarget,
-    registry: HashMap<String, Rc<ItemInfo>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
@@ -6645,7 +6654,7 @@ pub fn emit_unified_typed_expr(
 pub fn is_tco_identity_passthrough(
     arg_val: Rc<Node>,
     param_name: String,
-    si: HashMap<String, Rc<NewlineIndex>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg_val.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -6659,11 +6668,11 @@ pub fn is_tco_identity_passthrough(
 }
 
 pub fn emit_typed_tco_reassign_shared(
-    args: Vec<Rc<Node>>,
-    params: Vec<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
+    params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
-    source_indices: HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let arg_values = Rc::new({
@@ -6752,7 +6761,7 @@ pub fn emit_typed_tco_reassign_shared(
     }
 }
 
-pub fn seed_bindings(key: String, value: String) -> HashMap<String, String> {
+pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
     v1_rt::rc_map_insert(
         v1_rt::rc_empty_map::<String, String>(),
         key.clone(),

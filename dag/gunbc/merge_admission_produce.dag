@@ -38,7 +38,7 @@ type ReceiptWirePrNumber
   | WirePrPresent { value: Int }
   | WirePrMalformed
 
-fn receipt_wire_v2_pr_number(lines: std.types.List<String>) -> ReceiptWirePrNumber {
+fn receipt_wire_v2_pr_number(lines: List<String>) -> ReceiptWirePrNumber {
   if length(lines) == 6 {
     WirePrAbsent
   } else {
@@ -152,7 +152,7 @@ fn render_receipt_wire(receipt: gunbc.merge_admission.MergeAdmissionReceipt) -> 
   }
 }
 
-fn wire_pr_number_from_lines(lines: std.types.List<String>) -> Int? {
+fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
   if length(lines) >= 5 {
     parse_int(s: lines.skip(n: 4).first())
   } else {

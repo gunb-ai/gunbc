@@ -15,7 +15,7 @@ type SystemdUnitActiveState
   | Reloading
   | Failed
 
-data systemd_parse_label_derivation_debt: std.types.List<std.types.NonEmptyStr> = [
+data systemd_parse_label_derivation_debt: List<std.types.NonEmptyStr> = [
   "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 

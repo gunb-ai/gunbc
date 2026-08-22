@@ -20,7 +20,7 @@ test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
 }
 
-fn nullable_set_singleton(name: v2.std.node.Symbol) -> std.types.Set<v2.std.node.Symbol> {
+fn nullable_set_singleton(name: v2.std.node.Symbol) -> Set<v2.std.node.Symbol> {
   std.types.Set { member: fn(sym) { sym == name } }
 }
 

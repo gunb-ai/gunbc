@@ -50,7 +50,7 @@ type HostBootOutcome
 type HostMemoryStanding {
   host: product.placement_supply.HostIdentity
   part_number: std.types.NonEmptyStr
-  population: std.types.List<std.types.NonEmptyStr>
+  population: List<std.types.NonEmptyStr>
   class_support: DimmClassSupport
   part_qualification: SpecificPartQualification
   training: DdrTrainingOutcome
@@ -95,7 +95,7 @@ type CausalExperimentReceipt {
   observed_at: std.types.EpochMs
 }
 
-data srv3_incident_experiments: std.types.List<CausalExperimentReceipt> = [
+data srv3_incident_experiments: List<CausalExperimentReceipt> = [
   CausalExperimentReceipt {
     hypothesis: "Old host firmware caused the DDR training failure",
     intervention: "BMC 2.07.00 -> 3.22.00, then BIOS 2.06 -> 3.10 (reference code 0ACRB_021)",
@@ -165,7 +165,7 @@ type PlatformTrainingFailure {
   board: extdeps.boards.types.BaseboardModel
   step: extdeps.memory.training.MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  observed_population: std.types.List<std.types.NonEmptyStr>
+  observed_population: List<std.types.NonEmptyStr>
   observed_at: std.types.EpochMs
 }
 
@@ -225,7 +225,7 @@ fn implication_for_step(
 
 fn part_implication(
   candidate: extdeps.memory.types.DramModuleCatalogRow,
-  failures: std.types.List<PlatformTrainingFailure>,
+  failures: List<PlatformTrainingFailure>,
   target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   fold(

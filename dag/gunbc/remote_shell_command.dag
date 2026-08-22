@@ -21,7 +21,7 @@ data openbmc_dropbear_interpretation: RemoteExecCommandInterpretation = PosixShe
 data openbmc_dropbear_interpretation_note: String = "OpenBMC ships Dropbear, whose sshd invokes the command string via `<shell> -c <command>` against the device's configured shell -- BusyBox ash on the OpenBMC images this fleet targets, a POSIX-conformant shell (not bash; single-quote semantics are the shared POSIX core this module's encoding targets, so the interpretation is the same PosixShellInterpreted, not a distinct arm). Unverified against a specific OpenBMC firmware build until the live confirmation below executes -- carried as an observed deployment fact from OpenBMC's documented architecture, not yet as a per-host measurement."
 
 type ShellSimpleCommand {
-  words: std.types.List<std.types.NonEmptyStr>
+  words: List<std.types.NonEmptyStr>
 }
 
 type SimpleCommandRefusalCause
@@ -31,7 +31,7 @@ type SimpleCommandOutcome
   = SimpleCommandBuilt { command: ShellSimpleCommand }
   | SimpleCommandRefused { cause: SimpleCommandRefusalCause }
 
-fn simple_command(argv: std.types.List<std.types.NonEmptyStr>) -> SimpleCommandOutcome {
+fn simple_command(argv: List<std.types.NonEmptyStr>) -> SimpleCommandOutcome {
   if length(xs: argv) == 0 {
     SimpleCommandRefused { cause: SimpleCommandEmptyArgv {} }
   } else {
@@ -60,7 +60,7 @@ type RemoteExecCommandOutcome
 data remote_exec_command_string_note: String = "The composition constraint, spelled as code rather than as prose: append(ssh_exec_prefix, inner.argv) -- what extdeps.exec.command command_over_transport's SshExec branch does today -- is wrong in KIND, because RFC 4254 carries one command STRING, not a suffixed argv. This function produces that one string as its OWN typed output (RemoteExecCommandBuilt.command: NonEmptyStr), for a caller to hand to ssh.Session.Exec's `command` field -- a composition of two targets (outer local ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other."
 
 fn remote_exec_command_string(
-  argv: std.types.List<std.types.NonEmptyStr>,
+  argv: List<std.types.NonEmptyStr>,
   interpretation: RemoteExecCommandInterpretation
 ) -> RemoteExecCommandOutcome {
   match interpretation {

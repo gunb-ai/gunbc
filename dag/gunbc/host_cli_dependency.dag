@@ -12,7 +12,7 @@ type HostCliEnrollmentRequirement {
   provision: std.types.NonEmptyStr
 }
 
-data codex_wet_materialization_host_cli_requirements: std.types.List<HostCliEnrollmentRequirement> = [
+data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
     tool: "npm" as std.types.NonEmptyStr,
     provision: "apt install npm on falsifier cadence runner image" as std.types.NonEmptyStr,

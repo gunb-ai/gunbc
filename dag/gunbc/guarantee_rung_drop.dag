@@ -40,7 +40,7 @@ type GuaranteeRungDrop {
   previous: GuaranteeRung
   temporary: GuaranteeRung
   reason: RungDropReason
-  population: std.types.List<String>
+  population: List<String>
   restoration_trigger: String
 }
 
@@ -62,7 +62,7 @@ fn rung_drop_reason_label(r: RungDropReason) -> String {
   }
 }
 
-fn rung_drop_population_render(names: std.types.List<String>) -> String {
+fn rung_drop_population_render(names: List<String>) -> String {
   v2.std.algebra.fold_list(
     xs: names,
     empty: "",

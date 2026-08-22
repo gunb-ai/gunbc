@@ -57,7 +57,7 @@ fn evidence_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   }
 }
 
-fn dispositioned_evidence() -> std.types.List<gunbc.replacement_cut.EvidenceDisposition> {
+fn dispositioned_evidence() -> List<gunbc.replacement_cut.EvidenceDisposition> {
   [
     gunbc.replacement_cut.ReenrollAgainstY {
       evidence: test.claim.replacement_cut_witness.nes(s: "surviving discriminating witness"),
@@ -75,12 +75,12 @@ fn typed_oracle() -> gunbc.replacement_cut.ExternalXAnswer {
   gunbc.replacement_cut.ExternalXRoles { roles: [gunbc.replacement_cut.ExternalDifferentialOracle, gunbc.replacement_cut.HistoricalMeasurementSource] }
 }
 
-fn two_region() -> std.types.List<std.types.NonEmptyStr> { [test.claim.replacement_cut_witness.nes(s: "x root module"), test.claim.replacement_cut_witness.nes(s: "x internal helper")] }
+fn two_region() -> List<std.types.NonEmptyStr> { [test.claim.replacement_cut_witness.nes(s: "x root module"), test.claim.replacement_cut_witness.nes(s: "x internal helper")] }
 
 fn cut_full(
-  consumers: std.types.List<gunbc.replacement_cut.BoundaryConsumer>,
-  region: std.types.List<std.types.NonEmptyStr>,
-  evidence: std.types.List<gunbc.replacement_cut.EvidenceDisposition>,
+  consumers: List<gunbc.replacement_cut.BoundaryConsumer>,
+  region: List<std.types.NonEmptyStr>,
+  evidence: List<gunbc.replacement_cut.EvidenceDisposition>,
   new_root: String,
   oracle: gunbc.replacement_cut.ExternalXAnswer,
 ) -> gunbc.replacement_cut.ReplacementCut {
@@ -99,14 +99,14 @@ fn cut_full(
 }
 
 fn cut_with(
-  consumers: std.types.List<gunbc.replacement_cut.BoundaryConsumer>,
-  region: std.types.List<std.types.NonEmptyStr>,
-  evidence: std.types.List<gunbc.replacement_cut.EvidenceDisposition>,
+  consumers: List<gunbc.replacement_cut.BoundaryConsumer>,
+  region: List<std.types.NonEmptyStr>,
+  evidence: List<gunbc.replacement_cut.EvidenceDisposition>,
 ) -> gunbc.replacement_cut.ReplacementCut {
   cut_full(consumers: consumers, region: region, evidence: evidence, new_root: "new fold root", oracle: typed_oracle())
 }
 
-fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> std.types.List<gunbc.replacement_cut.CutRefusalCause> {
+fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
     PlanAdmitted { admitted: _ } => []
     PlanRefused { causes: cs } => cs
@@ -131,7 +131,7 @@ fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject:
   }
 }
 
-fn causes_include(causes: std.types.List<gunbc.replacement_cut.CutRefusalCause>, tag: String, subject: String) -> Bool {
+fn causes_include(causes: List<gunbc.replacement_cut.CutRefusalCause>, tag: String, subject: String) -> Bool {
   fold(causes, init: false, f: fn(acc, c) { acc || cause_matches(c: c, tag: tag, subject: subject) })
 }
 

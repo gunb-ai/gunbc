@@ -55,7 +55,7 @@ pub struct CastRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub cast_rules: Vec<Rc<CastRule>>,
+    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
 pub fn grounded_primitive_coproduct_cast_note() -> String {
@@ -67,24 +67,24 @@ pub fn grounded_primitive_coproduct_cast_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_cast_rules() -> Vec<Rc<CastRule>> {
+pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
-        static CACHED: Vec<Rc<CastRule>> = {
+        static CACHED: Rc<Vec<Rc<CastRule>>> = {
             serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Vec<Rc<CastRule>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn grounded_primitive_coproduct_identities() -> Vec<Rc<CastRule>> {
+pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
-        static CACHED: Vec<Rc<CastRule>> = {
+        static CACHED: Rc<Vec<Rc<CastRule>>> = {
             serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Vec<Rc<CastRule>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {

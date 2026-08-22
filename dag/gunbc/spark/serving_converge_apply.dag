@@ -4,11 +4,11 @@ module gunbc.spark.serving_converge_apply
 data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and KEEP them: RemoteOperationExecution carries TypedArgvExecOutcome on the argv arm and TypedRemoteFileConvergence on the file arm, because an argv exit code and a four-step read-back-verified convergence are not the same evidence and one success word reported them at one rung. Neither arm means the resource converged -- exit zero says the invoked program reported completion, and resource convergence is established only by the resource's own observer and the empty replan. Progression between steps uses remote_execution_permits_continuation, named for progression rather than convergence. Each step carries a PlannedRemoteStep identity assigned where it is built, and the sequence records RemoteStepStanding per step -- completed, failed, or unattempted -- so a halt names which step stopped and which tail was never reached, instead of collapsing to one reason string."
 
 type SparkServingFrozenApplyResult =
-    SparkServingFrozenApplied { remote_steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep>, effect_count: Int }
+    SparkServingFrozenApplied { remote_steps: List<gunbc.remote_operation.PlannedRemoteStep>, effect_count: Int }
   | SparkServingFrozenApplyRefused { reason: String }
 
 type SparkServingFrozenRemoteExecResult =
-    SparkServingFrozenRemoteExecApplied { standings: std.types.List<gunbc.remote_operation.RemoteStepStanding> }
+    SparkServingFrozenRemoteExecApplied { standings: List<gunbc.remote_operation.RemoteStepStanding> }
   | SparkServingFrozenRemoteExecConvergedNoop
   | SparkServingFrozenRemoteExecRefused { reason: String }
 
@@ -151,7 +151,7 @@ func spark_serving_run_operation(
 // the scan would have to decide what an empty list means, and "nothing ran yet" and "everything ran
 // and none failed" are different states that a length check cannot separate.
 type SparkServingSequenceAcc {
-  standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>
+  standings: List<gunbc.remote_operation.RemoteStepStanding>
   halted: Bool
 }
 
@@ -188,9 +188,9 @@ func spark_serving_sequence_step(
 }
 
 func spark_serving_run_step_sequence(
-  steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep>,
+  steps: List<gunbc.remote_operation.PlannedRemoteStep>,
   transport: gunbc.host_effect.HostEffectTransport,
-) -> std.types.List<gunbc.remote_operation.RemoteStepStanding>
+) -> List<gunbc.remote_operation.RemoteStepStanding>
   uses net: std.resources.Network
 {
   fold(
@@ -200,7 +200,7 @@ func spark_serving_run_step_sequence(
   ).standings
 }
 
-fn spark_serving_step_sequence_failed(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> Bool {
+fn spark_serving_step_sequence_failed(standings: List<gunbc.remote_operation.RemoteStepStanding>) -> Bool {
   fold(standings, init: false, f: fn(acc, st) {
     match st {
       RemoteStepFailed { identity: _, execution: _ } => true
@@ -210,7 +210,7 @@ fn spark_serving_step_sequence_failed(standings: std.types.List<gunbc.remote_ope
   })
 }
 
-fn spark_serving_step_sequence_wire(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> String {
+fn spark_serving_step_sequence_wire(standings: List<gunbc.remote_operation.RemoteStepStanding>) -> String {
   join(map(standings, st => remote_step_standing_wire(standing: st)), " ")
 }
 
@@ -226,7 +226,7 @@ fn spark_serving_step_sequence_wire(standings: std.types.List<gunbc.remote_opera
 // for a seal violation, a mode mismatch, a rename failure, or a read-back byte difference, and
 // `failed:write-user-unit-file` is the same six words for all four. The factory model requires the
 // analysis to precede the restart, so the receipt must carry what the analysis needs.
-fn spark_serving_step_failure_causes_wire(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> String {
+fn spark_serving_step_failure_causes_wire(standings: List<gunbc.remote_operation.RemoteStepStanding>) -> String {
   join(
     flat_map(standings, st =>
       match remote_step_failure_cause(standing: st) {

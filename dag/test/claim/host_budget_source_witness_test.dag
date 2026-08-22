@@ -10,7 +10,7 @@ data import_widening_shadowed_contains_note: String = "WHY THESE CALLS SAY strin
 
 data declared_high_is_derived_not_retyped_note: String = "THIS ROW USED TO RETYPE THE MIRROR VALUE IT WAS MEASURING. Both call sites constructed BudgetSourceMemAvailableCappedAtDeclaredHigh with byte_size(13958643712) -- the seed constant's own number, copied into the expectation -- so the witness greened whichever way the mirror went and could not have caught the eleven-day drift it sat next to. A measurement copied from the tree under test is not an oracle (2026-08-01 ruling). The value now comes from gunbc.runner_slot_allocation gunbc_runner_slot_desired, the authority the seed constant mirrors, so it moves with the declaration and cannot be satisfied by editing this file."
 
-data all_sources: std.types.List<gunbc.host_budget_source.HostBudgetSource> = [
+data all_sources: List<gunbc.host_budget_source.HostBudgetSource> = [
   gunbc.host_budget_source.BudgetSourceEnvOverride,
   gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },

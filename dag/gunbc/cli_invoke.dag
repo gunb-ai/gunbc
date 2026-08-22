@@ -9,7 +9,7 @@ type SourceRootShellStyle
 data claim_executor_bin_name: String = "claim_executor"
 data gunbc_bin_name: String = "gunbc"
 
-fn source_root_transport_argv(roots: std.types.List<String>) -> std.types.List<String> {
+fn source_root_transport_argv(roots: List<String>) -> List<String> {
   fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
 
@@ -21,7 +21,7 @@ fn source_root_shell_flag(root: String, style: SourceRootShellStyle) -> String {
   }
 }
 
-fn source_roots_shell_flags(roots: std.types.List<String>, style: SourceRootShellStyle) -> String {
+fn source_roots_shell_flags(roots: List<String>, style: SourceRootShellStyle) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, source_root_shell_flag(root: r, style: style)))
 }
 
@@ -67,11 +67,11 @@ fn plan_function_name(p: PlanFunction) -> String {
 }
 
 fn claim_executor_run_plan_transport_argv(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   plan_entry: String,
   plan_function: PlanFunction,
   notice_title: String?
-) -> std.types.List<String> {
+) -> List<String> {
   let base = concat(
     source_root_transport_argv(roots: source_roots),
     ["--plan-entry", plan_entry, "--plan-function", plan_function_name(p: plan_function)]
@@ -82,7 +82,7 @@ fn claim_executor_run_plan_transport_argv(
   }
 }
 
-fn claim_executor_verify_artifacts_transport_argv(artifact_paths: std.types.List<String>) -> std.types.List<String> {
+fn claim_executor_verify_artifacts_transport_argv(artifact_paths: List<String>) -> List<String> {
   concat(["--verify-build-artifacts"], artifact_paths)
 }
 
@@ -108,11 +108,11 @@ fn invocation_word_bare(w: InvocationWord) -> String {
   }
 }
 
-fn invocation_words_bare(words: std.types.List<InvocationWord>) -> std.types.List<String> {
+fn invocation_words_bare(words: List<InvocationWord>) -> List<String> {
   fold(words, init: [], f: (acc, w) => concat(acc, [invocation_word_bare(w: w)]))
 }
 
-fn source_root_invocation_words(roots: std.types.List<String>) -> std.types.List<InvocationWord> {
+fn source_root_invocation_words(roots: List<String>) -> List<InvocationWord> {
   fold(
     roots,
     init: [],
@@ -122,11 +122,11 @@ fn source_root_invocation_words(roots: std.types.List<String>) -> std.types.List
 }
 
 fn gunbc_run_invocation_words(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool
-) -> std.types.List<InvocationWord> {
+) -> List<InvocationWord> {
   let base = concat(
     concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
     [
@@ -144,11 +144,11 @@ fn gunbc_run_invocation_words(
 }
 
 fn gunbc_run_transport_argv(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool
-) -> std.types.List<String> {
+) -> List<String> {
   invocation_words_bare(
     words: gunbc_run_invocation_words(
       source_roots: source_roots,
@@ -168,7 +168,7 @@ fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
 }
 
 fn claim_executor_run_plan_shell(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   plan_entry: String,
   plan_function: PlanFunction,
   notice_title: String?,
@@ -190,7 +190,7 @@ fn claim_executor_run_plan_shell(
   )
 }
 
-fn claim_executor_verify_artifacts_shell(artifact_paths: std.types.List<String>) -> String {
+fn claim_executor_verify_artifacts_shell(artifact_paths: List<String>) -> String {
   let paths = fold(artifact_paths, init: "", f: (acc, p) => concat(acc, concat(" ", p)))
   concat(concat(concat(claim_executor_bin_shell(), " --verify-build-artifacts"), paths), "\n")
 }

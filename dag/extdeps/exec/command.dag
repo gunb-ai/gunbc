@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 type ArgvCommand {
-  argv: std.types.List<String>
+  argv: List<String>
 }
 
 data ssh_exec_interpretation_note: String = "SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command remote_exec_command_interpretation_note), so the caller who knows which deployment it is targeting must declare it rather than command_over_transport guessing from the target string. A target this module cannot classify names Unknown explicitly; command_over_transport then refuses rather than picking a default (operator directive, 2026-08-19)."
@@ -26,15 +26,15 @@ data sshpass_authority: extdeps.external_authority.ExternalAuthority = extdeps.e
 
 data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_exec_prefix — DECLARED SECURITY POSTURE, not an accident of argv building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key verification for these fleet/BMC transports, so a LAN-position MITM would not be detected; accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on gunbc.fleet_ssh_access (pinned host key per fleet member) and this prefix drops both overrides in favor of a pinned UserKnownHostsFile."
 
-fn sshpass_prefix() -> std.types.List<String> {
+fn sshpass_prefix() -> List<String> {
   ["sshpass", "-e"]
 }
 
-fn ssh_host_key_override_opts() -> std.types.List<String> {
+fn ssh_host_key_override_opts() -> List<String> {
   ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 }
 
-fn ssh_exec_prefix(target: std.types.NonEmptyStr) -> std.types.List<String> {
+fn ssh_exec_prefix(target: std.types.NonEmptyStr) -> List<String> {
   append(
     append(
       append(sshpass_prefix(), items: ["ssh"]),
@@ -102,7 +102,7 @@ fn tar_extract_command(archive: String, into_directory: String, strip_components
   }
 }
 
-fn make_command(directory: String, arguments: std.types.List<String>) -> ArgvCommand {
+fn make_command(directory: String, arguments: List<String>) -> ArgvCommand {
   ArgvCommand { argv: append(["make", "-C", directory], items: arguments) }
 }
 

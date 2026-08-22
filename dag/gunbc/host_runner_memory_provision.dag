@@ -12,7 +12,7 @@ data host_runner_memory_provision_realize_scaffold: std.decl_ref.std.disposition
   }
 }
 
-data runner_memory_cap_knob_names: std.types.List<std.types.String> = [
+data runner_memory_cap_knob_names: List<std.types.String> = [
   "per_slot_memory_max_bytes",
   "per_slot_memory_high_bytes",
   "per_slot_memory_swap_max_bytes",
@@ -22,7 +22,7 @@ fn runner_memory_knob_selected(name: std.types.String) -> std.types.Bool {
   fold(runner_memory_cap_knob_names, init: false, f: (acc, n) => acc || n == name)
 }
 
-fn runner_memory_knobs_from(host: gunbc.host_converge.HostConverge) -> std.types.List<gunbc.host_converge.ConvergeKnob> {
+fn runner_memory_knobs_from(host: gunbc.host_converge.HostConverge) -> List<gunbc.host_converge.ConvergeKnob> {
   fold(host.knobs, init: [], f: (acc, k) =>
     if runner_memory_knob_selected(name: k.name) { concat(acc, [k]) } else { acc }
   )

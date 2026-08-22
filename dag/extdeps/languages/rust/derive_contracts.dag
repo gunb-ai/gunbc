@@ -107,7 +107,7 @@ type RustVecSupplementalGenericBoundRow {
   authority: extdeps.external_authority.ExternalAuthority
 }
 
-data rust_vec_freemonoid_supplemental_generic_bound_rows: std.types.List<RustVecSupplementalGenericBoundRow> = [
+data rust_vec_freemonoid_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
   RustVecSupplementalGenericBoundRow {
     derive_trait: RustDebug
     required: RustClone
@@ -132,7 +132,7 @@ data rust_vec_freemonoid_supplemental_generic_bound_rows: std.types.List<RustVec
 
 data rust_btree_set_supplemental_generic_bound_rows_note: String = "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set/BTreeSet realization -- CORRECTED 2026-08-21: the realized type is NOT std::collections::BTreeSet, it is im-15.1.0's im::OrdSet, aliased `as BTreeSet` in every emitted use statement (src/v1/stage0/src/lib.rs: `use im::\{OrdSet as BTreeSet, Vector as Vec};`), so this row list must cite OrdSet's own impls, not std's. Verified against the vendored im-15.1.0 crate source: `impl<A> Clone for OrdSet<A>` (src/ord/set.rs#830) is unconditional, no row. `impl<A: Ord> PartialEq for OrdSet<A>` (set.rs#844) and `impl<A: Ord + Debug> Debug for OrdSet<A>` (set.rs#937) each require only P: Ord. `impl<A: Ord + Clone + Serialize> Serialize for OrdSet<A>` and `impl<'de, A: Deserialize<'de> + Ord + Clone> Deserialize<'de> for OrdSet<A>` (src/ser.rs#134, #125) each require BOTH P: Ord and P: Clone -- two rows per trait, sharing one upstream authority, merged into one requirement set by v2.extdeps.languages.rust rust_collection_supplemental_generic_bound_contracts_merge_row rather than the earlier single-row-per-derive_trait fold (which would have silently dropped one of the two on insert). This module is dag-rooted so both pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes these rows in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust folds them into rust_btree_set_supplemental_generic_bound_contracts -- mirroring rust_vec_freemonoid_supplemental_generic_bound_rows's row-authority split rather than restating the requirement inline a second time."
 
-data rust_btree_set_supplemental_generic_bound_rows: std.types.List<RustVecSupplementalGenericBoundRow> = [
+data rust_btree_set_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
   RustVecSupplementalGenericBoundRow {
     derive_trait: RustDebug
     required: RustOrd

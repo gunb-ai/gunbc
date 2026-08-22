@@ -9,7 +9,7 @@ module v1.compiler.coercion
 
 
 
-fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> std.types.List<std.coercion.TypeCheckpoint> {
+fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.TypeCheckpoint> {
   match target {
     Rust => extdeps.languages.rust.types.rust_type_checkpoints
     Python => extdeps.languages.python.types.python_type_checkpoints
@@ -18,7 +18,7 @@ fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> std.types.Li
   }
 }
 
-fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> std.types.List<std.coercion.InhabitantDecl> {
+fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.InhabitantDecl> {
   match target {
     Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
     Python => extdeps.languages.python.types.python_algebra_inhabitants
@@ -90,7 +90,7 @@ fn type_reference_decl_file(n: v1.std.core.Node) -> String {
 
 data type_reference_identity_note: String = "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first."
 
-fn structural_declaration_modules_for(dag_name: String) -> std.types.List<String> {
+fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
     "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
@@ -113,7 +113,7 @@ data numeric_realization_identity_note: String = "Realization is keyed on the DE
 
 data numeric_realization_roster_extension_note: String = "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape."
 
-fn numeric_realization_declaring_modules() -> std.types.List<String> {
+fn numeric_realization_declaring_modules() -> List<String> {
   ["dag/std/nat.dag", "dag/std/integer.dag", "<kernel:"]
 }
 
@@ -334,11 +334,11 @@ type CoercionAssertion
   = CheckpointAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_type: String }
   | ContainerAssertion { target: v1.compiler.artifact.RenderTarget, container_name: String, expected_template: String }
   | CopyAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_copy: Bool }
-  | TemplateAssertion { template: String, args: std.types.List<String>, expected: String }
+  | TemplateAssertion { template: String, args: List<String>, expected: String }
 
 type CoercionTestEntry {
   test_name: String
-  assertions: std.types.List<CoercionAssertion>
+  assertions: List<CoercionAssertion>
 }
 
 fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
@@ -350,7 +350,7 @@ fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
   }
 }
 
-fn checkpoint_tests(target: v1.compiler.artifact.RenderTarget) -> std.types.List<CoercionTestEntry> {
+fn checkpoint_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let cps = target_checkpoints(target: target)
   if cps |> count == 0 { [] }
@@ -363,11 +363,11 @@ fn checkpoint_tests(target: v1.compiler.artifact.RenderTarget) -> std.types.List
   }
 }
 
-fn inhabitant_test_names() -> std.types.List<String> {
+fn inhabitant_test_names() -> List<String> {
   concat(std.types.canonical_container_names(), ["PointwisePower"])
 }
 
-fn inhabitant_tests(target: v1.compiler.artifact.RenderTarget) -> std.types.List<CoercionTestEntry> {
+fn inhabitant_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let assertions = inhabitant_test_names() |> flat_map(name =>
     match coerce_container_template(target: target, container_name: name) {
@@ -383,7 +383,7 @@ fn inhabitant_tests(target: v1.compiler.artifact.RenderTarget) -> std.types.List
   }
 }
 
-fn copy_tests() -> std.types.List<CoercionTestEntry> {
+fn copy_tests() -> List<CoercionTestEntry> {
   let cps = target_checkpoints(target: v1.compiler.artifact.Rust)
   let copy_assertions = cps |> flat_map(cp =>
     match cp.is_copy {
@@ -399,14 +399,14 @@ fn copy_tests() -> std.types.List<CoercionTestEntry> {
   }
 }
 
-fn unique_inhabitants_for_template_tests(inhs: std.types.List<std.coercion.InhabitantDecl>) -> std.types.List<std.coercion.InhabitantDecl> {
+fn unique_inhabitants_for_template_tests(inhs: List<std.coercion.InhabitantDecl>) -> List<std.coercion.InhabitantDecl> {
   inhs |> fold(init: [], f: fn(acc, inh) {
     if acc |> any(prev => prev.template == inh.template && prev.arity == inh.arity) { acc }
     else { concat(acc, [inh]) }
   })
 }
 
-fn template_application_tests() -> std.types.List<CoercionTestEntry> {
+fn template_application_tests() -> List<CoercionTestEntry> {
   let targets = [v1.compiler.artifact.Rust, v1.compiler.artifact.Python, v1.compiler.artifact.Go]
   let assertions = targets |> flat_map(t =>
     let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
@@ -429,7 +429,7 @@ fn template_application_tests() -> std.types.List<CoercionTestEntry> {
   }
 }
 
-fn extract_coercion_tests() -> std.types.List<CoercionTestEntry> {
+fn extract_coercion_tests() -> List<CoercionTestEntry> {
   concat(
     checkpoint_tests(target: v1.compiler.artifact.Rust),
     checkpoint_tests(target: v1.compiler.artifact.Python),

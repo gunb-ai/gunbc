@@ -58,7 +58,7 @@ fn spark_managed_grant_standing_from_outcome(
   }
 }
 
-fn spark_managed_grant_standings(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<SparkManagedGrantStanding> {
+fn spark_managed_grant_standings(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> List<SparkManagedGrantStanding> {
   map(spark_managed_grant_population, g =>
     spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome))
 }
@@ -66,7 +66,7 @@ fn spark_managed_grant_standings(outcome: gunbc.spark.managed_access_bootstrap.S
 // THE MISSING SET IS NOT THE COMPLEMENT OF THE HELD SET. An unobserved grant is absent from BOTH,
 // because installing a grant we could not measure would be actuating on ignorance, and reporting it
 // held would be worse. This is the one place the three-way split pays for itself.
-fn spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
+fn spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
   flat_map(spark_managed_grant_standings(outcome: outcome), s =>
     match s {
       GrantNotHeld { grant: g } => [g]
@@ -75,7 +75,7 @@ fn spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap
     })
 }
 
-fn spark_managed_grants_unobserved(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
+fn spark_managed_grants_unobserved(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
   flat_map(spark_managed_grant_standings(outcome: outcome), s =>
     match s {
       GrantStandingUnobserved { grant: g, cause: _ } => [g]

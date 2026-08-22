@@ -79,19 +79,19 @@ fn systemd_property_is_settable(property: extdeps.systemd.SystemdUnitProperty) -
 // classification is walled and the enumeration is not, and a census derived from the enumeration
 // carries that weakness -- which is why the consumer roster below is measured by grep against the
 // corpus rather than computed from this list.
-data systemd_unit_property_members: std.types.List<extdeps.systemd.SystemdUnitProperty> = [
+data systemd_unit_property_members: List<extdeps.systemd.SystemdUnitProperty> = [
   extdeps.systemd.MemoryMax, extdeps.systemd.MemorySwapMax, extdeps.systemd.MemoryHigh, extdeps.systemd.CPUWeight, extdeps.systemd.TasksMax,
   extdeps.systemd.MemoryCurrent, extdeps.systemd.TasksCurrent, extdeps.systemd.ControlGroup, extdeps.systemd.ActiveEnterTimestampMonotonic, extdeps.systemd.ActiveState,
 ]
 
-fn settable_property_wires() -> std.types.List<std.types.String> {
+fn settable_property_wires() -> List<std.types.String> {
   map(
     filter(systemd_unit_property_members, p => systemd_property_is_settable(property: p)),
     p => extdeps.systemd.systemd_unit_property_wire(property: p) as std.types.String,
   )
 }
 
-fn observation_only_property_wires() -> std.types.List<std.types.String> {
+fn observation_only_property_wires() -> List<std.types.String> {
   map(
     filter(systemd_unit_property_members, p => !systemd_property_is_settable(property: p)),
     p => extdeps.systemd.systemd_unit_property_wire(property: p) as std.types.String,
@@ -136,7 +136,7 @@ type SystemdPropertyConsumer {
   role: SystemdPropertyConsumerRole
 }
 
-data systemd_property_consumers: std.types.List<SystemdPropertyConsumer> = [
+data systemd_property_consumers: List<SystemdPropertyConsumer> = [
   SystemdPropertyConsumer { module_path: "extdeps.systemd.systemctl" as std.types.NonEmptyStr, role: ShowArgvTyped },
   SystemdPropertyConsumer { module_path: "gunbc.systemctl_show_read" as std.types.NonEmptyStr, role: ShowArgvTyped },
   SystemdPropertyConsumer { module_path: "gunbc.host_hygiene_reaper_observe" as std.types.NonEmptyStr, role: ShowArgvTyped },

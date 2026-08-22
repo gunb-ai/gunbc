@@ -68,7 +68,7 @@ type MembershipArgumentShape
 // which the missing operation is supplied: one declaration serves every occurrence over its
 // result. Where the collection is a function parameter rather than a declaration, the row names
 // the enclosing function — the parameter has no declaration of its own to cite.
-data list_membership_gap_sites: std.types.List<ListMembershipGapSite> = [
+data list_membership_gap_sites: List<ListMembershipGapSite> = [
   {
     collection_producer: decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
     index_coverage: CitableThroughDeclIndex,

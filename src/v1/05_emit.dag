@@ -26,7 +26,7 @@ fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
 }
 
 type BlockEmitState {
-  text: std.types.List<String>
+  text: List<String>
   scope: v1.compiler.infer.InferScope
 }
 
@@ -37,12 +37,12 @@ type TcoFrame {
 }
 
 type TcoReassignInput {
-  args: std.types.List<v1.std.core.Node>
+  args: List<v1.std.core.Node>
   scope: v1.compiler.infer.InferScope
   depth: Int
 }
 
-fn derive_module_imports(items: std.types.List<v1.std.core.Node>, import_rules: std.types.List<v1.compiler.languages.ImportRule>, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+fn derive_module_imports(items: List<v1.std.core.Node>, import_rules: List<v1.compiler.languages.ImportRule>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let has_async = items |> any(item => item.uses |> count > 0)
   let type_names = collect_type_names_from_items(items: items, source_indices: source_indices)
 
@@ -58,11 +58,11 @@ fn derive_module_imports(items: std.types.List<v1.std.core.Node>, import_rules: 
   |> filter(path => path != "")
 }
 
-fn collect_type_names_from_items(items: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+fn collect_type_names_from_items(items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   items |> flat_map(item => collect_type_names_from_node(n: item, source_indices: source_indices))
 }
 
-fn collect_type_names_from_node(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+fn collect_type_names_from_node(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let self_name = if n.ident_span != none { [v1.std.core.authored_name_at(source_indices: source_indices, node: n)] } else { [] }
   let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child, source_indices: source_indices))
   self_name |> concat(child_names)
@@ -73,7 +73,7 @@ type InterpPart {
   arg_expr: String
 }
 
-fn emit_simple_expr(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_simple_expr(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match expr.expr_data {
     v1.std.core.ExprLiteral { value: v } => emit_literal(value: v, target: target)
     v1.std.core.ExprError { kind: _, message: message } =>
@@ -130,7 +130,7 @@ fn emit_simple_expr(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderT
   }
 }
 
-fn emit_simple_string_interp(parts: std.types.List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_simple_string_interp(parts: List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { v1.std.core.Interpolation { expr: _ } => true  _ => false })
@@ -211,7 +211,7 @@ fn scope_after_expr(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope
   }
 }
 
-fn lookup_item(registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, name: String) -> v1.compiler.infer_items.ItemInfo? {
+fn lookup_item(registry: Map<String, v1.compiler.infer_items.ItemInfo>, name: String) -> v1.compiler.infer_items.ItemInfo? {
   map_get(registry, name)
 }
 
@@ -219,7 +219,7 @@ fn lookup_func_sig_in_scope(scope: v1.compiler.infer.InferScope, name: String) -
   v1.compiler.infer_lookup.func_sig_if_resolved(lookup: v1.compiler.infer_lookup.lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
 }
 
-fn typed_named_arg_matches(arg: v1.std.core.Node, name: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn typed_named_arg_matches(arg: v1.std.core.Node, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let n = v1.std.core.arg_name_at(n: arg, source_indices: source_indices)
   if n == none {
     false
@@ -228,7 +228,7 @@ fn typed_named_arg_matches(arg: v1.std.core.Node, name: String, source_indices: 
   }
 }
 
-fn order_typed_call_args(args: std.types.List<v1.std.core.Node>, func: String, scope: v1.compiler.infer.InferScope) -> std.types.List<v1.std.core.Node> {
+fn order_typed_call_args(args: List<v1.std.core.Node>, func: String, scope: v1.compiler.infer.InferScope) -> List<v1.std.core.Node> {
   let has_unnamed = args |> any(arg => v1.std.core.arg_name_at(n: arg, source_indices: scope.type_env.source_indices) == none)
   if has_unnamed {
     args
@@ -263,7 +263,7 @@ fn order_typed_call_args(args: std.types.List<v1.std.core.Node>, func: String, s
   }
 }
 
-fn has_nested_records_node(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn has_nested_records_node(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let is_product = n.connective == v1.std.core.Conj
   let is_coproduct = n.connective == v1.std.core.Disj
   if is_product {
@@ -296,7 +296,7 @@ type EmitterOutcome
   | Refused { reason: String }
 
 type JsonFragmentsAccum
-  = FragmentsAccumulated { pieces: std.types.List<String> }
+  = FragmentsAccumulated { pieces: List<String> }
   | FragmentsRefused { reason: String }
 
 fn accumulate_json_fragment(acc: JsonFragmentsAccum, outcome: EmitterOutcome) -> JsonFragmentsAccum {
@@ -319,7 +319,7 @@ fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: Emitter
   }
 }
 
-fn emit_data_value_json(value: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> EmitterOutcome {
+fn emit_data_value_json(value: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> EmitterOutcome {
   match value.expr_data {
     v1.std.core.ExprLiteral { value: v } => match v {
       LitStr { value: s } => Emitted { json: concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"") }
@@ -431,7 +431,7 @@ fn escape_python_interp_text(s: String) -> String {
     |> split(delimiter: "}") |> join(separator: "}}")
 }
 
-fn apply_escape_pairs(s: String, pairs: std.types.List<v1.compiler.languages.EscapePair>) -> String {
+fn apply_escape_pairs(s: String, pairs: List<v1.compiler.languages.EscapePair>) -> String {
   pairs |> fold(init: s, f: (acc, pair) => acc |> split(delimiter: pair.from) |> join(separator: pair.to))
 }
 
@@ -525,11 +525,11 @@ fn emit_map_type(key_type: String, val_type: String, target: v1.compiler.artifac
   }
 }
 
-fn emit_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   render_node_type(n: n, target: target, shared_types: empty_set(), source_indices: source_indices)
 }
 
-fn named_type_vars_in_inferred(inferred: v1.std.core.InferredNode?) -> std.types.List<String> {
+fn named_type_vars_in_inferred(inferred: v1.std.core.InferredNode?) -> List<String> {
   match inferred {
     Present { value: v1.std.core.TypeVariable { id: var_id } } => [var_id]
     Present { value: v1.std.core.Resolved { node: rt } } => named_type_vars_in_node(n: rt)
@@ -537,14 +537,14 @@ fn named_type_vars_in_inferred(inferred: v1.std.core.InferredNode?) -> std.types
   }
 }
 
-fn named_type_vars_in_node(n: v1.std.core.Node) -> std.types.List<String> {
+fn named_type_vars_in_node(n: v1.std.core.Node) -> List<String> {
   let self_vars = named_type_vars_in_inferred(inferred: n.inferred)
   let child_vars = n.children |> flat_map(ch => named_type_vars_in_node(n: ch))
   let param_vars = n.params |> flat_map(p => named_type_vars_in_node(n: v1.std.core.param_node_type_expr(n: p)))
   v1.compiler.emit_core_support.unique_strings(items: concat(self_vars, child_vars, param_vars))
 }
 
-fn render_named_type_base(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn render_named_type_base(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let tn = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
   let base = v1.compiler.coercion.coerce_primitive_type(target: target, dag_name: tn, decl_file: v1.compiler.coercion.type_reference_decl_file(n: n))
   let explicit_params = n.params |> map(p => render_node_type(n: v1.std.core.param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
@@ -558,7 +558,7 @@ fn render_named_type_base(n: v1.std.core.Node, target: v1.compiler.artifact.Rend
   }
 }
 
-fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, shared_types: Set<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let tn = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n))
   let n_is_error = if n.inferred != none { v1.std.core.is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
@@ -738,7 +738,7 @@ fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
   if shared { v1.compiler.languages.wrap_shared_type(target: target, inner: base) } else { base }
 }
 
-fn render_tuple_parts(parts: std.types.List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
+fn render_tuple_parts(parts: List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let ts = spec.tuple_syntax
   if parts |> count > 0 {
@@ -775,7 +775,7 @@ fn effective_operation_transport(op_node: v1.std.core.Node, fallback: v1.std.cor
   }
 }
 
-fn service_has_rest(fallback_transport: v1.std.core.Node, op_children: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn service_has_rest(fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let from_fallback = v1.std.core.is_rest_transport(t: fallback_transport, source_indices: source_indices)
   let from_ops = op_children |> any(op =>
     if op.transport != none { v1.std.core.is_rest_transport(t: op.transport.value, source_indices: source_indices) } else { false }
@@ -783,7 +783,7 @@ fn service_has_rest(fallback_transport: v1.std.core.Node, op_children: std.types
   from_fallback || from_ops
 }
 
-fn service_has_shell(fallback_transport: v1.std.core.Node, op_children: std.types.List<v1.std.core.Node>) -> Bool {
+fn service_has_shell(fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>) -> Bool {
   let from_fallback = v1.std.core.is_shell_transport(t: fallback_transport)
   let from_ops = op_children |> any(op =>
     if op.transport != none { v1.std.core.is_shell_transport(t: op.transport.value) } else { false }
@@ -791,7 +791,7 @@ fn service_has_shell(fallback_transport: v1.std.core.Node, op_children: std.type
   from_fallback || from_ops
 }
 
-fn service_has_file(fallback_transport: v1.std.core.Node, op_children: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn service_has_file(fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let from_fallback = v1.std.core.is_file_transport(t: fallback_transport, source_indices: source_indices)
   let from_ops = op_children |> any(op =>
     if op.transport != none { v1.std.core.is_file_transport(t: op.transport.value, source_indices: source_indices) } else { false }
@@ -799,7 +799,7 @@ fn service_has_file(fallback_transport: v1.std.core.Node, op_children: std.types
   from_fallback || from_ops
 }
 
-fn service_has_rest_auth(fallback_transport: v1.std.core.Node, op_children: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn service_has_rest_auth(fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let fallback_is_rest = v1.std.core.is_rest_transport(t: fallback_transport, source_indices: source_indices)
   let from_fallback = if fallback_is_rest {
     v1.std.core.transport_has_auth(t: fallback_transport, source_indices: source_indices)
@@ -813,7 +813,7 @@ fn service_has_rest_auth(fallback_transport: v1.std.core.Node, op_children: std.
   from_fallback || from_ops
 }
 
-fn extract_modifier_names(properties: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
+fn extract_modifier_names(properties: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   properties |> flat_map(p =>
     match v1.std.core.field_init_operation_modifier(field_init: p, source_indices: source_indices) {
       Present { value: modifier } => [v1.std.core.operation_modifier_name(modifier: modifier)]
@@ -829,7 +829,7 @@ type ServiceFieldSet {
   has_auth: Bool
 }
 
-fn compute_service_fields(fallback_transport: v1.std.core.Node, op_children: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> ServiceFieldSet {
+fn compute_service_fields(fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ServiceFieldSet {
   ServiceFieldSet {
     has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices),
     has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
@@ -838,7 +838,7 @@ fn compute_service_fields(fallback_transport: v1.std.core.Node, op_children: std
   }
 }
 
-fn service_field_decls(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFieldTemplates) -> std.types.List<String> {
+fn service_field_decls(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFieldTemplates) -> List<String> {
   let result = []
   let result = if fs.has_rest { concat(result, [t.rest_decl]) } else { result }
   let result = if fs.has_auth { concat(result, [t.auth_decl]) } else { result }
@@ -847,7 +847,7 @@ fn service_field_decls(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFiel
   result
 }
 
-fn service_field_ctors(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFieldTemplates) -> std.types.List<String> {
+fn service_field_ctors(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFieldTemplates) -> List<String> {
   let result = []
   let result = if fs.has_rest { concat(result, [t.rest_ctor]) } else { result }
   let result = if fs.has_auth { concat(result, [t.auth_ctor]) } else { result }
@@ -859,11 +859,11 @@ fn service_field_ctors(fs: ServiceFieldSet, t: v1.compiler.languages.ServiceFiel
 fn emit_unified_transport_dispatch(
   transport: v1.std.core.Node,
   op_name: String,
-  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
   depth: Int,
   target: v1.compiler.artifact.RenderTarget,
-  render_rest: fn(String, v1.std.core.Node, Int, std.types.Map<String, v1.std.core.NewlineIndex>) -> String,
-  render_shell: fn(String, v1.std.core.Node, Int, std.types.Map<String, v1.std.core.NewlineIndex>) -> String,
+  render_rest: fn(String, v1.std.core.Node, Int, Map<String, v1.std.core.NewlineIndex>) -> String,
+  render_shell: fn(String, v1.std.core.Node, Int, Map<String, v1.std.core.NewlineIndex>) -> String,
   render_local: fn(String, Int) -> String
 ) -> String {
   if v1.std.core.is_rest_transport(t: transport, source_indices: source_indices) { render_rest(op_name, transport, depth, source_indices) }
@@ -878,9 +878,9 @@ fn emit_unified_operation_method(
   fallback_transport: v1.std.core.Node,
   op_node: v1.std.core.Node,
   target: v1.compiler.artifact.RenderTarget,
-  registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+  registry: Map<String, v1.compiler.infer_items.ItemInfo>,
   env: v1.compiler.infer_env.TypeEnv,
-  render_transport_body: fn(v1.std.core.Node, String, std.types.Map<String, v1.std.core.NewlineIndex>, Int) -> String
+  render_transport_body: fn(v1.std.core.Node, String, Map<String, v1.std.core.NewlineIndex>, Int) -> String
 ) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let si = env.source_indices
@@ -914,10 +914,10 @@ fn emit_unified_operation_method(
 fn emit_unified_service_def(
   item: v1.std.core.Node,
   target: v1.compiler.artifact.RenderTarget,
-  registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+  registry: Map<String, v1.compiler.infer_items.ItemInfo>,
   env: v1.compiler.infer_env.TypeEnv,
-  render_service_fields: fn(String, v1.std.core.Node, std.types.List<v1.std.core.Node>, std.types.Map<String, v1.std.core.NewlineIndex>) -> String,
-  render_transport_body: fn(v1.std.core.Node, String, std.types.Map<String, v1.std.core.NewlineIndex>, Int) -> String
+  render_service_fields: fn(String, v1.std.core.Node, List<v1.std.core.Node>, Map<String, v1.std.core.NewlineIndex>) -> String,
+  render_transport_body: fn(v1.std.core.Node, String, Map<String, v1.std.core.NewlineIndex>, Int) -> String
 ) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let safe_name = v1.compiler.emit_core_support.sanitize_service_name(name: v1.compiler.infer_env.authored_name(env: env, node: item))
@@ -976,10 +976,10 @@ fn classify_expr(texpr: v1.std.core.Node) -> ExprCategory {
 
 type FuncBodyShape
   = FuncBodyLet { name: String, value: v1.std.core.Node, rest: v1.std.core.Node? }
-  | FuncBodyBlock { stmts: std.types.List<v1.std.core.Node> }
+  | FuncBodyBlock { stmts: List<v1.std.core.Node> }
   | FuncBodyExpr { expr: v1.std.core.Node }
 
-fn classify_func_body(body: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> FuncBodyShape {
+fn classify_func_body(body: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FuncBodyShape {
   match body.expr_data {
     v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: body, source_indices: source_indices)
@@ -994,14 +994,14 @@ fn classify_func_body(body: v1.std.core.Node, source_indices: std.types.Map<Stri
 }
 
 type TcoExprShape
-  = TcoCall { func: String, args: std.types.List<v1.std.core.Node> }
+  = TcoCall { func: String, args: List<v1.std.core.Node> }
   | TcoIf { condition: v1.std.core.Node, then_branch: v1.std.core.Node, else_branch: v1.std.core.Node? }
-  | TcoMatch { scrutinee: v1.std.core.Node, arms: std.types.List<v1.std.core.Node> }
+  | TcoMatch { scrutinee: v1.std.core.Node, arms: List<v1.std.core.Node> }
   | TcoLet { name: String, value: v1.std.core.Node, body: v1.std.core.Node? }
-  | TcoBlock { stmts: std.types.List<v1.std.core.Node> }
+  | TcoBlock { stmts: List<v1.std.core.Node> }
   | TcoOther { expr: v1.std.core.Node }
 
-fn classify_tco_expr(texpr: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> TcoExprShape {
+fn classify_tco_expr(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TcoExprShape {
   match texpr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
       TcoCall { func: v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices), args: texpr.children }
@@ -1026,12 +1026,12 @@ fn classify_tco_expr(texpr: v1.std.core.Node, source_indices: std.types.Map<Stri
   }
 }
 
-fn block_stmts_init(stmts: std.types.List<v1.std.core.Node>) -> std.types.List<v1.std.core.Node> {
+fn block_stmts_init(stmts: List<v1.std.core.Node>) -> List<v1.std.core.Node> {
   if stmts |> count <= 1 { [] }
   else { stmts |> take(n: (stmts |> count) - 1) }
 }
 
-fn is_tco_eligible(name: String, body: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_tco_eligible(name: String, body: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match lookup_item(registry: registry, name: name) {
     Present { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     Absent => {
@@ -1041,7 +1041,7 @@ fn is_tco_eligible(name: String, body: v1.std.core.Node, registry: std.types.Map
   }
 }
 
-fn is_self_recursive(name: String, body: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_self_recursive(name: String, body: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match lookup_item(registry: registry, name: name) {
     Present { value: info } => info.is_self_recursive
     Absent => v1.std.core.expr_has_self_call(texpr: body, fn_name: name, source_indices: source_indices)
@@ -1049,15 +1049,15 @@ fn is_self_recursive(name: String, body: v1.std.core.Node, registry: std.types.M
 }
 
 fn tco_reassign_core(
-  ordered_args: std.types.List<String>,
-  param_names: std.types.List<String>,
+  ordered_args: List<String>,
+  param_names: List<String>,
   temp_var_prefix: String,
   temp_decl_prefix: String,
   temp_assign_op: String,
   stmt_terminator: String,
   continue_str: String,
   line_prefix: String
-) -> std.types.List<String> {
+) -> List<String> {
   let temp_lets = ordered_args |> enumerate |> map(pair =>
     concat(line_prefix, temp_decl_prefix, temp_var_prefix, v1.compiler.emit_core_support.to_string(value: pair.first), temp_assign_op, pair.second, stmt_terminator))
   let assigns = param_names |> enumerate |> map(pair =>
@@ -1132,7 +1132,7 @@ fn shared_tco_non_self_call(
   frame: TcoFrame,
   target: v1.compiler.artifact.RenderTarget,
   spec: v1.compiler.languages.LanguageSpec,
-  recurse_call: fn(String, std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> String
+  recurse_call: fn(String, List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> String
 ) -> String {
   match frame.expr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -1146,7 +1146,7 @@ fn shared_tco_non_self_call(
 fn shared_tco_if(
   frame: TcoFrame,
   fn_name: String,
-  params: std.types.List<v1.std.core.Node>,
+  params: List<v1.std.core.Node>,
   target: v1.compiler.artifact.RenderTarget,
   spec: v1.compiler.languages.LanguageSpec,
   recurse_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String,
@@ -1193,7 +1193,7 @@ fn shared_tco_if(
 fn shared_tco_let(
   frame: TcoFrame,
   fn_name: String,
-  params: std.types.List<v1.std.core.Node>,
+  params: List<v1.std.core.Node>,
   target: v1.compiler.artifact.RenderTarget,
   recurse_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String,
   recurse_tco: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String
@@ -1218,10 +1218,10 @@ fn shared_tco_let(
 fn shared_tco_block(
   frame: TcoFrame,
   fn_name: String,
-  params: std.types.List<v1.std.core.Node>,
+  params: List<v1.std.core.Node>,
   target: v1.compiler.artifact.RenderTarget,
   spec: v1.compiler.languages.LanguageSpec,
-  emit_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState,
+  emit_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState,
   recurse_tco: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String
 ) -> String {
   match frame.expr.expr_data {
@@ -1243,8 +1243,8 @@ fn shared_tco_block(
 }
 
 fn shared_tco_reassign(
-  ordered_args: std.types.List<String>,
-  param_names: std.types.List<String>,
+  ordered_args: List<String>,
+  param_names: List<String>,
   spec: v1.compiler.languages.LanguageSpec
 ) -> String {
   let all_lines = tco_reassign_core(
@@ -1256,10 +1256,10 @@ fn shared_tco_reassign(
 }
 
 fn unified_tco_recurse(expr: v1.std.core.Node, scope: v1.compiler.infer.InferScope, depth: Int,
-    fn_name: String, params: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+    fn_name: String, params: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>,
     recurse_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String,
     render_match: fn(TcoFrame) -> String,
-    render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
+    render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   emit_unified_tco_expr(
     frame: TcoFrame { expr: expr, scope: scope, depth: depth },
     fn_name: fn_name, params: params, target: target, registry: registry,
@@ -1269,12 +1269,12 @@ fn unified_tco_recurse(expr: v1.std.core.Node, scope: v1.compiler.infer.InferSco
 fn emit_unified_tco_expr(
   frame: TcoFrame,
   fn_name: String,
-  params: std.types.List<v1.std.core.Node>,
+  params: List<v1.std.core.Node>,
   target: v1.compiler.artifact.RenderTarget,
-  registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+  registry: Map<String, v1.compiler.infer_items.ItemInfo>,
   recurse_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String,
   render_match: fn(TcoFrame) -> String,
-  render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState
+  render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState
 ) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   emit_shared_tco_expr(
@@ -1315,14 +1315,14 @@ fn emit_unified_tco_expr(
 fn emit_unified_tco_body(
   texpr: v1.std.core.Node,
   fn_name: String,
-  params: std.types.List<v1.std.core.Node>,
+  params: List<v1.std.core.Node>,
   target: v1.compiler.artifact.RenderTarget,
-  registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+  registry: Map<String, v1.compiler.infer_items.ItemInfo>,
   scope: v1.compiler.infer.InferScope,
   depth: Int,
   recurse_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String,
   render_match: fn(TcoFrame) -> String,
-  render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState
+  render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState
 ) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let inner = emit_unified_tco_expr(
@@ -1333,9 +1333,9 @@ fn emit_unified_tco_body(
 }
 
 fn emit_unified_init_block_stmts(
-    remaining: std.types.List<v1.std.core.Node>, text: std.types.List<String>,
+    remaining: List<v1.std.core.Node>, text: List<String>,
     scope: v1.compiler.infer.InferScope, depth: Int,
-    target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+    target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>,
     render_pattern: fn(v1.std.core.MatchPattern) -> String) -> BlockEmitState {
   let prepend = if v1.compiler.emit_core_support.language_spec(target: target).block_syntax.significant_whitespace { false } else { true }
   emit_init_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
@@ -1344,11 +1344,11 @@ fn emit_unified_init_block_stmts(
 }
 
 fn emit_tco_match_go(
-    scrutinee_str: String, arms: std.types.List<v1.std.core.Node>, depth: Int,
-    fn_name: String, params: std.types.List<v1.std.core.Node>,
-    registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope,
+    scrutinee_str: String, arms: List<v1.std.core.Node>, depth: Int,
+    fn_name: String, params: List<v1.std.core.Node>,
+    registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope,
     render_pattern: fn(v1.std.core.MatchPattern) -> String,
-    render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
+    render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   let si = scope.type_env.source_indices
   let bs = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Go).block_syntax
   let case_depth = depth + 1
@@ -1369,10 +1369,10 @@ fn emit_tco_match_go(
 }
 
 fn emit_unified_tco_match(
-    frame: TcoFrame, fn_name: String, params: std.types.List<v1.std.core.Node>,
-    target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+    frame: TcoFrame, fn_name: String, params: List<v1.std.core.Node>,
+    target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>,
     render_pattern: fn(v1.std.core.MatchPattern) -> String,
-    render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
+    render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   match frame.expr.expr_data {
     v1.std.core.ExprMatch =>
       let s = v1.std.core.match_scrutinee(texpr: frame.expr)
@@ -1398,11 +1398,11 @@ fn emit_unified_tco_match(
 }
 
 fn emit_unified_tco_match_arm(
-    arm: v1.std.core.Node, fn_name: String, params: std.types.List<v1.std.core.Node>,
-    target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+    arm: v1.std.core.Node, fn_name: String, params: List<v1.std.core.Node>,
+    target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>,
     scope: v1.compiler.infer.InferScope, depth: Int,
     render_pattern: fn(v1.std.core.MatchPattern) -> String,
-    render_init_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
+    render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   let bs = v1.compiler.emit_core_support.language_spec(target: target).block_syntax
   let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
   let body_depth = case_depth + 1
@@ -1419,8 +1419,8 @@ fn emit_unified_tco_match_arm(
 }
 
 fn emit_tco_unified(
-    texpr: v1.std.core.Node, fn_name: String, params: std.types.List<v1.std.core.Node>,
-    target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>,
+    texpr: v1.std.core.Node, fn_name: String, params: List<v1.std.core.Node>,
+    target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>,
     scope: v1.compiler.infer.InferScope, depth: Int,
     render_pattern: fn(v1.std.core.MatchPattern) -> String) -> String {
   emit_unified_tco_body(
@@ -1431,7 +1431,7 @@ fn emit_tco_unified(
     render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern))
 }
 
-fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int) -> String {
+fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int) -> String {
   let es = v1.compiler.emit_core_support.language_spec(target: target).expression_semantics
   let bs = v1.compiler.emit_core_support.language_spec(target: target).block_syntax
   let si = scope.type_env.source_indices
@@ -1484,7 +1484,7 @@ fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.arti
   }
 }
 
-fn is_tco_candidate(texpr: v1.std.core.Node, func_name: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_tco_candidate(texpr: v1.std.core.Node, func_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match texpr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } => v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices) == func_name
     v1.std.core.ExprReturn =>
@@ -1505,7 +1505,7 @@ fn is_tco_candidate(texpr: v1.std.core.Node, func_name: String, source_indices: 
   }
 }
 
-fn suffix_escape_collides_with_reserved_chain(name: String, suffix: String, keywords: std.types.List<String>) -> Bool {
+fn suffix_escape_collides_with_reserved_chain(name: String, suffix: String, keywords: List<String>) -> Bool {
   let suffix_len = string_length(s: suffix)
   let name_len = string_length(s: name)
   if suffix_len == 0 || name_len < suffix_len {
@@ -1522,7 +1522,7 @@ fn suffix_escape_collides_with_reserved_chain(name: String, suffix: String, keyw
   }
 }
 
-fn emit_suffix_escape_ident(converted: String, suffix: String, keywords: std.types.List<String>) -> String {
+fn emit_suffix_escape_ident(converted: String, suffix: String, keywords: List<String>) -> String {
   let is_reserved = keywords |> any(r => r == converted)
   if is_reserved || suffix_escape_collides_with_reserved_chain(name: converted, suffix: suffix, keywords: keywords) {
     concat(converted, suffix)
@@ -1619,7 +1619,7 @@ fn emit_export_ident(name: String, target: v1.compiler.artifact.RenderTarget) ->
   }
 }
 
-fn apply_bridge_method_overrides(name: String, overrides: std.types.Map<String, String>) -> String {
+fn apply_bridge_method_overrides(name: String, overrides: Map<String, String>) -> String {
   match lookup(overrides, key: name) {
     Present { value: replacement } => replacement
     Absent => name
@@ -1732,7 +1732,7 @@ fn is_file_transport_after_dispatch_precedence(t: v1.std.core.Node, source_indic
   else { v1.std.core.is_file_transport(t: t, source_indices: source_indices) }
 }
 
-fn unmodeled_file_transport_operation_diagnostics(tm: v1.compiler.infer_items.TypedModule, item: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget) -> std.types.List<v1.std.core.ErrorNode> {
+fn unmodeled_file_transport_operation_diagnostics(tm: v1.compiler.infer_items.TypedModule, item: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget) -> List<v1.std.core.ErrorNode> {
   let env = tm.type_env
   let si = env.source_indices
   let module_name = v1.compiler.infer_env.authored_name(env: env, node: tm.module)
@@ -1756,7 +1756,7 @@ fn unmodeled_file_transport_operation_diagnostics(tm: v1.compiler.infer_items.Ty
   })
 }
 
-fn unmodeled_file_transport_diagnostics(typed: v1.compiler.infer_items.ResolvedGraph, target: v1.compiler.artifact.RenderTarget) -> std.types.List<v1.std.core.ErrorNode> {
+fn unmodeled_file_transport_diagnostics(typed: v1.compiler.infer_items.ResolvedGraph, target: v1.compiler.artifact.RenderTarget) -> List<v1.std.core.ErrorNode> {
   typed.modules |> flat_map(tm =>
     tm.items
       |> filter(item => v1.compiler.emit_core_support.is_service_item(item: item))
@@ -1772,7 +1772,7 @@ fn emit_unmodeled_file_transport_refusal(op_name: String, target: v1.compiler.ar
     target: target)
 }
 
-fn emit_lambda_params(param_names: std.types.List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
+fn emit_lambda_params(param_names: List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let param_strs = param_names |> map(p =>
     v1.compiler.emit_core_support.apply_type_template1(template: spec.annotations.lambda_param_untyped, arg0: emit_ident(name: p, target: target))
@@ -1780,7 +1780,7 @@ fn emit_lambda_params(param_names: std.types.List<String>, target: v1.compiler.a
   param_strs |> join(separator: ", ")
 }
 
-fn emit_list_lit_expr(element_strs: std.types.List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
+fn emit_list_lit_expr(element_strs: List<String>, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   if element_strs |> count == 0 {
     spec.list_literal_empty
@@ -1795,14 +1795,14 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: v1.compiler.artifact
   v1.compiler.emit_core_support.apply_type_template2(template: spec.null_coalesce_template, arg0: l_str, arg1: r_str)
 }
 
-fn emit_expr_var_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_expr_var_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let n = v1.std.core.expr_var_name_at(texpr: expr, source_indices: source_indices)
   if n == "none" { emit_keyword(key: "null", target: target) }
   else if n == "true" || n == "false" { emit_keyword(key: n, target: target) }
   else { emit_ident(name: n, target: target) }
 }
 
-fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, emit_field: fn(v1.std.core.Node) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, emit_field: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   if v1.compiler.infer_service.is_typed_service_call_receiver(receiver: expr, source_indices: source_indices) {
     match v1.compiler.infer_service.extract_typed_service_name(receiver: expr, source_indices: source_indices) {
       Present { value: svc_name } => v1.compiler.emit_core_support.service_var_name(service_name: svc_name)
@@ -1813,14 +1813,14 @@ fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.art
   }
 }
 
-fn extract_string_interp_parts(expr: v1.std.core.Node) -> std.types.List<v1.std.core.StringPart> {
+fn extract_string_interp_parts(expr: v1.std.core.Node) -> List<v1.std.core.StringPart> {
   expr.children |> map(child => match child.expr_data {
     v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
     _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
   })
 }
 
-fn emit_typed_cast_shared(expr: v1.std.core.Node, cast_target_node: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_cast_shared(expr: v1.std.core.Node, cast_target_node: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
   let src_ty = match expr.inferred {
@@ -1836,7 +1836,7 @@ fn emit_typed_cast_shared(expr: v1.std.core.Node, cast_target_node: v1.std.core.
   }
 }
 
-fn emit_typed_for_each_shared(variable: String, collection: v1.std.core.Node, body: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, depth: Int, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String, scope: v1.compiler.infer.InferScope) -> String {
+fn emit_typed_for_each_shared(variable: String, collection: v1.std.core.Node, body: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, depth: Int, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String, scope: v1.compiler.infer.InferScope) -> String {
   let coll_str = recurse(collection, scope, depth)
   let elem_type = v1.compiler.infer_types.for_each_element_type_node(n: v1.compiler.infer_types.resolved_type(n: collection), source_indices: source_indices)
   let body_scope = v1.compiler.infer.extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: std.induction.SubValueUnknown)
@@ -1854,7 +1854,7 @@ fn emit_typed_for_each_shared(variable: String, collection: v1.std.core.Node, bo
   }
 }
 
-fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let base_str = recurse(base)
   let index_str = recurse(index)
@@ -1869,7 +1869,7 @@ fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, targ
   }
 }
 
-fn emit_typed_slice_shared(base: v1.std.core.Node, start: v1.std.core.Node, end: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_slice_shared(base: v1.std.core.Node, start: v1.std.core.Node, end: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let base_str = recurse(base)
   let start_str = recurse(start)
@@ -1891,7 +1891,7 @@ fn emit_typed_slice_shared(base: v1.std.core.Node, start: v1.std.core.Node, end:
 fn emit_shared_expr(
   texpr: v1.std.core.Node,
   target: v1.compiler.artifact.RenderTarget,
-  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
   wrap_result: fn(String) -> String,
   recurse: fn(v1.std.core.Node) -> String,
   emit_var: fn(v1.std.core.Node) -> String,
@@ -1966,7 +1966,7 @@ fn emit_shared_expr(
   }
 }
 
-fn emit_default_bin_op(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String, wrap_result: fn(String) -> String) -> String {
+fn emit_default_bin_op(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
     v1.std.core.ExprBinOp { op: op, algebra_field: algebra } =>
       let left = v1.std.core.binop_left(texpr: texpr)
@@ -1984,7 +1984,7 @@ fn emit_default_bin_op(texpr: v1.std.core.Node, target: v1.compiler.artifact.Ren
 }
 
 fn emit_block_stmts_shared(
-    remaining: std.types.List<v1.std.core.Node>, text: std.types.List<String>,
+    remaining: List<v1.std.core.Node>, text: List<String>,
     scope: v1.compiler.infer.InferScope, depth: Int,
     prepend_indent: Bool,
     emit_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String) -> BlockEmitState {
@@ -2002,7 +2002,7 @@ fn emit_block_stmts_shared(
 }
 
 fn emit_init_block_stmts_shared(
-    remaining: std.types.List<v1.std.core.Node>, text: std.types.List<String>,
+    remaining: List<v1.std.core.Node>, text: List<String>,
     scope: v1.compiler.infer.InferScope, depth: Int,
     prepend_indent: Bool,
     emit_expr: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String) -> BlockEmitState {
@@ -2042,7 +2042,7 @@ fn emit_typed_if_shared(
     if_result_type: v1.std.core.Node?,
     depth: Int,
     target: v1.compiler.artifact.RenderTarget,
-    source_indices: std.types.Map<String, v1.std.core.NewlineIndex>,
+    source_indices: Map<String, v1.std.core.NewlineIndex>,
     recurse: fn(v1.std.core.Node, Int) -> String
 ) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
@@ -2093,17 +2093,17 @@ fn emit_typed_if_shared(
   }
 }
 
-fn emit_param_shared(param: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_param_shared(param: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let ty = emit_node_type(n: v1.std.core.param_node_type_expr(n: param), target: target, source_indices: source_indices)
   concat(emit_ident(name: v1.std.core.param_node_name_at(n: param, source_indices: source_indices), target: target), v1.compiler.emit_core_support.language_spec(target: target).items.param_type_sep, ty)
 }
 
-fn emit_params_shared(params: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_params_shared(params: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let strs = params |> map(p => emit_param_shared(param: p, target: target, source_indices: source_indices))
   strs |> join(separator: v1.compiler.emit_core_support.language_spec(target: target).items.param_separator)
 }
 
-fn emit_inferred_shared(inferred: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_inferred_shared(inferred: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   if v1.compiler.emit_core_support.language_spec(target: target).expression_semantics.suppress_unit_return {
     if v1.compiler.infer_types.is_unit_like(n: inferred) { "" }
     else { concat(v1.compiler.emit_core_support.language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_indices: source_indices)) }
@@ -2113,13 +2113,13 @@ fn emit_inferred_shared(inferred: v1.std.core.Node, target: v1.compiler.artifact
 }
 
 fn emit_typed_block_join(
-    stmts: std.types.List<v1.std.core.Node>, scope: v1.compiler.infer.InferScope, depth: Int,
-    emit_block_stmts: fn(std.types.List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
+    stmts: List<v1.std.core.Node>, scope: v1.compiler.infer.InferScope, depth: Int,
+    emit_block_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   let state = emit_block_stmts(stmts, scope, depth)
   state.text |> join(separator: "\n")
 }
 
-fn method_template_emit_for_target(target: v1.compiler.artifact.RenderTarget) -> std.types.Map<String, String>? {
+fn method_template_emit_for_target(target: v1.compiler.artifact.RenderTarget) -> Map<String, String>? {
   match target {
     v1.compiler.artifact.Rust => Present { value: extdeps.languages.rust.emit.rust_method_templates() }
     v1.compiler.artifact.Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
@@ -2141,14 +2141,14 @@ fn emit_algebra_method_template(method_name: String, recv_str: String,
   }
 }
 
-fn emit_typed_first_arg_shared(args: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_typed_first_arg_shared(args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   match args |> first {
     Present { value: a } => recurse(v1.std.core.arg_value(n: a))
     Absent => emit_error_expr(message: "missing method argument", target: target)
   }
 }
 
-fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_typed_string_interp_unified(parts: List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { v1.std.core.Interpolation { expr: _ } => true  _ => false })
@@ -2182,7 +2182,7 @@ fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart
   }
 }
 
-fn emit_typed_record_lit_unified(type_name: String?, fields: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_typed_record_lit_unified(type_name: String?, fields: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String) -> String {
   let rls = v1.compiler.emit_core_support.language_spec(target: target).record_lit
   match type_name {
     Absent => {
@@ -2218,11 +2218,11 @@ fn is_go_v2rt_free_function(name: String) -> Bool {
   }
 }
 
-fn emit_go_v2rt_free_call(func: String, arg_strs: std.types.List<String>) -> String {
+fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
   concat("v2rt.", emit_export_ident(name: bridge_method_name_unified(method_name: func, target: v1.compiler.artifact.Go), target: v1.compiler.artifact.Go), "(", arg_strs |> join(separator: ", "), ")")
 }
 
-fn emit_typed_call_unified(func: String, args: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_typed_call_unified(func: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
   let arg_strs = ordered_args |> map(a => recurse(v1.std.core.arg_value(n: a)))
@@ -2259,7 +2259,7 @@ fn bridge_method_name_unified(method_name: String, target: v1.compiler.artifact.
   apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
 }
 
-fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.Node, args: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, first_arg_str: String, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.Node, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, first_arg_str: String, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let recv_str = recurse(receiver)
   match emit_algebra_method_template(method_name: method_name, recv_str: recv_str, first_arg_str: first_arg_str, target: target) {
@@ -2272,14 +2272,14 @@ fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.N
   }
 }
 
-fn emit_plain_method_call_unified(receiver: v1.std.core.Node, method: String, args: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_plain_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   let recv_str = recurse(receiver)
   let arg_strs = args |> map(a => recurse(v1.std.core.arg_value(n: a)))
   let args_str = arg_strs |> join(separator: ", ")
   concat(recv_str, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
 }
 
-fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, args: std.types.List<v1.std.core.Node>, method_semantics: v1.std.core.MethodSemantics?, target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, recurse: fn(v1.std.core.Node) -> String) -> String {
+fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, method_semantics: v1.std.core.MethodSemantics?, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let source_indices = scope.type_env.source_indices
   if method_semantics != none { match method_semantics.value {
@@ -2312,7 +2312,7 @@ fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, ar
   }
 }
 
-fn emit_unified_pattern(pattern: v1.std.core.MatchPattern, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_unified_pattern(pattern: v1.std.core.MatchPattern, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match pattern {
     v1.std.core.Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
     v1.std.core.LitPattern { value: v } => emit_literal(value: v, target: target)
@@ -2329,7 +2329,7 @@ fn go_variant_case_type(name: String, parent_enum: String?) -> String {
   }
 }
 
-fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindings: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindings: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let es = v1.compiler.emit_core_support.language_spec(target: target).expression_semantics
   match es.variant_pattern {
     Present { value: vps } =>
@@ -2392,7 +2392,7 @@ fn emit_arm_guard(arm: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
   }
 }
 
-fn emit_go_match_arm_bindings(arm: v1.std.core.Node, indent_level: Int, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_go_match_arm_bindings(arm: v1.std.core.Node, indent_level: Int, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match v1.std.core.arm_pattern(n: arm) {
     v1.std.core.VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
       if fbs |> count == 0 { "" } else {
@@ -2402,7 +2402,7 @@ fn emit_go_match_arm_bindings(arm: v1.std.core.Node, indent_level: Int, source_i
   }
 }
 
-fn emit_typed_match_go(scrutinee_str: String, arms: std.types.List<v1.std.core.Node>, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_match_go(scrutinee_str: String, arms: List<v1.std.core.Node>, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let bs = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Go).block_syntax
   let case_depth = depth + 1
   let body_depth = case_depth + 1
@@ -2415,7 +2415,7 @@ fn emit_typed_match_go(scrutinee_str: String, arms: std.types.List<v1.std.core.N
   concat("switch __gunbcMatch := ", scrutinee_str, ".(type)", bs.block_open, arm_strs |> join(separator: "\n"), "\n", v1.compiler.emit_core_support.make_indent(level: depth), bs.block_close)
 }
 
-fn emit_typed_match_unified(scrutinee_str: String, arms: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_match_unified(scrutinee_str: String, arms: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match target {
     v1.compiler.artifact.Go => emit_typed_match_go(scrutinee_str: scrutinee_str, arms: arms, depth: depth, recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
     _ =>
@@ -2449,7 +2449,7 @@ fn emit_field_access_unified(base_str: String, field: String, summary: v1.std.co
   }
 }
 
-fn emit_unified_typed_expr(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, fuel: Int, render_pattern: fn(v1.std.core.MatchPattern) -> String) -> String {
+fn emit_unified_typed_expr(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, fuel: Int, render_pattern: fn(v1.std.core.MatchPattern) -> String) -> String {
   let si = scope.type_env.source_indices
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   emit_shared_expr(
@@ -2540,15 +2540,15 @@ fn emit_unified_typed_expr(texpr: v1.std.core.Node, target: v1.compiler.artifact
         wrap_result: result => result))
 }
 
-fn is_tco_identity_passthrough(arg_val: v1.std.core.Node, param_name: String, si: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_tco_identity_passthrough(arg_val: v1.std.core.Node, param_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match arg_val.expr_data {
     v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: arg_val, source_indices: si) == param_name
     _ => false
   }
 }
 
-fn emit_typed_tco_reassign_shared(args: std.types.List<v1.std.core.Node>, params: std.types.List<v1.std.core.Node>,
-    target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_tco_reassign_shared(args: List<v1.std.core.Node>, params: List<v1.std.core.Node>,
+    target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let arg_values = args |> map(a => v1.std.core.arg_value(n: a))
   let pairs = params |> enumerate
     |> filter(pair =>
@@ -2562,6 +2562,6 @@ fn emit_typed_tco_reassign_shared(args: std.types.List<v1.std.core.Node>, params
   shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: v1.compiler.emit_core_support.language_spec(target: target))
 }
 
-fn seed_bindings(key: String, value: String) -> std.types.Map<String, String> {
+fn seed_bindings(key: String, value: String) -> Map<String, String> {
   map_insert(empty_map(), key, value)
 }

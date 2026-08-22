@@ -234,7 +234,7 @@ fn spark_serving_member(
 fn spark_serving_desired_members(
   occurrence: gunbc.spark.serving_release.SparkServingOccurrence,
   serving_release: gunbc.spark.serving_release.SparkServingRelease,
-) -> std.types.List<SparkServingMember> {
+) -> List<SparkServingMember> {
   let host = occurrence.host
   let principal = spark_serving_serving_principal()
   let closure_digest = serving_release.runtime.closure_digest
@@ -293,8 +293,8 @@ fn spark_serving_desired_members(
 }
 
 fn spark_serving_membership_reconcile(
-  desired: std.types.List<SparkServingMember>,
-  observed: std.types.List<SparkServingMember>,
+  desired: List<SparkServingMember>,
+  observed: List<SparkServingMember>,
 ) -> gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(

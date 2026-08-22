@@ -35,7 +35,7 @@ type MoneyAccount {
   account: product.fabric.demand.BudgetAccountId
   currency: std.currency.CurrencyCode
   ledger: extdeps.accounting.encumbrance.EncumbranceLedger<std.measure.Currency, std.measure.Micro>
-  leases: std.types.List<MoneyLease>
+  leases: List<MoneyLease>
 }
 
 // A request names its own currency rather than inheriting the account's. That
@@ -85,7 +85,7 @@ type MoneyLease {
   generation: Int
 }
 
-fn lease_generation_for(a: MoneyAccount, reference: product.fabric.execution.ReservationRef) -> std.types.List<Int> {
+fn lease_generation_for(a: MoneyAccount, reference: product.fabric.execution.ReservationRef) -> List<Int> {
   a.leases |> filter(l => l.reference == reference) |> map(l => l.generation)
 }
 

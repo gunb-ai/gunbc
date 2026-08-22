@@ -92,7 +92,7 @@ type BareNameConsumer {
 // live tree on 2026-08-22; the per-row method and the exact call-site lines are in
 // docs/probes/bare-name-identity-consumer-census-2026-08-22.md. Rows are NOT ordered by severity --
 // ordering a roster by an author's severity judgement is what lets a reader stop reading early.
-data bare_name_identity_consumers: std.types.List<BareNameConsumer> = [
+data bare_name_identity_consumers: List<BareNameConsumer> = [
   {
     site: std.decl_ref.decl_ref(module_path: "v1.compiler.coercion", decl_name: "lookup_checkpoint"),
     fact_sought: "which Rust type this dag type realizes as",
@@ -281,7 +281,7 @@ fn census_measured_reach_count() -> std.types.Int {
 // THE CELL THAT DECIDES WHERE THE NEXT LANE GOES: reachable by a measured population AND answering
 // from the wrong provider today. The brief asks to be interrupted for exactly this set, so it is
 // derived here rather than left for a reader to intersect two columns by eye.
-fn census_reachable_and_wrong_today() -> std.types.List<BareNameConsumer> {
+fn census_reachable_and_wrong_today() -> List<BareNameConsumer> {
   bare_name_identity_consumers |> filter(c => consumer_reach_is_measured(c: c) && consumer_answers_wrongly_today(c: c))
 }
 
@@ -349,7 +349,7 @@ data bare_name_census_next_rung_trigger: std.dissolution.DissolutionCondition = 
 // survives unconditionally is the SHAPE defect in type_reference_decl_file -- it cannot distinguish
 // "this node is its own declaration" from "this reference was not resolved here" -- and that is what
 // the paragraph above rests on, not the withdrawn count.
-data bare_name_census_handover_provenance: std.types.List<std.decl_ref.DeclarationRef> = [
+data bare_name_census_handover_provenance: List<std.decl_ref.DeclarationRef> = [
   std.decl_ref.decl_ref(module_path: "gunbc.empty_decl_file_checkpoint_bypass", decl_name: "empty_decl_file_bypass_instances"),
   std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note"),
   std.decl_ref.decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_identity_note"),

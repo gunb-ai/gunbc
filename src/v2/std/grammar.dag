@@ -19,8 +19,8 @@ type FormalProduction {
 }
 
 type FormalGrammar {
-  nonterminals: std.types.Set<FormalNonterminal>
-  terminals: std.types.Set<FormalTerminal>
+  nonterminals: Set<FormalNonterminal>
+  terminals: Set<FormalTerminal>
   productions: List<FormalProduction>
   start: FormalNonterminal
 }
@@ -47,8 +47,8 @@ fn validate_grammar_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.
 }
 
 fn formal_grammar_symbol_in_alphabet(
-  nonterminals: std.types.Set<FormalNonterminal>,
-  terminals: std.types.Set<FormalTerminal>,
+  nonterminals: Set<FormalNonterminal>,
+  terminals: Set<FormalTerminal>,
   symbol: FormalGrammarSymbol
 ) -> v2.std.logic.Bool {
   match symbol {
@@ -60,8 +60,8 @@ fn formal_grammar_symbol_in_alphabet(
 }
 
 fn formal_production_rhs_in_alphabet(
-  nonterminals: std.types.Set<FormalNonterminal>,
-  terminals: std.types.Set<FormalTerminal>,
+  nonterminals: Set<FormalNonterminal>,
+  terminals: Set<FormalTerminal>,
   production: FormalProduction
 ) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
@@ -239,7 +239,7 @@ type GrammarProduction {
 //
 // A grammar's error-recovery sync tokens are finite and known at authoring time — every producer in
 // the corpus writes either an empty set or a literal list of keyword classes. Carrying them as
-// `std.types.Set<v2.std.node.Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
+// `Set<v2.std.node.Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
 // `Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
 // the wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so
 // the whole grammar value became unhashable through this one field.

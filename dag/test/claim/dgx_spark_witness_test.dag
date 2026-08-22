@@ -359,7 +359,7 @@ test fn w_red_admission_from_unreserved_endpoint_refuses() -> Bool {
 }
 
 // DEFECT 2 control, the one the old first-wins fold silently passed. Two collector attempts against ONE subject, disagreeing (the second reports failure). Selection must report Ambiguous with the candidate count rather than returning whichever the list ordered first, and the wall must refuse on it. Under the previous shape this input admitted a deployment built from attempt-1 while attempt-2's failure was dropped without a trace.
-fn two_conflicting_srv5_observations() -> std.types.List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation> {
+fn two_conflicting_srv5_observations() -> List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation> {
   [
     srv5_good_observation(),
     gunbc.fleet_lifecycle_observation.FleetLifecycleObservation {

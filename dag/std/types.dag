@@ -1,7 +1,7 @@
 module std.types
 
 
-data kernel_type_set: std.types.Map<String, Bool> = {
+data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
 }
@@ -22,7 +22,7 @@ fn is_kernel_type(name: String) -> Bool {
 // arms answer `false` -- so a NEW spelling added later is silently wrong rather than loud. Rung:
 // mitigatable. Trigger and the three-conjunct wall it needs (including the six service-operation
 // false-refusals a leaf-only test would hit): docs/plans/qualified-container-spelling-residual.md
-data container_type_arity: std.types.Map<String, Int> = {
+data container_type_arity: Map<String, Int> = {
   "List": 1, "List": 1, "Set": 1, "Set": 1, "Map": 2, "Map": 2, "Witness": 1,
   "Witness": 1
 }
@@ -57,7 +57,7 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
   }
 }
 
-data ordered_element_collections: std.types.Map<String, Bool> = {
+data ordered_element_collections: Map<String, Bool> = {
   "List": true,
   "List": true
 }
@@ -66,7 +66,7 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-data container_template_algebra_rows: std.types.Map<String, String> = {
+data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "List": "FreeMonoid",
   "list": "FreeMonoid",
@@ -90,7 +90,7 @@ data container_template_algebra_rows: std.types.Map<String, String> = {
   "PartialFunction": "PartialFunction"
 }
 
-data container_template_alias_rows: std.types.Map<String, String> = {
+data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "List": "FreeMonoid",
   "list": "FreeMonoid",

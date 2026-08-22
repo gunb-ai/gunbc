@@ -7,24 +7,24 @@ type RuntimeRunReceipt {
 }
 
 type RuntimeRunLog {
-  entries: std.types.List<RuntimeRunReceipt>
+  entries: List<RuntimeRunReceipt>
 }
 
 type RuntimeRunState {
   log: RuntimeRunLog
-  scheduled: std.types.List<v2.std.node.Node>
+  scheduled: List<v2.std.node.Node>
 }
 
 type RuntimeRunResult
   = RuntimeRunComplete {
       log: RuntimeRunLog
-      scheduled: std.types.List<v2.std.node.Node>
+      scheduled: List<v2.std.node.Node>
     }
   | RuntimeRunBlocked {
       evidence: v2.workflow.scheduler.SchedulerBlockedEvidence
       log: RuntimeRunLog
-      scheduled: std.types.List<v2.std.node.Node>
-      remaining: std.types.List<v2.std.node.Node>
+      scheduled: List<v2.std.node.Node>
+      remaining: List<v2.std.node.Node>
     }
 
 fn runtime_run_log_empty() -> RuntimeRunLog {
@@ -73,8 +73,8 @@ fn runtime_run_step_from_frontier(
 }
 
 fn runtime_run_step_state(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext,
   state: RuntimeRunState
@@ -97,8 +97,8 @@ fn runtime_run_step_state(
 }
 
 fn runtime_run_result_from_state(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   state: RuntimeRunState
 ) -> RuntimeRunResult {
   let remaining = scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
@@ -118,8 +118,8 @@ fn runtime_run_result_from_state(
 }
 
 fn runtime_run(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunResult {

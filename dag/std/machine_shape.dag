@@ -60,7 +60,7 @@ fn execution_shape_independent_lanes(lane_count: std.measure.HardwareThreadCount
   ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
 }
 
-fn memory_level_id_index(levels: List<std.machine_shape.MemoryLevel>) -> std.types.Map<std.machine_shape.LevelId, Bool> {
+fn memory_level_id_index(levels: List<std.machine_shape.MemoryLevel>) -> Map<std.machine_shape.LevelId, Bool> {
   fold(levels, init: empty_map(), f: (acc, level) => map_insert(acc, level.id, true))
 }
 

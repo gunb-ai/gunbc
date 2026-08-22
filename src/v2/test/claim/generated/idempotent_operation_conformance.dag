@@ -16,7 +16,7 @@ fn idempotent_operation_allocate_literal(node: v2.std.node.Node, _env: v2.std.ru
   }
 }
 
-fn idempotent_operation_call_primitive(node: v2.std.node.Node, _args: std.types.List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn idempotent_operation_call_primitive(node: v2.std.node.Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected {
     diagnostics: v2.std.diagnostic.diagnostics_singleton(
       d: idempotent_operation_missing_semantics_diagnostic(node: node)
@@ -223,7 +223,7 @@ data witness_create_if_absent_idempotent_operation_run_non_pass: v2.std.logic.Bo
   row: run_create_if_absent_idempotent_operation_via_run_test_claim
 )
 
-fn generated_idempotent_operation_claim_rows() -> std.types.List<v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>> {
+fn generated_idempotent_operation_claim_rows() -> List<v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>> {
   [
     generated_read_idempotent_operation_claim,
     generated_upsert_idempotent_operation_claim,
@@ -240,7 +240,7 @@ fn generated_idempotent_operation_scheduled_subject_count_is_four() -> v2.std.lo
   v2.std.algebra.length(xs: v2.lens.testgen.testgen_scheduled_idempotent_operation_subjects()) == 4
 }
 
-fn generated_idempotent_operation_run_rows() -> std.types.List<v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>> {
+fn generated_idempotent_operation_run_rows() -> List<v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>> {
   [
     run_read_idempotent_operation_via_run_test_claim,
     run_upsert_idempotent_operation_via_run_test_claim,

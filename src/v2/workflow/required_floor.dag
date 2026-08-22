@@ -141,7 +141,7 @@ fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: 
 // real modelling question, and when it is asked it will be asked against a live consumer.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefixes() -> std.types.List<String> {
+fn long_home_prefixes() -> List<String> {
   std.algebra.Cons {
     head: "test.claim.long.",
     tail: std.algebra.Cons {
@@ -342,14 +342,14 @@ type ClaimPreemptionReachability =
 // call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
 // being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
 // which is a new finding, not a declaration.
-fn opaque_host_call_grandfather_population() -> std.types.List<String> {
+fn opaque_host_call_grandfather_population() -> List<String> {
   std.algebra.Cons {
     head: "compile_dag_rust_emit_check",
     tail: std.algebra.Empty {}
   }
 }
 
-fn string_in_grandfather_population(needle: String, population: std.types.List<String>) -> v2.std.logic.Bool {
+fn string_in_grandfather_population(needle: String, population: List<String>) -> v2.std.logic.Bool {
   match population {
     Empty {} => false
     Cons { head: h, tail: t } =>
@@ -512,10 +512,10 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> v2.std.logic.Bool
 // and it is the exact shape the note above contemplates ("called through the policy
 // module's own delegating edge rather than by reaching across the graph"). It adds
 // no second authority: it produces nothing and forwards to the roster that does.
-fn required_floor_expected_red_roster() -> std.types.List<String> {
+fn required_floor_expected_red_roster() -> List<String> {
   v2.workflow.floor_expected_red.floor_expected_red_roster()
 }
 
-fn required_floor_route_gap_roster() -> std.types.List<String> {
+fn required_floor_route_gap_roster() -> List<String> {
   v2.workflow.floor_route_gap.floor_route_gap_roster()
 }

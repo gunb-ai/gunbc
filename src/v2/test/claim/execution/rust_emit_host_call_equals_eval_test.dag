@@ -26,7 +26,7 @@ fn emit_call_eval_allocate_literal(_node: v2.std.node.Node, _env: v2.std.runtime
 
 fn emit_call_eval_call_primitive_seven(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.outcome_accepted(value: emit_call_eval_octet_value(n: 7))
@@ -34,7 +34,7 @@ fn emit_call_eval_call_primitive_seven(
 
 fn emit_call_eval_call_primitive_eight(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.outcome_accepted(value: emit_call_eval_octet_value(n: 8))
@@ -78,7 +78,7 @@ fn emit_call_eval_bind_value(
 }
 
 fn emit_call_eval_interpretation(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
@@ -104,7 +104,7 @@ fn emit_call_eval_structure_witness(call_primitive_identity: v2.std.node.Symbol)
 }
 
 fn emit_call_eval_context(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.EvalContext {  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^emit_call_eval_interpretation_pin,
@@ -151,7 +151,7 @@ fn emit_call_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verificatio
 }
 
 fn emit_call_eval_subject(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.eval_test_claim_subject(
@@ -163,7 +163,7 @@ fn emit_call_eval_subject(
 }
 
 fn emit_call_eval_run(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
     subject: emit_call_eval_subject(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),

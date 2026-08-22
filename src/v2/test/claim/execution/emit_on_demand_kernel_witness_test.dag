@@ -130,7 +130,7 @@ test fn emit_on_demand_schedule_refuses_unreadable_budget_holds() -> Bool {
 }
 
 fn kernel_add_subject(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.eval_test_claim_subject(

@@ -95,7 +95,7 @@ fn gunbc_invoke_word_unsafe_poison(word: String) -> String {
 // outside it could carry a shell metacharacter and open a second command, so it is
 // refused at emit rather than quoted-and-hoped. Returns the first offending word, or ""
 // when every word is safe.
-fn gunbc_invoke_first_unsafe_word(words: std.types.List<gunbc.cli_invoke.InvocationWord>) -> String {
+fn gunbc_invoke_first_unsafe_word(words: List<gunbc.cli_invoke.InvocationWord>) -> String {
   fold(
     words,
     init: "",
@@ -120,7 +120,7 @@ fn gunbc_invoke_word_shell(w: gunbc.cli_invoke.InvocationWord) -> String {
   }
 }
 
-fn gunbc_invoke_words_command(words: std.types.List<gunbc.cli_invoke.InvocationWord>) -> String {
+fn gunbc_invoke_words_command(words: List<gunbc.cli_invoke.InvocationWord>) -> String {
   fold(
     words,
     init: gunbc_invoke_root_relative_shell(rel: gunbc.cli_invoke.release_bin_rel_path(bin_name: gunbc.cli_invoke.gunbc_bin_name)),
@@ -145,7 +145,7 @@ fn gunbc_invoke_root_stamp_step() -> v2.std.orchestration.PipelineStep {
   gunbc_invoke_do(command: concat("ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell()))
 }
 
-fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> List<v2.std.orchestration.PipelineStep> {
   match receipt_rel {
     Present { value: rel } =>
       [gunbc_invoke_do(command: concat("cat ", gunbc_invoke_root_relative_shell(rel: rel)))]
@@ -165,7 +165,7 @@ fn gunbc_invoke_run_with_env(command: String, env: std.algebra.FreeMonoid<v2.std
 // The rendered single command, fail-closed. Every caller that needs only the invocation
 // line -- not the whole step -- reads this, so the word wall is crossed exactly once.
 fn gunbc_run_command(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool
@@ -188,8 +188,8 @@ fn gunbc_run_command(
 // preamble (the converge-apply plan-hash check) prepends steps and emits ONCE through
 // gunbc_invoke_step_emit_pipeline rather than concatenating two rendered strings.
 fn gunbc_run_step_intent(
-  prelude: std.types.List<v2.std.orchestration.PipelineStep>,
-  source_roots: std.types.List<String>,
+  prelude: List<v2.std.orchestration.PipelineStep>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool,
@@ -231,7 +231,7 @@ fn gunbc_invoke_step_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
 // The whole-step root every ordinary call site uses: ROOT stamp, one gunbc run
 // invocation, optional receipt cat.
 fn gunbc_run_step_script(
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool,
@@ -251,8 +251,8 @@ fn gunbc_run_step_script(
 
 // Same root with a typed preamble in front of the ROOT stamp.
 fn gunbc_run_step_script_with_prelude(
-  prelude: std.types.List<v2.std.orchestration.PipelineStep>,
-  source_roots: std.types.List<String>,
+  prelude: List<v2.std.orchestration.PipelineStep>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool,
@@ -275,7 +275,7 @@ fn gunbc_run_step_script_with_prelude(
 // are the orchestration EnvBinding carrier, not a hand-spelled "NAME=value " prefix.
 fn gunbc_run_invocation_script_with_env(
   env: std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding>,
-  source_roots: std.types.List<String>,
+  source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool

@@ -39,7 +39,7 @@ type StoredEdge {
 type ObjectRecord sole_constructor {
   identity: ObjectId
   kind: v2.std.node.NodeKind
-  children: std.types.List<StoredEdge>
+  children: List<StoredEdge>
 }
 
 // The store is a LIST rather than a map, deliberately and temporarily. std.determinism refuses the
@@ -58,7 +58,7 @@ type ObjectRecord sole_constructor {
 // dissolve-on: a determinism-admitted keyed collection; find_object and insert_derived are then the
 // only sites that change.
 type ObjectStore sole_constructor {
-  objects: std.types.List<ObjectRecord>
+  objects: List<ObjectRecord>
 }
 
 // How many objects a store holds, without naming how it holds them.
@@ -223,7 +223,7 @@ fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> CopyOu
 
 type StoreEdgeAcc {
   store: ObjectStore
-  edges: std.types.List<StoredEdge>
+  edges: List<StoredEdge>
   collision: StoreOutcome?
 }
 

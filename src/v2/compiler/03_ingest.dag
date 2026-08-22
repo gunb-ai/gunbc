@@ -17,7 +17,7 @@ fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class
 fn binding_class_map_merge_tokens(
   acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   fold(
     tokens,
     init: acc,
@@ -30,7 +30,7 @@ fn binding_class_map_merge_tokens(
   )
 }
 
-fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match row_token_spine_tokens(row: row) {
     Rejected { diagnostics: _ } => acc
     Accepted { value: tokens, diagnostics: _ } =>
@@ -38,7 +38,7 @@ fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>,
   }
 }
 
-fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match rules.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       fold(

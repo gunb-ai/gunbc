@@ -54,7 +54,7 @@ fn v2_infer_eval_path() -> gunbc.guarantee_measurement.GuaranteePath {
   }
 }
 
-fn guarantee_probe_paths() -> std.types.List<gunbc.guarantee_measurement.GuaranteePath> {
+fn guarantee_probe_paths() -> List<gunbc.guarantee_measurement.GuaranteePath> {
   [v1_compile_rust_path(), v2_infer_eval_path()]
 }
 
@@ -66,7 +66,7 @@ data direct_call_argument_type_class: gunbc.guarantee_measurement.GuaranteeClass
 data sole_constructor_cross_module_class: gunbc.guarantee_measurement.GuaranteeClassId = "sole-constructor-cross-module" as gunbc.guarantee_measurement.GuaranteeClassId
 data v2_self_grounding_frontier_class: gunbc.guarantee_measurement.GuaranteeClassId = "v2-self-grounding-frontier" as gunbc.guarantee_measurement.GuaranteeClassId
 
-fn guarantee_probe_class_ids() -> std.types.List<gunbc.guarantee_measurement.GuaranteeClassId> {
+fn guarantee_probe_class_ids() -> List<gunbc.guarantee_measurement.GuaranteeClassId> {
   [
     bare_none_field_admission_class,
     call_label_surplus_class,
@@ -181,7 +181,7 @@ fn harness_digest_from_material_and_expectation(
 
 data v1_compile_harness_source_paths_note: String = "v1_compile_harness_source_paths is the measured authority for compile_dag_diagnostic_census harness revision: probe-corpus bridge, guarantee_measurement folds, census vocabulary, the host builtin seam, and the v1 CompileAccept→Rust pipeline stages whose edits change which diagnostics a synthetic subject provokes. dissolve-on ladder-baseline stage supplies GitRevision harness anchors."
 
-fn v1_compile_harness_source_paths() -> std.types.List<String> {
+fn v1_compile_harness_source_paths() -> List<String> {
   [
     "dag/gunbc/guarantee_probe_corpus.dag",
     "dag/gunbc/guarantee_measurement.dag",
@@ -196,7 +196,7 @@ fn v1_compile_harness_source_paths() -> std.types.List<String> {
   ]
 }
 
-fn v2_infer_eval_harness_source_paths() -> std.types.List<String> {
+fn v2_infer_eval_harness_source_paths() -> List<String> {
   [
     "dag/gunbc/guarantee_probe_corpus.dag",
     "dag/gunbc/guarantee_measurement.dag",
@@ -282,13 +282,13 @@ fn synthetic_infer_eval_subject_revision_from_node(node: v2.std.node.Node) -> gu
 type DarkSuiteWitnessDisposition
   = MigratedToEnrolledDagProbe {
       rust_witness: std.types.NonEmptyStr,
-      dag_probes: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId>,
+      dag_probes: List<gunbc.guarantee_measurement.GuaranteeProbeId>,
       rust_retained_until: std.types.NonEmptyStr,
     }
 
 data guarantee_probe_dark_suite_disposition_note: String = "Slice 1 MIGRATES landed wall REDs into enrolled .dag probes without dissolving the dark Rust suite (gap-analysis sec 11 item 9 operator ruling): each row names the executing .dag probe(s), the retained Rust witness they replace on the floor, and the finite-classification gate that must disposition the Rust copy before deletion. MIGRATE never duplicate means one enrolled measurement authority per class — not silent parallel maintenance forever."
 
-fn guarantee_probe_dark_suite_dispositions() -> std.types.List<DarkSuiteWitnessDisposition> {
+fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition> {
   [
     MigratedToEnrolledDagProbe {
       rust_witness: "call_shape_wall_witness" as std.types.NonEmptyStr,
@@ -342,7 +342,7 @@ type ProbeRowResolution
   | ProbeRowUnknown { wanted: gunbc.guarantee_measurement.GuaranteeProbeId }
   | ProbeRowDuplicate { wanted: gunbc.guarantee_measurement.GuaranteeProbeId, matches: Int }
 
-fn guarantee_probe_rows() -> std.types.List<GuaranteeProbeRow> {
+fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
     GuaranteeProbeRow {
       probe: bare_none_collection_red_probe,
@@ -491,11 +491,11 @@ fn guarantee_probe_rows() -> std.types.List<GuaranteeProbeRow> {
   ]
 }
 
-fn guarantee_probe_ids() -> std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> {
+fn guarantee_probe_ids() -> List<gunbc.guarantee_measurement.GuaranteeProbeId> {
   guarantee_probe_rows() |> map(row => row.probe)
 }
 
-fn resolve_guarantee_probe_row(rows: std.types.List<GuaranteeProbeRow>, wanted: gunbc.guarantee_measurement.GuaranteeProbeId) -> ProbeRowResolution {
+fn resolve_guarantee_probe_row(rows: List<GuaranteeProbeRow>, wanted: gunbc.guarantee_measurement.GuaranteeProbeId) -> ProbeRowResolution {
   let hits = rows |> filter(row => (row.probe as String) == (wanted as String))
   if count(hits) == 0 {
     ProbeRowUnknown { wanted: wanted }
@@ -581,11 +581,11 @@ fn active_v2_infer_eval_probe_row(probe: gunbc.guarantee_measurement.GuaranteePr
   }
 }
 
-fn executed_probe_ids_for_probe(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> {
+fn executed_probe_ids_for_probe(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> List<gunbc.guarantee_measurement.GuaranteeProbeId> {
   [probe]
 }
 
-fn guarantee_probe_id_strings() -> std.types.List<String> {
+fn guarantee_probe_id_strings() -> List<String> {
   fold(
     guarantee_probe_ids(),
     init: [],
@@ -598,7 +598,7 @@ type ProbeLexWalk {
   ok: Bool
 }
 
-fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId>) -> Bool {
+fn probe_ids_are_lexicographically_ordered(ids: List<gunbc.guarantee_measurement.GuaranteeProbeId>) -> Bool {
   let walked = fold(ids, init: ProbeLexWalk { prev: none, ok: true }, f: fn(acc, id) {
     let current = id as String
     if !acc.ok {
@@ -640,7 +640,7 @@ fn probe_observation_from_accepted_infer_diagnostics(diagnostics: v2.std.diagnos
   }
 }
 
-fn census_row_count(rows: std.types.List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> Int {
+fn census_row_count(rows: List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> Int {
   count(rows)
 }
 
@@ -761,7 +761,7 @@ fn observation_refused_count(o: gunbc.guarantee_measurement.ProbeObservation) ->
   )
 }
 
-fn census_primary_observation(rows: std.types.List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> gunbc.guarantee_measurement.ProbeObservation {
+fn census_primary_observation(rows: List<gunbc.compile_diagnostic_census.CompileDiagnosticCensusRow>) -> gunbc.guarantee_measurement.ProbeObservation {
   let blocking = gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)
   if census_row_count(rows: blocking) >= 1 {
     match blocking |> first {

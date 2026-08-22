@@ -19,7 +19,7 @@ fn bind_i64_node() -> v2.std.node.Node {
   bind_atom(s: ^bind_i64)
 }
 
-fn bind_int_value(bytes: std.types.List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn bind_int_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: bind_i64_node(),
@@ -80,7 +80,7 @@ fn bind_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluation
 
 fn bind_call_primitive(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.outcome_rejected(d: bind_runtime_diagnostic(n: _node))

@@ -125,7 +125,7 @@ fn emit_fold_eval_closure_arrow_of(v: v2.std.runtime.RuntimeValue, node: v2.std.
   }
 }
 
-fn emit_fold_eval_closure_arg(args: std.types.List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn emit_fold_eval_closure_arg(args: List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_nth(
     xs: args,
     wanted: 2,
@@ -138,7 +138,7 @@ fn emit_fold_eval_closure_arg(args: std.types.List<v2.std.runtime.RuntimeValue>,
 
 fn emit_fold_eval_call_primitive(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match emit_fold_eval_closure_arg(args: args, node: node) {

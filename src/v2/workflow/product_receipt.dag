@@ -48,7 +48,7 @@ type DiagnosticCauseTally {
   count: Int
 }
 
-fn diagnostic_tally_holds_reason(tally: std.types.List<DiagnosticCauseTally>, reason: String) -> v2.std.logic.Bool {
+fn diagnostic_tally_holds_reason(tally: List<DiagnosticCauseTally>, reason: String) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: tally,
     empty: false,
@@ -57,9 +57,9 @@ fn diagnostic_tally_holds_reason(tally: std.types.List<DiagnosticCauseTally>, re
 }
 
 fn diagnostic_tally_bump(
-  tally: std.types.List<DiagnosticCauseTally>,
+  tally: List<DiagnosticCauseTally>,
   reason: String
-) -> std.types.List<DiagnosticCauseTally> {
+) -> List<DiagnosticCauseTally> {
   if diagnostic_tally_holds_reason(tally: tally, reason: reason) {
     v2.std.algebra.fold_list(
       xs: tally,
@@ -80,11 +80,11 @@ fn diagnostic_tally_bump(
   }
 }
 
-fn diagnostic_tally_total(tally: std.types.List<DiagnosticCauseTally>) -> Int {
+fn diagnostic_tally_total(tally: List<DiagnosticCauseTally>) -> Int {
   v2.std.algebra.fold_list(xs: tally, empty: 0, cons: fn(total, row) { total + row.count })
 }
 
-fn diagnostic_tally_render(tally: std.types.List<DiagnosticCauseTally>) -> String {
+fn diagnostic_tally_render(tally: List<DiagnosticCauseTally>) -> String {
   v2.std.algebra.fold_list(
     xs: tally,
     empty: "",
@@ -110,7 +110,7 @@ type BoundaryRefusalCause
   | ManifestSourceReadFailed
   | IngestRowShortfall
   | AdmissionReasonUnrecognized { reason: String }
-  | EmitterRejected { causes: std.types.List<DiagnosticCauseTally> }
+  | EmitterRejected { causes: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
   | CargoManifestWriteFailed
@@ -149,7 +149,7 @@ type BoundaryObservation {
 // subject from an absence will infer the wrong one.
 type ProductReceipt {
   subject: String
-  observations: std.types.List<BoundaryObservation>
+  observations: List<BoundaryObservation>
 }
 
 fn product_boundary_ordinal(boundary: ProductBoundary) -> Int {

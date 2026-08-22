@@ -194,7 +194,7 @@ fn program_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logi
 
 fn program_reject_primitive(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected {
@@ -350,9 +350,9 @@ data program_run_branch_to_io: v2.std.dependency.DependencyView = v2.std.depende
   usage_site: program_run_io_step
 }
 
-data program_run_nodes: std.types.List<v2.std.node.Node> = [program_run_branch_gate, program_run_io_step]
+data program_run_nodes: List<v2.std.node.Node> = [program_run_branch_gate, program_run_io_step]
 
-data program_run_dependencies: std.types.List<v2.std.dependency.DependencyView> = [program_run_branch_to_io]
+data program_run_dependencies: List<v2.std.dependency.DependencyView> = [program_run_branch_to_io]
 
 fn program_runtime_run_holds() -> v2.std.logic.Bool {
   match v2.workflow.runtime_run.runtime_run(

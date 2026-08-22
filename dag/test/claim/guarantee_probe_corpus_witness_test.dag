@@ -9,7 +9,7 @@ fn census_of(source: std.types.String) -> gunbc.compile_diagnostic_census.Compil
   compile_dag_diagnostic_census(source)
 }
 
-fn measured_harness_source_material(paths: v2.std.live_tree.std.types.List<std.types.String>) -> v2.std.live_tree.std.types.NonEmptyStr {
+fn measured_harness_source_material(paths: v2.std.live_tree.List<std.types.String>) -> v2.std.live_tree.std.types.NonEmptyStr {
   v2.std.live_tree.v2.std.algebra.fold_list(
     xs: paths,
     empty: "guarantee-probe-harness-source" as v2.std.live_tree.std.types.NonEmptyStr,
@@ -702,11 +702,11 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> std.types.B
 // The three arms must partition, or a row could claim two contradictory standings at once.
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
   let dispositions = gunbc.guarantee_probe_corpus.guarantee_probe_dark_suite_dispositions()
-  let disposition_probes: v2.std.live_tree.std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> = dispositions
+  let disposition_probes: v2.std.live_tree.List<gunbc.guarantee_measurement.GuaranteeProbeId> = dispositions
     |> flat_map(d => match d {
       gunbc.guarantee_probe_corpus.MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
     })
-  let disposition_probe_ids: v2.std.live_tree.std.types.List<std.types.String> = disposition_probes |> map(p => p as std.types.String)
+  let disposition_probe_ids: v2.std.live_tree.List<std.types.String> = disposition_probes |> map(p => p as std.types.String)
   let dispositions_name_the_finite_classification_gate = dispositions
     |> all(d => match d {
       gunbc.guarantee_probe_corpus.MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
@@ -720,8 +720,8 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
     })
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
-  let known_v1_migration_gap_ids: v2.std.live_tree.std.types.List<std.types.String> = [gunbc.guarantee_probe_corpus.sole_ctor_mint_fn_hole_probe as std.types.String]
-  let dag_native_v1_compile_probe_ids: v2.std.live_tree.std.types.List<std.types.String> = [
+  let known_v1_migration_gap_ids: v2.std.live_tree.List<std.types.String> = [gunbc.guarantee_probe_corpus.sole_ctor_mint_fn_hole_probe as std.types.String]
+  let dag_native_v1_compile_probe_ids: v2.std.live_tree.List<std.types.String> = [
     gunbc.guarantee_probe_corpus.bare_none_collection_red_probe as std.types.String,
     gunbc.guarantee_probe_corpus.bare_none_green_probe as std.types.String,
     gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe as std.types.String,

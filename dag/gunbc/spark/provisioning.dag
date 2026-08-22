@@ -60,7 +60,7 @@ type SparkProvisioningIntent {
 // This is what gives the cited OOBE field list a consumer: a subject the wizard does not
 // offer cannot be discharged inside the portal, and the model should say so structurally
 // rather than discovering it at the keyboard.
-fn spark_intent_oobe_subjects() -> std.types.List<extdeps.systems.nvidia_dgx_spark_setup.OobeSetupField> {
+fn spark_intent_oobe_subjects() -> List<extdeps.systems.nvidia_dgx_spark_setup.OobeSetupField> {
   [extdeps.systems.nvidia_dgx_spark_setup.OobeLanguage, extdeps.systems.nvidia_dgx_spark_setup.OobeTimeZone, extdeps.systems.nvidia_dgx_spark_setup.OobeTermsAndConditions, extdeps.systems.nvidia_dgx_spark_setup.OobeUserAccount, extdeps.systems.nvidia_dgx_spark_setup.OobeAnalytics]
 }
 

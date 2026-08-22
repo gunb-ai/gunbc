@@ -147,7 +147,7 @@ fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v
   }
 }
 
-fn testgen_pending_non_tautological_generator_wishlist() -> std.types.List<TestgenWishlistRow> {
+fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlistRow> {
   [
     TestgenWishlistRow {
       generator: wishlist_type_construction_generator(),
@@ -167,7 +167,7 @@ fn testgen_pending_non_tautological_generator_wishlist() -> std.types.List<Testg
   ]
 }
 
-fn testgen_dispatched_non_tautological_generators() -> std.types.List<TestgenWishlistRow> {
+fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> {
   [
     TestgenWishlistRow {
       generator: dispatched_language_behavior_equivalence_generator(),

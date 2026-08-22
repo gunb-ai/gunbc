@@ -76,7 +76,7 @@ data host_key_enrollment_transcription_scaffold: std.disposition.Disposition = s
 // prefixes match exactly) — two independent observations from different positions agree,
 // which is what makes this TOFU scan an enrollment rather than a guess. Keys are
 // DISTINCT across all six hosts (the identical-factory-keys claim stays refuted).
-data fleet_host_key_enrollments: std.types.List<KnownHostKeyRow> = [
+data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   KnownHostKeyRow {
     host: "srv1" as product.placement_supply.HostIdentity,
     endpoint: "srv1",
@@ -423,7 +423,7 @@ type ProbeIdentitySecretAccessRequirement {
   wif_provider_resource: String
   access: String
   observed_prior_grant: String
-  consumer_jobs: std.types.List<String>
+  consumer_jobs: List<String>
   materialization: String
 }
 

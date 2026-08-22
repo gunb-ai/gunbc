@@ -1,7 +1,7 @@
 module gunbc.plans.deploy_convergence_observed_side
 
 
-fn deploy_convergence_observed_side_body() -> std.types.List<std.markdown.MarkdownBlock> {
+fn deploy_convergence_observed_side_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design record, 2026-08-20. Reached by two independent derivations plus an adversarial exchange across two sessions. Most of its value is in the DEAD ENDS: the observed-provider design below was fully specified, then refuted, and the next person to look at live_deploy's empty observed side will re-derive it unless this record stops them."),
 

@@ -20,11 +20,11 @@ data spark_serving_member_realization_authority_note: String = "Per-member-type 
 // freezes TWO daemon-reloads for one unit.
 //
 // Content now emits exactly one operation, and every address in this map has exactly one remedy.
-fn spark_serving_user_unit_install_effects() -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+fn spark_serving_user_unit_install_effects() -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   [gunbc.spark.serving_realization.WriteUserUnitFile]
 }
 
-fn spark_serving_install_effects_for_address(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_address(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   match address {
     SparkServingRuntimeRootAddress => [gunbc.spark.serving_realization.InstallOwnedRuntimeClosure]
     SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
@@ -36,7 +36,7 @@ fn spark_serving_install_effects_for_address(address: gunbc.spark.serving_member
   }
 }
 
-fn spark_serving_install_effects_for_add(member: gunbc.spark.serving_membership.SparkServingMember) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_add(member: gunbc.spark.serving_membership.SparkServingMember) -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   spark_serving_install_effects_for_address(address: member.address)
 }
 
@@ -56,17 +56,17 @@ fn spark_serving_install_effects_for_add(member: gunbc.spark.serving_membership.
 fn spark_serving_install_effects_for_change(
   _from: gunbc.spark.serving_membership.SparkServingMember,
   to: gunbc.spark.serving_membership.SparkServingMember,
-) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+) -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   spark_serving_install_effects_for_address(address: to.address)
 }
 
-fn spark_serving_install_effects_for_remove(_member: gunbc.spark.serving_membership.SparkServingMember) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+fn spark_serving_install_effects_for_remove(_member: gunbc.spark.serving_membership.SparkServingMember) -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   []
 }
 
 fn spark_serving_install_effects_for_member_action(
   action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
-) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect>? {
+) -> List<gunbc.spark.serving_realization.ServingInstallEffect>? {
   match action {
     MemberAdded { at: _, to: member } =>
       Present { value: spark_serving_install_effects_for_add(member: member) }
@@ -81,7 +81,7 @@ fn spark_serving_install_effects_for_member_action(
 
 fn spark_serving_install_effects_for_member_effect(
   effect: gunbc.membership_reconcile.MemberEffect<gunbc.spark.serving_membership.SparkServingMember>,
-) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+) -> List<gunbc.spark.serving_realization.ServingInstallEffect> {
   match effect {
     EffectAdd { to: member } => spark_serving_install_effects_for_add(member: member)
     EffectReplace { from: f, to: t } =>
@@ -91,7 +91,7 @@ fn spark_serving_install_effects_for_member_effect(
 }
 
 fn spark_serving_install_effects_include(
-  effects: std.types.List<gunbc.spark.serving_realization.ServingInstallEffect>,
+  effects: List<gunbc.spark.serving_realization.ServingInstallEffect>,
   needle: gunbc.spark.serving_realization.ServingInstallEffect,
 ) -> Bool {
   any(effects, e => e == needle)

@@ -6,7 +6,7 @@ type ExecutorJob {
 }
 
 type ExecutorBatch {
-  jobs: std.types.List<ExecutorJob>
+  jobs: List<ExecutorJob>
 }
 
 type ExecutorBlockedEvidence
@@ -15,26 +15,26 @@ type ExecutorBlockedEvidence
 
 type ExecutorRunPlan
   = ExecutorRunComplete {
-      batches: std.types.List<ExecutorBatch>,
-      scheduled: std.types.List<v2.std.node.Node>
+      batches: List<ExecutorBatch>,
+      scheduled: List<v2.std.node.Node>
     }
   | ExecutorRunRunnable {
       batch: ExecutorBatch,
-      scheduled: std.types.List<v2.std.node.Node>,
-      remaining: std.types.List<v2.std.node.Node>
+      scheduled: List<v2.std.node.Node>,
+      remaining: List<v2.std.node.Node>
     }
   | ExecutorRunBlocked {
       evidence: ExecutorBlockedEvidence,
-      batches: std.types.List<ExecutorBatch>,
-      scheduled: std.types.List<v2.std.node.Node>,
-      remaining: std.types.List<v2.std.node.Node>
+      batches: List<ExecutorBatch>,
+      scheduled: List<v2.std.node.Node>,
+      remaining: List<v2.std.node.Node>
     }
 
 fn executor_job_for_node(node: v2.std.node.Node) -> ExecutorJob {
   ExecutorJob { node: node }
 }
 
-fn executor_jobs_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node>) -> std.types.List<ExecutorJob> {
+fn executor_jobs_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node>) -> List<ExecutorJob> {
   fold(frontier.ready, init: [], f: fn(jobs, node) {
     list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
   })
@@ -46,13 +46,13 @@ fn executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier<
   }
 }
 
-fn executor_job_nodes(jobs: std.types.List<ExecutorJob>) -> std.types.List<v2.std.node.Node> {
+fn executor_job_nodes(jobs: List<ExecutorJob>) -> List<v2.std.node.Node> {
   fold(jobs, init: [], f: fn(nodes, job) {
     list_snoc_item(xs: nodes, item: job.node)
   })
 }
 
-fn executor_append_batch(batches: std.types.List<ExecutorBatch>, batch: ExecutorBatch) -> std.types.List<ExecutorBatch> {
+fn executor_append_batch(batches: List<ExecutorBatch>, batch: ExecutorBatch) -> List<ExecutorBatch> {
   if non_empty(xs: batch.jobs) {
     list_snoc_item(xs: batches, item: batch)
   } else {
@@ -61,9 +61,9 @@ fn executor_append_batch(batches: std.types.List<ExecutorBatch>, batch: Executor
 }
 
 fn parallel_executor_plan_from_dependencies(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
-  scheduled: std.types.List<v2.std.node.Node>
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
+  scheduled: List<v2.std.node.Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
     scheduler_plan: scheduler_plan_from_dependencies(
@@ -75,9 +75,9 @@ fn parallel_executor_plan_from_dependencies(
 }
 
 fn parallel_executor_step_plan_from_dependencies(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
-  scheduled: std.types.List<v2.std.node.Node>
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
+  scheduled: List<v2.std.node.Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
     scheduler_plan: scheduler_step_plan_from_dependencies(
@@ -107,7 +107,7 @@ fn executor_plan_from_scheduler_plan(scheduler_plan: v2.workflow.scheduler.Sched
     }
   }
 }
-fn parallel_executor_plan_from_layers(layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> ExecutorRunPlan {
+fn parallel_executor_plan_from_layers(layers: List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> ExecutorRunPlan {
   let batches = executor_batches_for_layers(layers: layers)
   ExecutorRunComplete {
     batches: batches,
@@ -119,7 +119,7 @@ fn executor_batch_contains_node(batch: ExecutorBatch, node: v2.std.node.Node) ->
   contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
 }
 
-fn executor_batches_preserve_frontiers(batches: std.types.List<ExecutorBatch>, layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> v2.std.logic.Bool {
+fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> v2.std.logic.Bool {
   fold(layers, init: true, f: fn(ok, layer) {
     ok && contains(
       xs: batches,
@@ -129,7 +129,7 @@ fn executor_batches_preserve_frontiers(batches: std.types.List<ExecutorBatch>, l
   })
 }
 
-fn executor_batches_for_layers(layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> std.types.List<ExecutorBatch> {
+fn executor_batches_for_layers(layers: List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> List<ExecutorBatch> {
   fold(layers, init: [], f: fn(acc, layer) {
     executor_append_batch(
       batches: acc,
@@ -138,7 +138,7 @@ fn executor_batches_for_layers(layers: std.types.List<v2.std.dependency.Readines
   })
 }
 
-fn executor_nodes_from_batches(batches: std.types.List<ExecutorBatch>) -> std.types.List<v2.std.node.Node> {
+fn executor_nodes_from_batches(batches: List<ExecutorBatch>) -> List<v2.std.node.Node> {
   fold(batches, init: [], f: fn(nodes, batch) {
     fold(batch.jobs, init: nodes, f: fn(acc, job) {
       list_snoc_item(xs: acc, item: job.node)

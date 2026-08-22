@@ -94,7 +94,7 @@ type SparkServingRequirement {
   kind: v2.std.dependency.DependencyKind
 }
 
-fn spark_serving_address_requires(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> std.types.List<SparkServingRequirement> {
+fn spark_serving_address_requires(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> List<SparkServingRequirement> {
   match address {
     SparkServingRuntimeRootAddress => []
     SparkServingUserUnitAddress =>
@@ -119,7 +119,7 @@ type SparkServingScheduledRow {
 }
 
 type SparkServingScheduleRowProjection
-  = SparkServingScheduleRowsProjected { rows: std.types.List<SparkServingScheduledRow> }
+  = SparkServingScheduleRowsProjected { rows: List<SparkServingScheduledRow> }
   | SparkServingScheduleRowsRefused { cause: String }
 
 // REMOVAL ORDER IS NOT MODELED, AND THAT IS A REFUSAL RATHER THAN A SILENCE.
@@ -170,9 +170,9 @@ fn spark_serving_schedule_rows(
 // correct exactly when the file is already there, and that is a fact about the observation rather
 // than a hole in the schedule.
 fn spark_serving_preestablished_facts(
-  desired_addresses: std.types.List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
-  rows: std.types.List<SparkServingScheduledRow>,
-) -> std.types.List<SparkServingResourceFact> {
+  desired_addresses: List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
+  rows: List<SparkServingScheduledRow>,
+) -> List<SparkServingResourceFact> {
   flat_map(desired_addresses, a =>
     if length(filter(rows, r => spark_serving_resource_address_wire(address: r.address) == spark_serving_resource_address_wire(address: a))) == 0 {
       [spark_serving_address_establishes(address: a)]
@@ -183,14 +183,14 @@ fn spark_serving_preestablished_facts(
 }
 
 fn spark_serving_fact_providers(
-  rows: std.types.List<SparkServingScheduledRow>,
+  rows: List<SparkServingScheduledRow>,
   fact: SparkServingResourceFact,
-) -> std.types.List<SparkServingScheduledRow> {
+) -> List<SparkServingScheduledRow> {
   filter(rows, r => spark_serving_resource_fact_eq(a: spark_serving_address_establishes(address: r.address), b: fact))
 }
 
 type SparkServingScheduleRelations
-  = SparkServingScheduleRelationsDerived { relations: std.types.List<v2.std.dependency.DependencyRelation<gunbc.spark.serving_membership.SparkServingMemberAt>> }
+  = SparkServingScheduleRelationsDerived { relations: List<v2.std.dependency.DependencyRelation<gunbc.spark.serving_membership.SparkServingMemberAt>> }
   | SparkServingScheduleMissingProvider { dependent: String, fact: String }
   | SparkServingScheduleAmbiguousProvider { dependent: String, fact: String, provider_count: Int }
 
@@ -203,8 +203,8 @@ type SparkServingScheduleRelations
 // as an opaque non-zero exit at actuation time. Two providers refuse as well: the edge would be
 // genuinely ambiguous, and picking either one is the fabricated plausible output §5 forbids.
 fn spark_serving_requirement_edges(
-  rows: std.types.List<SparkServingScheduledRow>,
-  preestablished: std.types.List<SparkServingResourceFact>,
+  rows: List<SparkServingScheduledRow>,
+  preestablished: List<SparkServingResourceFact>,
   row: SparkServingScheduledRow,
   requirement: SparkServingRequirement,
 ) -> SparkServingScheduleRelations {
@@ -258,8 +258,8 @@ fn spark_serving_merge_relations(
 }
 
 fn spark_serving_schedule_relations(
-  rows: std.types.List<SparkServingScheduledRow>,
-  preestablished: std.types.List<SparkServingResourceFact>,
+  rows: List<SparkServingScheduledRow>,
+  preestablished: List<SparkServingResourceFact>,
 ) -> SparkServingScheduleRelations {
   fold(rows, init: SparkServingScheduleRelationsDerived { relations: [] }, f: fn(acc, row) {
     fold(spark_serving_address_requires(address: row.address), init: acc, f: fn(inner, requirement) {
@@ -285,7 +285,7 @@ fn spark_serving_schedule_relations(
 // only path runs through the scheduler, so an unscheduled sequence is not a thing that can reach
 // actuation and be rejected: it is a thing that cannot be expressed.
 type SparkServingFrozenExecutionSchedule sole_constructor {
-  ordered: std.types.List<gunbc.spark.serving_membership.SparkServingMemberAt>
+  ordered: List<gunbc.spark.serving_membership.SparkServingMemberAt>
 }
 
 type SparkServingScheduleVerdict
@@ -301,7 +301,7 @@ type SparkServingScheduleVerdict
 // kernel that already refuses on cycles would be the second representation §3 forbids.
 fn spark_serving_freeze_execution_schedule(
   plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
-  desired_addresses: std.types.List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
+  desired_addresses: List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
 ) -> SparkServingScheduleVerdict {
   match spark_serving_schedule_rows(plan: plan) {
     SparkServingScheduleRowsRefused { cause: why } => SparkServingScheduleRefused { cause: why }
@@ -366,7 +366,7 @@ fn spark_serving_schedule_subject_eq(a: gunbc.spark.serving_membership.SparkServ
 
 fn spark_serving_frozen_schedule_order(
   schedule: SparkServingFrozenExecutionSchedule,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMemberAt> {
+) -> List<gunbc.spark.serving_membership.SparkServingMemberAt> {
   schedule.ordered
 }
 
@@ -388,12 +388,12 @@ fn spark_serving_frozen_schedule_order(
 // naming that row type here would close an import cycle. The subject is this vertical's; the row is
 // whatever the plan layer freezes.
 type ScheduledRows<Row> sole_constructor {
-  rows: std.types.List<Row>
+  rows: List<Row>
 }
 
 fn scheduled_rows_from_frozen_schedule<Row>(
   schedule: SparkServingFrozenExecutionSchedule,
-  rows_for: fn(gunbc.spark.serving_membership.SparkServingMemberAt) -> std.types.List<Row>,
+  rows_for: fn(gunbc.spark.serving_membership.SparkServingMemberAt) -> List<Row>,
 ) -> ScheduledRows<Row> {
   ScheduledRows {
     rows: flat_map(
@@ -403,7 +403,7 @@ fn scheduled_rows_from_frozen_schedule<Row>(
   }
 }
 
-fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> std.types.List<Row> {
+fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> List<Row> {
   scheduled.rows
 }
 

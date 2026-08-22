@@ -41,7 +41,7 @@ fn eval_add_subgraph() -> v2.std.node.Node {
   eval_add_subgraph_node
 }
 
-fn eval_runtime_value(bytes: std.types.List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn eval_runtime_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: eval_i64_node(),
@@ -82,7 +82,7 @@ fn eval_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.compiler.eval.eval_diagnostic(reason: ^eval_args_not_two_literals, node: eval_add_subgraph_node)
 }
 
-fn eval_args_are_two_literals(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn eval_args_are_two_literals(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match v2.std.collection.list_nth(xs: args, wanted: 0, absent: eval_args_absent_diagnostic()) {
       Holds { value: left } =>
@@ -101,7 +101,7 @@ fn eval_args_are_two_literals(args: std.types.List<v2.std.runtime.RuntimeValue>)
 
 fn eval_call_primitive(
   _node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if eval_args_are_two_literals(args: args) {

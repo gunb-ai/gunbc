@@ -94,12 +94,12 @@ type HandMaintainedOutcome
 // (first_generation_equal=true planned=132 executed=132). The variant is a wall for a state one
 // .dag file away, not a repair of an observed failure.
 type RequiredRegenRefusal
-  = GeneratedDrift { paths: std.types.List<String> }
-  | MirrorMissingForEmittedSurface { paths: std.types.List<String> }
-  | MirrorMissingShadowsHandMaintainedSource { entries: std.types.List<String> }
-  | CommittedMirrorNoLongerEmitted { paths: std.types.List<String> }
+  = GeneratedDrift { paths: List<String> }
+  | MirrorMissingForEmittedSurface { paths: List<String> }
+  | MirrorMissingShadowsHandMaintainedSource { entries: List<String> }
+  | CommittedMirrorNoLongerEmitted { paths: List<String> }
   | CompileRefused { reason: String }
-  | HandUnverifiableRefused { entries: std.types.List<String> }
+  | HandUnverifiableRefused { entries: List<String> }
   | PlannedExecutedMismatch { planned: Int, executed: Int }
   | EmptyCommittedPopulation
   | EmptyEmitResult
@@ -110,7 +110,7 @@ type RequiredRegenRefusal
 // mirror is drawn from — including the surface the committed tree does not yet have.
 type CandidateTree {
   root: String
-  produced_paths: std.types.List<String>
+  produced_paths: List<String>
 }
 
 type CandidateTreeProduction
@@ -119,29 +119,29 @@ type CandidateTreeProduction
 
 type RequiredRegenRunOutcome
   = RegenUnproduced { cause: RequiredRegenRefusal }
-  | RegenProducedRefused { tree: CandidateTree, refusals: std.types.List<RequiredRegenRefusal> }
+  | RegenProducedRefused { tree: CandidateTree, refusals: List<RequiredRegenRefusal> }
   | RegenProducedRunnable { tree: CandidateTree, attempt: RequiredRegenAttempt }
 
 type RequiredRegenAttempt {
-  generated_outcomes: std.types.List<RegenSurfaceOutcome>
-  hand_outcomes: std.types.List<HandMaintainedOutcome>
+  generated_outcomes: List<RegenSurfaceOutcome>
+  hand_outcomes: List<HandMaintainedOutcome>
   authority_digest: String
 }
 
 type RequiredRegenSyncAdmission
   = RequiredRegenSyncRunnable { attempt: RequiredRegenAttempt }
-  | RequiredRegenSyncRefused { refusals: std.types.List<RequiredRegenRefusal> }
+  | RequiredRegenSyncRefused { refusals: List<RequiredRegenRefusal> }
 
-data no_regen_refusals: std.types.List<RequiredRegenRefusal> = []
+data no_regen_refusals: List<RequiredRegenRefusal> = []
 
-data no_string_paths: std.types.List<String> = []
+data no_string_paths: List<String> = []
 
 // One fold per state. Each keeps ONLY its own outcome, so a path can never appear under a
 // remedy that does not apply to it.
 fn collect_byte_drift_paths(
-  acc: std.types.List<String>,
+  acc: List<String>,
   o: RegenSurfaceOutcome
-) -> std.types.List<String> {
+) -> List<String> {
   match o {
     SurfaceDrifted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
     EmittedNotCommitted { relative_path: _ } => acc
@@ -152,9 +152,9 @@ fn collect_byte_drift_paths(
 }
 
 fn collect_emitted_not_committed_paths(
-  acc: std.types.List<String>,
+  acc: List<String>,
   o: RegenSurfaceOutcome
-) -> std.types.List<String> {
+) -> List<String> {
   match o {
     SurfaceDrifted { relative_path: _ } => acc
     EmittedNotCommitted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
@@ -165,9 +165,9 @@ fn collect_emitted_not_committed_paths(
 }
 
 fn collect_committed_not_emitted_paths(
-  acc: std.types.List<String>,
+  acc: List<String>,
   o: RegenSurfaceOutcome
-) -> std.types.List<String> {
+) -> List<String> {
   match o {
     SurfaceDrifted { relative_path: _ } => acc
     EmittedNotCommitted { relative_path: _ } => acc
@@ -235,9 +235,9 @@ fn collect_shadowing_entries(
 }
 
 fn collect_hand_unverifiable(
-  acc: std.types.List<String>,
+  acc: List<String>,
   o: HandMaintainedOutcome
-) -> std.types.List<String> {
+) -> List<String> {
   match o {
     HandUnverifiable { filename: name, reason: reason } =>
       std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }
@@ -253,8 +253,8 @@ fn collect_hand_unverifiable(
 // Hand-maintained DRIFT is expected on a clean tree (main.rs and known emitter gaps).
 // Only UNVERIFIABLE hand rows refuse sync admission.
 fn required_regen_sync_admission(
-  generated_outcomes: std.types.List<RegenSurfaceOutcome>,
-  hand_outcomes: std.types.List<HandMaintainedOutcome>,
+  generated_outcomes: List<RegenSurfaceOutcome>,
+  hand_outcomes: List<HandMaintainedOutcome>,
   authority_digest: String,
   planned_surfaces: Int,
   executed_surfaces: Int
@@ -367,8 +367,8 @@ fn required_regen_sync_admission(
 // host until the host is derived from it.
 fn required_regen_run(
   production: CandidateTreeProduction,
-  generated_outcomes: std.types.List<RegenSurfaceOutcome>,
-  hand_outcomes: std.types.List<HandMaintainedOutcome>,
+  generated_outcomes: List<RegenSurfaceOutcome>,
+  hand_outcomes: List<HandMaintainedOutcome>,
   authority_digest: String,
   planned_surfaces: Int,
   executed_surfaces: Int

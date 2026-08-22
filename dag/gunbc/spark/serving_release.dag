@@ -196,11 +196,11 @@ type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
   | SparkServingInstallRequired { subject: product.placement_supply.HostIdentity, desired_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: std.types.NonEmptyStr }
-  | SparkServingRefused { first: SparkServingRefusal, more: std.types.List<SparkServingRefusal> }
+  | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
 data no_absent_prerequisite: SparkServingRefusal? = none
 
-data no_further_refusals: std.types.List<SparkServingRefusal> = []
+data no_further_refusals: List<SparkServingRefusal> = []
 
 // EVERY PREREQUISITE AND OBSERVATION IS BOUND TO ITS SUBJECT HOST. This function existed because
 // the first draft discarded the host from all five carrier positions (`host: _`), which made the
@@ -219,7 +219,7 @@ fn host_matches(a: product.placement_supply.HostIdentity, b: product.placement_s
 // is missing instead of a bare false that erases which of several remedies applies. Only
 // prerequisites recorded FOR THE SUBJECT are consulted: another host's absent prerequisite is not
 // evidence about this one, in either direction.
-fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, prerequisites: std.types.List<SparkServingPrerequisite>) -> SparkServingRefusal? {
+fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
   fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -236,7 +236,7 @@ fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, pre
 // row let an EMPTY prerequisite list read as satisfied -- silence answering as consent, which is
 // the empty-observation narrow (DESIGN section 5): "nobody recorded a prerequisite for srv5" and
 // "srv5's prerequisites hold" are different states and the first must not actuate.
-fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prerequisites: std.types.List<SparkServingPrerequisite>) -> Bool {
+fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
   fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       HostIdentityBindingAdmitted { host: h } => acc || host_matches(a: h, b: subject)
@@ -246,7 +246,7 @@ fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prere
   })
 }
 
-fn admits_managed_access(subject: product.placement_supply.HostIdentity, prerequisites: std.types.List<SparkServingPrerequisite>) -> Bool {
+fn admits_managed_access(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
   fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       ManagedHostAccessGrounded { host: h } => acc || host_matches(a: h, b: subject)
@@ -274,7 +274,7 @@ data observation_subject_mismatch_refusal: SparkServingRefusal = SparkServingRef
 fn reconcile_spark_serving(
   desired: SparkServingOccurrence,
   observation: SparkServingObservation,
-  prerequisites: std.types.List<SparkServingPrerequisite>,
+  prerequisites: List<SparkServingPrerequisite>,
 ) -> SparkServingReconciliation {
   match first_absent_prerequisite(subject: desired.host, prerequisites: prerequisites) {
     Present { value: absent } => SparkServingRefused { first: absent, more: no_further_refusals }
@@ -358,7 +358,7 @@ type SparkServingPlanRow {
 // considered" are different answers and an empty list would render identically for both -- which is
 // precisely the conflation that made first install unreachable one type up.
 type SparkServingPlan
-  = ServingPlanned { first: SparkServingPlanRow, more: std.types.List<SparkServingPlanRow> }
+  = ServingPlanned { first: SparkServingPlanRow, more: List<SparkServingPlanRow> }
   | ServingPlanNotAttempted { cause: std.types.NonEmptyStr }
 
 // The deployment target for a Spark serving unit under the named automation account. The actor is a
@@ -390,7 +390,7 @@ fn spark_serving_target(actor: gunbc.spark.serving_realization.SystemPrincipal) 
 fn spark_serving_plan_row(
   desired: SparkServingOccurrence,
   observation: SparkServingObservation,
-  prerequisites: std.types.List<SparkServingPrerequisite>,
+  prerequisites: List<SparkServingPrerequisite>,
   intent: gunbc.spark.serving_realization.SparkServingIntent,
   realization: gunbc.spark.serving_realization.SparkServingRealization,
   actor: gunbc.spark.serving_realization.SystemPrincipal,

@@ -119,7 +119,7 @@ func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: ext
 
 // The operands are everything after the program. A missing tail is the one-word command, whose
 // operand list is empty -- not an error, and not the same state as an empty argv.
-fn argv_operands(command: extdeps.exec.command.ArgvCommand) -> std.types.List<String> {
+fn argv_operands(command: extdeps.exec.command.ArgvCommand) -> List<String> {
   match v2.std.algebra.list_tail(xs: command.argv) {
     TailAbsent => std.algebra.Empty
     TailFound { tail: rest } => rest
@@ -254,7 +254,7 @@ fn stat_owner_name_capture(path: String) -> extdeps.shell.exec.ProcessOutcome {
   )
 }
 
-func run_shell_commands(commands: std.types.List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
+func run_shell_commands(commands: List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   fold(

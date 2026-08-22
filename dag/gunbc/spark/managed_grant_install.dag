@@ -73,7 +73,7 @@ fn stage_grant_file_step(grant: gunbc.spark.managed_access_bootstrap.SparkManage
   }
 }
 
-fn cleanup_grant_staging_argv(cleanup: CleanupGrantStaging) -> std.types.List<String> {
+fn cleanup_grant_staging_argv(cleanup: CleanupGrantStaging) -> List<String> {
   ["rm", "-f", cleanup.staged_path as String, cleanup.inner_staging_path as String]
 }
 
@@ -113,7 +113,7 @@ fn spark_grant_install_step_identity(grant: gunbc.spark.managed_access_bootstrap
   join([phase, "-", spark_managed_grant_dropin_name(grant: grant) as String], "") as std.types.NonEmptyStr
 }
 
-fn spark_grant_admit_argv(identity: std.types.NonEmptyStr, raws: std.types.List<String>) -> gunbc.remote_operation.PlannedRemoteStep? {
+fn spark_grant_admit_argv(identity: std.types.NonEmptyStr, raws: List<String>) -> gunbc.remote_operation.PlannedRemoteStep? {
   match portable_remote_words(raws: raws) {
     Absent => none
     Present { value: words } => Present {
@@ -167,7 +167,7 @@ fn spark_grant_install_plan(grant: gunbc.spark.managed_access_bootstrap.SparkMan
 // THE PHASES THE EXECUTOR ACTUALLY RUNS, in the order it runs them, read off the same fields it
 // consumes. This is a receipt projection and not a schedule: nothing downstream may reorder it,
 // because there is nothing here to reorder.
-fn spark_grant_install_operation_labels(plan: SparkGrantInstallPlan) -> std.types.List<String> {
+fn spark_grant_install_operation_labels(plan: SparkGrantInstallPlan) -> List<String> {
   match plan {
     SparkGrantInstallRefused { grant: _, cause: _ } => []
     SparkGrantInstallSteps {
@@ -187,7 +187,7 @@ fn spark_grant_install_operation_labels(plan: SparkGrantInstallPlan) -> std.type
 // succeeded quietly -- so the identity-bearing unattempted arm is the init, never an empty list.
 fn spark_grant_cleanup_standing(
   identity: std.types.NonEmptyStr,
-  standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>,
+  standings: List<gunbc.remote_operation.RemoteStepStanding>,
 ) -> gunbc.remote_operation.RemoteStepStanding {
   fold(standings, init: gunbc.remote_operation.RemoteStepUnattempted { identity: identity }, f: fn(_, s) { s })
 }
@@ -265,8 +265,8 @@ type SparkGrantInstallOutcome
   | SparkGrantInstallExecuted {
       host: product.placement_supply.HostIdentity
       grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant
-      standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>
-      privileged: std.types.List<gunbc.spark.grant_privileged_operation.PrivilegedStepOutcome>
+      standings: List<gunbc.remote_operation.RemoteStepStanding>
+      privileged: List<gunbc.spark.grant_privileged_operation.PrivilegedStepOutcome>
       readback: SparkGrantReadback
       cleanup: gunbc.remote_operation.RemoteStepStanding
     }
@@ -409,8 +409,8 @@ fn spark_grant_install_from_privileged(
   host: product.placement_supply.HostIdentity,
   grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant,
   principal: std.types.NonEmptyStr,
-  staged: std.types.List<gunbc.remote_operation.RemoteStepStanding>,
-  outcomes: std.types.List<gunbc.spark.grant_privileged_operation.PrivilegedStepOutcome>,
+  staged: List<gunbc.remote_operation.RemoteStepStanding>,
+  outcomes: List<gunbc.spark.grant_privileged_operation.PrivilegedStepOutcome>,
   readback: SparkGrantReadback,
   cleanup: gunbc.remote_operation.RemoteStepStanding,
 ) -> SparkGrantInstallOutcome {
@@ -544,7 +544,7 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
   }
 }
 
-fn spark_grant_install_first_failure_cause(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> String? {
+fn spark_grant_install_first_failure_cause(standings: List<gunbc.remote_operation.RemoteStepStanding>) -> String? {
   fold(standings, init: none, f: fn(acc, st) {
     match acc {
       Present { value: _ } => acc
@@ -566,7 +566,7 @@ data spark_grant_install_ci_attempt_raw: String = "spark-grant-install-ci"
 // nothing was needed.
 type SparkGrantInstallRun {
   standing_report: String
-  outcomes: std.types.List<SparkGrantInstallOutcome>
+  outcomes: List<SparkGrantInstallOutcome>
 }
 
 func spark_grant_install_host(

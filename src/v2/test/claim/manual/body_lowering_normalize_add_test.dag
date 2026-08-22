@@ -115,7 +115,7 @@ test fn body_lowering_arrow_token_holds() -> v2.std.logic.Bool {
   }
 }
 
-fn body_lower_collect_atoms(root: v2.std.node.Node, acc: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
+fn body_lower_collect_atoms(root: v2.std.node.Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
     Present { value: id } => std.algebra.Cons { head: id, tail: acc }
     Absent => acc
@@ -325,7 +325,7 @@ test fn body_lowering_fixture_resolves() -> v2.std.logic.Bool {
   }
 }
 
-fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> std.types.List<v2.std.node.Symbol> {
+fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {

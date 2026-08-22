@@ -232,9 +232,9 @@ pub struct RustVecSupplementalGenericBoundRow {
 }
 
 pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
-) -> Vec<Rc<RustVecSupplementalGenericBoundRow>> {
+) -> Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> {
     thread_local! {
-            static CACHED: Vec<Rc<RustVecSupplementalGenericBoundRow>> = {
+            static CACHED: Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> = {
                 Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
         derive_trait: RustCapability::RustDebug,
         required: RustCapability::RustClone,
@@ -254,7 +254,7 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
     })])
             };
         }
-    CACHED.with(|c: &Vec<Rc<RustVecSupplementalGenericBoundRow>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
 pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> String {
@@ -267,9 +267,9 @@ pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> String {
 }
 
 pub fn rust_btree_set_supplemental_generic_bound_rows(
-) -> Vec<Rc<RustVecSupplementalGenericBoundRow>> {
+) -> Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> {
     thread_local! {
-            static CACHED: Vec<Rc<RustVecSupplementalGenericBoundRow>> = {
+            static CACHED: Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> = {
                 Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
         derive_trait: RustCapability::RustDebug,
         required: RustCapability::RustOrd,
@@ -297,7 +297,7 @@ pub fn rust_btree_set_supplemental_generic_bound_rows(
     })])
             };
         }
-    CACHED.with(|c: &Vec<Rc<RustVecSupplementalGenericBoundRow>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

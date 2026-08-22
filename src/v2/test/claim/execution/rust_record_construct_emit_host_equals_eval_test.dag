@@ -136,7 +136,7 @@ fn rust_rec_nine_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runt
 
 fn rust_rec_nine_eval_call_primitive(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match rust_rec_nine_eval_field_index_from_transform(node: node) {

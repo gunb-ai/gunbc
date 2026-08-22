@@ -69,7 +69,7 @@ type WorkStep {
 
 type WorkContract {
   program: ProgramRef
-  steps: std.types.List<WorkStep>
+  steps: List<WorkStep>
   source: SourceManifestRef
   inputs: ArtifactManifestRef
   runtime_closure: ArtifactManifestRef
@@ -180,7 +180,7 @@ fn resumability_material(tier: ResumabilityTier) -> std.types.NonEmptyStr {
   }
 }
 
-fn work_steps_material(steps: std.types.List<WorkStep>) -> std.types.NonEmptyStr {
+fn work_steps_material(steps: List<WorkStep>) -> std.types.NonEmptyStr {
   fold(
     steps,
     init: "steps",

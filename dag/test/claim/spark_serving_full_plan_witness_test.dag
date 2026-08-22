@@ -985,7 +985,7 @@ type ScheduleIndexScan { found: Bool, idx: Int, seen: Int }
 // key is host x principal x address wire, so the address wire is a substring of exactly the key for
 // that resource -- which is why the scan matches on containment rather than reconstructing the key
 // and asserting an equality that would really be testing the key builder.
-fn schedule_index_of(order: std.types.List<String>, address_wire: String) -> Int {
+fn schedule_index_of(order: List<String>, address_wire: String) -> Int {
   let scan = fold(order, init: ScheduleIndexScan { found: false, idx: 0 - 1, seen: 0 }, f: fn(acc, at) {
     if acc.found {
       ScheduleIndexScan { found: true, idx: acc.idx, seen: acc.seen + 1 }
@@ -1006,7 +1006,7 @@ fn frozen_order(
   enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState,
   activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState,
   linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
-) -> std.types.List<String> {
+) -> List<String> {
   match test.claim.spark_serving_full_plan_witness_test.subject_release() {
     Absent => []
     Present { value: r } =>
@@ -1029,7 +1029,7 @@ fn frozen_order(
   }
 }
 
-fn bare_host_frozen_order() -> std.types.List<String> {
+fn bare_host_frozen_order() -> List<String> {
   frozen_order(
     host: test.claim.spark_serving_full_plan_witness_test.subject_host,
     runtime: bare_runtime(), store: bare_store(),

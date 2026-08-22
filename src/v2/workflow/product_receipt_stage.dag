@@ -144,7 +144,7 @@ fn stage_completed(
 // available to the INTERPRETED transport and would not survive a compiled
 // realization of it unchanged. Stated because the receipt would otherwise
 // look portable across realizations when one of its fields is not.
-fn emitter_diagnostic_causes(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> std.types.List<v2.workflow.product_receipt.DiagnosticCauseTally> {
+fn emitter_diagnostic_causes(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.workflow.product_receipt.DiagnosticCauseTally> {
   v2.std.algebra.fold_list(
     xs: ds.tail,
     empty: v2.workflow.product_receipt.diagnostic_tally_bump(

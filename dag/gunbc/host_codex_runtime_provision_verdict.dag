@@ -2,7 +2,7 @@ module gunbc.host_codex_runtime_provision_verdict
 
 data host_codex_runtime_provision_verdict_authority_note: String = "Verdict fold lives here — not in gunbc.host_codex_runtime_provision — so gunbc.host_effect_realize can consume provision_codex_runtime_verdict without importing host_toolchain_ensure (host_codex_runtime_provision -> host_toolchain_ensure -> host_effect_realize would cycle). Mirrors host_build_cache_catalog_gate beside host_build_cache_provision.\n\nOBSERVATION IS TYPED, NOT SHELL TEXT: this module used to classify a combined_output String against printf'd CodexRuntimeProvisionReceipt markers (observe=absent / ensure=FAILED / read_back=FAILED) produced by a hand-rolled bash if/grep/printf body in the now-deleted host_codex_runtime_provision_script.dag. gunbc.host_effect_realize now runs the observe/materialize/read-back sequence as three typed single-command argv executions (observe/read-back via this module's own codex_runtime_observe_argv, materialize via gunbc.cli_invoke gunbc_run_transport_argv or gunbc.Cli.Run) and constructs CodexRuntimeObservation directly from each step's typed exit code / stdout — there is no receipt-marker string to parse or fail to recognize, so the former CodexRuntimeShellOutputUnrecognized / RefusalShellOutputUnrecognized fallback class has no remaining reachable cause and is retired with the shell body it existed to classify."
 
-fn codex_runtime_observe_argv(executable: String) -> std.types.List<String> {
+fn codex_runtime_observe_argv(executable: String) -> List<String> {
   [executable, "--version"]
 }
 

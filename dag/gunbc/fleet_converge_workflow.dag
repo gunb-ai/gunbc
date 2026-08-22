@@ -3,11 +3,11 @@ module gunbc.fleet_converge_workflow
 
 data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
 
-data fleet_converge_enrolled_host_options: std.types.List<String> = ["srv1", "srv2", "srv3", "srv4"]
+data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
-data fleet_converge_spark_target_options: std.types.List<String> = ["srv5", "srv6"]
+data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: std.types.List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability"]
+data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -248,7 +248,7 @@ fn fleet_converge_spark_observe_step() -> extdeps.github.actions.Step {
 
 data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
-fn fleet_converge_consumer_prelude_steps() -> std.types.List<extdeps.github.actions.Step> {
+fn fleet_converge_consumer_prelude_steps() -> List<extdeps.github.actions.Step> {
   [ci_checkout_step()]
 }
 

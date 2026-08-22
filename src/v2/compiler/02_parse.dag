@@ -80,39 +80,39 @@ type ParseMemoStats {
 
 type ParseMemoEntry
   = ParseMemoAccepted {
-      remaining: std.types.List<v2.std.compilers.lexing.Token>,
+      remaining: List<v2.std.compilers.lexing.Token>,
       captured: v2.std.node.Node,
-      diagnostics: std.types.List<v2.std.diagnostic.Diagnostic>,
+      diagnostics: List<v2.std.diagnostic.Diagnostic>,
       prov: ParseProvenanceState
     }
-  | ParseMemoRejected { diagnostics: std.types.List<v2.std.diagnostic.Diagnostic> }
+  | ParseMemoRejected { diagnostics: List<v2.std.diagnostic.Diagnostic> }
 
 type ParseExprResult
   = ParseExprAccepted {
-      remaining: std.types.List<v2.std.compilers.lexing.Token>,
+      remaining: List<v2.std.compilers.lexing.Token>,
       captured: v2.std.node.Node,
-      diagnostics: std.types.List<v2.std.diagnostic.Diagnostic>,
+      diagnostics: List<v2.std.diagnostic.Diagnostic>,
       prov: ParseProvenanceState,
       table: ParseTable
     }
-  | ParseExprRejected { diagnostics: std.types.List<v2.std.diagnostic.Diagnostic>, table: ParseTable }
+  | ParseExprRejected { diagnostics: List<v2.std.diagnostic.Diagnostic>, table: ParseTable }
 
 type ParseSyncState {
   found_sync: Bool
-  result: std.types.List<v2.std.compilers.lexing.Token>
+  result: List<v2.std.compilers.lexing.Token>
 }
 
 type ParseRepeatAcc {
-  remaining: std.types.List<v2.std.compilers.lexing.Token>
-  acc_nodes: std.types.List<v2.std.node.Node>
-  acc_diags: std.types.List<std.types.List<v2.std.diagnostic.Diagnostic>>
+  remaining: List<v2.std.compilers.lexing.Token>
+  acc_nodes: List<v2.std.node.Node>
+  acc_diags: List<List<v2.std.diagnostic.Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
 }
 
 type GrammarExprCornerFold {
-  corners: std.types.List<v2.std.node.Symbol>
+  corners: List<v2.std.node.Symbol>
   nullable: Bool
 }
 
@@ -128,13 +128,13 @@ type ParseTableRealization {
   materialization: std.realization.Materialization
   grammar_digest: v2.std.node.Hash
   token_stream_digest: v2.std.node.Hash
-  entries: std.types.Map<ParsePositionKey, ParseMemoEntry>
+  entries: Map<ParsePositionKey, ParseMemoEntry>
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
-  nullable_set: std.types.Set<v2.std.node.Symbol>
-  first_rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
-  productions_by_name: std.types.Map<v2.std.node.Symbol, v2.std.grammar.GrammarProduction>
+  nullable_set: Set<v2.std.node.Symbol>
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
+  productions_by_name: Map<v2.std.node.Symbol, v2.std.grammar.GrammarProduction>
 }
 
 type ParseTable = ParseTableRealization
@@ -235,7 +235,7 @@ fn grammar_lookup_production(root: v2.std.grammar.GrammarRoot, name: v2.std.node
 
 data grammar_lookup_production_indexed_note: String = "grammar_lookup_production is an O(P) filter scan over the full production list; it is the well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6 already-hoisted cost) and is correct to keep as the single-authority derivation of the index below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal reference during recursive-descent parsing calls it, memoized or not (parse_nonterminal_memoized_core looks the production up before consulting the memo table), so the P=204-production dag grammar turned this into the dominant cost of parsing even a trivial source under the tree-walking v1 interpreter (measured: ~12s to parse a 3-line source, PR #8478). productions_by_name is that lookup's index, built once by grammar_production_index and carried on ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second production roster (§3). Every ParseTableRealization construction site (parse_table_for_production_analyzed, the real-parse path; parse_table_empty; parse_table_carry_analysis, the pass-through on every table mutation) populates this field, so the O(P)->O(1) change is not opt-in per call site. Measured effect (this host, dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation): 78.023s -> 74.006s wall. That delta undercounts the fix's effect on the specific fold it repairs, because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2 closure — a cost this change does not touch — rather than by the repeated per-dispatch grammar lookup inside the parse itself; the O(204)->O(1) asymptotic claim is the primary evidence (grammar_lookup_production is an unmemoized linear filter reached before every memo-table check, so even a memo HIT paid the full scan), not the crude wall-clock ratio. This is the class docs/plans/measurements/floor-slow-rows-2026-08-18.md records dag_arrow_lambda_witness_test's rows landing 1-4ms over its 1552ms ceiling for."
 
-fn grammar_production_index(productions: std.types.List<v2.std.grammar.GrammarProduction>) -> std.types.Map<v2.std.node.Symbol, v2.std.grammar.GrammarProduction> {
+fn grammar_production_index(productions: List<v2.std.grammar.GrammarProduction>) -> Map<v2.std.node.Symbol, v2.std.grammar.GrammarProduction> {
   v2.std.algebra.fold_list(
     xs: productions,
     empty: v2.std.collection.empty_map(),
@@ -344,7 +344,7 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
   }
 }
 
-fn parse_table_carry_analysis(table: ParseTable, entries: std.types.Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
+fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
     provider_id: table.provider_id,
@@ -421,7 +421,7 @@ fn parse_lexeme_digest(lexeme: v2.std.compilers.lexing.Lexeme) -> v2.std.node.Ha
   )
 }
 
-fn parse_token_stream_digest(all_tokens: std.types.List<v2.std.compilers.lexing.Token>) -> v2.std.node.Hash {
+fn parse_token_stream_digest(all_tokens: List<v2.std.compilers.lexing.Token>) -> v2.std.node.Hash {
   v2.std.algebra.fold_list(
     xs: all_tokens,
     empty: v2.std.node.symbol_identity_digest(sym: ^parse_token_stream_digest_nil),
@@ -449,7 +449,7 @@ fn parse_token_stream_digest(all_tokens: std.types.List<v2.std.compilers.lexing.
 fn parse_table_for_production_analyzed(
   validated: v2.std.grammar.ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>
+  all_tokens: List<v2.std.compilers.lexing.Token>
 ) -> ParseTable {
   ParseTableRealization {
     artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
@@ -469,7 +469,7 @@ fn parse_table_for_production_analyzed(
 
 fn parse_table_for_production(
   validated: v2.std.grammar.ValidatedGrammarRoot,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>
+  all_tokens: List<v2.std.compilers.lexing.Token>
 ) -> ParseTable {
   parse_table_for_production_analyzed(
     validated: validated,
@@ -505,14 +505,14 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> v2.std.node.
   )
 }
 
-fn parse_current_position(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> Int {
+fn parse_current_position(tokens: List<v2.std.compilers.lexing.Token>) -> Int {
   match v2.std.algebra.list_head(xs: tokens) {
     HeadFound { value: t } => t.start + 1
     HeadAbsent => 0
   }
 }
 
-fn token_position_indices(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> std.types.List<Int> {
+fn token_position_indices(tokens: List<v2.std.compilers.lexing.Token>) -> List<Int> {
   match v2.std.algebra.is_empty(xs: tokens) {
     true => std.algebra.Cons { head: 0, tail: std.algebra.Empty }
     false =>
@@ -526,7 +526,7 @@ fn token_position_indices(tokens: std.types.List<v2.std.compilers.lexing.Token>)
   }
 }
 
-fn parse_non_empty_diagnostics_to_list(ned: v2.std.diagnostic.NonEmptyDiagnostics) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn parse_non_empty_diagnostics_to_list(ned: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.algebra.list_append(left: [ned.head], right: ned.tail)
 }
 
@@ -571,14 +571,14 @@ fn parse_mint_from_source(
   }
 }
 
-fn parse_minted_id_from_node(n: v2.std.node.Node) -> std.types.List<std.occurrence_identity.OccurrenceId> {
+fn parse_minted_id_from_node(n: v2.std.node.Node) -> List<std.occurrence_identity.OccurrenceId> {
   match n.occurrence_id {
     MintedOccurrence { id: id } => std.algebra.Cons { head: id, tail: std.algebra.Empty }
     SyntheticOccurrence => std.algebra.Empty
   }
 }
 
-fn parse_minted_id_list(nodes: std.types.List<v2.std.node.Node>) -> std.types.List<std.occurrence_identity.OccurrenceId> {
+fn parse_minted_id_list(nodes: List<v2.std.node.Node>) -> List<std.occurrence_identity.OccurrenceId> {
   v2.std.algebra.fold_list(
     xs: nodes,
     empty: std.algebra.Empty,
@@ -614,7 +614,7 @@ fn parse_stamp_terminal(
   }
 }
 
-fn parse_repeat_captured_node(acc_nodes: std.types.List<v2.std.node.Node>, occurrence_id: v2.std.node.NodeOccurrenceId) -> v2.std.node.Node {
+fn parse_repeat_captured_node(acc_nodes: List<v2.std.node.Node>, occurrence_id: v2.std.node.NodeOccurrenceId) -> v2.std.node.Node {
   let spine = v2.std.algebra.fold_list_right(
     xs: acc_nodes,
     empty: v2.std.node.Node {
@@ -663,7 +663,7 @@ fn parse_stamp_derived_conj(
 }
 
 fn parse_stamp_derived_repeat(
-  acc_nodes: std.types.List<v2.std.node.Node>,
+  acc_nodes: List<v2.std.node.Node>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
   let minted = std.occurrence_identity.alloc_occurrence_id(alloc: prov.alloc)
@@ -702,8 +702,8 @@ fn parse_wrap_production_captured(
 }
 
 fn parse_nonterminal_memoized(
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prod_name: v2.std.node.Symbol,
@@ -730,15 +730,15 @@ fn parse_nonterminal_memoized(
 }
 
 type ParseMatchArmStmtAcc {
-  remaining: std.types.List<v2.std.compilers.lexing.Token>
-  acc_nodes: std.types.List<v2.std.node.Node>
-  acc_diags: std.types.List<std.types.List<v2.std.diagnostic.Diagnostic>>
+  remaining: List<v2.std.compilers.lexing.Token>
+  acc_nodes: List<v2.std.node.Node>
+  acc_diags: List<List<v2.std.diagnostic.Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
 }
 
-fn parse_flatten_diag_batches(batches: std.types.List<std.types.List<v2.std.diagnostic.Diagnostic>>) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn parse_flatten_diag_batches(batches: List<List<v2.std.diagnostic.Diagnostic>>) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.algebra.fold_list(
     xs: batches,
     empty: std.algebra.Empty,
@@ -770,7 +770,7 @@ fn parse_next_brace_depth(tok: v2.std.compilers.lexing.Token, depth: Int) -> Int
   }
 }
 
-fn parse_scan_fat_arrow_after_lbrace(tokens: std.types.List<v2.std.compilers.lexing.Token>, depth: Int) -> Bool {
+fn parse_scan_fat_arrow_after_lbrace(tokens: List<v2.std.compilers.lexing.Token>, depth: Int) -> Bool {
   if depth <= 0 {
     match parse_token_first(tokens: tokens) {
       Absent => false
@@ -792,14 +792,14 @@ fn parse_scan_fat_arrow_after_lbrace(tokens: std.types.List<v2.std.compilers.lex
   }
 }
 
-fn parse_tokens_drop_one(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> std.types.List<v2.std.compilers.lexing.Token> {
+fn parse_tokens_drop_one(tokens: List<v2.std.compilers.lexing.Token>) -> List<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_tail(xs: tokens) {
     TailFound { tail: rest } => rest
     TailAbsent => []
   }
 }
 
-fn parse_tokens_drop(tokens: std.types.List<v2.std.compilers.lexing.Token>, count: Int) -> std.types.List<v2.std.compilers.lexing.Token> {
+fn parse_tokens_drop(tokens: List<v2.std.compilers.lexing.Token>, count: Int) -> List<v2.std.compilers.lexing.Token> {
   if count <= 0 {
     tokens
   } else {
@@ -807,7 +807,7 @@ fn parse_tokens_drop(tokens: std.types.List<v2.std.compilers.lexing.Token>, coun
   }
 }
 
-fn parse_looks_like_match_arm_start(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> Bool {
+fn parse_looks_like_match_arm_start(tokens: List<v2.std.compilers.lexing.Token>) -> Bool {
   match parse_token_first(tokens: tokens) {
     Absent => false
     Present { value: tok0 } =>
@@ -837,7 +837,7 @@ fn parse_looks_like_match_arm_start(tokens: std.types.List<v2.std.compilers.lexi
 }
 
 fn parse_stamp_match_arm_stmt_nodes(
-  acc_nodes: std.types.List<v2.std.node.Node>,
+  acc_nodes: List<v2.std.node.Node>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
   if v2.std.algebra.length(xs: acc_nodes) == 1 {
@@ -851,7 +851,7 @@ fn parse_stamp_match_arm_stmt_nodes(
 }
 
 fn parse_match_arm_stmt_step(
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   acc: ParseMatchArmStmtAcc
 ) -> ParseMatchArmStmtAcc {
@@ -913,8 +913,8 @@ fn parse_match_arm_stmt_step(
 }
 
 fn parse_match_arm_stmt_body(
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -948,8 +948,8 @@ fn parse_match_arm_stmt_body(
 }
 
 fn parse_nonterminal_memoized_core(
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prod_name: v2.std.node.Symbol,
@@ -1021,13 +1021,13 @@ fn parse_nonterminal_memoized_core(
   }
 }
 
-fn set_symbol_insert(s: std.types.Set<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> std.types.Set<v2.std.node.Symbol> {
+fn set_symbol_insert(s: Set<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> Set<v2.std.node.Symbol> {
   std.types.Set {
     member: fn(sym) { sym == item || s.member(sym) }
   }
 }
 
-fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> Bool {
+fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: Set<v2.std.node.Symbol>) -> Bool {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
     algebra: v2.std.grammar.GrammarExprFold {
@@ -1041,7 +1041,7 @@ fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: st
   )
 }
 
-fn compute_nullable_step(ns: std.types.Set<v2.std.node.Symbol>, p: v2.std.grammar.GrammarProduction) -> std.types.Set<v2.std.node.Symbol> {
+fn compute_nullable_step(ns: Set<v2.std.node.Symbol>, p: v2.std.grammar.GrammarProduction) -> Set<v2.std.node.Symbol> {
   if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
     set_symbol_insert(s: ns, item: p.name)
   } else {
@@ -1051,7 +1051,7 @@ fn compute_nullable_step(ns: std.types.Set<v2.std.node.Symbol>, p: v2.std.gramma
 
 // ONE ROUND of the nullable fixpoint: every production gets a chance to join the set given what
 // the set already holds.
-fn compute_nullable_round(root: v2.std.grammar.GrammarRoot, ns: std.types.Set<v2.std.node.Symbol>) -> std.types.Set<v2.std.node.Symbol> {
+fn compute_nullable_round(root: v2.std.grammar.GrammarRoot, ns: Set<v2.std.node.Symbol>) -> Set<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: ns,
@@ -1067,7 +1067,7 @@ fn compute_nullable_round(root: v2.std.grammar.GrammarRoot, ns: std.types.Set<v2
 // productions the set admits rises until the round adds nothing, and equal counts across a round
 // mean equal sets. Counting over `root.productions` is exact here because that is the only
 // population `compute_nullable_step` can insert from.
-fn nullable_member_count(root: v2.std.grammar.GrammarRoot, ns: std.types.Set<v2.std.node.Symbol>) -> Int {
+fn nullable_member_count(root: v2.std.grammar.GrammarRoot, ns: Set<v2.std.node.Symbol>) -> Int {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: 0,
@@ -1087,10 +1087,10 @@ fn nullable_member_count(root: v2.std.grammar.GrammarRoot, ns: std.types.Set<v2.
 // a round adds nothing, so the RESULT is identical and only the redundant rounds are gone.
 fn compute_nullable_fixpoint(
   root: v2.std.grammar.GrammarRoot,
-  ns: std.types.Set<v2.std.node.Symbol>,
+  ns: Set<v2.std.node.Symbol>,
   seen_count: Int,
   fuel: Int
-) -> std.types.Set<v2.std.node.Symbol> {
+) -> Set<v2.std.node.Symbol> {
   if fuel == 0 {
     ns
   } else {
@@ -1104,7 +1104,7 @@ fn compute_nullable_fixpoint(
   }
 }
 
-fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> std.types.Set<v2.std.node.Symbol> {
+fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> Set<v2.std.node.Symbol> {
   compute_nullable_fixpoint(
     root: root,
     ns: std.types.Set { member: fn(_) { false } },
@@ -1114,24 +1114,24 @@ fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> std.types.Set<v2.st
 }
 
 type GrammarExprFirstFold {
-  terminals: std.types.List<v2.std.node.Symbol>
+  terminals: List<v2.std.node.Symbol>
   nullable: Bool
 }
 
 type GrammarFirstAnalysis {
-  nullable_set: std.types.Set<v2.std.node.Symbol>
-  first_rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
+  nullable_set: Set<v2.std.node.Symbol>
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
 }
 
-fn grammar_empty_terminal_list() -> std.types.List<v2.std.node.Symbol> {
+fn grammar_empty_terminal_list() -> List<v2.std.node.Symbol> {
   std.algebra.Empty
 }
 
-fn first_list_contains(xs: std.types.List<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> Bool {
+fn first_list_contains(xs: List<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> Bool {
   v2.std.algebra.contains(xs: xs, item: item, eq: fn(a, b) { a == b })
 }
 
-fn first_list_union(left: std.types.List<v2.std.node.Symbol>, right: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
+fn first_list_union(left: List<v2.std.node.Symbol>, right: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(
     xs: right,
     empty: left,
@@ -1145,14 +1145,14 @@ fn first_list_union(left: std.types.List<v2.std.node.Symbol>, right: std.types.L
   )
 }
 
-fn first_list_intersect(left: std.types.List<v2.std.node.Symbol>, right: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
+fn first_list_intersect(left: List<v2.std.node.Symbol>, right: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   v2.std.algebra.filter(
     xs: left,
     predicate: fn(sym) { first_list_contains(xs: right, item: sym) }
   )
 }
 
-fn production_first_row_lookup(rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> std.types.List<v2.std.node.Symbol> {
+fn production_first_row_lookup(rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   match v2.std.collection.map_get(m: rows, key: name) {
     Accepted { value: v2.std.optional.Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => grammar_empty_terminal_list()
@@ -1169,8 +1169,8 @@ fn expr_first_fold_terminal(token_class: v2.std.node.Symbol) -> GrammarExprFirst
 
 fn expr_first_fold_nonterminal(
   name: v2.std.node.Symbol,
-  nullable_set: std.types.Set<v2.std.node.Symbol>,
-  first_rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
+  nullable_set: Set<v2.std.node.Symbol>,
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
 ) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
     terminals: production_first_row_lookup(rows: first_rows, name: name),
@@ -1205,8 +1205,8 @@ fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold
 
 fn expr_first_fold(
   expr: v2.std.grammar.GrammarExpr,
-  nullable_set: std.types.Set<v2.std.node.Symbol>,
-  first_rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
+  nullable_set: Set<v2.std.node.Symbol>,
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
 ) -> GrammarExprFirstFold {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
@@ -1224,10 +1224,10 @@ fn expr_first_fold(
 }
 
 fn compute_production_first_row_terminals(
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>,
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>,
   p: v2.std.grammar.GrammarProduction,
-  nullable_set: std.types.Set<v2.std.node.Symbol>
-) -> std.types.List<v2.std.node.Symbol> {
+  nullable_set: Set<v2.std.node.Symbol>
+) -> List<v2.std.node.Symbol> {
   expr_first_fold(
     expr: p.expression,
     nullable_set: nullable_set,
@@ -1237,9 +1237,9 @@ fn compute_production_first_row_terminals(
 
 fn compute_production_first_rows_round(
   root: v2.std.grammar.GrammarRoot,
-  nullable_set: std.types.Set<v2.std.node.Symbol>,
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
-) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+  nullable_set: Set<v2.std.node.Symbol>,
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
+) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: rows,
@@ -1262,7 +1262,7 @@ fn compute_production_first_rows_round(
 // a round adds nothing. Measured on the live `.dag` grammar this one needs MORE than four rounds —
 // unlike nullable — which is why the stopping rule is a measured convergence rather than a
 // constant anybody picked.
-fn production_first_rows_total(root: v2.std.grammar.GrammarRoot, rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>) -> Int {
+fn production_first_rows_total(root: v2.std.grammar.GrammarRoot, rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>) -> Int {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: 0,
@@ -1274,11 +1274,11 @@ fn production_first_rows_total(root: v2.std.grammar.GrammarRoot, rows: std.types
 
 fn compute_production_first_rows_fixpoint(
   root: v2.std.grammar.GrammarRoot,
-  nullable_set: std.types.Set<v2.std.node.Symbol>,
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>,
+  nullable_set: Set<v2.std.node.Symbol>,
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>,
   seen_total: Int,
   fuel: Int
-) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   if fuel == 0 {
     rows
   } else {
@@ -1300,8 +1300,8 @@ fn compute_production_first_rows_fixpoint(
 
 fn compute_production_first_rows(
   root: v2.std.grammar.GrammarRoot,
-  nullable_set: std.types.Set<v2.std.node.Symbol>
-) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+  nullable_set: Set<v2.std.node.Symbol>
+) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   compute_production_first_rows_fixpoint(
     root: root,
     nullable_set: nullable_set,
@@ -1320,11 +1320,11 @@ fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirst
 }
 
 fn append_choice_ambiguity_row(
-  acc: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>,
+  acc: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>,
   production: v2.std.node.Symbol,
   left: GrammarExprFirstFold,
   right: GrammarExprFirstFold
-) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+) -> List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   if choice_branches_ambiguous(left: left, right: right) {
     v2.std.algebra.list_snoc_item(
       xs: acc,
@@ -1344,10 +1344,10 @@ fn append_choice_ambiguity_row(
 fn collect_choice_ambiguities_in_expr(
   expr: v2.std.grammar.GrammarExpr,
   production: v2.std.node.Symbol,
-  nullable_set: std.types.Set<v2.std.node.Symbol>,
-  first_rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>,
-  acc: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
-) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+  nullable_set: Set<v2.std.node.Symbol>,
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>,
+  acc: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match expr {
     Terminal { token_class: _, stamp: _ } => acc
     Nonterminal { production: _ } => acc
@@ -1409,7 +1409,7 @@ fn collect_choice_ambiguities_in_expr(
 
 fn compute_grammar_first_analysis_given(
   root: v2.std.grammar.GrammarRoot,
-  nullable_set: std.types.Set<v2.std.node.Symbol>
+  nullable_set: Set<v2.std.node.Symbol>
 ) -> GrammarFirstAnalysis {
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
@@ -1424,7 +1424,7 @@ fn compute_grammar_first_analysis(root: v2.std.grammar.GrammarRoot) -> GrammarFi
 fn grammar_choice_ambiguity_roster_from_analysis(
   root: v2.std.grammar.GrammarRoot,
   analysis: GrammarFirstAnalysis
-) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+) -> List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: std.algebra.Empty,
@@ -1440,7 +1440,7 @@ fn grammar_choice_ambiguity_roster_from_analysis(
   )
 }
 
-fn grammar_choice_ambiguity_roster(root: v2.std.grammar.GrammarRoot) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+fn grammar_choice_ambiguity_roster(root: v2.std.grammar.GrammarRoot) -> List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   grammar_choice_ambiguity_roster_from_analysis(
     root: root,
     analysis: compute_grammar_first_analysis(root: root)
@@ -1476,8 +1476,8 @@ fn parse_grammar_choice_ambiguity_row_diagnostic(at: v2.std.diagnostic.Locus, ro
 
 fn grammar_choice_ambiguity_row_diagnostic_list(
   at: v2.std.diagnostic.Locus,
-  roster: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
-) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+  roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.algebra.fold_list(
     xs: roster,
     empty: std.algebra.Empty,
@@ -1492,7 +1492,7 @@ fn grammar_choice_ambiguity_row_diagnostic_list(
 
 fn grammar_choice_ambiguity_rejection_diagnostics(
   at: v2.std.diagnostic.Locus,
-  roster: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+  roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> v2.std.diagnostic.NonEmptyDiagnostics {
   parse_diags_to_non_empty(
     diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
@@ -1503,7 +1503,7 @@ fn grammar_choice_ambiguity_rejection_diagnostics(
   )
 }
 
-fn grammar_empty_corner_list() -> std.types.List<v2.std.node.Symbol> {
+fn grammar_empty_corner_list() -> List<v2.std.node.Symbol> {
   std.algebra.Empty
 }
 
@@ -1511,7 +1511,7 @@ fn expr_corner_fold_terminal(_: v2.std.node.Symbol) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: std.algebra.Empty, nullable: false }
 }
 
-fn expr_corner_fold_nonterminal(name: v2.std.node.Symbol, nullable_set: std.types.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_fold_nonterminal(name: v2.std.node.Symbol, nullable_set: Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
   GrammarExprCornerFold {
     corners: std.algebra.Cons { head: name, tail: std.algebra.Empty },
     nullable: nullable_set.member(name)
@@ -1554,7 +1554,7 @@ fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCo
   GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
 }
 
-fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
     algebra: v2.std.grammar.GrammarExprFold {
@@ -1568,11 +1568,11 @@ fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: std
   )
 }
 
-fn expr_direct_left_corner_list(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
+fn expr_direct_left_corner_list(expr: v2.std.grammar.GrammarExpr, nullable_set: Set<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
-fn left_corner_list_union(left: std.types.List<v2.std.node.Symbol>, right: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
+fn left_corner_list_union(left: List<v2.std.node.Symbol>, right: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(
     xs: right,
     empty: left,
@@ -1599,7 +1599,7 @@ fn left_corner_list_union(left: std.types.List<v2.std.node.Symbol>, right: std.t
 // The rows below are seeded with each production's DIRECT left corners and then expanded to their
 // fixpoint. The result per production is the same set the per-production closure produced — the
 // transitive closure of the same edge relation — so this is the identical question asked once.
-fn left_corner_direct_rows(root: v2.std.grammar.GrammarRoot, nullable_set: std.types.Set<v2.std.node.Symbol>) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+fn left_corner_direct_rows(root: v2.std.grammar.GrammarRoot, nullable_set: Set<v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: v2.std.collection.empty_map(),
@@ -1613,7 +1613,7 @@ fn left_corner_direct_rows(root: v2.std.grammar.GrammarRoot, nullable_set: std.t
   )
 }
 
-fn left_corner_row(rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> std.types.List<v2.std.node.Symbol> {
+fn left_corner_row(rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   match v2.std.collection.map_get(m: rows, key: name) {
     Accepted { value: v2.std.optional.Present { value: reached }, diagnostics: _ } => reached
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => std.algebra.Empty
@@ -1622,9 +1622,9 @@ fn left_corner_row(rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std
 }
 
 fn left_corner_expand_row(
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>,
-  reached: std.types.List<v2.std.node.Symbol>
-) -> std.types.List<v2.std.node.Symbol> {
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>,
+  reached: List<v2.std.node.Symbol>
+) -> List<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(
     xs: reached,
     empty: reached,
@@ -1636,8 +1636,8 @@ fn left_corner_expand_row(
 
 fn left_corner_round(
   root: v2.std.grammar.GrammarRoot,
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>
-) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
+) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: rows,
@@ -1651,7 +1651,7 @@ fn left_corner_round(
   )
 }
 
-fn left_corner_total(root: v2.std.grammar.GrammarRoot, rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>) -> Int {
+fn left_corner_total(root: v2.std.grammar.GrammarRoot, rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>) -> Int {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: 0,
@@ -1663,10 +1663,10 @@ fn left_corner_total(root: v2.std.grammar.GrammarRoot, rows: std.types.Map<v2.st
 
 fn left_corner_fixpoint(
   root: v2.std.grammar.GrammarRoot,
-  rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>>,
+  rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>,
   seen_total: Int,
   fuel: Int
-) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   if fuel == 0 {
     rows
   } else {
@@ -1680,7 +1680,7 @@ fn left_corner_fixpoint(
   }
 }
 
-fn left_corner_rows(root: v2.std.grammar.GrammarRoot, nullable_set: std.types.Set<v2.std.node.Symbol>) -> std.types.Map<v2.std.node.Symbol, std.types.List<v2.std.node.Symbol>> {
+fn left_corner_rows(root: v2.std.grammar.GrammarRoot, nullable_set: Set<v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, List<v2.std.node.Symbol>> {
   let seeded = left_corner_direct_rows(root: root, nullable_set: nullable_set)
   left_corner_fixpoint(
     root: root,
@@ -1693,7 +1693,7 @@ fn left_corner_rows(root: v2.std.grammar.GrammarRoot, nullable_set: std.types.Se
 // The nullable set is a parameter here because `grammar_validate_and_analyze` already computes it
 // for the FIRST analysis: the previous shape recomputed it inside this check, so one preparation
 // paid for the same fixpoint three times over.
-fn grammar_has_left_recursion_given(root: v2.std.grammar.GrammarRoot, nullable_set: std.types.Set<v2.std.node.Symbol>) -> Bool {
+fn grammar_has_left_recursion_given(root: v2.std.grammar.GrammarRoot, nullable_set: Set<v2.std.node.Symbol>) -> Bool {
   let rows = left_corner_rows(root: root, nullable_set: nullable_set)
   v2.std.algebra.any(
     xs: root.productions,
@@ -1761,18 +1761,18 @@ fn parse_diag_cons(d: v2.std.diagnostic.Diagnostic, acc: v2.std.diagnostic.Diagn
   }
 }
 
-fn parse_diags_to_diagnostics(diags: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
+fn parse_diags_to_diagnostics(diags: List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
   v2.std.algebra.fold_list_right(xs: diags, empty: v2.std.diagnostic.None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
 }
 
-fn parse_diags_to_non_empty(diags: std.types.List<v2.std.diagnostic.Diagnostic>, default: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
+fn parse_diags_to_non_empty(diags: List<v2.std.diagnostic.Diagnostic>, default: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
   match parse_diags_to_diagnostics(diags: diags) {
     None => v2.std.diagnostic.NonEmptyDiagnostics { head: default, tail: [] }
     Some { diagnostics: ned } => ned
   }
 }
 
-fn grammar_nullable_ambiguity_rows(roster: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+fn grammar_nullable_ambiguity_rows(roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   v2.std.algebra.filter(xs: roster, predicate: fn(row) { row.both_nullable })
 }
 
@@ -1782,7 +1782,7 @@ fn parse_grammar_choice_overlap_residue_diagnostic(at: v2.std.diagnostic.Locus, 
   )
 }
 
-fn diagnostics_from_diagnostic_list(items: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
+fn diagnostics_from_diagnostic_list(items: List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
   match v2.std.collection.list_at_optional(xs: items, index: 0) {
     Absent => v2.std.diagnostic.None
     Present { value: first } =>
@@ -1794,7 +1794,7 @@ fn diagnostics_from_diagnostic_list(items: std.types.List<v2.std.diagnostic.Diag
   }
 }
 
-fn grammar_overlap_residue_diagnostics(at: v2.std.diagnostic.Locus, roster: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> v2.std.diagnostic.Diagnostics {
+fn grammar_overlap_residue_diagnostics(at: v2.std.diagnostic.Locus, roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> v2.std.diagnostic.Diagnostics {
   diagnostics_from_diagnostic_list(
     items: v2.std.algebra.fold_list(
       xs: roster,
@@ -1853,7 +1853,7 @@ fn grammar_validate_for_parse(root: v2.std.grammar.GrammarRoot, at: v2.std.diagn
   }
 }
 
-fn parse_sync_step(acc: ParseSyncState, tok: v2.std.compilers.lexing.Token, sync_tokens: std.types.List<v2.std.node.Symbol>) -> ParseSyncState {
+fn parse_sync_step(acc: ParseSyncState, tok: v2.std.compilers.lexing.Token, sync_tokens: List<v2.std.node.Symbol>) -> ParseSyncState {
   match acc.found_sync {
     true => ParseSyncState { found_sync: true, result: v2.std.algebra.list_snoc_item(xs: acc.result, item: tok) }
     false =>
@@ -1864,7 +1864,7 @@ fn parse_sync_step(acc: ParseSyncState, tok: v2.std.compilers.lexing.Token, sync
   }
 }
 
-fn parse_skip_to_sync(tokens: std.types.List<v2.std.compilers.lexing.Token>, sync_tokens: std.types.List<v2.std.node.Symbol>) -> ParseSyncState {
+fn parse_skip_to_sync(tokens: List<v2.std.compilers.lexing.Token>, sync_tokens: List<v2.std.node.Symbol>) -> ParseSyncState {
   v2.std.algebra.fold_list(
     xs: tokens,
     empty: ParseSyncState { found_sync: false, result: std.algebra.Empty },
@@ -1872,21 +1872,21 @@ fn parse_skip_to_sync(tokens: std.types.List<v2.std.compilers.lexing.Token>, syn
   )
 }
 
-fn parse_token_first(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
+fn parse_token_first(tokens: List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_head(xs: tokens) {
     HeadFound { value: v } => v2.std.optional.Present { value: v }
     HeadAbsent => v2.std.optional.Absent
   }
 }
 
-fn parse_token_second(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
+fn parse_token_second(tokens: List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_tail(xs: tokens) {
     TailFound { tail: rest } => parse_token_first(tokens: rest)
     TailAbsent => v2.std.optional.Absent
   }
 }
 
-fn parse_token_at_optional(tokens: std.types.List<v2.std.compilers.lexing.Token>, index: Int) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
+fn parse_token_at_optional(tokens: List<v2.std.compilers.lexing.Token>, index: Int) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
@@ -1960,8 +1960,8 @@ fn parse_expr_terminal(
 fn parse_expr_sequence(
   left: v2.std.grammar.GrammarExpr,
   right: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2003,8 +2003,8 @@ fn parse_expr_sequence(
 fn parse_choice_residue_backtrack(
   left: v2.std.grammar.GrammarExpr,
   right: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2035,8 +2035,8 @@ fn parse_choice_on_present_token(
   left: v2.std.grammar.GrammarExpr,
   right: v2.std.grammar.GrammarExpr,
   tok: v2.std.compilers.lexing.Token,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState,
@@ -2069,8 +2069,8 @@ fn parse_choice_on_present_token(
 fn parse_choice_first_dispatch(
   left: v2.std.grammar.GrammarExpr,
   right: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2116,8 +2116,8 @@ fn parse_choice_first_dispatch(
 
 fn parse_expr_optional(
   element: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2145,7 +2145,7 @@ fn parse_expr_optional(
 
 fn parse_expr_repeat_step(
   element: v2.std.grammar.GrammarExpr,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   acc: ParseRepeatAcc
 ) -> ParseRepeatAcc {
@@ -2201,8 +2201,8 @@ fn parse_expr_repeat_step(
 
 fn parse_expr_repeat(
   element: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2228,8 +2228,8 @@ fn parse_expr_repeat(
 
 fn parse_expr_with_first(
   expr: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2295,8 +2295,8 @@ fn parse_expr_with_first(
 
 fn parse_expr(
   expr: v2.std.grammar.GrammarExpr,
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
-  all_tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
+  all_tokens: List<v2.std.compilers.lexing.Token>,
   root: v2.std.grammar.GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
@@ -2312,7 +2312,7 @@ fn parse_expr(
 }
 
 fn parse_production_memo_stats(
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   validated: v2.std.grammar.ValidatedGrammarRoot,
   production_name: v2.std.node.Symbol
 ) -> ParseMemoStats {
@@ -2340,7 +2340,7 @@ fn parse_production_memo_stats(
 }
 
 fn parse_production_prepared(
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   validated: v2.std.grammar.ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   production_name: v2.std.node.Symbol
@@ -2387,7 +2387,7 @@ fn parse_production_prepared(
 }
 
 fn parse_production(
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   validated: v2.std.grammar.ValidatedGrammarRoot,
   production_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<ParseArtifact> {
@@ -2400,7 +2400,7 @@ fn parse_production(
 }
 
 fn parse_production_tree(
-  tokens: std.types.List<v2.std.compilers.lexing.Token>,
+  tokens: List<v2.std.compilers.lexing.Token>,
   validated: v2.std.grammar.ValidatedGrammarRoot,
   production_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {

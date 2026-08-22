@@ -23,7 +23,7 @@ fn branch_i64_node() -> v2.std.node.Node {
   branch_atom(s: ^branch_i64)
 }
 
-fn branch_int_value(bytes: std.types.List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn branch_int_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: branch_i64_node(),
@@ -130,7 +130,7 @@ fn branch_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluati
 
 fn branch_call_primitive(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: _node))

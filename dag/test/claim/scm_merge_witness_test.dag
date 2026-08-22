@@ -9,7 +9,7 @@ fn merge_witness_leaf(name: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [])
 }
 
-fn scope_of(edges: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn scope_of(edges: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: edges)
 }
 
@@ -40,7 +40,7 @@ fn identity_or(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm
 // the target and the authored operations FIXED across the pair is what makes the pair a
 // discriminator: if the arms differed in more than the dependency edge, an implementation could
 // answer them differently for a reason that has nothing to do with dependency.
-fn fixture_with(edges: std.types.List<v2.std.node.Edge>) -> Fixture {
+fn fixture_with(edges: List<v2.std.node.Edge>) -> Fixture {
   let outcome = gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: scope_of(edges: edges))
   Fixture {
     store: store_or_empty(outcome: outcome),
@@ -55,7 +55,7 @@ fn fallback_id() -> gunbc.scm.object_store.ObjectId {
   }
 }
 
-fn add_k_proposal(deps: std.types.List<gunbc.scm.merge.MergeDependency>) -> gunbc.scm.merge.Proposal {
+fn add_k_proposal(deps: List<gunbc.scm.merge.MergeDependency>) -> gunbc.scm.merge.Proposal {
   gunbc.scm.merge.Proposal {
     requirements: [gunbc.scm.merge.RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K) }],
     dependencies: deps,
@@ -77,7 +77,7 @@ fn outcome_is_merged(o: gunbc.scm.merge.MergeOutcome) -> Bool {
   }
 }
 
-fn merged_roles(o: gunbc.scm.merge.MergeOutcome) -> std.types.List<gunbc.scm.merge.ResolvedRole> {
+fn merged_roles(o: gunbc.scm.merge.MergeOutcome) -> List<gunbc.scm.merge.ResolvedRole> {
   match o {
     Merged { store: _, commit: _, roles: roles } => roles
     MergeRolesContested { role: _, alternatives: _ } => []
@@ -113,7 +113,7 @@ fn refusal_locates(
   }
 }
 
-fn role_holds_target_object(roles: std.types.List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol, expected: gunbc.scm.object_store.ObjectId) -> Bool {
+fn role_holds_target_object(roles: List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol, expected: gunbc.scm.object_store.ObjectId) -> Bool {
   fold(roles, init: false, f: fn(found, r) {
     if found {
       true
@@ -132,7 +132,7 @@ fn role_holds_target_object(roles: std.types.List<gunbc.scm.merge.ResolvedRole>,
   })
 }
 
-fn role_absent_from_result(roles: std.types.List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol) -> Bool {
+fn role_absent_from_result(roles: List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol) -> Bool {
   fold(roles, init: true, f: fn(ok, r) {
     if (r.role as String) == (role as String) {
       match r.value {
@@ -156,7 +156,7 @@ fn paired_fixture() -> Fixture {
   ])
 }
 
-fn paired_proposals(required: v2.std.node.Symbol) -> std.types.List<gunbc.scm.merge.Proposal> {
+fn paired_proposals(required: v2.std.node.Symbol) -> List<gunbc.scm.merge.Proposal> {
   [
     add_k_proposal(deps: [gunbc.scm.merge.MergeDependency {
       dependent: ^k,

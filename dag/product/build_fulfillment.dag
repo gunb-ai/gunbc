@@ -97,10 +97,10 @@ type NodeRecipe {
   baseboard_label: std.types.NonEmptyStr
   memory_module: std.decl_ref.DeclarationRef
   population: gunbc.memory_provisioning.PopulationOption
-  inclusions: std.types.List<SystemInclusion>
+  inclusions: List<SystemInclusion>
 }
 
-fn derive_bom(recipe: NodeRecipe) -> std.types.List<BomLine> {
+fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
   [
     BomLine {
       role: Processor,
@@ -185,7 +185,7 @@ fn compatibility_of(implication: gunbc.host_memory_qualification.PartImplication
 
 type LotOffering {
   lot: product.inventory.ProcurementLot
-  events: std.types.List<product.inventory.InventoryEvent>
+  events: List<product.inventory.InventoryEvent>
 }
 
 // A COMPONENT MAY BE OFFERED BY SEVERAL LOTS, and this module REFUSES that case
@@ -201,7 +201,7 @@ type LotOffering {
 // DECLARED policy parameter, at which point this refusal becomes the arm taken
 // when no policy was declared. It does not dissolve into a default.
 type OwnedSupply
-  = OwnedLots { offerings: std.types.List<LotOffering> }
+  = OwnedLots { offerings: List<LotOffering> }
   | NoOwnedLot
 
 // ONE PART'S SUPPLY. Keyed by the part's DeclarationRef and looked up by
@@ -221,13 +221,13 @@ type SupplyLookup
   | SupplyAbsent
   | SupplyDuplicated
 
-fn supply_row_matches(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> Int {
+fn supply_row_matches(rows: List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> Int {
   fold(rows, init: 0, f: fn(acc, r) {
     if std.decl_ref.declaration_ref_eq(a: r.part, b: part) { acc + 1 } else { acc }
   })
 }
 
-fn supply_for(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> SupplyLookup {
+fn supply_for(rows: List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> SupplyLookup {
   let matches = supply_row_matches(rows: rows, part: part)
   if matches > 1 {
     SupplyDuplicated
@@ -243,7 +243,7 @@ fn supply_for(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef
   }
 }
 
-fn included_units(inclusions: std.types.List<SystemInclusion>, line: BomLine) -> std.nat.Nat {
+fn included_units(inclusions: List<SystemInclusion>, line: BomLine) -> std.nat.Nat {
   fold(inclusions, init: 0, f: fn(acc, inc) {
     if build_role_eq(left: inc.role, right: line.role) && std.decl_ref.declaration_ref_eq(a: inc.part, b: line.part) {
       acc + inc.quantity_included
@@ -429,7 +429,7 @@ fn resolve_from_offering(
 
 fn resolve_from_owned(
   line: BomLine,
-  offerings: std.types.List<LotOffering>,
+  offerings: List<LotOffering>,
   market: MarketDepth,
   holder: std.types.NonEmptyStr,
 ) -> LineResolution {
@@ -475,8 +475,8 @@ fn resolve_supplied_line(
 // recipe than a real half-populated system.
 fn resolve_line(
   line: BomLine,
-  inclusions: std.types.List<SystemInclusion>,
-  rows: std.types.List<SupplyRow>,
+  inclusions: List<SystemInclusion>,
+  rows: List<SupplyRow>,
   holder: std.types.NonEmptyStr,
 ) -> LineResolution {
   if line.quantity_per_build == 0 {
@@ -509,8 +509,8 @@ fn resolve_line(
 
 fn resolve_build(
   recipe: NodeRecipe,
-  rows: std.types.List<SupplyRow>,
-) -> std.types.List<LineResolution> {
+  rows: List<SupplyRow>,
+) -> List<LineResolution> {
   map(
     derive_bom(recipe: recipe),
     line => resolve_line(line: line, inclusions: recipe.inclusions, rows: rows, holder: recipe.label),
@@ -585,7 +585,7 @@ fn cash_step(acc: CashProjection, declared: std.currency.CurrencyCode, r: LineRe
 }
 
 fn incremental_cash_now(
-  resolutions: std.types.List<LineResolution>,
+  resolutions: List<LineResolution>,
   declared_currency: std.currency.CurrencyCode,
 ) -> CashProjection {
   fold(resolutions, init: CashNoPurchaseLines, f: fn(acc, r) {
@@ -600,7 +600,7 @@ type LotDraw {
   quantity: std.nat.Nat
 }
 
-fn draw_step(acc: std.types.List<LotDraw>, lot: product.inventory.InventoryLotIdentity, quantity: std.nat.Nat) -> std.types.List<LotDraw> {
+fn draw_step(acc: List<LotDraw>, lot: product.inventory.InventoryLotIdentity, quantity: std.nat.Nat) -> List<LotDraw> {
   let merged = map(
     acc,
     d => if product.inventory.inventory_lot_identity_eq(left: d.lot, right: lot) {
@@ -619,7 +619,7 @@ fn draw_step(acc: std.types.List<LotDraw>, lot: product.inventory.InventoryLotId
 // report one row of the summed quantity rather than two rows a consumer would
 // have to add up — and adding them up is precisely where a second draw against
 // an exhausted lot would hide.
-fn owned_stock_consumed(resolutions: std.types.List<LineResolution>) -> std.types.List<LotDraw> {
+fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
   fold(resolutions, init: [], f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: _ } => acc
@@ -693,7 +693,7 @@ type LotLookup
   | LotAbsent
   | LotDuplicated
 
-fn lot_for(lots: std.types.List<product.inventory.ProcurementLot>, identity: product.inventory.InventoryLotIdentity) -> LotLookup {
+fn lot_for(lots: List<product.inventory.ProcurementLot>, identity: product.inventory.InventoryLotIdentity) -> LotLookup {
   let matches = fold(lots, init: 0, f: fn(acc, l) {
     if product.inventory.inventory_lot_identity_eq(left: l.identity, right: identity) { acc + 1 } else { acc }
   })
@@ -730,7 +730,7 @@ fn basis_for_draw(lot: product.inventory.ProcurementLot, draw: LotDraw) -> Basis
   }
 }
 
-fn basis_step(acc: BasisProjection, lots: std.types.List<product.inventory.ProcurementLot>, draw: LotDraw) -> BasisProjection {
+fn basis_step(acc: BasisProjection, lots: List<product.inventory.ProcurementLot>, draw: LotDraw) -> BasisProjection {
   match acc {
     BasisRefused { cause: c } => BasisRefused { cause: c }
     _ =>
@@ -768,8 +768,8 @@ fn basis_step(acc: BasisProjection, lots: std.types.List<product.inventory.Procu
 }
 
 fn historical_basis_consumed(
-  draws: std.types.List<LotDraw>,
-  lots: std.types.List<product.inventory.ProcurementLot>,
+  draws: List<LotDraw>,
+  lots: List<product.inventory.ProcurementLot>,
   policy: BasisAllocationPolicy,
 ) -> BasisProjection {
   match policy {
@@ -837,8 +837,8 @@ fn add_depth(owned: LineDepth, market: LineDepth) -> LineDepth {
 
 fn line_depth(
   line: BomLine,
-  inclusions: std.types.List<SystemInclusion>,
-  rows: std.types.List<SupplyRow>,
+  inclusions: List<SystemInclusion>,
+  rows: List<SupplyRow>,
 ) -> LineDepth {
   if line.quantity_per_build == 0 {
     DepthRefused { cause: ZeroQuantityLine { part: line.part } }
@@ -873,7 +873,7 @@ type CeilingRefusalCause
 // that both support exactly thirty builds are two things to fix, and picking
 // one of them would depend on BOM order.
 type ConstructibleCeiling
-  = CeilingDerived { builds: std.nat.Nat, bottlenecks: std.types.List<BomLine>, bottleneck_units: std.nat.Nat }
+  = CeilingDerived { builds: std.nat.Nat, bottlenecks: List<BomLine>, bottleneck_units: std.nat.Nat }
   | CeilingUnconstrainedByAnyLine
   | CeilingRefused { cause: CeilingRefusalCause }
 
@@ -907,7 +907,7 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
 
 fn max_constructible(
   recipe: NodeRecipe,
-  rows: std.types.List<SupplyRow>,
+  rows: List<SupplyRow>,
 ) -> ConstructibleCeiling {
   fold(derive_bom(recipe: recipe), init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
     ceiling_step(

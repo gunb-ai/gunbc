@@ -34,13 +34,13 @@ data rust_source_manifest_state_verdict_query_scaffold: std.disposition.Disposit
 
 data rust_source_manifest_state_verdict_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
 
-fn path_in_list(path: String, paths: std.types.List<String>) -> Bool {
+fn path_in_list(path: String, paths: List<String>) -> Bool {
   v2.std.algebra.any(xs: paths, predicate: fn(p) { p == path })
 }
 
 fn observed_cargo_paths_subset_of_tracked(
-  cargo_bin_repo_paths: std.types.List<String>,
-  tracked_paths: std.types.List<String>
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
 ) -> Bool {
   v2.std.algebra.fold_list(
     xs: cargo_bin_repo_paths,
@@ -50,8 +50,8 @@ fn observed_cargo_paths_subset_of_tracked(
 }
 
 fn first_untracked_cargo_path(
-  cargo_bin_repo_paths: std.types.List<String>,
-  tracked_paths: std.types.List<String>
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
 ) -> String {
   v2.std.algebra.fold_list(
     xs: cargo_bin_repo_paths,
@@ -68,7 +68,7 @@ fn first_untracked_cargo_path(
   )
 }
 
-fn count_tracked_unclassified(tracked_paths: std.types.List<String>, classified_paths: std.types.List<String>) -> Int {
+fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
   v2.std.algebra.fold_list(
     xs: tracked_paths,
     empty: 0,
@@ -83,9 +83,9 @@ fn count_tracked_unclassified(tracked_paths: std.types.List<String>, classified_
 }
 
 fn count_newly_unclassified_tracked(
-  tracked_paths: std.types.List<String>,
-  prior_tracked_paths: std.types.List<String>,
-  classified_paths: std.types.List<String>
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  classified_paths: List<String>
 ) -> Int {
   v2.std.algebra.fold_list(
     xs: tracked_paths,
@@ -102,7 +102,7 @@ fn count_newly_unclassified_tracked(
   )
 }
 
-fn count_stale_lifecycle_rows(tracked_paths: std.types.List<String>, lifecycle_paths: std.types.List<String>) -> Int {
+fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List<String>) -> Int {
   v2.std.algebra.fold_list(
     xs: lifecycle_paths,
     empty: 0,
@@ -116,7 +116,7 @@ fn count_stale_lifecycle_rows(tracked_paths: std.types.List<String>, lifecycle_p
   )
 }
 
-fn count_hand_maintained_in_tracked(tracked_paths: std.types.List<String>) -> Int {
+fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
   v2.std.algebra.fold_list(
     xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
@@ -130,7 +130,7 @@ fn count_hand_maintained_in_tracked(tracked_paths: std.types.List<String>) -> In
   )
 }
 
-fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: std.types.List<String>) -> Int {
+fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
   v2.std.algebra.fold_list(
     xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
@@ -144,7 +144,7 @@ fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: std.types.List<St
   )
 }
 
-fn count_duplicate_path_excess(paths: std.types.List<String>) -> Int {
+fn count_duplicate_path_excess(paths: List<String>) -> Int {
   v2.std.algebra.fold_list(
     xs: paths,
     empty: 0,
@@ -160,9 +160,9 @@ fn count_duplicate_path_excess(paths: std.types.List<String>) -> Int {
 }
 
 fn count_observed_manifest_duplicate_excess(
-  tracked_paths: std.types.List<String>,
-  prior_tracked_paths: std.types.List<String>,
-  cargo_bin_repo_paths: std.types.List<String>
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
 ) -> Int {
   v2.std.algebra.fold_list(
     xs: [tracked_paths, prior_tracked_paths, cargo_bin_repo_paths],
@@ -272,7 +272,7 @@ data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
 
 data rust_source_prefix_tooling: String = "dag/tools/"
 
-data rust_source_discovery_prefix_hints: std.types.List<String> = [
+data rust_source_discovery_prefix_hints: List<String> = [
   rust_source_prefix_test_harness,
   rust_source_prefix_tooling,
   rust_source_prefix_stage0_test,
@@ -317,8 +317,8 @@ type RustMaintenanceDisposition
 
 type RustSourceLifecycleRow {
   path: String
-  roles: std.types.List<RustSourceRole>
-  maintenance_dispositions: std.types.List<RustMaintenanceDisposition>
+  roles: List<RustSourceRole>
+  maintenance_dispositions: List<RustMaintenanceDisposition>
 }
 
 fn stage0_src_repo_path(filename: String) -> String {
@@ -362,7 +362,7 @@ fn derived_generated_stage0_repo_paths(
   )
 }
 
-fn derived_hand_maintained_stage0_repo_paths() -> std.types.List<String> {
+fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
   v2.std.algebra.list_map(
     xs: v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames(),
     f: fn(filename) { stage0_src_repo_path(filename: filename) }
@@ -389,18 +389,18 @@ data generated_artifact_emit_authority_ref: std.decl_ref.DeclarationRef = std.de
   field: std.decl_ref.WholeDeclaration
 }
 
-fn generated_artifact_repo_paths() -> std.types.List<String> {
+fn generated_artifact_repo_paths() -> List<String> {
   v2.std.algebra.list_map(xs: gunbc.generated_artifact.generated_artifact_registry, f: fn(a) { gunbc.generated_artifact.artifact_path(a: a) })
 }
 
-fn generated_artifact_stage0_src_repo_paths() -> std.types.List<String> {
+fn generated_artifact_stage0_src_repo_paths() -> List<String> {
   v2.std.algebra.filter(
     xs: generated_artifact_repo_paths(),
     predicate: fn(path) { rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
   )
 }
 
-fn generated_artifact_stage0_src_disposition_rows() -> std.types.List<RustSourceLifecycleRow> {
+fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleRow> {
   v2.std.algebra.list_map(
     xs: generated_artifact_stage0_src_repo_paths(),
     f: fn(path) {
@@ -415,7 +415,7 @@ fn generated_artifact_stage0_src_disposition_rows() -> std.types.List<RustSource
   )
 }
 
-fn disposition_authority_rows() -> std.types.List<RustSourceLifecycleRow> {
+fn disposition_authority_rows() -> List<RustSourceLifecycleRow> {
   v2.std.algebra.fold_list(
     xs: generated_artifact_stage0_src_disposition_rows(),
     empty: rust_source_lifecycle_residue_rows,
@@ -423,7 +423,7 @@ fn disposition_authority_rows() -> std.types.List<RustSourceLifecycleRow> {
   )
 }
 
-fn derived_hand_maintained_disposition_repo_paths() -> std.types.List<String> {
+fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
   v2.std.algebra.filter(
     xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) {
@@ -432,7 +432,7 @@ fn derived_hand_maintained_disposition_repo_paths() -> std.types.List<String> {
   )
 }
 
-fn generated_artifact_layout_overlap_repo_paths() -> std.types.List<String> {
+fn generated_artifact_layout_overlap_repo_paths() -> List<String> {
   v2.std.algebra.filter(
     xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) { path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths()) }
@@ -468,14 +468,14 @@ fn partition_crate_lib_repo_path(crate_dir: String) -> String {
   concat(crate_dir, "/src/lib.rs")
 }
 
-fn derived_partition_crate_lib_repo_paths() -> std.types.List<String> {
+fn derived_partition_crate_lib_repo_paths() -> List<String> {
   v2.std.algebra.list_map(
     xs: v2.workflow.rust_crate_partition.stage0_partition_crate_rows(),
     f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
   )
 }
 
-fn list_concat_unique(acc: std.types.List<String>, items: std.types.List<String>) -> std.types.List<String> {
+fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: items,
     empty: acc,
@@ -522,7 +522,7 @@ fn residue_row(path: String, reason: String, dissolution: std.dissolution.Dissol
   }
 }
 
-data rust_source_lifecycle_residue_rows: std.types.List<RustSourceLifecycleRow> = [
+data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
   residue_row(
     path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
     reason: residue_cssl_assembly_reason,
@@ -550,7 +550,7 @@ data rust_source_lifecycle_residue_rows: std.types.List<RustSourceLifecycleRow> 
   )
 ]
 
-fn residue_lifecycle_repo_paths() -> std.types.List<String> {
+fn residue_lifecycle_repo_paths() -> List<String> {
   v2.std.algebra.list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
 }
 
@@ -560,7 +560,7 @@ fn residue_lifecycle_repo_paths() -> std.types.List<String> {
 // which is why `derived_generated_hand_disjoint_holds`, the check that used to assert exactly
 // that over two hand rosters, is deleted rather than kept green (DESIGN 4b: a climb dissolves
 // the production machinery it obsoletes).
-fn non_generated_classified_repo_paths() -> std.types.List<String> {
+fn non_generated_classified_repo_paths() -> List<String> {
   let with_residue = list_concat_unique(
     acc: derived_hand_maintained_stage0_repo_paths(),
     items: residue_lifecycle_repo_paths()
@@ -587,12 +587,12 @@ fn file_grain_lifecycle_repo_paths(
 // could never exercise the filter. These two names are not real files; they exercise the
 // derivation (direct-child .rs under the stage0 root, claimed by no authority) without
 // coupling the witnesses to whichever real modules happen to be emitted today.
-data witness_generated_stage0_fixture_paths: std.types.List<String> = [
+data witness_generated_stage0_fixture_paths: List<String> = [
   stage0_src_repo_path(filename: "witness_generated_fixture_a.rs"),
   stage0_src_repo_path(filename: "witness_generated_fixture_b.rs")
 ]
 
-fn witness_fixture_tracked_paths() -> std.types.List<String> {
+fn witness_fixture_tracked_paths() -> List<String> {
   list_concat_unique(
     acc: non_generated_classified_repo_paths(),
     items: witness_generated_stage0_fixture_paths
@@ -677,7 +677,7 @@ fn witness_standing_unclassified_observation(planted_path: String) -> gunbc.stag
   }
 }
 
-fn first_classified_repo_path(classified: std.types.List<String>) -> String {
+fn first_classified_repo_path(classified: List<String>) -> String {
   v2.std.algebra.fold_list(
     xs: classified,
     empty: "",
@@ -753,7 +753,7 @@ fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
   )
 }
 
-fn list_paths_all_unique(paths: std.types.List<String>) -> Bool {
+fn list_paths_all_unique(paths: List<String>) -> Bool {
   v2.std.algebra.fold_list(
     xs: paths,
     empty: true,
@@ -783,7 +783,7 @@ data cssl_seed_linked_closure_assembly_repo_path: String = stage0_src_repo_path(
   filename: "cssl_seed_linked_closure_assembly.rs"
 )
 
-fn residue_hand_maintained_overlap_repo_paths() -> std.types.List<String> {
+fn residue_hand_maintained_overlap_repo_paths() -> List<String> {
   v2.std.algebra.filter(
     xs: residue_lifecycle_repo_paths(),
     predicate: fn(residue_path) {

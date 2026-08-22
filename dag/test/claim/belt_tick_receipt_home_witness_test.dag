@@ -76,18 +76,18 @@ test fn the_receipts_directory_derives_from_its_instance_root() -> Bool {
 // the pair — where the receipt goes, and who owns the directory it goes in — and either alone
 // leaves the defect intact.
 
-fn step_commands(steps: std.types.List<v2.std.orchestration.PipelineStep>) -> std.types.List<String> {
+fn step_commands(steps: List<v2.std.orchestration.PipelineStep>) -> List<String> {
   fold(steps, init: [], f: (acc, s) => match s {
     Do { run: r } => concat(acc, [r.command])
     _ => acc
   })
 }
 
-fn has_command(cmds: std.types.List<String>, want: String) -> Bool {
+fn has_command(cmds: List<String>, want: String) -> Bool {
   fold(cmds, init: false, f: (acc, c) => acc || c == want)
 }
 
-fn belt_upsert_commands() -> std.types.List<String> {
+fn belt_upsert_commands() -> List<String> {
   let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
   let art = gunbc.live_deploy.spec.DeploymentArtifactStep {
     kind: gunbc.live_deploy.spec.BeltTimerUnit,

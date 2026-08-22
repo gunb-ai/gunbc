@@ -18,11 +18,11 @@ fn unobserved(reason: String) -> gunbc.host_effect_realize.Srv3HostPredicate {
   gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: reason }
 }
 
-fn labels_equal(actual: std.types.List<String>, expected: std.types.List<String>) -> Bool {
+fn labels_equal(actual: List<String>, expected: List<String>) -> Bool {
   join(actual, ",") == join(expected, ",")
 }
 
-fn trace_of(outcomes: std.types.List<gunbc.host_effect_realize.Srv3HostPredicate>) -> std.types.List<String> {
+fn trace_of(outcomes: List<gunbc.host_effect_realize.Srv3HostPredicate>) -> List<String> {
   gunbc.host_effect_realize.websocat_trace_labels(walk: gunbc.host_effect_realize.websocat_trace_from_outcomes(outcomes: outcomes))
 }
 

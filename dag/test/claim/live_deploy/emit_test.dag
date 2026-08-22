@@ -413,7 +413,7 @@ fn srv1_twin_spec() -> gunbc.live_deploy.spec.DeploymentSpec {
   )
 }
 
-fn spec_owned_paths(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.types.List<String> {
+fn spec_owned_paths(spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<String> {
   gunbc.live_deploy.spec.deployment_owned_steps_retract_order(spec: spec) |> map(s => s.path as String)
 }
 

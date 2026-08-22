@@ -39,7 +39,7 @@ fn unit_is_active_capture_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvE
   }
 }
 
-fn systemctl_is_active_read_ssh_argv(host: std.types.NonEmptyStr, argv: std.types.List<String>) -> UnitIsActiveCapture {
+fn systemctl_is_active_read_ssh_argv(host: std.types.NonEmptyStr, argv: List<String>) -> UnitIsActiveCapture {
   match gunbc.typed_argv_exec.typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => UnitIsActiveCaptureRefused { reason: why }
     Absent => unit_is_active_capture_from_outcome(outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: host, argv: argv))

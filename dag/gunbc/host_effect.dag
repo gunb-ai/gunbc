@@ -25,7 +25,7 @@ type HostEffect =
       lease_key: std.types.NonEmptyStr,
     }
   | Srv3BootOnceReadBackSleep
-  | Srv3ReceiptEmit { lines: std.types.List<String> }
+  | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
   | LiveDeployApply { spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
   | LiveDeployRetract { spec: gunbc.live_deploy.spec.DeploymentSpec }
@@ -53,7 +53,7 @@ type BootstrapFragment {
 }
 
 type ThinInvocation {
-  argv: std.types.List<String>
+  argv: List<String>
 }
 
 // FleetSsh CARRIES THE SEALED EXECUTION CONTEXT, and lands beside SshShell rather than replacing it

@@ -219,7 +219,7 @@ data rdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types
   rank_count: 2,
 }
 
-data observed_failures: std.types.List<gunbc.host_memory_qualification.PlatformTrainingFailure> = [gunbc.host_memory_qualification.altrad8ud_mrep_failure_observation]
+data observed_failures: List<gunbc.host_memory_qualification.PlatformTrainingFailure> = [gunbc.host_memory_qualification.altrad8ud_mrep_failure_observation]
 
 // The same failure at DECODED standing. Only the evidence differs, which is
 // what makes the severity comparison below discriminating.

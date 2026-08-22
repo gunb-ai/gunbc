@@ -92,7 +92,7 @@ type AdmittedRootArgv
 // table, in any command log, and in this repository's own receipts, which print argv verbatim.
 data spark_sudo_prompt_sentinel: String = "gunbc-sudo:"
 
-fn admitted_root_argv_words(command: AdmittedRootArgv) -> std.types.List<String> {
+fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
   concat(
     ["sudo", "-S", "-p", spark_sudo_prompt_sentinel, "--"],
     match command {
@@ -263,7 +263,7 @@ type BootstrapCredentialMaterialization
 data credential_line_feed_code_point: Int = 10
 data credential_carriage_return_code_point: Int = 13
 
-fn credential_carries_line_break(code_points: std.types.List<Int>) -> Bool {
+fn credential_carries_line_break(code_points: List<Int>) -> Bool {
   any(code_points, cp =>
     cp == credential_line_feed_code_point || cp == credential_carriage_return_code_point
   )

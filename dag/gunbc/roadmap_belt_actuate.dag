@@ -60,7 +60,7 @@ fn belt_exec(cmd: gunbc.roadmap_dispatch_actuator.HostExecArgv, workdir: String)
 
 data belt_exec_all_fail_closed_note: String = "Fail-closed sequencing: fold runs each argv in order; once a step is non-ok (ExecFailed/ExecRefused) the accumulator SHORT-CIRCUITS — belt_exec is NOT called for the remaining steps and the first failure is returned. Spawn's worktree-add -> tmux-new-session ordering rides this: a failed git worktree add never spawns the tmux session (no orphan session on a missing worktree). Discriminating control: remove the ExecOk-guarded short-circuit and [false, echo] would run echo and go green when it must stay failed."
 
-fn belt_exec_all(cmds: std.types.List<gunbc.roadmap_dispatch_actuator.HostExecArgv>, workdir: String) -> BeltExecOutcome {
+fn belt_exec_all(cmds: List<gunbc.roadmap_dispatch_actuator.HostExecArgv>, workdir: String) -> BeltExecOutcome {
   fold(cmds, init: ExecOk { stdout: "" }, f: fn(acc, cmd) {
     match acc {
       ExecOk { stdout: _ } => belt_exec(cmd: cmd, workdir: workdir)
@@ -80,7 +80,7 @@ type BeltExecStepsOutcome
   | ExecStepFailed { step: String, detail: String }
 
 fn belt_exec_steps(
-  steps: std.types.List<BeltExecStep>,
+  steps: List<BeltExecStep>,
   workdir: String,
 ) -> BeltExecStepsOutcome {
   fold(steps, init: ExecStepsOk, f: fn(acc, step) {
@@ -216,7 +216,7 @@ data belt_oracle_refs_primitive_note: String = "This projection used filter_map,
 
 fn belt_oracle_refs_for_contract(
   contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
-) -> std.types.List<gunbc.roadmap_validation_oracle.ValidationOracleRef> {
+) -> List<gunbc.roadmap_validation_oracle.ValidationOracleRef> {
   gunbc.roadmap_validation_oracle.validation_oracle_scopes(contract: contract)
     |> flat_map(scope => match scope {
       OraclePinnable { oracle } => [oracle]
@@ -242,7 +242,7 @@ fn belt_oracle_observe_in_worktree(
 fn belt_oracle_observations_in_worktree(
   contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
   worktree: String,
-) -> std.types.List<gunbc.roadmap_validation_oracle.OracleObservation> {
+) -> List<gunbc.roadmap_validation_oracle.OracleObservation> {
   belt_oracle_refs_for_contract(contract: contract)
     |> map(oracle => belt_oracle_observe_in_worktree(
       worktree: worktree,
@@ -815,7 +815,7 @@ type BeltFootprintRoot {
   path: String
 }
 
-fn belt_dispatch_footprint_roots(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.List<BeltFootprintRoot> {
+fn belt_dispatch_footprint_roots(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<BeltFootprintRoot> {
   [
     BeltFootprintRoot {
       member: "dispatch-worktree-root",
@@ -871,7 +871,7 @@ fn belt_footprint_root_verdict(obs: BeltFootprintObservation) -> BeltFootprintAd
 }
 
 fn belt_footprint_admission_decision(
-  observations: std.types.List<BeltFootprintObservation>,
+  observations: List<BeltFootprintObservation>,
 ) -> BeltFootprintAdmission {
   fold(observations, init: FootprintAdmitted, f: (acc, obs) =>
     match acc {
@@ -1343,7 +1343,7 @@ fn belt_actuate_teardown_member(m: gunbc.roadmap_belt.DispatchMember) -> BeltTea
 }
 
 type BeltObserve
-  = Observed { live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession> }
+  = Observed { live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
 data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). extdeps.tmux classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions, documented no-server signals, stdout parse refusal, unknowable stderr); this module maps those outcomes to belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows; TmuxNoServer -> Observed []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with located evidence, never a blind spawn/reap. First-tick bootstrap works under either no-server spelling admitted by the classifier. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
@@ -1664,7 +1664,7 @@ fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
 // its gate and detail. A tick that refuses for a missing provider binary now says so in the file
 // the dashboard reads, and the dispatch button's "belt fault" caption acquires an explanation
 // instead of being a dead end.
-fn belt_spawn_failure_reason(spawn_outcomes: std.types.List<BeltSpawnOutcome>) -> String {
+fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
   join([
     "one or more spawn outcomes failed: ",
     join(
@@ -1681,7 +1681,7 @@ fn belt_spawn_failure_reason(spawn_outcomes: std.types.List<BeltSpawnOutcome>) -
 fn belt_spawn_pass_outcome_from(
   observe_refused: Bool,
   observe_reason: String,
-  spawn_outcomes: std.types.List<BeltSpawnOutcome>,
+  spawn_outcomes: List<BeltSpawnOutcome>,
 ) -> BeltPassOutcome {
   if observe_refused {
     BeltPassRefused { reason: observe_reason }
@@ -1700,7 +1700,7 @@ fn belt_spawn_pass_outcome_from(
 fn belt_teardown_pass_outcome_from(
   observe_refused: Bool,
   observe_reason: String,
-  teardown_outcomes: std.types.List<BeltTeardownOutcome>,
+  teardown_outcomes: List<BeltTeardownOutcome>,
 ) -> BeltPassOutcome {
   if observe_refused {
     BeltPassRefused { reason: observe_reason }
@@ -1746,10 +1746,10 @@ type BeltTickResult {
   observe_refused: Bool,
   observe_refusal_reason: String,
   reconcile: gunbc.roadmap_belt.BeltReconcile,
-  spawn_outcomes: std.types.List<BeltSpawnOutcome>,
-  teardown_outcomes: std.types.List<BeltTeardownOutcome>,
-  verify_outcomes: std.types.List<BeltVerifyOutcome>,
-  publish_outcomes: std.types.List<BeltPublishOutcome>,
+  spawn_outcomes: List<BeltSpawnOutcome>,
+  teardown_outcomes: List<BeltTeardownOutcome>,
+  verify_outcomes: List<BeltVerifyOutcome>,
+  publish_outcomes: List<BeltPublishOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: gunbc.roadmap_belt.BeltRunState) -> gunbc.roadmap_belt.BeltReconcile {
@@ -1769,20 +1769,20 @@ data belt_tick_note: String = "The re-runnable belt driver: observe the live ses
 data belt_tick_lifecycle_note: String = "THE TIMER IS A DISPATCH ACTUATOR TOO (review artifact 51237, both P0s). The dead-pane fix and the revision gate reached the click path only. This tick passed the whole observed session list into belt_reconcile, which maps EVERY present row to an observed member and counts live.length() as occupied — so a retained dead pane stayed a member (desired + present = Unchanged, no respawn) and still consumed a capacity slot. It also never consulted the deployed revision, so a drifted host refused a click and spawned on a timer.\n\nBOTH PATHS NOW CONSUME ONE SEAM. belt_revision_admission gates the tick before any spawn or reap. A refusal blocks spawn and teardown ONLY: verification and publication continue, because they read independently bound receipts and already run when tmux observation refuses — stopping them would widen a spawn-admission refusal into a work stoppage.\n\nCLEANUP PRECEDES START, DEFERRED ONE TICK. A stale pane is excluded from observed membership, so the node becomes a spawn candidate — but spawning it THIS tick would collide with the tmux session name that still exists, because spawn runs before teardown here. So a stale node's spawn is withheld this tick and its teardown is planned; the next tick observes it Absent and spawns normally. That is why the fix is a partition plus a deferral rather than a filter.\n\nLivenessUnobserved and MultiplicityConflict are neither cleaned nor spawned: they are counted refusals. An unobserved pane might be running, so tearing it down could kill live work, and spawning beside it could double-run the node.\n\nTHIS PARAGRAPH DESCRIBED BEHAVIOUR THE CODE DID NOT HAVE (review artifact 51285), which is worse than the gap it described. The first cut partitioned `refused` and never read it again, so only stale node ids were withheld from spawn — a ready node with an unobserved-but-present session read as ABSENT to belt_reconcile and could be spawned beside a pane that might be running. The deferral set is now every non-running class, so the note and the code say the same thing.\n\nMULTIPLICITY IS A NODE FACT, NOT A SESSION FACT, and the first cut missed it here for that reason: belt_tick_classify_sessions read each row's process state in isolation, so two rows for one node (one running, one stale) landed in two different buckets and the reconciler acted on an ambiguous observation that dispatch would have refused. The partition is now node-aware — a node with more than one row is conflicted whatever its rows say individually — so both actuation paths refuse the same ambiguity."
 
 type BeltTickSessionPartition {
-  running: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
-  stale: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
-  refused: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
-  conflicted: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
+  running: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
+  stale: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
+  refused: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
+  conflicted: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
 }
 
-fn belt_tick_node_row_count(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, node_id: String) -> Int {
+fn belt_tick_node_row_count(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, node_id: String) -> Int {
   count(filter(live, s => s.node_id == node_id))
 }
 
 data belt_tick_session_class_note: String = "THE PARTITION READS THE COPRODUCT, NOT A PARALLEL STRING VOCABULARY (review artifact 51309). The first cut asked belt_tick_session_is(s, arm: \"running\") and compared string arms — a second naming scheme for BeltSessionLiveness, which already names exactly these states. Two vocabularies for one concept is the nicknaming class, and the string one is strictly worse: a typo in an arm name compiles and silently empties a bucket, where a missing coproduct arm is a non-exhaustive match the compiler catches.\n\nThe node-awareness stays here rather than moving into belt_session_liveness_from_process, because multiplicity is a fact about a NODE's rows and that function sees one row's process. belt_node_session_liveness makes the same distinction on the dispatch path."
 
 fn belt_tick_session_class(
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession,
 ) -> BeltSessionLiveness {
   let n = belt_tick_node_row_count(live: live, node_id: s.node_id)
@@ -1797,35 +1797,35 @@ fn belt_tick_session_class(
   }
 }
 
-fn belt_tick_is_running(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
+fn belt_tick_is_running(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionRunning { session_name: _, command: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_stale(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
+fn belt_tick_is_stale(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionStaleTerminal { session_name: _, detail: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_refused(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
+fn belt_tick_is_refused(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_conflicted(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
+fn belt_tick_is_conflicted(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_classify_sessions(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> BeltTickSessionPartition {
+fn belt_tick_classify_sessions(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> BeltTickSessionPartition {
   BeltTickSessionPartition {
     running: filter(live, s => belt_tick_is_running(live: live, s: s)),
     stale: filter(live, s => belt_tick_is_stale(live: live, s: s)),
@@ -2114,7 +2114,7 @@ fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
 }
 
 type BeltAttempts
-  = AttemptsObserved { attempts: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> }
+  = AttemptsObserved { attempts: List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> }
   | AttemptsRefused { reason: String }
 
 data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
@@ -2182,11 +2182,11 @@ fn belt_attempts_http_status(a: BeltAttempts) -> Int {
 }
 
 type BeltAttemptPanes
-  = BeltAttemptPanesObserved { panes: std.types.List<extdeps.tmux.TmuxAttemptPaneEntry> }
+  = BeltAttemptPanesObserved { panes: List<extdeps.tmux.TmuxAttemptPaneEntry> }
   | BeltAttemptPanesRefused { reason: String }
 
 type BeltWorkflowAttempts
-  = WorkflowAttemptsObserved { attempts: std.types.List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress> }
+  = WorkflowAttemptsObserved { attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress> }
   | WorkflowAttemptsRefused { reason: String }
 
 data belt_workflow_attempts_note: String = "The workflow route joins the latest published attempt state to process evidence at node grain. Git refs determine which nodes have attempts; the node-current pointer selects the latest modeled attempt without guessing chronology from content-hash keys; Filesystem.Read observes the immutable key/admission prefix plus the append-only Codex JSONL; one exact tmux list-panes read observes alive/dead/exit for all attempts. A git refusal refuses the route. A pane-command or parse refusal stays located inside each attempt so already-terminal provider evidence remains usable while incomplete attempts become refused."
@@ -2381,8 +2381,8 @@ fn attempt_process_for_node(
 }
 
 fn dispatch_attempt_ref_first_per_node(
-  attempts: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef>,
-) -> std.types.List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> {
+  attempts: List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef>,
+) -> List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> {
   fold(attempts, init: [], f: fn(acc, attempt) {
     if any(acc, existing => existing.node_id == attempt.node_id) {
       acc
@@ -2933,7 +2933,7 @@ fn belt_read_or_empty(path: String) -> String {
 }
 
 type BeltValidationRun {
-  executions: std.types.List<gunbc.roadmap_verification_receipt.ValidationExecution>
+  executions: List<gunbc.roadmap_verification_receipt.ValidationExecution>
   verdict: gunbc.roadmap_validation_oracle.ValidationVerdict
 }
 
@@ -3184,7 +3184,7 @@ fn belt_exec_with_diff_window_env(
 
 fn belt_run_validation_operations(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  validations: std.types.List<gunbc.roadmap_execution_contract.ValidationOperation>,
+  validations: List<gunbc.roadmap_execution_contract.ValidationOperation>,
   worktree: String,
   oracle_identity: std.content_hash.ContentHash,
   diff_window_path: String?,
@@ -3721,7 +3721,7 @@ fn belt_verify_run_and_persist(
 
 fn belt_verify_attempts_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-) -> std.types.List<BeltVerifyOutcome> {
+) -> List<BeltVerifyOutcome> {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
       [
@@ -3741,13 +3741,13 @@ fn belt_verify_attempts_for_instance(
   }
 }
 
-fn belt_verify_attempts() -> std.types.List<BeltVerifyOutcome> {
+fn belt_verify_attempts() -> List<BeltVerifyOutcome> {
   belt_verify_attempts_for_instance(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
 }
 
-fn belt_verify_pass_outcome_from(outcomes: std.types.List<BeltVerifyOutcome>) -> BeltPassOutcome {
+fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassOutcome {
   let ledger_refusals = outcomes |> filter(o => match o {
     VerifyDeferred { node_id: nid, reason: _ } => nid == ""
     VerifyWriteFailed { node_id: _, detail: _ } => false
@@ -4270,7 +4270,7 @@ type BeltNodeLookup
   | NodeMissing
   | AuthorityProjectionRefused { detail: String }
 
-fn belt_find_node_in(nodes: std.types.List<gunbc.roadmap_model.RoadmapNode>, node_id: String) -> BeltNodeLookup {
+fn belt_find_node_in(nodes: List<gunbc.roadmap_model.RoadmapNode>, node_id: String) -> BeltNodeLookup {
   let matches = nodes |> filter(n => n.node == node_id)
   fold(matches, init: NodeMissing, f: fn(acc, n) {
     match acc {
@@ -4330,7 +4330,7 @@ fn belt_session_liveness_from_process(
 }
 
 fn belt_node_session_liveness(
-  live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   node_id: String,
 ) -> BeltSessionLiveness {
   let matched = live |> filter(s => s.node_id == node_id)
@@ -4570,7 +4570,7 @@ fn dispatch_band_is_ok(b: DispatchBand) -> Bool {
   }
 }
 
-fn belt_dispatch_ok_status_labels() -> std.types.List<String> {
+fn belt_dispatch_ok_status_labels() -> List<String> {
   belt_dispatch_result_exemplars()
     |> filter(r => dispatch_band_is_ok(b: belt_dispatch_result_band(r: r)))
     |> map(r => belt_dispatch_status_label(r: r))
@@ -4581,14 +4581,14 @@ type DispatchLabelBandRow {
   band_key: String
 }
 
-fn belt_dispatch_label_band_rows() -> std.types.List<DispatchLabelBandRow> {
+fn belt_dispatch_label_band_rows() -> List<DispatchLabelBandRow> {
   map(belt_dispatch_result_exemplars(), r => DispatchLabelBandRow {
     wire_label: belt_dispatch_status_label(r: r),
     band_key: dispatch_band_key(b: belt_dispatch_result_band(r: r)),
   })
 }
 
-fn label_band_rows_cover(rows: std.types.List<DispatchLabelBandRow>, labels: std.types.List<String>) -> Bool {
+fn label_band_rows_cover(rows: List<DispatchLabelBandRow>, labels: List<String>) -> Bool {
   all(labels, l => count(filter(rows, row => row.wire_label == l)) == 1)
 }
 
@@ -4601,7 +4601,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
 
 data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a NEW variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
-fn belt_dispatch_result_exemplars() -> std.types.List<BeltDispatchResult> {
+fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
   [
     DispatchSpawned { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider },
     DispatchAlreadyLive { node_id: "x", session_name: "s" },
@@ -4619,7 +4619,7 @@ fn belt_dispatch_result_exemplars() -> std.types.List<BeltDispatchResult> {
   ]
 }
 
-fn belt_dispatch_all_status_labels() -> std.types.List<String> {
+fn belt_dispatch_all_status_labels() -> List<String> {
   map(belt_dispatch_result_exemplars(), r => belt_dispatch_status_label(r: r))
 }
 
@@ -4992,7 +4992,7 @@ fn belt_publication_credential() -> gunbc.roadmap_publish_observe.PublicationCre
   }
 }
 
-fn belt_publish_pass_outcome_from(outcomes: std.types.List<BeltPublishOutcome>) -> BeltPassOutcome {
+fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {
   let ledger_refusals = outcomes |> filter(o => match o {
     PublishDeferred { node_id: nid, reason: _ } => nid == ""
     PublishWriteFailed { node_id: _, detail: _ } => false
@@ -5101,7 +5101,7 @@ data belt_publish_pass_note: String = "PUBLICATION RUNS ON THE SAME TICK AS SPAW
 
 fn belt_publish_attempts_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-) -> std.types.List<BeltPublishOutcome> {
+) -> List<BeltPublishOutcome> {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
       [
@@ -5125,7 +5125,7 @@ fn belt_publish_attempts_for_instance(
   }
 }
 
-fn belt_publish_attempts() -> std.types.List<BeltPublishOutcome> {
+fn belt_publish_attempts() -> List<BeltPublishOutcome> {
   belt_publish_attempts_for_instance(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )

@@ -47,7 +47,7 @@ type SparkServingRebootOutcome
 // DERIVED FROM THE GRANT, never spelled again here. The sudoers command the bootstrap installs and
 // the argv this actuator runs are one fact; writing `sudo -n systemctl reboot` a second time would
 // be the fork that lets the two drift until a rejected reboot looks like a host problem.
-fn spark_serving_reboot_argv() -> std.types.List<String> {
+fn spark_serving_reboot_argv() -> List<String> {
   spark_managed_grant_argv(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost)
 }
 

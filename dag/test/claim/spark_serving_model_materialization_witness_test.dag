@@ -1,14 +1,14 @@
 module test.claim.spark_serving_model_materialization_witness
 
 
-fn step_identities() -> std.types.List<String> {
+fn step_identities() -> List<String> {
   match spark_serving_materialize_model_artifact_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity as String)
   }
 }
 
-fn step_argvs() -> std.types.List<std.types.List<String>> {
+fn step_argvs() -> List<List<String>> {
   match spark_serving_materialize_model_artifact_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>

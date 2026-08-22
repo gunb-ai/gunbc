@@ -34,12 +34,12 @@ data determinism_root_map_values: DeterminismRoot = DeterminismRoot {
   citation: "map_values exposes host-unspecified Map value iteration."
 }
 
-data determinism_root_registry: std.types.List<DeterminismRoot> = [
+data determinism_root_registry: List<DeterminismRoot> = [
   determinism_root_map_keys,
   determinism_root_map_values
 ]
 
-fn determinism_root_for_symbol(registry: std.types.List<DeterminismRoot>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<DeterminismRoot> {
+fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<DeterminismRoot> {
   fold(registry, init: v2.std.optional.optional_absent(), f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
@@ -111,14 +111,14 @@ fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.No
 
 data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive for uniquely named registered roots — not repository-complete structural determinism. The former one-row registry asserted map_keys was the one readable nondeterministic atom and therefore could not miss a root. That premise was false: v1.runtime_rust map_values exposes the same host-unspecified Map iteration and was silently classified deterministic. The uniquely named map_keys and map_values hazards are directly registered, so a reach from either fails compilation over the floor compile scope. The aliases keys and values remain undetectable: determinism_root_for_symbol sees only an unqualified Symbol, v2 Node carries neither receiver domain nor resolved declaration identity, and method/free-call lowering erases their distinction; registering those generic symbols would fabricate failures for unrelated same-named functions. The broader denominator is also open because operations reach compiled trees through at least algebra templates, v1.compiler.infer_method builtin_function_registry, native v1_interpreter dispatch arms, PrimitiveContract rows, and target emit handlers. One PrimitiveDefinition identity join must close the denominator, disambiguate aliases, and give every root a resolvable identity. Until that lands, an unregistered future helper is not claimed safe, absence from this registry is not evidence of determinism, and absence of a diagnostic does not establish that no order-exposing operation was reached. Prefer retaining meaningful first-seen order beside a membership map, as PR 7515 does, over reconstructing a value order from the map; there is no universal sorted_map_values operation. Grain: root — one rooted whole-tree findings walk collects one located diagnostic per uniquely named registered call node. Every registered leak is typed, located, batched, and never absorbed."
 
-fn local_determinism_findings(n: v2.std.node.Node) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn local_determinism_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
     NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
     Deterministic => []
   }
 }
 
-fn determinism_findings(root: v2.std.node.Node) -> std.types.List<v2.std.diagnostic.Diagnostic> {
+fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.node.fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {

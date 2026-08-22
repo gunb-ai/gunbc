@@ -93,14 +93,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // WHAT IS NOT CLAIMED: that moving it fixed anything. The deletion this witness was authored to
 // evidence still landed and is still correct; what changed is that the evidence no longer runs, and
 // saying so here is the difference between a declared drop and coverage by illusion (DESIGN §6).
-fn host_identity_data_declarations() -> std.types.List<v2.std.decl_index.DataDeclTypeFact> {
+fn host_identity_data_declarations() -> List<v2.std.decl_index.DataDeclTypeFact> {
   filter(
     v2.std.decl_index.data_decl_type_facts(pool_roots: ["dag", "src/v2"]),
     f => f.type_name == "HostIdentity",
   )
 }
 
-fn host_identity_declarations_in(module_path: std.types.String) -> std.types.List<v2.std.decl_index.DataDeclTypeFact> {
+fn host_identity_declarations_in(module_path: std.types.String) -> List<v2.std.decl_index.DataDeclTypeFact> {
   filter(host_identity_data_declarations(), f => f.module_path == module_path)
 }
 

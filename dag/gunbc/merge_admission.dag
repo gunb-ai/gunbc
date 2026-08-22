@@ -9,7 +9,7 @@ type MergeStrategy
 
 type RepoStandard {
   default_branch: String
-  allowed_strategies: std.types.List<MergeStrategy>
+  allowed_strategies: List<MergeStrategy>
   require_up_to_date: Bool
   merge_queue_required: Bool
   branch_name_convention: String
@@ -68,13 +68,13 @@ fn gate_content_hash(g: gunbc.ci_gate.Gate) -> std.content_hash.ContentHash {
   std.content_hash.as_content_hash_structural(structural: gate_content_hash_structural(g: g))
 }
 
-fn witness_fn_list_hash_structural(fns: std.types.List<String>) -> std.content_hash.Fnv1a64Structural {
+fn witness_fn_list_hash_structural(fns: List<String>) -> std.content_hash.Fnv1a64Structural {
   fold(fns, init: std.content_hash.content_hash_atom(value: "witness-fn-list"), f: fn(acc, fn_name) {
     std.content_hash.content_hash_combine_structural(acc, std.content_hash.content_hash_atom(value: fn_name))
   })
 }
 
-fn witness_fn_list_hash(fns: std.types.List<String>) -> std.content_hash.ContentHash {
+fn witness_fn_list_hash(fns: List<String>) -> std.content_hash.ContentHash {
   std.content_hash.as_content_hash_structural(structural: witness_fn_list_hash_structural(fns: fns))
 }
 
@@ -210,7 +210,7 @@ fn enrollment_content_hash(e: gunbc.commit_workflow.CommitCheckEnrollment) -> st
   check_kind_content_hash(check: e.check)
 }
 
-fn gate_roster_content_hash(roster: std.types.List<gunbc.commit_workflow.CommitCheckEnrollment>) -> GateRosterHash {
+fn gate_roster_content_hash(roster: List<gunbc.commit_workflow.CommitCheckEnrollment>) -> GateRosterHash {
   fold(roster, init: std.content_hash.content_hash_atom(value: "gate-roster-v1"), f: fn(acc, row) {
     std.content_hash.content_hash_combine_structural(
       acc,
@@ -306,14 +306,14 @@ type CheckCoverage
   | CheckCoverageStopped {
       head: std.types.CommitSha,
       roster: std.content_hash.ContentHash,
-      completed: std.types.List<CoveredGateConclusion>,
-      unexecuted: std.types.List<std.content_hash.ContentHash>,
+      completed: List<CoveredGateConclusion>,
+      unexecuted: List<std.content_hash.ContentHash>,
       cause: std.types.NonEmptyStr
     }
   | CheckCoverageComplete {
       head: std.types.CommitSha,
       roster: std.content_hash.ContentHash,
-      conclusions: std.types.List<CoveredGateConclusion>
+      conclusions: List<CoveredGateConclusion>
     }
   | CheckCoverageStale {
       observed_head: std.types.CommitSha,
@@ -335,8 +335,8 @@ type CheckCoverageAdmissionVerdict
   | CheckCoverageDeniedStopped {
       head: std.types.CommitSha,
       roster: std.content_hash.ContentHash,
-      completed: std.types.List<CoveredGateConclusion>,
-      unexecuted: std.types.List<std.content_hash.ContentHash>,
+      completed: List<CoveredGateConclusion>,
+      unexecuted: List<std.content_hash.ContentHash>,
       cause: std.types.NonEmptyStr
     }
   | CheckCoverageDeniedStale {
@@ -352,13 +352,13 @@ type CheckCoverageAdmissionVerdict
   | CheckCoverageDeniedExecutionCardinality { gate: std.content_hash.ContentHash, observed_count: Int }
   | CheckCoverageDeniedGateFailed { gate: std.content_hash.ContentHash, conclusion: extdeps.github.checks.CheckConclusion }
 
-fn gate_identity_count(gates: std.types.List<std.content_hash.ContentHash>, gate: std.content_hash.ContentHash) -> Int {
+fn gate_identity_count(gates: List<std.content_hash.ContentHash>, gate: std.content_hash.ContentHash) -> Int {
   fold(gates, init: 0, f: fn(acc, row) {
     if row == gate { acc + 1 } else { acc }
   })
 }
 
-fn first_duplicate_required_gate(required_gates: std.types.List<std.content_hash.ContentHash>) -> std.content_hash.ContentHash? {
+fn first_duplicate_required_gate(required_gates: List<std.content_hash.ContentHash>) -> std.content_hash.ContentHash? {
   fold(required_gates, init: none, f: fn(acc, gate) {
     match acc {
       Present { value: _ } => acc
@@ -372,15 +372,15 @@ fn first_duplicate_required_gate(required_gates: std.types.List<std.content_hash
   })
 }
 
-fn covered_gate_count(conclusions: std.types.List<CoveredGateConclusion>, gate: std.content_hash.ContentHash) -> Int {
+fn covered_gate_count(conclusions: List<CoveredGateConclusion>, gate: std.content_hash.ContentHash) -> Int {
   fold(conclusions, init: 0, f: fn(acc, row) {
     if row.gate == gate { acc + 1 } else { acc }
   })
 }
 
 fn first_gate_with_wrong_execution_cardinality(
-  required_gates: std.types.List<std.content_hash.ContentHash>,
-  conclusions: std.types.List<CoveredGateConclusion>,
+  required_gates: List<std.content_hash.ContentHash>,
+  conclusions: List<CoveredGateConclusion>,
 ) -> std.content_hash.ContentHash? {
   fold(required_gates, init: none, f: fn(acc, gate) {
     match acc {
@@ -396,8 +396,8 @@ fn first_gate_with_wrong_execution_cardinality(
 }
 
 fn first_required_gate_failure(
-  required_gates: std.types.List<std.content_hash.ContentHash>,
-  conclusions: std.types.List<CoveredGateConclusion>,
+  required_gates: List<std.content_hash.ContentHash>,
+  conclusions: List<CoveredGateConclusion>,
 ) -> CoveredGateConclusion? {
   fold(required_gates, init: none, f: fn(acc, gate) {
     match acc {
@@ -422,7 +422,7 @@ fn classify_check_coverage_admission(
   coverage: CheckCoverage,
   required_head: std.types.CommitSha,
   required_roster: std.content_hash.ContentHash,
-  required_gates: std.types.List<std.content_hash.ContentHash>,
+  required_gates: List<std.content_hash.ContentHash>,
 ) -> CheckCoverageAdmissionVerdict {
   match coverage {
     CheckCoverageAbsent { required_head: absent_head, required_roster: absent_roster } =>
@@ -493,7 +493,7 @@ fn check_coverage_admits(
   coverage: CheckCoverage,
   required_head: std.types.CommitSha,
   required_roster: std.content_hash.ContentHash,
-  required_gates: std.types.List<std.content_hash.ContentHash>,
+  required_gates: List<std.content_hash.ContentHash>,
 ) -> Bool {
   match classify_check_coverage_admission(
     coverage: coverage,

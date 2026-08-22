@@ -18,7 +18,7 @@ data socket_inode_holder_bracket_note: String = "WHY THE PATTERN SPELLS THE BRAC
 service shell.Find {
   operation ListDirs {
     input { path: std.types.FilePath, max_depth: Int = 1, min_depth: Int = 1 }
-    output { dirs: std.types.List<std.types.FilePath> from "stdout_lines" }
+    output { dirs: List<std.types.FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
     exit {
@@ -133,7 +133,7 @@ service shell.PosixCommandV {
   }
 }
 
-fn posix_command_v_check_argv(command: std.types.NonEmptyStr) -> std.types.List<String> {
+fn posix_command_v_check_argv(command: std.types.NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
@@ -194,7 +194,7 @@ service shell.Test {
   }
 }
 
-fn shell_test_is_executable_argv(path: std.types.FilePath) -> std.types.List<String> {
+fn shell_test_is_executable_argv(path: std.types.FilePath) -> List<String> {
   ["test", "-x", path as String]
 }
 

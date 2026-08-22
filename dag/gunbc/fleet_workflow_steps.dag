@@ -189,7 +189,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
   )
 }
 
-fn ci_prelude_steps() -> std.types.List<extdeps.github.actions.Step> {
+fn ci_prelude_steps() -> List<extdeps.github.actions.Step> {
   ci_prelude_steps_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
 }
 

@@ -7,10 +7,10 @@ data gunbc_host_hygiene_reaper_remediate_scope_disposition: std.disposition.Disp
 type ResidualReapEffect
   = NoEffect { unit: std.types.NonEmptyStr }
   | RemoveOverrideDirEffect { unit: std.types.NonEmptyStr, dir: std.types.NonEmptyStr }
-  | TerminateOccupantsAndRemoveOverrideEffect { unit: std.types.NonEmptyStr, pids: std.types.List<std.types.NonEmptyStr>, dir: std.types.NonEmptyStr }
+  | TerminateOccupantsAndRemoveOverrideEffect { unit: std.types.NonEmptyStr, pids: List<std.types.NonEmptyStr>, dir: std.types.NonEmptyStr }
   | ReapEffectRefused { unit: std.types.NonEmptyStr, cause: gunbc.host_hygiene_reaper.ReapRefusalCause }
 
-fn residual_reap_effect_for(obs: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: std.types.List<std.types.NonEmptyStr>) -> ResidualReapEffect {
+fn residual_reap_effect_for(obs: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: List<std.types.NonEmptyStr>) -> ResidualReapEffect {
   match gunbc.host_hygiene_reaper.residual_reap_action(obs: obs) {
     NoActionNeeded => NoEffect { unit: obs.unit }
     RemoveOverrideOnly => RemoveOverrideDirEffect {
@@ -37,7 +37,7 @@ type ResidualReapApplyOutcome
   = ResidualReapApplied { unit: std.types.NonEmptyStr }
   | ResidualReapApplyRefused { unit: std.types.NonEmptyStr, cause: String }
 
-fn apply_terminate_occupants(pids: std.types.List<std.types.NonEmptyStr>) -> Bool {
+fn apply_terminate_occupants(pids: List<std.types.NonEmptyStr>) -> Bool {
   let results = map(pids, pid => posix.Signal.TerminateProcess(pid: pid).success)
   length(filter(results, r => !r)) == 0
 }

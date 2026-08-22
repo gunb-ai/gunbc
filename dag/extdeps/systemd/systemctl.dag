@@ -24,7 +24,7 @@ data systemctl_reboot_verb: std.types.NonEmptyStr = "reboot" as std.types.NonEmp
 // that asymmetry is the reason the grant coproduct carries its subject per-variant rather than
 // taking one uniformly: a subject appended here would authorize an argument sudo would then refuse
 // to match, and `systemctl reboot <anything>` is not a command upstream accepts.
-fn systemctl_reboot_argv() -> std.types.List<std.types.String> {
+fn systemctl_reboot_argv() -> List<std.types.String> {
   [systemctl_binary_name as std.types.String, systemctl_reboot_verb as std.types.String]
 }
 
@@ -39,27 +39,27 @@ fn systemctl_reboot_command() -> std.types.NonEmptyStr {
 // because a privilege grant needs the absolute and bare renderings to be derived from one authority;
 // converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
 
-fn systemctl_daemon_reload_argv() -> std.types.List<std.types.String> {
+fn systemctl_daemon_reload_argv() -> List<std.types.String> {
   ["systemctl", "daemon-reload"]
 }
 
-fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "enable", unit as std.types.String]
 }
 
-fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "restart", unit as std.types.String]
 }
 
-fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "disable", "--now", unit as std.types.String]
 }
 
-fn systemctl_stop_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_stop_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "stop", unit as std.types.String]
 }
 
-fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> List<std.types.String> {
   [
     "systemctl",
     "set-property",
@@ -68,11 +68,11 @@ fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.
   ]
 }
 
-fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "revert", unit as std.types.String, "MemoryMax", "MemoryHigh"]
 }
 
-fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.uri.extdeps.systemd.SystemdUnitProperty) -> std.types.List<std.types.String> {
+fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.uri.extdeps.systemd.SystemdUnitProperty) -> List<std.types.String> {
   [
     "systemctl",
     "show",
@@ -88,7 +88,7 @@ fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.u
 // manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
 // would then not come back after a reboot -- so a convergence claim that reads only is-active is
 // answering a question it was not asked.
-fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "--user", "is-enabled", unit as std.types.String]
 }
 
@@ -114,19 +114,19 @@ fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> std.types.List
 // two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
 // the two facts stop being separately observable in the actuation the way they are separately
 // observable on the host.
-fn systemctl_user_enable_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_user_enable_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "--user", "enable", unit as std.types.String]
 }
 
-fn systemctl_user_start_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_user_start_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "--user", "start", unit as std.types.String]
 }
 
-fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "show", unit as std.types.String, "--property=LoadState", "--value"]
 }
 
-fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> std.types.List<std.types.String> {
+fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
   ["systemctl", "status", "--no-pager", "--full", unit as std.types.String]
 }
 

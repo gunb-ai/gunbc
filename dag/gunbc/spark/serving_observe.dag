@@ -13,27 +13,27 @@ data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-
 // indistinguishable after the fact.
 data spark_serving_observe_ci_receipt_path: String = "target/spark-serving-observe-ci-receipt.txt"
 
-fn spark_serving_load_state_probe_words() -> std.types.List<String> {
+fn spark_serving_load_state_probe_words() -> List<String> {
   [
     "systemctl", "--user", "show", spark_serving_unit_name, "--property=LoadState", "--value",
   ]
 }
 
-fn spark_serving_active_probe_words() -> std.types.List<String> {
+fn spark_serving_active_probe_words() -> List<String> {
   [
     "systemctl", "--user", "is-active", spark_serving_unit_name,
   ]
 }
 
-data spark_serving_version_probe_words: std.types.List<String> = [
+data spark_serving_version_probe_words: List<String> = [
   "curl", "-sf", "http://127.0.0.1:11434/api/version",
 ]
 
-data spark_serving_tags_probe_words: std.types.List<String> = [
+data spark_serving_tags_probe_words: List<String> = [
   "curl", "-sf", "http://127.0.0.1:11434/api/tags",
 ]
 
-data spark_serving_nvidia_driver_probe_words: std.types.List<String> = [
+data spark_serving_nvidia_driver_probe_words: List<String> = [
   "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader",
 ]
 
@@ -43,7 +43,7 @@ data spark_serving_nvidia_driver_probe_words: std.types.List<String> = [
 //
 // It is a READ. `sudo -n -l` enumerates and never actuates, which is why it can ride an observation
 // at all -- and why a failure of it is an observation too, not an error.
-data spark_serving_grant_probe_words: std.types.List<String> = [
+data spark_serving_grant_probe_words: List<String> = [
   "sudo", "-n", "-l",
 ]
 
@@ -316,7 +316,7 @@ type SparkServingHostObservation {
 type SparkServingObservationReport
   = SparkServingObservationsProduced {
       first: SparkServingHostObservation,
-      more: std.types.List<SparkServingHostObservation>,
+      more: List<SparkServingHostObservation>,
     }
   | SparkServingObservationReportRefused { cause: std.types.NonEmptyStr }
 
@@ -339,7 +339,7 @@ type SparkServingObservationReport
 fn spark_serving_probe_leg_via_locus(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
-  raw_words: std.types.List<String>,
+  raw_words: List<String>,
 ) -> extdeps.ssh.session.SshSessionExecResult? {
   match run_typed_argv_transport(
     argv: raw_words,
@@ -388,7 +388,7 @@ fn spark_serving_observe_host_via_locus(
 fn spark_serving_probe_leg(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
-  raw_words: std.types.List<String>,
+  raw_words: List<String>,
 ) -> extdeps.ssh.session.SshSessionExecResult? {
   match portable_remote_words(raws: raw_words) {
     Absent => none
@@ -683,13 +683,13 @@ fn spark_serving_observe_host(
 
 fn spark_serving_observations_from_hosts(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  hosts: std.types.List<product.placement_supply.HostIdentity>,
-) -> std.types.List<SparkServingHostObservation> {
+  hosts: List<product.placement_supply.HostIdentity>,
+) -> List<SparkServingHostObservation> {
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
 
 fn spark_serving_observation_report_from_observations(
-  observations: std.types.List<SparkServingHostObservation>,
+  observations: List<SparkServingHostObservation>,
 ) -> SparkServingObservationReport? {
   if observations.length() == 0 {
     none
@@ -705,7 +705,7 @@ fn spark_serving_observation_report_from_observations(
 
 fn spark_serving_observe_with_context(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  hosts: std.types.List<product.placement_supply.HostIdentity>,
+  hosts: List<product.placement_supply.HostIdentity>,
 ) -> SparkServingObservationReport {
   match spark_serving_observation_report_from_observations(
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
@@ -895,7 +895,7 @@ fn spark_serving_observation_succeeded(observation: gunbc.spark.serving_release.
   }
 }
 
-fn spark_serving_all_observations_succeeded(observations: std.types.List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
+fn spark_serving_all_observations_succeeded(observations: List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
   fold_list(
     xs: observations,
     empty: true,
@@ -928,7 +928,7 @@ fn spark_serving_observation_was_made(observation: gunbc.spark.serving_release.S
   }
 }
 
-fn spark_serving_all_observations_were_made(observations: std.types.List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
+fn spark_serving_all_observations_were_made(observations: List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
   fold_list(
     xs: observations,
     empty: true,
@@ -1149,11 +1149,11 @@ fn classify_is_active_result(result: extdeps.ssh.session.SshSessionExecResult) -
 // WHAT THIS DOES NOT ESTABLISH: that the blobs are INTACT. Presence is a filename fact; a truncated
 // layer has the right name. Verifying each blob's digest is a further rung this producer does not
 // reach, and `ModelStoreComplete` is documented as meaning present-and-named, not verified.
-fn spark_serving_model_manifest_probe_argv() -> std.types.List<String> {
+fn spark_serving_model_manifest_probe_argv() -> List<String> {
   ["cat", spark_serving_desired_model_manifest_path() as String]
 }
 
-fn spark_serving_model_blobs_listing_argv() -> std.types.List<String> {
+fn spark_serving_model_blobs_listing_argv() -> List<String> {
   ["ls", "-A", spark_serving_desired_model_blobs_dir() as String]
 }
 
@@ -1179,7 +1179,7 @@ fn spark_serving_model_blobs_listing_argv() -> std.types.List<String> {
 // once inside the classifier. A decode that refuses yields an EMPTY argv list, which makes sha256sum
 // read no files and produce no lines -- and the classifier then refuses on its own decode, so the
 // empty case cannot be mistaken for "every blob verified".
-fn spark_serving_manifest_required_digests(manifest_body: String) -> std.types.List<std.types.NonEmptyStr> {
+fn spark_serving_manifest_required_digests(manifest_body: String) -> List<std.types.NonEmptyStr> {
   match spark_serving_manifest_decode(body: manifest_body) {
     SparkServingManifestDigests { first: f, further: r } => concat([f], r)
     SparkServingManifestUnparseable => []
@@ -1188,7 +1188,7 @@ fn spark_serving_manifest_required_digests(manifest_body: String) -> std.types.L
   }
 }
 
-fn spark_serving_model_blob_digest_argv(digest_hexes: std.types.List<std.types.NonEmptyStr>) -> std.types.List<String> {
+fn spark_serving_model_blob_digest_argv(digest_hexes: List<std.types.NonEmptyStr>) -> List<String> {
   concat(
     ["sha256sum"],
     map(digest_hexes, h => join([
@@ -1203,7 +1203,7 @@ fn spark_serving_model_blob_digest_argv(digest_hexes: std.types.List<std.types.N
 // its own filename carries; anything else -- a short read, a rewritten layer, a name that does not
 // match its bytes -- is a mismatch, and the FIRST one is reported rather than a count, because an
 // operator repairs a named blob and not a number.
-fn spark_serving_first_corrupt_blob(stdout: String, expected: std.types.List<std.types.NonEmptyStr>) -> std.types.NonEmptyStr? {
+fn spark_serving_first_corrupt_blob(stdout: String, expected: List<std.types.NonEmptyStr>) -> std.types.NonEmptyStr? {
   fold(expected, init: none, f: fn(acc, want) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -1238,7 +1238,7 @@ fn spark_serving_first_corrupt_blob(stdout: String, expected: std.types.List<std
 // that is in fact unparseable. The refusal was already fail-closed; what was wrong was the sentence
 // it produced, and a diagnostic that misdescribes the fault sends the reader to the wrong place.
 type SparkServingManifestDecode
-  = SparkServingManifestDigests { first: std.types.NonEmptyStr, further: std.types.List<std.types.NonEmptyStr> }
+  = SparkServingManifestDigests { first: std.types.NonEmptyStr, further: List<std.types.NonEmptyStr> }
   | SparkServingManifestUnparseable
   | SparkServingManifestMalformed { detail: std.types.NonEmptyStr }
   | SparkServingManifestNamesNoBlobs
@@ -1273,7 +1273,7 @@ fn spark_serving_manifest_descriptor_lists(doc: extdeps.languages.json.emit.Json
 
 fn spark_serving_manifest_join_layers(
   doc: extdeps.languages.json.emit.JsonValue,
-  config: std.types.List<std.types.NonEmptyStr>,
+  config: List<std.types.NonEmptyStr>,
 ) -> SparkServingManifestDecode {
   match spark_serving_manifest_layer_digests(doc: doc) {
     SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
@@ -1293,7 +1293,7 @@ fn spark_serving_manifest_join_layers(
   }
 }
 
-fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> std.types.List<std.types.NonEmptyStr> {
+fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<std.types.NonEmptyStr> {
   match v {
     SparkServingManifestDigests { first: f, further: r } => concat([f], r)
     SparkServingManifestUnparseable => []
@@ -1440,7 +1440,7 @@ fn spark_serving_blob_file_name_for(digest_hex: std.types.NonEmptyStr) -> String
 // state now consumes gunbc.ollama_model_resolution, which records the reference, the resolved
 // identity, when, and the three readings behind it. Nothing about the observation changed, which was
 // the point of the correction above.
-fn spark_serving_model_manifest_digest_argv() -> std.types.List<String> {
+fn spark_serving_model_manifest_digest_argv() -> List<String> {
   ["sha256sum", spark_serving_desired_model_manifest_path() as String]
 }
 
@@ -1670,19 +1670,19 @@ fn spark_serving_observe_user_unit_pair(
 // executable that IS the release the identity names are separate facts from the file merely being
 // present and +x -- and neither is observed yet, so `Complete` still means "the expected executable
 // is in the expected place and is executable", not "the tree is the one the identity names".
-fn spark_serving_runtime_root_probe_argv() -> std.types.List<String> {
+fn spark_serving_runtime_root_probe_argv() -> List<String> {
   ["test", "-d", spark_serving_required_runtime_root() as String]
 }
 
-fn spark_serving_runtime_executable_probe_argv() -> std.types.List<String> {
+fn spark_serving_runtime_executable_probe_argv() -> List<String> {
   ["test", "-f", spark_serving_required_runtime_executable_path() as String]
 }
 
-fn spark_serving_runtime_executable_bit_probe_argv() -> std.types.List<String> {
+fn spark_serving_runtime_executable_bit_probe_argv() -> List<String> {
   ["test", "-x", spark_serving_required_runtime_executable_path() as String]
 }
 
-fn spark_serving_runtime_root_listing_argv() -> std.types.List<String> {
+fn spark_serving_runtime_root_listing_argv() -> List<String> {
   ["ls", "-A", spark_serving_required_runtime_root() as String]
 }
 
@@ -1739,7 +1739,7 @@ fn spark_serving_classify_runtime_executable_absence(
 // materialization at a different identity is exactly the case that matters: the content-addressed
 // root makes that unlikely by construction, and an observation that cannot tell the difference is
 // still one that would be believed if it happened.
-fn spark_serving_runtime_materialization_receipt_probe_argv() -> std.types.List<String> {
+fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
   ["cat", spark_serving_required_runtime_receipt_path() as String]
 }
 
@@ -1823,7 +1823,7 @@ func spark_serving_place_health_request_body(
 fn spark_serving_probe_stdout_or_empty(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
-  raw_words: std.types.List<String>,
+  raw_words: List<String>,
 ) -> String {
   match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
     Absent => ""

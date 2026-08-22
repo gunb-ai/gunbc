@@ -56,7 +56,7 @@ fn host_effect_nbd_proxy_serve_session_binding(
 // SystemdPropertyCapture make in the sibling read modules. Absent means "started/stopped".
 fn host_effect_nbd_proxy_serve_systemd_run_transient(
   unit: std.types.NonEmptyStr,
-  command_argv: std.types.List<String>,
+  command_argv: List<String>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> String? {
   match gunbc.systemd_run_transient.systemd_run_transient_read(transport: transport, unit: unit, command_argv: command_argv) {
@@ -177,7 +177,7 @@ fn host_effect_nbd_proxy_serve_read_session_token() -> String? {
 fn host_effect_nbd_proxy_serve_websocat_argv_materialized(
   intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
   token: std.types.NonEmptyStr,
-) -> std.types.List<String> {
+) -> List<String> {
   extdeps.bmc.webui.nbd_proxy_serve.nbd_proxy_serve_websocat_argv(
     intent: extdeps.bmc.webui.nbd_proxy_serve.nbd_proxy_serve_transport_intent(
       bmc_host: intent.bmc_host,

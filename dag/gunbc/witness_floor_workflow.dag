@@ -99,7 +99,7 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // The binary itself stays in the tree: running the parse sweep alone is the cheapest check
 // available while editing src/v1, and it is a thin caller of the same function, not a second
 // implementation. What it no longer is, is CI's business.
-data witness_floor_required_bins: std.types.List<String> = ["claim_executor", "gunbc"]
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
@@ -399,7 +399,7 @@ type WitnessFloorBoundStep {
 //
 // Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
 // shell out to cargo. Listing it would trade one false declaration for another.
-fn witness_floor_bound_steps() -> std.types.List<WitnessFloorBoundStep> {
+fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
@@ -474,11 +474,11 @@ fn witness_floor_disposition_upload_step() -> extdeps.github.actions.Step {
   }
 }
 
-fn witness_floor_steps() -> std.types.List<extdeps.github.actions.Step> {
+fn witness_floor_steps() -> List<extdeps.github.actions.Step> {
   list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
 }
 
-fn witness_floor_step_annotations() -> std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
+fn witness_floor_step_annotations() -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
   v2.std.algebra.list_map(
     xs: witness_floor_bound_steps(),
     f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },

@@ -468,7 +468,7 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
 
 // ── Tamper controls: what the approved artifact hash actually discriminates ──────────────────────
 
-fn tamper_row(state: std.types.NonEmptyStr, ops: std.types.List<gunbc.remote_operation.RemoteOperation>) -> gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction {
+fn tamper_row(state: std.types.NonEmptyStr, ops: List<gunbc.remote_operation.RemoteOperation>) -> gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction {
   gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction {
     action: gunbc.membership_reconcile.MemberAdded {
       at: spark_serving_member_key(
@@ -506,11 +506,11 @@ fn tamper_row(state: std.types.NonEmptyStr, ops: std.types.List<gunbc.remote_ope
   }
 }
 
-fn tamper_wire(state: std.types.NonEmptyStr, ops: std.types.List<gunbc.remote_operation.RemoteOperation>) -> String {
+fn tamper_wire(state: std.types.NonEmptyStr, ops: List<gunbc.remote_operation.RemoteOperation>) -> String {
   fleet_converge_spark_serving_typed_actions_wire(rows: [tamper_row(state: state, ops: ops)])
 }
 
-data tamper_base_ops: std.types.List<gunbc.remote_operation.RemoteOperation> = [gunbc.remote_operation.RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }]
+data tamper_base_ops: List<gunbc.remote_operation.RemoteOperation> = [gunbc.remote_operation.RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }]
 
 // THE APPROVAL IS OVER THE VALUES, NOT ONLY THE ADDRESS. A row whose `to` digest moved from one
 // model manifest to another used to serialize identically, because the member KEY is host x

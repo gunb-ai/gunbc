@@ -19,7 +19,7 @@ module v2.test.self_host.closure_emit_population_admission
 // would be a guard over an empty roster. It becomes assertable when a host
 // manifest overlay supplies a real closure.
 fn admission_reason_lexeme_or_admitted(
-  refs: std.types.List<v2.compiler.source_authority.SourceRef>,
+  refs: List<v2.compiler.source_authority.SourceRef>,
   receipt: v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt
 ) -> String {
   match v2.compiler.self_host.compiler_closure_emit_driver.closure_emit_population_admission(refs: refs, receipt: receipt) {

@@ -115,7 +115,7 @@ data probe_receipt_ledger_transcription_scaffold: std.disposition.Disposition = 
 // therefore genuinely std.upsert_decision.Converged on both dimensions for srv1/srv2. srv3/srv4 auth-refuse
 // (gunbc-fleet not created there yet); the Sparks are ProbeTargetUnobserved (repair #1:
 // principal unobserved → no SSH), which is why those rows carry no auth diagnostic.
-data host_reach_identity_probe_receipts: std.types.List<HostReachIdentityProbeReceipt> = [
+data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
   HostReachIdentityProbeReceipt {
     host: "srv1" as product.placement_supply.HostIdentity,
     probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
@@ -283,7 +283,7 @@ data fleet_reach_probe_receipt_path: String = "target/fleet-reach-probe-receipt.
 
 type FleetReachProbeRun {
   probed_at: String
-  receipts: std.types.List<HostReachIdentityProbeReceipt>
+  receipts: List<HostReachIdentityProbeReceipt>
 }
 
 // The probe transports to the host's RESOLVED ENDPOINT (gunbc.fleet_reach_endpoint:

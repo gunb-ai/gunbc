@@ -5,9 +5,9 @@ data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: o
 
 data spark_serving_converge_slice_wet_receipt_path: String = "target/spark-serving-converge-slice-wet-receipt.txt"
 
-data spark_serving_converge_slice_wet_hosts: std.types.List<product.placement_supply.HostIdentity> = [operator_host_srv5, operator_host_srv6]
+data spark_serving_converge_slice_wet_hosts: List<product.placement_supply.HostIdentity> = [operator_host_srv5, operator_host_srv6]
 
-fn spark_serving_linger_probe_words() -> std.types.List<String> {
+fn spark_serving_linger_probe_words() -> List<String> {
   [
     "loginctl",
     "show-user",
@@ -206,7 +206,7 @@ fn spark_serving_terminal_health_verdict(
 // nothing compares them. The typed rows are the authority; the verdict string below is a projection
 // of them, and the durability count is another.
 type SparkServingReplanRows
-  = SparkServingReplanRowsReady { rows: std.types.List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
+  = SparkServingReplanRowsReady { rows: List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
   | SparkServingReplanRowsRefused { cause: String }
 
 fn spark_serving_replan_rows(
@@ -274,7 +274,7 @@ fn spark_serving_applied_replan_verdict(
 // evidence it held: the step standing dropped its cause, the cause dropped its measurement, and the
 // replan dropped its identities. Each was one function short of the operator.
 fn spark_serving_replan_disagreeing_addresses_wire(
-  rows: std.types.List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction>,
+  rows: List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction>,
 ) -> String {
   join(
     map(rows, r => spark_serving_replan_row_wire(action: r.action)),
@@ -574,7 +574,7 @@ fn spark_serving_converge_slice_emit_receipt(
   now: std.types.NonEmptyStr,
   attempt_raw: String,
   trust_line: String,
-  hosts: std.types.List<product.placement_supply.HostIdentity>,
+  hosts: List<product.placement_supply.HostIdentity>,
   execute_apply: Bool,
 ) -> std.process.ProcessExit {
                   let reports = map(

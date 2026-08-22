@@ -245,22 +245,22 @@ type CodexPackageLockNode = extdeps.package.PackageLockNode<extdeps.npm.NpmLockP
 type CodexPackageLockAdmission
   = CodexPackageLockAdmitted {
       graph: gunbc.package_delivery.CodexPackageLockGraph
-      nodes: std.types.List<gunbc.package_delivery.CodexPackageLockNode>
-      registry_artifacts: std.types.List<extdeps.npm.NpmRegistryArtifact>
+      nodes: List<gunbc.package_delivery.CodexPackageLockNode>
+      registry_artifacts: List<extdeps.npm.NpmRegistryArtifact>
     }
   | CodexPackageLockParseFailed {
       cause: std.types.NonEmptyStr
     }
   | CodexPackageLockUnsupportedNodes {
-      unsupported: std.types.List<extdeps.npm.NpmLockNodeFormUnsupportedCarrier>
+      unsupported: List<extdeps.npm.NpmLockNodeFormUnsupportedCarrier>
     }
   | CodexPackageLockGraphRefused {
       admission: gunbc.package_delivery.CodexPackageLockGraphAdmission
     }
 
 fn codex_registry_artifacts_from_nodes(
-  nodes: std.types.List<gunbc.package_delivery.CodexPackageLockNode>,
-) -> std.types.List<extdeps.npm.NpmRegistryArtifact> {
+  nodes: List<gunbc.package_delivery.CodexPackageLockNode>,
+) -> List<extdeps.npm.NpmRegistryArtifact> {
   fold(
     nodes,
     init: [],
@@ -293,7 +293,7 @@ fn admit_codex_package_lock_text(text: String) -> gunbc.package_delivery.CodexPa
 }
 
 fn codex_artifact_named(
-  artifacts: std.types.List<extdeps.npm.NpmRegistryArtifact>,
+  artifacts: List<extdeps.npm.NpmRegistryArtifact>,
   name: std.types.NonEmptyStr,
 ) -> extdeps.npm.NpmRegistryArtifact? {
   fold(
@@ -591,7 +591,7 @@ type CodexSelectedNodeAdmission
 
 data codex_install_script_refusal_note: String = "npm ci --ignore-scripts prevents execution; it does not admit a package whose lock row requires an unadmitted build effect. First Codex profile refuses any selected node with hasInstallScript=true. Measured 0.146.0 closure has none — no exception roster."
 
-fn list_contains_str(xs: std.types.List<std.types.NonEmptyStr>, needle: std.types.NonEmptyStr) -> Bool {
+fn list_contains_str(xs: List<std.types.NonEmptyStr>, needle: std.types.NonEmptyStr) -> Bool {
   xs |> any(x => (x as String) == (needle as String))
 }
 
@@ -828,7 +828,7 @@ type PackageTreeEntryReceipt {
 }
 
 type PackageMaterializedTreeReceipt {
-  entries: std.types.List<gunbc.package_delivery.PackageTreeEntryReceipt>
+  entries: List<gunbc.package_delivery.PackageTreeEntryReceipt>
   tree_identity: std.content_hash.ContentHash
 }
 
@@ -841,7 +841,7 @@ type CodexRuntimeBundleReceipt {
   manifest_digest: std.content_hash.Sha512Digest
   lock_digest: std.content_hash.Sha512Digest
   target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  admitted_packages: std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+  admitted_packages: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
   admitted_package_set_identity: std.content_hash.ContentHash
   materialized_tree: gunbc.package_delivery.PackageMaterializedTreeReceipt
   native_executable_digest: std.content_hash.Sha512Digest
@@ -856,7 +856,7 @@ type CodexRuntimeBundle {
   wrapper_executable_rel: std.types.NonEmptyStr
   platform_package_rel: std.types.NonEmptyStr
   target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  admitted_packages: std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+  admitted_packages: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
   admitted_package_set_identity: std.content_hash.ContentHash
   receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt
 }
@@ -885,10 +885,10 @@ fn admitted_package_receipt_canonical_line(
 }
 
 fn sort_admitted_packages_by_lock_key(
-  receipts: std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
-) -> std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
+  receipts: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
+) -> List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
   match receipts.skip(n: 0).first() {
-    Absent => [] as std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+    Absent => [] as List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
     Present { value: a } =>
       match receipts.skip(n: 1).first() {
         Absent => [a]
@@ -903,13 +903,13 @@ fn sort_admitted_packages_by_lock_key(
 }
 
 fn observe_admitted_package_set_identity(
-  receipts: std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
+  receipts: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
   staging_dir: std.types.FilePath,
 ) -> std.content_hash.ContentHash? {
   let ordered = sort_admitted_packages_by_lock_key(receipts: receipts)
   let lines = fold(
     ordered,
-    init: [] as std.types.List<String>,
+    init: [] as List<String>,
     f: (acc, receipt) =>
       acc |> list_push(
         concat(admitted_package_receipt_canonical_line(receipt: receipt), "\n"),
@@ -1039,7 +1039,7 @@ fn observe_package_materialized_tree(
   } else {
     let rows = fold(
       split(s: listed.stdout, delimiter: "\n"),
-      init: [] as std.types.List<String>,
+      init: [] as List<String>,
       f: (acc, line) =>
         if line == "" {
           acc
@@ -1049,7 +1049,7 @@ fn observe_package_materialized_tree(
     )
     let entries_acc = fold(
       rows,
-      init: Present { value: [] as std.types.List<gunbc.package_delivery.PackageTreeEntryReceipt> },
+      init: Present { value: [] as List<gunbc.package_delivery.PackageTreeEntryReceipt> },
       f: (acc, row) => match acc {
         Absent => none
         Present { value: so_far } => {
@@ -1145,10 +1145,10 @@ fn observe_package_materialized_tree(
   }
 }
 
-fn json_object_keys_unique(members: std.types.List<extdeps.languages.json.emit.JsonKeyValue>) -> Bool {
+fn json_object_keys_unique(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> Bool {
   match fold(
     members,
-    init: Present { value: empty_set() as std.types.Set<String> },
+    init: Present { value: empty_set() as Set<String> },
     f: (acc, m) => match acc {
       Absent => none
       Present { value: seen } =>
@@ -1164,7 +1164,7 @@ fn json_object_keys_unique(members: std.types.List<extdeps.languages.json.emit.J
   }
 }
 
-fn sort_json_members_by_key(members: std.types.List<extdeps.languages.json.emit.JsonKeyValue>) -> std.types.List<extdeps.languages.json.emit.JsonKeyValue> {
+fn sort_json_members_by_key(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   sort_by(members, m => m.key)
 }
 
@@ -1177,7 +1177,7 @@ fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.
     JsonArray { elements } => {
       let mapped = fold(
         elements,
-        init: Present { value: [] as std.types.List<extdeps.languages.json.emit.JsonValue> },
+        init: Present { value: [] as List<extdeps.languages.json.emit.JsonValue> },
         f: (acc, el) => match acc {
           Absent => none
           Present { value: so_far } =>
@@ -1199,7 +1199,7 @@ fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.
         let sorted = sort_json_members_by_key(members: members)
         let mapped = fold(
           sorted,
-          init: Present { value: [] as std.types.List<extdeps.languages.json.emit.JsonKeyValue> },
+          init: Present { value: [] as List<extdeps.languages.json.emit.JsonKeyValue> },
           f: (acc, m) => match acc {
             Absent => none
             Present { value: so_far } =>
@@ -1933,7 +1933,7 @@ fn codex_runtime_materialization_refusal_reason(
 
 type TargetClosureAcquisitionAcc
   = TargetClosureAcquisitionOk {
-      admitted: std.types.List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
+      admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
     }
   | TargetClosureAcquisitionFailed {
       acquisition: gunbc.package_delivery.RegistryArtifactAcquisition
@@ -2001,7 +2001,7 @@ fn acquire_and_admit_selected_pair(
 
 fn seed_npm_cache_from_admitted(
   cache: std.types.FilePath,
-  admitted: std.types.List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
+  admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
 ) -> std.types.FilePath? {
   fold(
     admitted,
@@ -2024,10 +2024,10 @@ fn seed_npm_cache_from_admitted(
 }
 
 fn durable_admitted_receipts(
-  staged: std.types.List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
-) -> std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
+  staged: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
+) -> List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
   match staged.skip(n: 0).first() {
-    Absent => [] as std.types.List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+    Absent => [] as List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
     Present { value: a } =>
       match staged.skip(n: 1).first() {
         Absent => [a.receipt]
@@ -2046,7 +2046,7 @@ fn finish_codex_runtime_materialization_after_install(
   native_executable_rel: std.types.NonEmptyStr,
   platform_lock_key: std.types.NonEmptyStr,
   selected_target: gunbc.package_delivery.CodexNpmRuntimeTarget,
-  staged_admitted: std.types.List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
+  staged_admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
   release_parent: std.types.FilePath,
 ) -> gunbc.package_delivery.CodexRuntimeMaterialization {
   let durable = durable_admitted_receipts(staged: staged_admitted)
@@ -2269,7 +2269,7 @@ type CodexRuntimePostInstallContext {
   native_executable_rel: std.types.NonEmptyStr
   platform_lock_key: std.types.NonEmptyStr
   selected_target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  staged_admitted: std.types.List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
+  staged_admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
 }
 
 fn codex_runtime_install_from_prepared(

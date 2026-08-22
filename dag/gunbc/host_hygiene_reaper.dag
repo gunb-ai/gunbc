@@ -107,7 +107,7 @@ fn residual_reap_check(obs: ResidualSlotObservation) -> ResidualReapCheck {
   }
 }
 
-fn first_reap_check_failure(checks: std.types.List<ResidualReapCheck>) -> String? {
+fn first_reap_check_failure(checks: List<ResidualReapCheck>) -> String? {
   fold(checks, init: none, f: fn(acc, c) {
     match acc {
       Present { value: _ } => acc
@@ -129,7 +129,7 @@ fn exempt_cause_of(obs: ResidualSlotObservation) -> ReapRefusalCause? {
   }
 }
 
-fn collect_exempt_causes(obs_list: std.types.List<ResidualSlotObservation>) -> std.types.List<ReapRefusalCause> {
+fn collect_exempt_causes(obs_list: List<ResidualSlotObservation>) -> List<ReapRefusalCause> {
   fold(obs_list, init: [], f: fn(acc, obs) {
     match exempt_cause_of(obs: obs) {
       Present { value: c } => concat(acc, [c])
@@ -139,10 +139,10 @@ fn collect_exempt_causes(obs_list: std.types.List<ResidualSlotObservation>) -> s
 }
 
 type ResidualReapEvidence {
-  exempt_causes: std.types.List<ReapRefusalCause>
+  exempt_causes: List<ReapRefusalCause>
 }
 
-fn ground_residual_reap(obs_list: std.types.List<ResidualSlotObservation>) -> std.realization_reconcile.Grounding<ResidualReapEvidence> {
+fn ground_residual_reap(obs_list: List<ResidualSlotObservation>) -> std.realization_reconcile.Grounding<ResidualReapEvidence> {
   let checks = fold(obs_list, init: [], f: fn(acc, obs) { concat(acc, [residual_reap_check(obs: obs)]) })
   match first_reap_check_failure(checks: checks) {
     Absent => std.realization_reconcile.Grounds { evidence: ResidualReapEvidence { exempt_causes: collect_exempt_causes(obs_list: obs_list) } }
@@ -151,7 +151,7 @@ fn ground_residual_reap(obs_list: std.types.List<ResidualSlotObservation>) -> st
 }
 
 fn reconcile_residual_reap(
-  read: std.realization_reconcile.ShowEffectiveRead<std.types.List<ResidualSlotObservation>>,
+  read: std.realization_reconcile.ShowEffectiveRead<List<ResidualSlotObservation>>,
 ) -> std.realization_reconcile.Reconciliation<String, ResidualReapEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -169,7 +169,7 @@ fn reconcile_residual_reap(
   }
 }
 
-data gunbc_host_hygiene_reaper_show_effective_read: std.realization_reconcile.ShowEffectiveRead<std.types.List<ResidualSlotObservation>> = std.realization_reconcile.ReadAbsent {
+data gunbc_host_hygiene_reaper_show_effective_read: std.realization_reconcile.ShowEffectiveRead<List<ResidualSlotObservation>> = std.realization_reconcile.ReadAbsent {
   reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot cgroup/system.control read runs through gunbc.host_hygiene_reaper_observe.gunbc_host_hygiene_reaper_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
 }
 

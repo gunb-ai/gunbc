@@ -28,7 +28,7 @@ fn spark_serving_runtime_receipt_path() -> std.types.FilePath {
   ) as std.types.FilePath
 }
 
-fn spark_serving_runtime_receipt_probe_words() -> std.types.List<String> {
+fn spark_serving_runtime_receipt_probe_words() -> List<String> {
   ["cat", spark_serving_runtime_receipt_wire_path() as String]
 }
 

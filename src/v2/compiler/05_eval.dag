@@ -341,7 +341,7 @@ type EvalFoldState {
   node: v2.std.node.Node
   progress: EvalProgress
   structural: v2.std.diagnostic.Outcome<v2.std.node.Node>
-  child_values: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>
+  child_values: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>
   value: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
@@ -468,7 +468,7 @@ fn diagnostic_cache_digest(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Hash 
   )
 }
 
-fn diagnostic_tail_bag_cache_digest(xs: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.node.Hash {
+fn diagnostic_tail_bag_cache_digest(xs: List<v2.std.diagnostic.Diagnostic>) -> v2.std.node.Hash {
   v2.std.node.bag_hash_digest(
     empty: test_claim_symbol_digest(sym: ^test_claim_cache_diagnostic_tail_bag_empty_tag),
     xs: map(xs, diag => diagnostic_cache_digest(d: diag))
@@ -760,7 +760,7 @@ fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> v2.
   v2.std.optional.optional_absent()
 }
 
-fn empty_runtime_bindings() -> std.types.Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+fn empty_runtime_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
   std.types.Map {
     lookup: runtime_binding_lookup_miss
   }
@@ -922,7 +922,7 @@ fn eval_witness_outcome<T>(witness: v2.std.witness.Witness<T>) -> v2.std.diagnos
   }
 }
 
-fn eval_first_runtime_argument(args: std.types.List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn eval_first_runtime_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
     witness: v2.std.collection.list_nth(
       xs: args,
@@ -932,7 +932,7 @@ fn eval_first_runtime_argument(args: std.types.List<v2.std.runtime.RuntimeValue>
   )
 }
 
-fn eval_bind_value_argument(args: std.types.List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn eval_bind_value_argument(args: List<v2.std.runtime.RuntimeValue>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
     witness: v2.std.collection.list_nth(
       xs: args,
@@ -1071,7 +1071,7 @@ type EvalParamBindAcc {
 fn eval_bind_param_edge_step(
   state: EvalParamBindAcc,
   param_edge: v2.std.node.Edge,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   bind: v2.std.runtime.BindInterpreter,
   node: v2.std.node.Node
 ) -> EvalParamBindAcc {
@@ -1108,7 +1108,7 @@ fn eval_bind_param_edge_step(
 
 fn eval_bind_arrow_params(
   arrow: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   environment: v2.std.runtime.EvaluationEnvironment,
   bind: v2.std.runtime.BindInterpreter,
   node: v2.std.node.Node
@@ -1142,7 +1142,7 @@ fn eval_bind_arrow_params(
   )
 }
 
-fn eval_actual_present(args: std.types.List<v2.std.runtime.RuntimeValue>, wanted: Int, node: v2.std.node.Node) -> Bool {
+fn eval_actual_present(args: List<v2.std.runtime.RuntimeValue>, wanted: Int, node: v2.std.node.Node) -> Bool {
   match v2.std.collection.list_nth(
     xs: args,
     wanted: wanted,
@@ -1296,14 +1296,14 @@ fn eval_yield_effect_request(
   }
 }
 
-fn eval_effect_io_roundtrip_args_present(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn eval_effect_io_roundtrip_args_present(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   eval_actual_present(args: args, wanted: 0, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
     && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
 }
 
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if eval_effect_io_roundtrip_args_present(args: args) {
@@ -1371,7 +1371,7 @@ fn eval_effect_io_roundtrip(
 
 fn eval_value_node(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
@@ -1387,7 +1387,7 @@ fn eval_value_node(
 
 fn eval_transform_node(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1515,7 +1515,7 @@ fn eval_branch_node_eval(
 
 fn eval_branch_node(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1537,7 +1537,7 @@ fn eval_branch_node(
 
 fn eval_loop_node(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
@@ -1627,7 +1627,7 @@ fn eval_bind_node_eval(
 
 fn eval_bind_node(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1705,7 +1705,7 @@ fn eval_match_node_eval(
 
 fn eval_match_node(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1728,7 +1728,7 @@ fn eval_match_node(
 fn eval_computation_node(
   behavior: v2.std.node.Behavior,
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   facts: v2.compiler.inferred_tree.InferredFacts,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -1819,7 +1819,7 @@ fn eval_computation_node(
 
 fn eval_interpret_node(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1853,7 +1853,7 @@ fn eval_interpret_node(
   )
 }
 
-fn empty_runtime_values() -> std.types.List<v2.std.runtime.RuntimeValue> {
+fn empty_runtime_values() -> List<v2.std.runtime.RuntimeValue> {
   []
 }
 
@@ -1884,9 +1884,9 @@ fn eval_fold_state_value(state: EvalFoldState) -> v2.std.diagnostic.Outcome<v2.s
 }
 
 fn eval_absorb_child_diagnostics(
-  acc: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>,
+  acc: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>,
   child: v2.std.diagnostic.Outcome<v2.std.node.Node>
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>> {
   v2.std.diagnostic.absorb_outcome_diagnostics(
     acc: acc,
     child: child,
@@ -1895,9 +1895,9 @@ fn eval_absorb_child_diagnostics(
 }
 
 fn eval_append_child_value(
-  acc: v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>>,
+  acc: v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>>,
   child: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.runtime.RuntimeValue>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.runtime.RuntimeValue>> {
   v2.std.diagnostic.append_outcome_value(
     acc: acc,
     child: child,
@@ -2138,7 +2138,7 @@ fn eval_fold_tree(
 fn eval_maybe_complete_node(
   node: v2.std.node.Node,
   progress: EvalProgress,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -2613,7 +2613,7 @@ fn run_test_claim_runtime_assert(
 }
 
 fn aggregate_verdicts<S, T>(
-  rs: std.types.List<v2.std.verdict.Verdict<TestClaimEvalSubject<S>, T>>,
+  rs: List<v2.std.verdict.Verdict<TestClaimEvalSubject<S>, T>>,
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<S>, T> {
   v2.std.verdict.verdict_fold(

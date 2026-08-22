@@ -15,8 +15,8 @@ type MechanicalReverificationRun {
   test_claim: v2.lens.subsumption.TestClaimId
   applied_root_fix: v2.lens.subsumption.DiffId
   execution: MechanicalReverificationExecution
-  findings_before: std.types.Set<v2.lens.subsumption.DiffId>
-  findings_after: std.types.Set<v2.lens.subsumption.DiffId>
+  findings_before: Set<v2.lens.subsumption.DiffId>
+  findings_after: Set<v2.lens.subsumption.DiffId>
 }
 
 type MechanicalReverificationError
@@ -131,7 +131,7 @@ fn mechanical_reverification_execution_for_run(run: v2.compiler.eval.TestClaimRu
   }
 }
 
-fn missing_subsumed_fix_before(expected: std.types.Set<v2.lens.subsumption.DiffId>, observed: std.types.Set<v2.lens.subsumption.DiffId>) -> OptionalDiffId {
+fn missing_subsumed_fix_before(expected: Set<v2.lens.subsumption.DiffId>, observed: Set<v2.lens.subsumption.DiffId>) -> OptionalDiffId {
   let template = v2.lens.subsumption.DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = v2.lens.subsumption.DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if expected.member(template) && !observed.member(template) {
@@ -143,7 +143,7 @@ fn missing_subsumed_fix_before(expected: std.types.Set<v2.lens.subsumption.DiffI
   }
 }
 
-fn surviving_subsumed_fix_after(observed: std.types.Set<v2.lens.subsumption.DiffId>) -> OptionalDiffId {
+fn surviving_subsumed_fix_after(observed: Set<v2.lens.subsumption.DiffId>) -> OptionalDiffId {
   let template = v2.lens.subsumption.DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = v2.lens.subsumption.DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if observed.member(template) {
@@ -231,7 +231,7 @@ fn subsumption_reject_runtime(node: v2.std.node.Node) -> v2.std.diagnostic.Outco
 
 fn subsumption_call_primitive(
   node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   subsumption_reject_runtime(node: node)
@@ -356,7 +356,7 @@ data run_rust_language_model_emit_mechanical_reverification_claim: v2.compiler.e
   subject: subject_rust_language_model_emit_mechanical_reverification_claim
 )
 
-fn rust_language_model_emit_observed_before_value() -> std.types.Set<v2.lens.subsumption.DiffId> {
+fn rust_language_model_emit_observed_before_value() -> Set<v2.lens.subsumption.DiffId> {
   std.types.Set {
     member: fn(d) {
       d.id == ^emit_rust_template_leaf_fix ||
@@ -365,9 +365,9 @@ fn rust_language_model_emit_observed_before_value() -> std.types.Set<v2.lens.sub
   }
 }
 
-data rust_language_model_emit_observed_before: std.types.Set<v2.lens.subsumption.DiffId> = rust_language_model_emit_observed_before_value()
+data rust_language_model_emit_observed_before: Set<v2.lens.subsumption.DiffId> = rust_language_model_emit_observed_before_value()
 
-fn rust_language_model_emit_observed_after_value() -> std.types.Set<v2.lens.subsumption.DiffId> {
+fn rust_language_model_emit_observed_after_value() -> Set<v2.lens.subsumption.DiffId> {
   std.types.Set {
     member: fn(_) {
       false
@@ -375,7 +375,7 @@ fn rust_language_model_emit_observed_after_value() -> std.types.Set<v2.lens.subs
   }
 }
 
-data rust_language_model_emit_observed_after: std.types.Set<v2.lens.subsumption.DiffId> = rust_language_model_emit_observed_after_value()
+data rust_language_model_emit_observed_after: Set<v2.lens.subsumption.DiffId> = rust_language_model_emit_observed_after_value()
 
 data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
   test_claim: v2.lens.subsumption.TestClaimId { id: ^rust_language_model_emit_mechanical_reverification_claim },

@@ -109,7 +109,7 @@ fn ollama_blob_digest(hex: std.types.NonEmptyStr, media_type: std.types.NonEmpty
   OllamaBlobDigest { hex: hex, media_type: media_type }
 }
 
-data gpt_oss_20b_blob_closure: std.types.List<OllamaBlobDigest> = [
+data gpt_oss_20b_blob_closure: List<OllamaBlobDigest> = [
   OllamaBlobDigest {
     hex: "776beb3adb235076157cfea408b8ea2a2d25eae99d7f5da997f607f6b69fa0fa" as std.types.NonEmptyStr,
     media_type: "application/vnd.docker.container.image.v1+json" as std.types.NonEmptyStr,

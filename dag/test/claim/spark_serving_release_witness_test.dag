@@ -110,18 +110,18 @@ fn occ_srv6_other() -> gunbc.spark_serving_release.SparkServingOccurrence {
 // BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access
 // row, and the reconciler passed anyway -- because it checked only for an explicit absence, so a
 // prerequisite nobody had recorded read as one that held.
-data grounded_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv5" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv5" }]
+data grounded_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv5" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv5" }]
 
-data no_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = []
+data no_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = []
 
 // Both prerequisites grounded, both for the WRONG host.
-data grounded_prereqs_srv6: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv6" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv6" }]
+data grounded_prereqs_srv6: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv6" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv6" }]
 
 fn observed_on_srv6() -> gunbc.spark_serving_release.SparkServingObservation {
   gunbc.spark_serving_release.SparkServingObserved { host: "srv6", loaded_release: release_base() }
 }
 
-data absent_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
+data absent_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
 
 fn observed_matching() -> gunbc.spark_serving_release.SparkServingObservation {
   gunbc.spark_serving_release.SparkServingObserved { host: "srv5", loaded_release: release_base() }
@@ -143,7 +143,7 @@ fn observation_refused() -> gunbc.spark_serving_release.SparkServingObservation 
   gunbc.spark_serving_release.SparkServingObservationRefused { host: "srv5", cause: "loaded revision not observable from the unit MainPID" }
 }
 
-fn reconcile_arm(observation: gunbc.spark_serving_release.SparkServingObservation, prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite>) -> String {
+fn reconcile_arm(observation: gunbc.spark_serving_release.SparkServingObservation, prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite>) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: prereqs) {
     SparkServingAlreadyConverged { converged_release: _ } => "converged"
     SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
@@ -311,11 +311,11 @@ fn plan_row_for(observation: gunbc.spark_serving_release.SparkServingObservation
   plan_row_under(intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization, observation: observation, grants: grants)
 }
 
-fn grants_on(host: product.placement_supply.HostIdentity, principal: String, commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn grants_on(host: product.placement_supply.HostIdentity, principal: String, commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   grants_under(host: host, principal: principal, credential: fleet_key_identity, commands: commands)
 }
 
-fn grants_under(host: product.placement_supply.HostIdentity, principal: String, credential: std.content_hash.ContentHash, commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn grants_under(host: product.placement_supply.HostIdentity, principal: String, credential: std.content_hash.ContentHash, commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   gunbc.spark_serving_realization.GrantPopulationObserved {
     host: host,
     principal: principal as std.types.NonEmptyStr,

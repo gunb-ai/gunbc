@@ -49,7 +49,7 @@ func observe_generation_store_wet() -> GenerationAdmission
   )
 }
 
-func observe_timer_members_wet() -> std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>
+func observe_timer_members_wet() -> List<gunbc.fleet_converge_plan.TimerRetirementMember>
   uses net: std.resources.Network
 {
   let legacy = gunbc.fleet_converge_plan.timer_retirement_observed_legacy_srv1()
@@ -60,7 +60,7 @@ func observe_timer_members_wet() -> std.types.List<gunbc.fleet_converge_plan.Tim
     ))  )
 }
 
-func observe_cap_members_wet() -> std.types.List<gunbc.host_axis_caps.CapMember>
+func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
   uses net: std.resources.Network
 {
   flat_map(gunbc.host_axis_caps.caps_managed_dropin_paths, path => {

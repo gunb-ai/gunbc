@@ -16,9 +16,9 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn kernel_type_set() -> HashMap<String, bool> {
+pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: HashMap<String, bool> = {
+        static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
@@ -31,7 +31,7 @@ pub fn kernel_type_set() -> HashMap<String, bool> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &HashMap<String, bool>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -41,9 +41,9 @@ pub fn is_kernel_type(name: String) -> bool {
     }
 }
 
-pub fn container_type_arity() -> HashMap<String, i64> {
+pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
-        static CACHED: HashMap<String, i64> = {
+        static CACHED: Rc<HashMap<String, i64>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("List".to_string(), 1);
@@ -56,7 +56,7 @@ pub fn container_type_arity() -> HashMap<String, i64> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &HashMap<String, i64>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -122,25 +122,25 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn ordered_element_collections() -> HashMap<String, bool> {
+pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: HashMap<String, bool> = {
+        static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
             __m.insert("List".to_string(), true);
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &HashMap<String, bool>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
     v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
-pub fn container_template_algebra_rows() -> HashMap<String, String> {
+pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: HashMap<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("List".to_string(), "FreeMonoid".to_string());
@@ -166,12 +166,12 @@ pub fn container_template_algebra_rows() -> HashMap<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &HashMap<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn container_template_alias_rows() -> HashMap<String, String> {
+pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: HashMap<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("List".to_string(), "FreeMonoid".to_string());
@@ -185,7 +185,7 @@ pub fn container_template_alias_rows() -> HashMap<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &HashMap<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {

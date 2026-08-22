@@ -2,11 +2,11 @@ module v2.test.manual.program_partition_body_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn program_partition_node_list_member_seen(seen: std.types.List<v2.std.node.Node>, needle: v2.std.node.Node) -> v2.std.logic.Bool {
+fn program_partition_node_list_member_seen(seen: List<v2.std.node.Node>, needle: v2.std.node.Node) -> v2.std.logic.Bool {
   v2.std.algebra.any(xs: seen, predicate: fn(member) { member == needle })
 }
 
-fn program_partition_node_list_is_duplicate_free(xs: std.types.List<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn program_partition_node_list_is_duplicate_free(xs: List<v2.std.node.Node>) -> v2.std.logic.Bool {
   match v2.std.algebra.fold_list(
     xs: xs,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },

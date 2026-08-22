@@ -77,7 +77,7 @@ type OobeSetupField
   | OobeWirelessNetwork
   | OobeHostnameAssignment
 
-data dgx_spark_oobe_fields: std.types.List<OobeSetupField> = [
+data dgx_spark_oobe_fields: List<OobeSetupField> = [
   OobeLanguage,
   OobeTimeZone,
   OobeKeyboardLayout,
@@ -172,7 +172,7 @@ type DgxSparkPxeInstallParameters {
   skip_firmware_update: Bool
 }
 
-fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> std.types.List<String> {
+fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<String> {
   let with_unattended = if params.unattended { ["autoinstall"] } else { [] }
   let with_noui = if params.user_interface_disabled { append(with_unattended, "noui") } else { with_unattended }
   if params.skip_firmware_update { append(with_noui, "usb.skipfw") } else { with_noui }

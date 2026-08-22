@@ -71,15 +71,15 @@ fn typed_remote_file_staging_path(write: TypedRemoteFileWrite) -> String {
   concat(write.path as String, ".gunbc-staging")
 }
 
-fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["dd", "status=none", concat("of=", typed_remote_file_staging_path(write: write))]
 }
 
-fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> std.types.List<String> {
+fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
   ["chmod", remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
 }
 
-fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["mv", "-f", typed_remote_file_staging_path(write: write), write.path as String]
 }
 
@@ -104,7 +104,7 @@ fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> std.types.List<
 // carry arbitrary bytes faithfully, and it stops shipping whole files back through stdout. cmp's own
 // exit vocabulary distinguishes a difference (1) from an error reading either side (2), so those stay
 // two refusals rather than collapsing into one.
-fn typed_remote_file_compare_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+fn typed_remote_file_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["cmp", "-s", "-", write.path as String]
 }
 
@@ -189,7 +189,7 @@ fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> String 
 }
 
 // Remote argv is ONLY [tee, path] — no sh/bash/-c arm exists; bytes ride stdin, not argv.
-fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> List<String> {
   [typed_remote_file_write_tee_command, write.path as String]
 }
 
@@ -267,7 +267,7 @@ fn typed_remote_file_write_over_fleet_ssh(
 fn typed_remote_file_step(
   target: gunbc.fleet_known_hosts_anchor.SshTarget,
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  raws: std.types.List<String>,
+  raws: List<String>,
   stdin_payload: String,
 ) -> extdeps.ssh.session.SshSessionExecResult? {
   match portable_remote_words(raws: raws) {
@@ -287,7 +287,7 @@ fn typed_remote_file_step_outcome(
   target: gunbc.fleet_known_hosts_anchor.SshTarget,
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   step: String,
-  raws: std.types.List<String>,
+  raws: List<String>,
   stdin_payload: String,
 ) -> TypedRemoteFileConvergence? {
   match typed_remote_file_step(target: target, context: context, raws: raws, stdin_payload: stdin_payload) {

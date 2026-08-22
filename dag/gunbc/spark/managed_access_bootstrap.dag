@@ -61,7 +61,7 @@ type PrincipalReachObservation {
 // against that population -- this field cannot answer it and no longer appears to.
 
 fn observation_for(
-  observations: std.types.List<PrincipalReachObservation>,
+  observations: List<PrincipalReachObservation>,
   host: product.placement_supply.HostIdentity,
   login: std.types.NonEmptyStr,
 ) -> PrincipalReachObservation? {
@@ -98,7 +98,7 @@ data spark_operator_bootstrap_login: String = "briansrls"
 // THROUGH, so the honest standing is unobserved rather than a plan that could not be executed.
 fn derive_spark_managed_access_standing(
   host: product.placement_supply.HostIdentity,
-  observations: std.types.List<PrincipalReachObservation>,
+  observations: List<PrincipalReachObservation>,
 ) -> gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding {
   let managed = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: gunbc.fleet_posix_accounts.FleetAccountAutomation }
   let bootstrap = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: gunbc.fleet_posix_accounts.FleetAccountOperator }
@@ -155,10 +155,10 @@ type SparkBootstrapPlan {
   host: product.placement_supply.HostIdentity
   transport: gunbc.fleet_posix_accounts.PosixAccountOccurrence
   first: SparkBootstrapEffect
-  more: std.types.List<SparkBootstrapEffect>
+  more: List<SparkBootstrapEffect>
 }
 
-fn spark_bootstrap_plan_effects(plan: SparkBootstrapPlan) -> std.types.List<SparkBootstrapEffect> {
+fn spark_bootstrap_plan_effects(plan: SparkBootstrapPlan) -> List<SparkBootstrapEffect> {
   concat([plan.first], plan.more)
 }
 
@@ -229,7 +229,7 @@ fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> std.types.No
 
 // THE ARGV THE GRANT AUTHORIZES, and the reason the carrier exists: the actuator calls this rather
 // than spelling `sudo -n ...` again, so an argv that no installed grant covers cannot be written.
-fn spark_managed_grant_argv(grant: SparkManagedGrant) -> std.types.List<String> {
+fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
   concat(
     ["sudo", "-n"],
     match grant {
@@ -246,7 +246,7 @@ fn spark_managed_grant_wire(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   }
 }
 
-data spark_managed_grant_population: std.types.List<SparkManagedGrant> = [
+data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as std.types.NonEmptyStr },
   RebootThisHost,
 ]
@@ -294,7 +294,7 @@ type SparkBootstrapAuthorization
   | OperatorBootstrapCredentialRequired {
       host: product.placement_supply.HostIdentity
       first_privileged: SparkBootstrapEffect
-      more_privileged: std.types.List<SparkBootstrapEffect>
+      more_privileged: List<SparkBootstrapEffect>
       secret_purpose: std.types.NonEmptyStr
     }
 
@@ -311,14 +311,14 @@ fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthoriz
   }
 }
 
-fn list_head_of_effects(effects: std.types.List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
+fn list_head_of_effects(effects: List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
   match list_head(effects) {
     HeadFound { value: e } => Present { value: e }
     HeadAbsent => none
   }
 }
 
-fn list_tail_of_effects(effects: std.types.List<SparkBootstrapEffect>) -> std.types.List<SparkBootstrapEffect> {
+fn list_tail_of_effects(effects: List<SparkBootstrapEffect>) -> List<SparkBootstrapEffect> {
   match list_tail(effects) {
     TailFound { tail: t } => t
     TailAbsent => []

@@ -142,7 +142,7 @@ fn observation_for(
 fn realization_requirements(
   intent: SparkServingIntent,
   realization: SparkServingRealization,
-) -> std.types.List<ServingRequirement> {
+) -> List<ServingRequirement> {
   let common = [
     RequiresAcceleratorAccess,
     RequiresWritableArtifactRoot,
@@ -182,7 +182,7 @@ type SparkServingRealizationAdmission
   | RealizationNotAdmitted {
       realization: SparkServingRealization
       first: ServingRequirementRefusal
-      more: std.types.List<ServingRequirementRefusal>
+      more: List<ServingRequirementRefusal>
     }
 
 fn realization_label(realization: SparkServingRealization) -> String {
@@ -236,7 +236,7 @@ type RealizationProcessIdentity
   | RunsAsSupervisorDynamicIdentity
   | RunsAsRelatedContainerIdentity
 
-fn realization_deliverable_identities(realization: SparkServingRealization) -> std.types.List<RealizationProcessIdentity> {
+fn realization_deliverable_identities(realization: SparkServingRealization) -> List<RealizationProcessIdentity> {
   match realization {
     UserUnitRealization => [RunsAsOwningExecutor]
     SystemUnitRealization => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity]
@@ -247,7 +247,7 @@ fn realization_deliverable_identities(realization: SparkServingRealization) -> s
 // What the INTENT requires the serving process to be. Under ManagedConvergenceOwned the executor
 // holds automation authority, so NoLoginNoSudoIdentity means the serving process must NOT be that
 // account -- which is precisely what RunsAsOwningExecutor delivers and therefore cannot satisfy.
-fn intent_admissible_process_identities(intent: SparkServingIntent) -> std.types.List<RealizationProcessIdentity> {
+fn intent_admissible_process_identities(intent: SparkServingIntent) -> List<RealizationProcessIdentity> {
   match intent.service_identity {
     NoLoginNoSudoIdentity => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity, RunsAsRelatedContainerIdentity]
     SupervisorManagedDynamicIdentity => [RunsAsSupervisorDynamicIdentity]
@@ -323,14 +323,14 @@ fn admit_realization(
 // head/tail come from the std list algebra rather than being re-derived here: a hand-rolled tail
 // was both an empty-literal type error and silently wrong (it never dropped the head), which is
 // what re-inventing an existing concept buys.
-fn list_head_of(xs: std.types.List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
+fn list_head_of(xs: List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
   match v2.std.algebra.list_head(xs: xs) {
     HeadFound { value: v } => Present { value: v }
     HeadAbsent => none
   }
 }
 
-fn list_tail_of(xs: std.types.List<ServingRequirementRefusal>) -> std.types.List<ServingRequirementRefusal> {
+fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementRefusal> {
   match v2.std.algebra.list_tail(xs: xs) {
     TailFound { tail: t } => t
     TailAbsent => xs
@@ -395,7 +395,7 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
   effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
 }
 
-fn realization_install_effects(realization: SparkServingRealization) -> std.types.List<ServingInstallEffect> {
+fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
       [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
@@ -427,16 +427,16 @@ type SparkServingRealizationSelection
   = RealizationSelected { realization: SparkServingRealization }
   | NoRealizationAdmitted {
       first: ServingRequirementRefusal
-      more: std.types.List<ServingRequirementRefusal>
+      more: List<ServingRequirementRefusal>
     }
   | RealizationChoiceRequired {
       first: SparkServingRealization
       second: SparkServingRealization
-      more: std.types.List<SparkServingRealization>
+      more: List<SparkServingRealization>
       cause: std.types.NonEmptyStr
     }
 
-data spark_serving_candidate_realizations: std.types.List<SparkServingRealization> = [
+data spark_serving_candidate_realizations: List<SparkServingRealization> = [
   UserUnitRealization,
   RootlessContainerRealization,
   SystemUnitRealization,
@@ -445,7 +445,7 @@ data spark_serving_candidate_realizations: std.types.List<SparkServingRealizatio
 fn admitted_realizations(
   intent: SparkServingIntent,
   capabilities: SparkHostCapabilityObservation,
-) -> std.types.List<SparkServingRealization> {
+) -> List<SparkServingRealization> {
   fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
     match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
       RealizationAdmitted { realization: adm } => append(acc, items: [adm])
@@ -458,16 +458,16 @@ fn admitted_realizations(
 // observed: a caller reading only the first refusal should see "this mechanism cannot satisfy this
 // intent" rather than an incidental missing capability on one host.
 fn prepend_structural_refusals(
-  observed: std.types.List<ServingRequirementRefusal>,
-  structural: std.types.List<ServingRequirementRefusal>,
-) -> std.types.List<ServingRequirementRefusal> {
+  observed: List<ServingRequirementRefusal>,
+  structural: List<ServingRequirementRefusal>,
+) -> List<ServingRequirementRefusal> {
   append(structural, items: observed)
 }
 
 fn all_refusals(
   intent: SparkServingIntent,
   capabilities: SparkHostCapabilityObservation,
-) -> std.types.List<ServingRequirementRefusal> {
+) -> List<ServingRequirementRefusal> {
   fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
     match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
       RealizationAdmitted { realization: _ } => acc
@@ -477,7 +477,7 @@ fn all_refusals(
   })
 }
 
-fn lowest_weight_admitted(admitted: std.types.List<SparkServingRealization>) -> SparkServingRealization? {
+fn lowest_weight_admitted(admitted: List<SparkServingRealization>) -> SparkServingRealization? {
   fold(admitted, init: none, f: fn(acc, r) {
     match acc {
       Absent => Present { value: r }
@@ -810,7 +810,7 @@ type ServingDeploymentTarget {
 // to actuate a user-owned effect: it would read the empty list as work already done. The two states
 // are now different constructors, so that misreading has no representation to occur in.
 type EffectActuation
-  = ActuatedByEscalation { commands: std.types.List<std.types.NonEmptyStr> }
+  = ActuatedByEscalation { commands: List<std.types.NonEmptyStr> }
   | ActuatedByOwnerDirectly
 
 fn effect_actuation(
@@ -855,7 +855,7 @@ fn effect_actuation(
 fn realization_escalated_commands(
   realization: SparkServingRealization,
   target: ServingDeploymentTarget,
-) -> std.types.List<std.types.NonEmptyStr> {
+) -> List<std.types.NonEmptyStr> {
   flat_map(
     realization_install_effects(realization: realization),
     e =>
@@ -871,7 +871,7 @@ fn realization_escalated_commands(
 fn realization_sudoers_grant_lines(
   realization: SparkServingRealization,
   target: ServingDeploymentTarget,
-) -> std.types.List<String> {
+) -> List<String> {
   map(
     realization_escalated_commands(realization: realization, target: target),
     c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
@@ -913,17 +913,17 @@ type ObservedGrantPopulation
       host: product.placement_supply.HostIdentity
       principal: std.types.NonEmptyStr
       credential_identity: std.content_hash.ContentHash
-      commands: std.types.List<std.types.NonEmptyStr>
+      commands: List<std.types.NonEmptyStr>
     }
   | GrantPopulationUnobserved { host: product.placement_supply.HostIdentity, principal: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
 type EscalationShortfall
   = NoNewPrivilegeRequired
-  | NewPrivilegeRequired { first: std.types.NonEmptyStr, more: std.types.List<std.types.NonEmptyStr> }
+  | NewPrivilegeRequired { first: std.types.NonEmptyStr, more: List<std.types.NonEmptyStr> }
   | ShortfallUndecidable { cause: std.types.NonEmptyStr }
   | ShortfallEvidenceMismatch { cause: std.types.NonEmptyStr }
 
-fn grant_population_contains(population: std.types.List<std.types.NonEmptyStr>, command: std.types.NonEmptyStr) -> Bool {
+fn grant_population_contains(population: List<std.types.NonEmptyStr>, command: std.types.NonEmptyStr) -> Bool {
   fold(population, init: false, f: fn(acc, held) {
     if acc { true } else { (held as String) == (command as String) }
   })

@@ -2,7 +2,7 @@ module gunbc.doc_graph_roots
 
 data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. Most rows retire: the condition names the change that deletes the row. Some do NOT -- the cited-symbol-resolution discriminating controls (hand_authored_bind_is_cited_symbol_resolution_control) are permanent evidence and carry PlanHasNoRetirement, because a climb deletes production machinery and keeps the discriminating evidence (DESIGN 4b(4)). A permanent row stating 'never retires' inside an unbound condition would be a model contradiction: the coproduct would say retires-when while the payload said never. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 
-fn plan_doc_graph_roots() -> std.types.List<String> {
+fn plan_doc_graph_roots() -> List<String> {
   map(gunbc.plan_registry.all_plans, p => gunbc.plan.plan_path(p: p))
 }
 
@@ -14,11 +14,11 @@ type HandAuthoredDocBind {
   home: DocHome,
   slug: String,
   primary_work: std.decl_ref.DeclarationRef,
-  additional_works: std.types.List<std.decl_ref.DeclarationRef>,
+  additional_works: List<std.decl_ref.DeclarationRef>,
   dissolution: gunbc.plan.PlanRetirement,
 }
 
-fn hand_authored_bind_works(b: HandAuthoredDocBind) -> std.types.List<std.decl_ref.DeclarationRef> {
+fn hand_authored_bind_works(b: HandAuthoredDocBind) -> List<std.decl_ref.DeclarationRef> {
   concat([b.primary_work], b.additional_works)
 }
 
@@ -40,7 +40,7 @@ fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind)
     || b.slug == "g1-cited-symbol-control-field-absent"
 }
 
-fn hand_authored_production_doc_binds() -> std.types.List<HandAuthoredDocBind> {
+fn hand_authored_production_doc_binds() -> List<HandAuthoredDocBind> {
   match hand_authored_doc_binds_population() {
     HandAuthoredDocBindsBuilt { binds: binds } =>
       v2.std.algebra.filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
@@ -48,22 +48,22 @@ fn hand_authored_production_doc_binds() -> std.types.List<HandAuthoredDocBind> {
   }
 }
 
-fn hand_authored_doc_declaration_refs() -> std.types.List<std.decl_ref.DeclarationRef> {
+fn hand_authored_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
-fn hand_authored_production_doc_declaration_refs() -> std.types.List<std.decl_ref.DeclarationRef> {
+fn hand_authored_production_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
-fn hand_authored_cited_symbol_control_declaration_refs() -> std.types.List<std.decl_ref.DeclarationRef> {
+fn hand_authored_cited_symbol_control_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_flat_map(
     xs: v2.std.algebra.filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
     f: fn(b) { hand_authored_bind_works(b: b) }
   )
 }
 
-fn hand_authored_works_resolution_pool_roots() -> std.types.List<String> {
+fn hand_authored_works_resolution_pool_roots() -> List<String> {
   gunbc.ci_layer_roots.compile_clean_source_roots()
 }
 
@@ -106,7 +106,7 @@ data body_lowering_production_consumer_ref: std.decl_ref.DeclarationRef = std.de
 
 data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-CORPUS DECLARER OBSERVATION, and the reason this sentence names the type it does. This module imports v2 modules and sits under dag/, so it is exactly the shape that broke the floor when whole-tree published-mock declarer selection was decided by a substring scan: a documentary row naming PublishedMockCase made this file read as a corpus declarer, its closure could not resolve under the dag-only roots that precompute uses, and the run refused before any witness executed. The declarer decision is now the exact type-annotation check. This sentence therefore MENTIONS PublishedMockCase without declaring one, so if the substring shortcut is ever restored the floor reds here first."
 
-data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
+data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "fabric-ci-replacement",
@@ -1615,7 +1615,7 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
 ]
 
 type HandAuthoredDocBindsPopulation
-  = HandAuthoredDocBindsBuilt { binds: std.types.List<HandAuthoredDocBind> }
+  = HandAuthoredDocBindsBuilt { binds: List<HandAuthoredDocBind> }
   | HandAuthoredDocBindsDuplicateKey {
       key: String,
       first: HandAuthoredDocBind,
@@ -1626,11 +1626,11 @@ fn hand_authored_bind_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn hand_authored_binds_to_keyed_rows(binds: std.types.List<HandAuthoredDocBind>) -> std.types.List<std.keyed_row.KeyedRow<String, HandAuthoredDocBind>> {
+fn hand_authored_binds_to_keyed_rows(binds: List<HandAuthoredDocBind>) -> List<std.keyed_row.KeyedRow<String, HandAuthoredDocBind>> {
   map(binds, b => std.keyed_row.KeyedRow { row_key: hand_authored_bind_key(b: b), value: b })
 }
 
-fn hand_authored_doc_binds_keyed_build(incomings: std.types.List<HandAuthoredDocBind>) -> std.keyed_roster.KeyedRosterBuild<String, HandAuthoredDocBind> {
+fn hand_authored_doc_binds_keyed_build(incomings: List<HandAuthoredDocBind>) -> std.keyed_roster.KeyedRosterBuild<String, HandAuthoredDocBind> {
   std.keyed_roster.keyed_roster_build(
     incomings: hand_authored_binds_to_keyed_rows(binds: incomings),
     key_eq: hand_authored_bind_key_eq,
@@ -1654,7 +1654,7 @@ fn hand_authored_doc_binds_population() -> HandAuthoredDocBindsPopulation {
   }
 }
 
-fn hand_authored_doc_binds() -> std.types.List<HandAuthoredDocBind> {
+fn hand_authored_doc_binds() -> List<HandAuthoredDocBind> {
   match hand_authored_doc_binds_population() {
     HandAuthoredDocBindsBuilt { binds: binds } => binds
     HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
@@ -1668,11 +1668,11 @@ fn hand_authored_bind_identities_unique() -> Bool {
   }
 }
 
-fn hand_authored_doc_graph_roots() -> std.types.List<String> {
+fn hand_authored_doc_graph_roots() -> List<String> {
   map(hand_authored_doc_binds(), b => hand_authored_doc_path(b: b))
 }
 
-fn doc_graph_roots_all() -> std.types.List<String> {
+fn doc_graph_roots_all() -> List<String> {
   concat(plan_doc_graph_roots(), hand_authored_doc_graph_roots())
 }
 

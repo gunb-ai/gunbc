@@ -525,7 +525,7 @@ test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
 
 data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls a new VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
 
-fn d4_wire_contract_labels() -> std.types.List<String> {
+fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
     "already_live",
@@ -543,7 +543,7 @@ fn d4_wire_contract_labels() -> std.types.List<String> {
   ]
 }
 
-fn d4_exemplars_reconcile(exemplars: std.types.List<gunbc.roadmap_belt_actuate.BeltDispatchResult>) -> Bool {
+fn d4_exemplars_reconcile(exemplars: List<gunbc.roadmap_belt_actuate.BeltDispatchResult>) -> Bool {
   map(exemplars, r => gunbc.roadmap_belt_actuate.belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
 }
 
@@ -552,7 +552,7 @@ test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
     && gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
 
-fn d4_exemplars_missing_one() -> std.types.List<gunbc.roadmap_belt_actuate.BeltDispatchResult> {
+fn d4_exemplars_missing_one() -> List<gunbc.roadmap_belt_actuate.BeltDispatchResult> {
   [
     gunbc.roadmap_belt_actuate.DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" },
     gunbc.roadmap_belt_actuate.DispatchAlreadyLive { node_id: "a", session_name: "s" },

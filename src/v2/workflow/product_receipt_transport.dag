@@ -24,7 +24,7 @@ data product_receipt_compiler_entry: String = "src/v2/compiler/00_compile.dag"
 
 data product_receipt_target_scan_note: String = "The manifest lands in target/product-receipt/manifest and THAT directory -- never bare target/ -- is the source root handed to the stage process. Adding bare target/ as a source root admits the whole build-output tree as source and collides a generated .dag with any committed module of the same name; the per-run mktemp directories elsewhere in the corpus exist for that reason. A fixed directory is used here rather than a mktemp one because this transaction's whole point is that the artifact SURVIVES between boundaries and can be inspected after the run; it is emptied at the start of each transaction, not at the end of one."
 
-fn product_receipt_ingest_args(manifest_dir: String, entry: String) -> std.types.List<String> {
+fn product_receipt_ingest_args(manifest_dir: String, entry: String) -> List<String> {
   [
     "--source-root", product_receipt_ingest_source_root,
     "--entry", entry,
@@ -37,7 +37,7 @@ fn product_receipt_stage_args(
   txn: String,
   manifest_identity: String,
   entry: String
-) -> std.types.List<String> {
+) -> List<String> {
   [
     "run",
     "--source-root", "dag",

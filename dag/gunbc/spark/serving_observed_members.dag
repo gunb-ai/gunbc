@@ -57,7 +57,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: std.types.List<gunbc.spark.serving_membership.SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<gunbc.spark.serving_membership.SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool }
 
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -67,7 +67,7 @@ type SparkServingObservedMemberProjection
 fn spark_serving_observed_linger_members(
   host: product.placement_supply.HostIdentity,
   linger: SparkServingObservedLingerState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match linger {
     LingerObservedEnabled => [
       spark_serving_member(
@@ -86,7 +86,7 @@ fn spark_serving_observed_linger_members(
 fn spark_serving_observed_unit_members(
   host: product.placement_supply.HostIdentity,
   unit: SparkServingObservedUnitState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match unit {
     UserUnitStateObserved { unit_state_digest: d } => [
       spark_serving_member(
@@ -122,7 +122,7 @@ fn spark_serving_observed_unit_members(
 fn spark_serving_observed_runtime_members(
   host: product.placement_supply.HostIdentity,
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match runtime_materialization_state_digest(observation: runtime) {
     Absent => []
     Present { value: d } => [
@@ -157,7 +157,7 @@ fn spark_serving_observed_runtime_members(
 fn spark_serving_observed_model_members(
   host: product.placement_supply.HostIdentity,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match model_store_state_digest(observation: store) {
     Absent => []
     Present { value: d } => [
@@ -358,11 +358,11 @@ fn spark_serving_projection_supports_empty_replan(
 //
 // If base64 is absent or rejects -w, the leg fails and the state is Unobserved, which refuses the
 // plan. That is the correct arm: an unreadable unit must not be planned as an absent one.
-fn spark_serving_user_unit_read_argv() -> std.types.List<String> {
+fn spark_serving_user_unit_read_argv() -> List<String> {
   ["base64", "-w", "0", spark_serving_user_unit_path() as String]
 }
 
-fn spark_serving_user_unit_is_enabled_argv() -> std.types.List<String> {
+fn spark_serving_user_unit_is_enabled_argv() -> List<String> {
   systemctl_user_is_enabled_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr)
 }
 
@@ -487,7 +487,7 @@ fn spark_serving_activity_was_observed(activity: SparkServingObservedActivitySta
 fn spark_serving_observed_unit_activity_members(
   host: product.placement_supply.HostIdentity,
   activity: SparkServingObservedActivityState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match activity {
     UnitActivityUnobserved => []
     UnitActivityNoSuchUnit => []
@@ -515,7 +515,7 @@ fn spark_serving_observed_unit_activity_members(
 fn spark_serving_observed_unit_enablement_members(
   host: product.placement_supply.HostIdentity,
   manager: SparkServingUnitManagerState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match manager {
     UserUnitManagerUnobserved => []
     UserUnitManagerNotRegistered => []
@@ -559,7 +559,7 @@ fn spark_serving_observed_unit_registration_members(
   host: product.placement_supply.HostIdentity,
   manager: SparkServingUnitManagerState,
   unit: SparkServingObservedUnitState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match manager {
     UserUnitManagerUnobserved => []
     UserUnitManagerNotRegistered => [
@@ -584,7 +584,7 @@ fn spark_serving_observed_unit_registration_members(
 fn spark_serving_registered_member_for_content(
   host: product.placement_supply.HostIdentity,
   unit: SparkServingObservedUnitState,
-) -> std.types.List<gunbc.spark.serving_membership.SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match unit {
     UserUnitStateObserved { unit_state_digest: d } => [
       spark_serving_member(

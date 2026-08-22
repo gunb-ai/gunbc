@@ -19,8 +19,8 @@ fn requirement_role(r: Requirement) -> v2.std.node.Symbol {
 }
 
 type Proposal {
-  requirements: std.types.List<Requirement>
-  dependencies: std.types.List<MergeDependency>
+  requirements: List<Requirement>
+  dependencies: List<MergeDependency>
 }
 
 // DEPENDENCIES ARE ROLE-GRAIN, NOT NODE-GRAIN, and that is a correctness choice rather than a
@@ -225,7 +225,7 @@ fn desired_role_value_eq(a: DesiredRoleValue, b: DesiredRoleValue) -> Bool {
 // MATERIALLY different -- that needs an equivalence quotient this layer does not own.
 type AuthoredRoleState {
   role: v2.std.node.Symbol
-  alternatives: std.types.List<DesiredRoleValue>
+  alternatives: List<DesiredRoleValue>
 }
 
 // CONTESTED, NOT CHOICE-REQUIRED. Same correction as MergeRefused: an engine observation must not
@@ -240,8 +240,8 @@ type AuthoredRoleState {
 // role present and requiring it absent is the same question in a different costume, so it lands on
 // the same arm rather than being quietly resolved in favour of either.
 type MergeOutcome
-  = Merged { store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, roles: std.types.List<ResolvedRole> }
-  | MergeRolesContested { role: v2.std.node.Symbol, alternatives: std.types.List<DesiredRoleValue> }
+  = Merged { store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, roles: List<ResolvedRole> }
+  | MergeRolesContested { role: v2.std.node.Symbol, alternatives: List<DesiredRoleValue> }
   | MergeRefused { cause: MergeRefusal }
 
 fn edge_label_role(label: v2.std.node.EdgeLabel) -> v2.std.node.Symbol? {
@@ -275,10 +275,10 @@ fn target_roles(store: gunbc.scm.object_store.ObjectStore, target: gunbc.scm.che
 }
 
 type TargetReadOutcome
-  = TargetRead { roles: std.types.List<ResolvedRole> }
+  = TargetRead { roles: List<ResolvedRole> }
   | TargetUnreadable { cause: MergeRefusal }
 
-fn role_named(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> ResolvedRole? {
+fn role_named(roles: List<ResolvedRole>, role: v2.std.node.Symbol) -> ResolvedRole? {
   fold(roles, init: none, f: fn(found, r) {
     match found {
       Present { value: _ } => found
@@ -287,7 +287,7 @@ fn role_named(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> 
   })
 }
 
-fn role_is_present(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> Bool {
+fn role_is_present(roles: List<ResolvedRole>, role: v2.std.node.Symbol) -> Bool {
   match role_named(roles: roles, role: role) {
     Absent => false
     Present { value: r } =>
@@ -307,11 +307,11 @@ fn replaced_role_or_original(r: ResolvedRole, incoming: ResolvedRole) -> Resolve
   if (r.role as String) == (incoming.role as String) { incoming } else { r }
 }
 
-fn replace_role(roles: std.types.List<ResolvedRole>, incoming: ResolvedRole) -> std.types.List<ResolvedRole> {
+fn replace_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<ResolvedRole> {
   map(roles, r => replaced_role_or_original(r: r, incoming: incoming))
 }
 
-fn upsert_role(roles: std.types.List<ResolvedRole>, incoming: ResolvedRole) -> std.types.List<ResolvedRole> {
+fn upsert_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<ResolvedRole> {
   match role_named(roles: roles, role: incoming.role) {
     Absent => concat(roles, [incoming])
     Present { value: _ } => replace_role(roles: roles, incoming: incoming)
@@ -320,8 +320,8 @@ fn upsert_role(roles: std.types.List<ResolvedRole>, incoming: ResolvedRole) -> s
 
 type MergeApplyAcc {
   store: gunbc.scm.object_store.ObjectStore
-  roles: std.types.List<ResolvedRole>
-  authored: std.types.List<AuthoredRoleState>
+  roles: List<ResolvedRole>
+  authored: List<AuthoredRoleState>
   refusal: MergeRefusal?
 }
 
@@ -329,13 +329,13 @@ type MergeApplyAcc {
 // AUTHORED, not against what the role currently holds. Comparing against the current value would
 // make two proposals that both replace a role look like agreement whenever the second happened to
 // restate the first's result, and would make the answer depend on the order they were applied.
-fn already_authored(authored: std.types.List<AuthoredRoleState>, role: v2.std.node.Symbol) -> Bool {
+fn already_authored(authored: List<AuthoredRoleState>, role: v2.std.node.Symbol) -> Bool {
   fold(authored, init: false, f: fn(seen, a) {
     if seen { true } else { (a.role as String) == (role as String) }
   })
 }
 
-fn authored_state(authored: std.types.List<AuthoredRoleState>, role: v2.std.node.Symbol) -> AuthoredRoleState? {
+fn authored_state(authored: List<AuthoredRoleState>, role: v2.std.node.Symbol) -> AuthoredRoleState? {
   fold(authored, init: none, f: fn(found, a) {
     match found {
       Present { value: _ } => found
@@ -345,7 +345,7 @@ fn authored_state(authored: std.types.List<AuthoredRoleState>, role: v2.std.node
   })
 }
 
-fn alternatives_contain(alternatives: std.types.List<DesiredRoleValue>, desired: DesiredRoleValue) -> Bool {
+fn alternatives_contain(alternatives: List<DesiredRoleValue>, desired: DesiredRoleValue) -> Bool {
   fold(alternatives, init: false, f: fn(seen, alt) {
     if seen { true } else { desired_role_value_eq(a: alt, b: desired) }
   })
@@ -375,10 +375,10 @@ fn authored_with_alternative(
 }
 
 fn record_alternative(
-  authored: std.types.List<AuthoredRoleState>,
+  authored: List<AuthoredRoleState>,
   role: v2.std.node.Symbol,
   desired: DesiredRoleValue,
-) -> std.types.List<AuthoredRoleState> {
+) -> List<AuthoredRoleState> {
   if already_authored(authored: authored, role: role) {
     map(authored, a => authored_with_alternative(a: a, role: role, desired: desired))
   } else {
@@ -386,7 +386,7 @@ fn record_alternative(
   }
 }
 
-fn first_contested_role(authored: std.types.List<AuthoredRoleState>) -> AuthoredRoleState? {
+fn first_contested_role(authored: List<AuthoredRoleState>) -> AuthoredRoleState? {
   fold(authored, init: none, f: fn(found, a) {
     match found {
       Present { value: _ } => found
@@ -483,17 +483,17 @@ fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
 // so retargeting `k` from `f` to `h` in the same proposal must not leave the old `k -> f` obligation
 // standing. Without this rule the kernel would refuse valid coordinated changes, which is the
 // mirror-image defect of admitting invalid ones and is just as wrong.
-fn role_name_listed(names: std.types.List<v2.std.node.Symbol>, role: v2.std.node.Symbol) -> Bool {
+fn role_name_listed(names: List<v2.std.node.Symbol>, role: v2.std.node.Symbol) -> Bool {
   fold(names, init: false, f: fn(seen, n) {
     if seen { true } else { (n as String) == (role as String) }
   })
 }
 
 fn effective_dependencies(
-  target_dependencies: std.types.List<MergeDependency>,
-  proposal_dependencies: std.types.List<MergeDependency>,
-  authored: std.types.List<v2.std.node.Symbol>,
-) -> std.types.List<MergeDependency> {
+  target_dependencies: List<MergeDependency>,
+  proposal_dependencies: List<MergeDependency>,
+  authored: List<v2.std.node.Symbol>,
+) -> List<MergeDependency> {
   concat(
     reverse(fold(target_dependencies, init: [], f: fn(acc, dep) {
       if role_name_listed(names: authored, role: dep.dependent) {
@@ -510,7 +510,7 @@ fn effective_dependencies(
 // function only ever REFUSES -- it never edits a role to repair a broken dependency. A frontier that
 // could rewrite its dependents would turn "g is affected by f" into permission to rewrite g, and the
 // authored proposal would stop being the only thing that decides what the result contains.
-fn validate_dependency(roles: std.types.List<ResolvedRole>, dep: MergeDependency) -> MergeRefusal? {
+fn validate_dependency(roles: List<ResolvedRole>, dep: MergeDependency) -> MergeRefusal? {
   if kind_is_supported(kind: dep.kind) {
     if kind_propagates_removal(kind: dep.kind) {
       if role_is_present(roles: roles, role: dep.dependent) {
@@ -539,8 +539,8 @@ fn validate_dependency(roles: std.types.List<ResolvedRole>, dep: MergeDependency
 }
 
 fn validate_dependencies(
-  roles: std.types.List<ResolvedRole>,
-  deps: std.types.List<MergeDependency>,
+  roles: List<ResolvedRole>,
+  deps: List<MergeDependency>,
 ) -> MergeRefusal? {
   fold(deps, init: none, f: fn(found, dep) {
     match found {
@@ -551,7 +551,7 @@ fn validate_dependencies(
 }
 
 type MergeRootAcc {
-  edges: std.types.List<v2.std.node.Edge>
+  edges: List<v2.std.node.Edge>
   refusal: MergeRefusal?
 }
 
@@ -590,15 +590,15 @@ fn root_edge_for(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, r
 // store_node canonicalizes named edges, the root identity does not depend on the order roles were
 // visited, so ORDER IS NOT AUTHORITY holds by construction rather than by a sort this module
 // performs and must keep correct.
-fn root_node_of(edges: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn root_node_of(edges: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: edges)
 }
 
 fn merge(
   store: gunbc.scm.object_store.ObjectStore,
   target: gunbc.scm.checkout.Commit,
-  target_dependencies: std.types.List<MergeDependency>,
-  proposals: std.types.List<Proposal>,
+  target_dependencies: List<MergeDependency>,
+  proposals: List<Proposal>,
 ) -> MergeOutcome {
   match target_roles(store: store, target: target) {
     TargetUnreadable { cause: cause } => MergeRefused { cause: cause }
@@ -640,7 +640,7 @@ fn merge(
 
 // A PROJECTION IS A MAP. As a fold with concat-at-end this was O(authored^2) to answer a question
 // that is one field read per element.
-fn authored_role_names(authored: std.types.List<AuthoredRoleState>) -> std.types.List<v2.std.node.Symbol> {
+fn authored_role_names(authored: List<AuthoredRoleState>) -> List<v2.std.node.Symbol> {
   map(authored, a => authored_role_name(a: a))
 }
 
@@ -656,7 +656,7 @@ fn authored_role_name(a: AuthoredRoleState) -> v2.std.node.Symbol {
 //
 // Prepending each proposal's p.dependencies REVERSED, then reversing once at the end, restores the
 // original order at a total cost proportional to the output.
-fn all_proposal_dependencies(proposals: std.types.List<Proposal>) -> std.types.List<MergeDependency> {
+fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency> {
   reverse(
     fold(proposals, init: [], f: fn(acc, p) { concat(reverse(p.dependencies), acc) })
   )
@@ -664,8 +664,8 @@ fn all_proposal_dependencies(proposals: std.types.List<Proposal>) -> std.types.L
 
 fn finish_merge(
   applied: MergeApplyAcc,
-  target_dependencies: std.types.List<MergeDependency>,
-  proposals: std.types.List<Proposal>,
+  target_dependencies: List<MergeDependency>,
+  proposals: List<Proposal>,
 ) -> MergeOutcome {
   let deps = effective_dependencies(
     target_dependencies: target_dependencies,

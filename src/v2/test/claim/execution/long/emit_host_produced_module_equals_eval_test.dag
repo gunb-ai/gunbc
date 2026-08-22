@@ -18,7 +18,7 @@ fn produced_add_module_source() -> v2.std.diagnostic.Outcome<extdeps.communicati
 }
 
 fn produced_module_run(
-  cp: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  cp: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   cp_identity: v2.std.node.Symbol) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval(
     subject: v2.test.execution.emit_host_add_equals_eval.emit_eval_subject(call_primitive: cp, call_primitive_identity: cp_identity),

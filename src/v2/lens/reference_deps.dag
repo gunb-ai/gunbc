@@ -573,7 +573,7 @@ fn extend_adjacency_for_reference_edge(
   acc: Map<String, List<String>>,
   edge: ReferenceResolutionFact,
   module_to_path: Map<String, String>
-) -> std.types.Map<String, List<String>> {
+) -> Map<String, List<String>> {
   match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.reference_module) {
     Present { value: referenced_path } =>
       match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
@@ -597,7 +597,7 @@ fn extend_adjacency_for_reference_edge(
 fn build_reference_adjacency(
   edges: List<ReferenceResolutionFact>,
   nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> std.types.Map<String, List<String>> {
+) -> Map<String, List<String>> {
   let module_to_path = build_module_to_path(nodes: nodes)
   fold_list(
     xs: edges,

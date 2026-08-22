@@ -6,7 +6,7 @@ module test.claim.spark_serving_runtime_install_witness
 // against exact positions -- publishing before the digest is admitted is the failure this effect
 // exists to prevent, and it is invisible to a set comparison.
 
-fn install_steps() -> std.types.List<std.types.NonEmptyStr> {
+fn install_steps() -> List<std.types.NonEmptyStr> {
   match realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
     executor_login: spark_serving_default_executor_login(),
@@ -16,7 +16,7 @@ fn install_steps() -> std.types.List<std.types.NonEmptyStr> {
   }
 }
 
-fn step_argv(identity: String) -> std.types.List<String> {
+fn step_argv(identity: String) -> List<String> {
   match realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
     executor_login: spark_serving_default_executor_login(),
@@ -48,7 +48,7 @@ fn step_argv(identity: String) -> std.types.List<String> {
 // an absent identity so a typo'd step name reads as a loud failure rather than a plausible index.
 type IndexScan { found: Bool, idx: Int }
 
-fn pull_steps() -> std.types.List<std.types.NonEmptyStr> {
+fn pull_steps() -> List<std.types.NonEmptyStr> {
   match realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),
@@ -60,7 +60,7 @@ fn pull_steps() -> std.types.List<std.types.NonEmptyStr> {
 
 // Returns Absent when the step is not present at all, so a claim over a missing step refuses rather
 // than reading an empty argv as a satisfied condition.
-fn pull_step_argv(identity: String) -> std.types.List<String>? {
+fn pull_step_argv(identity: String) -> List<String>? {
   match realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),

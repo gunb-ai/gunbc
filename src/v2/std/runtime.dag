@@ -21,17 +21,17 @@ fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> v2.std.runtime
 }
 
 type EvaluationEnvironment {
-  bindings: std.types.Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
+  bindings: Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
 }
 
 type RuntimePrimitiveValue {
   primitive_type: v2.std.node.Node
-  bytes: std.types.List<std.bit.Byte>
+  bytes: List<std.bit.Byte>
 }
 
 type RuntimeAggregateValue {
   aggregate_type: v2.std.node.Node
-  fields: std.types.List<v2.std.runtime.RuntimeFieldValue>
+  fields: List<v2.std.runtime.RuntimeFieldValue>
 }
 
 type RuntimeReferenceValue {
@@ -92,7 +92,7 @@ fn runtime_value_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) 
   v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn runtime_value_conj_node(children: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn runtime_value_conj_node(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: children)
 }
 
@@ -110,7 +110,7 @@ fn runtime_bit_node_projection(bit: v2.std.logic.Bool) -> v2.std.node.Node {
   }
 }
 
-fn runtime_bits_list_node(bits: std.types.List<v2.std.logic.Bool>) -> v2.std.node.Node {
+fn runtime_bits_list_node(bits: List<v2.std.logic.Bool>) -> v2.std.node.Node {
   v2.std.algebra.fold_list_node(
     xs: bits,
     item_node: fn(bit) { runtime_bit_node_projection(bit: bit) }
@@ -126,7 +126,7 @@ fn runtime_byte_node_projection(byte: std.bit.Byte) -> v2.std.node.Node {
   ])
 }
 
-fn runtime_bytes_list_node(bytes: std.types.List<std.bit.Byte>) -> v2.std.node.Node {
+fn runtime_bytes_list_node(bytes: List<std.bit.Byte>) -> v2.std.node.Node {
   v2.std.algebra.fold_list_node(
     xs: bytes,
     item_node: fn(byte) { runtime_byte_node_projection(byte: byte) }
@@ -171,7 +171,7 @@ fn runtime_field_value_node_projection(
   }
 }
 
-fn runtime_fields_list_node(fields: std.types.List<v2.std.runtime.RuntimeFieldValue>) -> v2.std.runtime.RuntimeValueNodeProjection {
+fn runtime_fields_list_node(fields: List<v2.std.runtime.RuntimeFieldValue>) -> v2.std.runtime.RuntimeValueNodeProjection {
   v2.std.algebra.fold_list(
     xs: fields,
     empty: RuntimeValueNodeProjected { node: v2.std.algebra.algebra_empty_conj() },
@@ -243,7 +243,7 @@ type EvaluationFrame {
 
 type EvaluationCall {
   callee: v2.std.node.Node
-  arguments: std.types.List<v2.std.runtime.RuntimeValue>
+  arguments: List<v2.std.runtime.RuntimeValue>
 }
 
 type ControlTransfer
@@ -278,7 +278,7 @@ type ValueInterpreter {
 }
 
 type TransformInterpreter {
-  call_primitive: fn(v2.std.node.Node, std.types.List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  call_primitive: fn(v2.std.node.Node, List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
   identity: v2.std.node.Symbol
 }
 
@@ -378,7 +378,7 @@ type EffectRequestKind
 type EffectRequest {
   kind: v2.std.runtime.EffectRequestKind
   operation: v2.std.model_core.PrimitiveOperationRef
-  arguments: std.types.List<v2.std.runtime.RuntimeValue>
+  arguments: List<v2.std.runtime.RuntimeValue>
   continuation: v2.std.runtime.EvaluationFrame
 }
 
@@ -404,5 +404,5 @@ type EffectReceipt {
 }
 
 type EffectReceiptLog {
-  entries: std.types.List<v2.std.runtime.EffectReceipt>
+  entries: List<v2.std.runtime.EffectReceipt>
 }

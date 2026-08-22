@@ -59,11 +59,11 @@ type CapabilityClosureVerdict
     }
 
 type CapabilityClosureScan {
-  provided: std.types.List<String>
+  provided: List<String>
   verdict: CapabilityClosureVerdict
 }
 
-fn capability_label_present(labels: std.types.List<String>, wanted: String) -> Bool {
+fn capability_label_present(labels: List<String>, wanted: String) -> Bool {
   v2.std.algebra.fold_list(
     xs: labels,
     empty: false,

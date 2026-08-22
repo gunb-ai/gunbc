@@ -9,13 +9,13 @@ fn probe_repo() -> std.types.NonEmptyStr {
 
 // The argv builders read only `locus.repo`, so a witness can exercise them through a locus whose
 // transport is never used. Nothing here reaches a host.
-fn probe_revision_words() -> std.types.List<String> {
+fn probe_revision_words() -> List<String> {
   ["git", "-C", probe_repo() as String, "rev-parse", "HEAD"]
 }
 
 data probe_index_path: String = "/tmp/gunbc-deployed-tree-index-probe-attempt"
 
-fn probe_status_words() -> std.types.List<String> {
+fn probe_status_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
     "git", "-C", probe_repo() as String, "--no-optional-locks",
@@ -23,7 +23,7 @@ fn probe_status_words() -> std.types.List<String> {
   ]
 }
 
-fn probe_ignored_words() -> std.types.List<String> {
+fn probe_ignored_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
     "git", "-C", probe_repo() as String,
@@ -31,7 +31,7 @@ fn probe_ignored_words() -> std.types.List<String> {
   ]
 }
 
-fn probe_read_tree_words() -> std.types.List<String> {
+fn probe_read_tree_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
     "git", "-C", probe_repo() as String, "read-tree", "--no-sparse-checkout",
@@ -139,7 +139,7 @@ fn nul() -> String {
   from_code_point(0)
 }
 
-fn nul_join(fields: std.types.List<String>) -> String {
+fn nul_join(fields: List<String>) -> String {
   fold(fields, init: "", f: (acc, f) => join([acc, f, test.claim.live_deploy.deployed_tree_observation_witness_test.nul()], ""))
 }
 

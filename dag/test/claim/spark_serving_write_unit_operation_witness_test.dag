@@ -4,7 +4,7 @@ module test.claim.spark_serving_write_unit_operation_witness_test
 // Position-wise kind, so an ordering claim asserts WHERE each kind sits rather than only how many
 // of each exist. A count-only claim is satisfied by any permutation, including the one that puts the
 // write before its own directory.
-fn kind_at(ops: std.types.List<gunbc.remote_operation.RemoteOperation>, i: Int) -> String {
+fn kind_at(ops: List<gunbc.remote_operation.RemoteOperation>, i: Int) -> String {
   match ops[i] {
     Absent => "<none>"
     Present { value: op } =>
@@ -15,7 +15,7 @@ fn kind_at(ops: std.types.List<gunbc.remote_operation.RemoteOperation>, i: Int) 
   }
 }
 
-fn realize(effects: std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>) -> gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsVerdict {
+fn realize(effects: List<gunbc.spark_serving_realization.ServingInstallEffect>) -> gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsVerdict {
   realize_spark_serving_install_effect_commands(
     effects: effects,
     executor_login: spark_serving_automation_principal_login(),

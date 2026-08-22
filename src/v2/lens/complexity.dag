@@ -1,16 +1,16 @@
 module v2.lens.complexity
 data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
 
-fn complexity_variables_admits(xs: std.types.List<v2.lens.cost.SizeVariable>) -> Bool {
+fn complexity_variables_admits(xs: List<v2.lens.cost.SizeVariable>) -> Bool {
   true
 }
 
-data complexity_variables_validation: v2.std.refinement.Validation<std.types.List<v2.lens.cost.SizeVariable>> = v2.std.refinement.Validation {
+data complexity_variables_validation: v2.std.refinement.Validation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.Validation {
   reason: ^complexity_variables_invalid,
   admits: complexity_variables_admits
 }
 
-data complexity_variables_vacuous_validation: v2.std.refinement.VacuousValidation<std.types.List<v2.lens.cost.SizeVariable>> = v2.std.refinement.VacuousValidation {
+data complexity_variables_vacuous_validation: v2.std.refinement.VacuousValidation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.VacuousValidation {
   reason: ^complexity_variables_invalid,
   vacuous: v2.std.refinement.vacuous_admits_marker
 }
@@ -19,7 +19,7 @@ fn complexity_projection_locus() -> v2.std.diagnostic.Locus {
   v2.std.diagnostic.Textual { file: ^complexity_projection_virtual_file, extent: v2.std.diagnostic.WholeFile }
 }
 
-type ComplexityVariables = std.types.List<v2.lens.cost.SizeVariable>
+type ComplexityVariables = List<v2.lens.cost.SizeVariable>
 
 type SizeIndexedAsymptoticClass
   = SizedLogClass

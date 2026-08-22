@@ -74,7 +74,7 @@ type SummaryMapConsumer {
 // in emit_summary_map_partition_basis below, and the method is in
 // docs/probes/emit-summary-map-consumer-partition-2026-08-22.md. Rows are ordered by module and
 // then by position in it, never by severity.
-data emit_summary_map_consumers: std.types.List<SummaryMapConsumer> = [
+data emit_summary_map_consumers: List<SummaryMapConsumer> = [
   {
     site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "lookup_emit_type_summary"),
     keys_on: "the bare type_name parameter",
@@ -325,14 +325,14 @@ fn partition_terminal_use_count() -> std.types.Int {
 // THE CELL THE BRIEF ASKS FOR, AND THE ONE THAT CHANGES THE SIZING: a site that holds a node at the
 // ask and STILL re-keys on a spelling afterwards. Scoring the ask alone files these as repaired by
 // the re-key; they are not.
-fn partition_holds_node_but_rekeys() -> std.types.List<SummaryMapConsumer> {
+fn partition_holds_node_but_rekeys() -> List<SummaryMapConsumer> {
   emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && !consumer_use_is_terminal(c: c))
 }
 
 // THE SET AN IDENTITY-KEYED MAP REPAIRS BY ITSELF: identity obtainable at the ask, and nothing
 // spelling-shaped leaving the site. Everything outside it needs the summary's own VALUES to carry
 // identity, not just its keys.
-fn partition_repaired_by_rekey_alone() -> std.types.List<SummaryMapConsumer> {
+fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
   emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c) && consumer_use_is_terminal(c: c))
 }
 
@@ -341,7 +341,7 @@ fn partition_repaired_by_rekey_alone() -> std.types.List<SummaryMapConsumer> {
 // FIRST, the severance is FOUR folds and not one, and the correction is directional: an earlier
 // read made this look like one fold storing a name where it could store an identity. It is three of
 // the summary's own fields plus the map key, and collect_type_node_import_surface_names returns a
-// std.types.List<std.types.String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
+// List<std.types.String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
 // and larger shape of change than the other three.
 //
 // SECOND, is_known_variant is the sharpest row on the roster: it quantifies over the whole closure
@@ -401,7 +401,7 @@ type SeverancePoint {
   fills_summary_field: std.types.String
 }
 
-data emit_summary_map_severance_points: std.types.List<SeverancePoint> = [
+data emit_summary_map_severance_points: List<SeverancePoint> = [
   {
     fold: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"),
     holder_at_discard: "ft, bound by the arm Present { value: Resolved { node: ft } } on the child's inferred type",
@@ -495,7 +495,7 @@ type CollisionPopulation
 // INSTRUMENT CONTROL: the compiler's own resolver reports `resolved 6 sources` for this carrier's
 // own entry, and the walk independently counts 6 modules for it under both rule 1 and rule 2, so
 // it is not measuring a different graph from the one the compiler builds.
-data emit_summary_map_collision_population: std.types.List<CollisionPopulation> = [
+data emit_summary_map_collision_population: List<CollisionPopulation> = [
   WholeTreeUpperBound {
     distinct_colliding_names: 116,
     total_type_declarations: 9480,
@@ -777,7 +777,7 @@ type GuardRow {
   return_type_can_express_the_answer: std.types.Bool
 }
 
-data emit_summary_map_guard_rows: std.types.List<GuardRow> = [
+data emit_summary_map_guard_rows: List<GuardRow> = [
   {
     site: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "derive_variant_to_enum"),
     trigger_preservation: FailsHere { what_merged_the_input: std.decl_ref.decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "two enums declaring one spelling occupy ONE map entry, so the fold sees a single enum and its ambiguity arm is unreachable for exactly the case it exists for" },
@@ -848,11 +848,11 @@ fn guard_row_count() -> std.types.Int {
 
 // THE CELL THE TEST EXISTS TO EXPOSE: a guard whose refusal is correctly written and whose trigger
 // never reaches it. These are the rows a reviewer signs off on and a system still gets wrong.
-fn guards_written_correctly_but_unable_to_fire() -> std.types.List<GuardRow> {
+fn guards_written_correctly_but_unable_to_fire() -> List<GuardRow> {
   emit_summary_map_guard_rows |> filter(g => guard_refuses(g: g) && guard_fails_trigger_preservation(g: g))
 }
 
-fn guards_preserving_their_trigger() -> std.types.List<GuardRow> {
+fn guards_preserving_their_trigger() -> List<GuardRow> {
   emit_summary_map_guard_rows |> filter(g => !guard_fails_trigger_preservation(g: g))
 }
 
@@ -866,7 +866,7 @@ type PopulationCorrectness
   | PopulationConditionalCorrectness { unenforced_premise: std.types.String, who_could_violate_it: std.types.String }
   | TriggeredWrongAnswer { population: std.types.String, observed: std.types.String }
 
-data emit_summary_map_population_state: std.types.List<PopulationCorrectness> = [
+data emit_summary_map_population_state: List<PopulationCorrectness> = [
   PopulationConditionalCorrectness {
     unenforced_premise: "every declaration name in the folded population is unique",
     who_could_violate_it: "anyone adding a module, or a root, that introduces a homonym -- measured cost of violating it on the namespace-cut branch: one element appended to regen_source_roots",

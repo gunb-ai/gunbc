@@ -87,7 +87,7 @@ fn lot_of(
   }
 }
 
-fn qualified_events(identity: product.inventory.InventoryLotIdentity, quantity: std.nat.Nat) -> std.types.List<product.inventory.InventoryEvent> {
+fn qualified_events(identity: product.inventory.InventoryLotIdentity, quantity: std.nat.Nat) -> List<product.inventory.InventoryEvent> {
   [
     product.inventory.LotAcquired { lot: identity },
     product.inventory.LotReceived { lot: identity, quantity: quantity },
@@ -177,7 +177,7 @@ fn board_row_not_offered() -> product.build_fulfillment.SupplyRow {
   }
 }
 
-fn labels_of(rows: std.types.List<product.build_fulfillment.SupplyRow>) -> std.types.List<std.types.NonEmptyStr> {
+fn labels_of(rows: List<product.build_fulfillment.SupplyRow>) -> List<std.types.NonEmptyStr> {
   map(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), r => product.build_fulfillment.resolution_label(r: r))
 }
 
@@ -238,7 +238,7 @@ test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool {
 // inside the fold. A resolver that pattern-matched the cause alone would read
 // that as "this lot is short" and buy around a bookkeeping defect. Deriving the
 // balance first is what tells the two apart, and this pair pins both directions.
-fn broken_ledger_row(events: std.types.List<product.inventory.InventoryEvent>) -> product.build_fulfillment.SupplyRow {
+fn broken_ledger_row(events: List<product.inventory.InventoryEvent>) -> product.build_fulfillment.SupplyRow {
   product.build_fulfillment.SupplyRow {
     part: q8030_ref,
     compatibility: product.build_fulfillment.CompatibilityEstablished,
@@ -251,7 +251,7 @@ fn broken_ledger_row(events: std.types.List<product.inventory.InventoryEvent>) -
   }
 }
 
-fn refuses_with_unreconciled_ledger(events: std.types.List<product.inventory.InventoryEvent>) -> Bool {
+fn refuses_with_unreconciled_ledger(events: List<product.inventory.InventoryEvent>) -> Bool {
   let rows = [broken_ledger_row(events: events), market_row(part: dimm_ref, units: 64, unit_price: test.claim.build_fulfillment_witness.usd_micros(count: 90000000)), board_row()]
   fold(product.build_fulfillment.resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
@@ -416,7 +416,7 @@ test fn w_resolution_is_invariant_under_supply_order() -> Bool {
 // Positional comparison, not set membership: two resolutions that answered the
 // same three labels in a different order would be a real order dependence, and
 // a membership test would call it equal.
-fn joined(labels: std.types.List<std.types.NonEmptyStr>) -> String {
+fn joined(labels: List<std.types.NonEmptyStr>) -> String {
   fold(labels, init: "", f: fn(acc, l) { concat(acc, concat("|", l as String)) })
 }
 

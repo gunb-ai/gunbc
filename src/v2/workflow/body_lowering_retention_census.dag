@@ -130,7 +130,7 @@ fn retained_node_optional(d: v2.std.diagnostic.Diagnostic) -> v2.std.optional.Op
   }
 }
 
-fn retention_family_holds(families: std.types.List<RetentionFamily>, key: String) -> v2.std.logic.Bool {
+fn retention_family_holds(families: List<RetentionFamily>, key: String) -> v2.std.logic.Bool {
   fold_list(
     xs: families,
     empty: false,
@@ -139,9 +139,9 @@ fn retention_family_holds(families: std.types.List<RetentionFamily>, key: String
 }
 
 fn retention_family_bump(
-  families: std.types.List<RetentionFamily>,
+  families: List<RetentionFamily>,
   observation: RetainedProduction
-) -> std.types.List<RetentionFamily> {
+) -> List<RetentionFamily> {
   let key = retained_production_key(observation: observation)
   if retention_family_holds(families: families, key: key) {
     fold_list(
@@ -174,7 +174,7 @@ fn retention_family_bump(
   }
 }
 
-fn retention_families_total(families: std.types.List<RetentionFamily>) -> Int {
+fn retention_families_total(families: List<RetentionFamily>) -> Int {
   fold_list(xs: families, empty: 0, cons: fn(total, row) { total + row.count })
 }
 
@@ -183,9 +183,9 @@ fn diagnostic_is_wrapper_retained(d: v2.std.diagnostic.Diagnostic) -> v2.std.log
 }
 
 fn retention_census_step(
-  families: std.types.List<RetentionFamily>,
+  families: List<RetentionFamily>,
   d: v2.std.diagnostic.Diagnostic
-) -> std.types.List<RetentionFamily> {
+) -> List<RetentionFamily> {
   if diagnostic_is_wrapper_retained(d: d) {
     match retained_node_optional(d: d) {
       Present { value: node } =>
@@ -209,7 +209,7 @@ fn retention_census_step(
   }
 }
 
-fn retention_census(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> std.types.List<RetentionFamily> {
+fn retention_census(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<RetentionFamily> {
   fold_list(
     xs: ds.tail,
     empty: retention_census_step(families: Empty, d: ds.head),
@@ -233,7 +233,7 @@ fn retention_family_line(row: RetentionFamily) -> String {
   )
 }
 
-fn retention_census_render(families: std.types.List<RetentionFamily>) -> String {
+fn retention_census_render(families: List<RetentionFamily>) -> String {
   concat(
     "body-lowering wrapper-retained census\n\nfamilies: ",
     concat(

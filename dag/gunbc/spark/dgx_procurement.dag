@@ -7,7 +7,7 @@ module gunbc.spark.dgx_procurement
 type HardwareProcurementIntent {
   vendor_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow
   unit_count: Int
-  reserved_identities: std.types.List<product.placement_supply.HostIdentity>
+  reserved_identities: List<product.placement_supply.HostIdentity>
   ordered_note: std.types.NonEmptyStr
 }
 
@@ -30,7 +30,7 @@ data spark_3bd5_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow 
   },
 }
 
-data observed_dgx_spark_router_reservations: std.types.List<extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow> = [
+data observed_dgx_spark_router_reservations: List<extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow> = [
   spark_a3ee_reservation,
   spark_3bd5_reservation,
 ]
@@ -95,7 +95,7 @@ data srv6_router_binding: DgxSparkRouterBinding = SlotAssigned {
   allocation: dgx_spark_router_binding_operator_allocation,
 }
 
-data dgx_spark_router_bindings: std.types.List<DgxSparkRouterBinding> = [srv5_router_binding, srv6_router_binding]
+data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [srv5_router_binding, srv6_router_binding]
 
 // Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
 // flag is a second representation of what the reservation roster already says, and it is the copy
@@ -118,7 +118,7 @@ fn dgx_spark_arrival_standing() -> DgxSparkArrivalStanding {
 }
 
 // Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be the copy that drifts).
-fn dgx_spark_reserved_identities() -> std.types.List<product.placement_supply.HostIdentity> {
+fn dgx_spark_reserved_identities() -> List<product.placement_supply.HostIdentity> {
   map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
 }
 
@@ -301,13 +301,13 @@ type DgxSparkUnitDisposition
   | DgxSparkUnitPending { identity: product.placement_supply.HostIdentity, reason: DgxSparkAdmissionRefusalReason }
 
 type DgxSparkProcurementConvergence
-  = DgxSparkProcurementConverged { deployments: std.types.List<DgxSparkDeployment> }
-  | DgxSparkProcurementPending { pending: std.types.List<DgxSparkUnitDisposition> }
+  = DgxSparkProcurementConverged { deployments: List<DgxSparkDeployment> }
+  | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
 
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(
   binding: DgxSparkRouterBinding,
-  observations: std.types.List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
+  observations: List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
 ) -> DgxSparkUnitDisposition {
   match admit_dgx_spark_deployment(
     identity: router_binding_identity(binding: binding),
@@ -322,8 +322,8 @@ fn dgx_spark_unit_disposition(
 }
 
 fn converge_dgx_spark_procurement(
-  bindings: std.types.List<DgxSparkRouterBinding>,
-  observations: std.types.List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
+  bindings: List<DgxSparkRouterBinding>,
+  observations: List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
 ) -> DgxSparkProcurementConvergence {
   let dispositions = map(bindings, b => dgx_spark_unit_disposition(binding: b, observations: observations))
   let pending = flat_map(dispositions, d =>
@@ -437,7 +437,7 @@ fn dgx_spark_pair_fold_step(acc: DgxSparkPairFold, next: DgxSparkDeployment) -> 
 // at all, and the first pending unit's own typed cause is carried out rather than replaced by a
 // generic "not converged" -- the reason a pair cannot be admitted is the reason its unit could not
 // be, and flattening that would throw away the located cause the whole chain exists to produce.
-fn first_pending_pair_refusal(pending: std.types.List<DgxSparkUnitDisposition>) -> DgxSparkPairAdmissionOutcome {
+fn first_pending_pair_refusal(pending: List<DgxSparkUnitDisposition>) -> DgxSparkPairAdmissionOutcome {
   fold(
     pending,
     init: DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 0 } },

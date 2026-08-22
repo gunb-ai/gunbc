@@ -140,7 +140,7 @@ test fn w_the_packaged_runtime_still_requires_escalation() -> Bool {
 }
 
 
-fn automation_grants(commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn automation_grants(commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   gunbc.spark_serving_realization.GrantPopulationObserved {
     host: "srv5",
     principal: "gunbc-automation" as std.types.NonEmptyStr,

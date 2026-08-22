@@ -24,7 +24,7 @@ type ResolvedHostEffectCell =
       intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
       lease_key: std.types.NonEmptyStr,
     }
-  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: std.types.List<String> }
+  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: gunbc.fleet_intent.ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
   | BmcwebSessionLoginOnHost { node: gunbc.fleet_intent.ComputeHost }
@@ -311,7 +311,7 @@ fn srv3_shell_reconcile(
   )
 }
 
-fn host_effect_join_lines(lines: std.types.List<String>) -> String {
+fn host_effect_join_lines(lines: List<String>) -> String {
   fold(
     lines,
     init: "",
@@ -320,7 +320,7 @@ fn host_effect_join_lines(lines: std.types.List<String>) -> String {
 }
 
 fn realize_receipt_emit_on_host(
-  lines: std.types.List<String>,
+  lines: List<String>,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_shell_reconcile(
@@ -608,7 +608,7 @@ type BmcwebTokenExtraction =
   | BmcwebTokenExtracted { token: std.types.NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
 
-fn bmcweb_token_extract_jq_args(response_path: String) -> std.types.List<String> {
+fn bmcweb_token_extract_jq_args(response_path: String) -> List<String> {
   ["-e", "-r", ".token", response_path]
 }
 
@@ -774,7 +774,7 @@ type CodexRuntimeStepResult
   | CodexRuntimeStepRefused { reason: String }
 
 fn codex_runtime_typed_argv_step(
-  argv: std.types.List<String>,
+  argv: List<String>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> CodexRuntimeStepResult {
   match run_typed_argv_transport(argv: argv, transport: transport) {
@@ -814,7 +814,7 @@ fn codex_runtime_observe_step(
   }
 }
 
-data codex_runtime_materialize_source_roots: std.types.List<String> = ["dag", "src/v2"]
+data codex_runtime_materialize_source_roots: List<String> = ["dag", "src/v2"]
 data codex_runtime_materialize_entry: String = "dag/gunbc/host_codex_runtime_provision.dag"
 data codex_runtime_materialize_function: String = "materialize_codex_runtime_on_local_host"
 
@@ -1257,7 +1257,7 @@ fn srv3_tool_bin_path(tool_name: std.types.NonEmptyStr, transport: gunbc.host_ef
 // composition instead of being flattened once per call site.
 fn srv3_run_tool_by_name(
   tool_name: std.types.NonEmptyStr,
-  args: std.types.List<String>,
+  args: List<String>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> Srv3HostPredicate {
   match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
@@ -1894,7 +1894,7 @@ fn websocat_after(stage: WebsocatStage, outcome: Srv3HostPredicate) -> WebsocatS
 // deriving function -- and that is the §3 fork this module keeps being about. websocat_after is
 // the only thing that knows what follows what.
 type WebsocatWalk {
-  stages: std.types.List<WebsocatStage>
+  stages: List<WebsocatStage>
   current: WebsocatStage?
   verdict: Srv3HostPredicate
 }
@@ -1922,7 +1922,7 @@ fn websocat_walk_step(walk: WebsocatWalk, outcome: Srv3HostPredicate) -> Websoca
   }
 }
 
-fn websocat_trace_from_outcomes(outcomes: std.types.List<Srv3HostPredicate>) -> WebsocatWalk {
+fn websocat_trace_from_outcomes(outcomes: List<Srv3HostPredicate>) -> WebsocatWalk {
   v2.std.algebra.fold_list(
     xs: outcomes,
     empty: websocat_walk_start,
@@ -1942,7 +1942,7 @@ fn websocat_stage_label(stage: WebsocatStage) -> String {
   }
 }
 
-fn websocat_trace_labels(walk: WebsocatWalk) -> std.types.List<String> {
+fn websocat_trace_labels(walk: WebsocatWalk) -> List<String> {
   list_map(xs: walk.stages, f: fn(st) { websocat_stage_label(stage: st) })
 }
 
@@ -2163,7 +2163,7 @@ fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
 // cannot sequence anything, because by the time a list reaches it every element has been
 // evaluated. Reading it as "run these in order, stopping on failure" is what let the websocat
 // path run four mutations unconditionally. Sequencing lives in websocat_after and nowhere else.
-fn srv3_summarize_independent_observations(steps: std.types.List<Srv3HostPredicate>) -> Srv3HostPredicate {
+fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Srv3HostPredicate {
   v2.std.algebra.fold_list(
     xs: steps,
     empty: Srv3PredicateHolds,
@@ -2926,7 +2926,7 @@ fn reconcile_ssh_argv_exec_outcome(
 data run_typed_argv_transport_authority_note: String = "Executor→target typed remote argv transport binding (codex_runtime_converge_local_shell_locus dissolve-on class; review 51883). SshShell routes through typed_argv_exec_over_ssh on the transport endpoint; FleetSsh routes through typed_argv_exec_over_fleet_ssh with sealed context. LocalShell refuses — remote argv requires a transport that names the target host. Shell script bodies use host_effect_realize run_shell_transport instead."
 
 fn run_typed_argv_transport(
-  argv: std.types.List<String>,
+  argv: List<String>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.typed_argv_exec.TypedArgvExecOutcome {
   match transport {

@@ -24,7 +24,7 @@ fn host_hygiene_read_control_group(unit: std.types.NonEmptyStr) -> String? {
   }
 }
 
-fn host_hygiene_read_procs(control_group: String) -> std.types.List<std.types.NonEmptyStr> {
+fn host_hygiene_read_procs(control_group: String) -> List<std.types.NonEmptyStr> {
   let raw = filesystem_read(path: join([host_hygiene_cgroupfs_root, control_group, "/cgroup.procs"], "")).content
   let nonempty_lines = filter(map(split(s: trim(raw), delimiter: "\n"), s => trim(s)), s => s != "")
   map(nonempty_lines, p => p as std.types.NonEmptyStr)
@@ -37,7 +37,7 @@ fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
   )
 }
 
-fn host_hygiene_classify_occupant(pids: std.types.List<std.types.NonEmptyStr>) -> gunbc.host_hygiene_reaper.CgroupOccupant {
+fn host_hygiene_classify_occupant(pids: List<std.types.NonEmptyStr>) -> gunbc.host_hygiene_reaper.CgroupOccupant {
   if length(pids) == 0 {
     gunbc.host_hygiene_reaper.CgroupEmpty
   } else {
@@ -60,7 +60,7 @@ fn host_hygiene_has_control_override(unit: std.types.NonEmptyStr) -> Bool {
 }
 
 type ResidualSlotObserveOutcome
-  = ResidualSlotObserved { slot: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: std.types.List<std.types.NonEmptyStr> }
+  = ResidualSlotObserved { slot: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: List<std.types.NonEmptyStr> }
   | ResidualSlotObserveRefused { unit: std.types.NonEmptyStr, cause: String }
 
 fn observe_residual_slot(unit: std.types.NonEmptyStr) -> ResidualSlotObserveOutcome {
@@ -85,7 +85,7 @@ fn observe_residual_slot(unit: std.types.NonEmptyStr) -> ResidualSlotObserveOutc
 }
 
 type ResidualFleetObserveReceipt
-  = ResidualFleetObserved { outcomes: std.types.List<ResidualSlotObserveOutcome> }
+  = ResidualFleetObserved { outcomes: List<ResidualSlotObserveOutcome> }
   | ResidualFleetObserveRefused { cause: String }
 
 fn observe_all_residual_slots() -> ResidualFleetObserveReceipt {
@@ -112,7 +112,7 @@ fn residual_slot_observe_outcome_slot(o: ResidualSlotObserveOutcome) -> gunbc.ho
 // slot's row — DESIGN section 5's absorbing-fallback rule cuts the other way here too:
 // narrowing the population to "every unit that happened to answer" is the
 // empty-observation-narrow failure mode, not a safe partial success.
-fn residual_fleet_observed_slots(outcomes: std.types.List<ResidualSlotObserveOutcome>) -> std.types.List<gunbc.host_hygiene_reaper.ResidualSlotObservation>? {
+fn residual_fleet_observed_slots(outcomes: List<ResidualSlotObserveOutcome>) -> List<gunbc.host_hygiene_reaper.ResidualSlotObservation>? {
   let slots = fold(outcomes, init: [], f: fn(acc, o) {
     match residual_slot_observe_outcome_slot(o: o) {
       Present { value: s } => concat(acc, [s])
@@ -123,7 +123,7 @@ fn residual_fleet_observed_slots(outcomes: std.types.List<ResidualSlotObserveOut
   if length(refused) > 0 { none } else { Present { value: slots } }
 }
 
-fn gunbc_host_hygiene_reaper_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<std.types.List<gunbc.host_hygiene_reaper.ResidualSlotObservation>> {
+fn gunbc_host_hygiene_reaper_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<List<gunbc.host_hygiene_reaper.ResidualSlotObservation>> {
   match observe_all_residual_slots() {
     ResidualFleetObserveRefused { cause: why } => std.realization_reconcile.ReadAbsent { reason: why }
     ResidualFleetObserved { outcomes: outs } =>

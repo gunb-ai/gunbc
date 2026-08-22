@@ -9,7 +9,7 @@ module v2.workflow.scheduler
 // and there is exactly one implementation, so cycle refusal and readiness cannot drift apart between
 // them -- which is the whole reason this is a parameterization rather than a second scheduler.
 type RunnableFrontier<Subject> {
-  ready: std.types.List<extdeps.coverage.Subject>
+  ready: List<extdeps.coverage.Subject>
 }
 
 type SchedulerBlockedEvidence
@@ -17,26 +17,26 @@ type SchedulerBlockedEvidence
 
 type SchedulerPlan<Subject>
   = SchedulerPlanComplete {
-      layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>,
-      scheduled: std.types.List<extdeps.coverage.Subject>
+      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>,
+      scheduled: List<extdeps.coverage.Subject>
     }
   | SchedulerPlanRunnable {
       frontier: RunnableFrontier<extdeps.coverage.Subject>,
-      scheduled: std.types.List<extdeps.coverage.Subject>,
-      remaining: std.types.List<extdeps.coverage.Subject>,
-      layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
+      scheduled: List<extdeps.coverage.Subject>,
+      remaining: List<extdeps.coverage.Subject>,
+      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
     }
   | SchedulerPlanBlocked {
       evidence: SchedulerBlockedEvidence,
-      scheduled: std.types.List<extdeps.coverage.Subject>,
-      remaining: std.types.List<extdeps.coverage.Subject>,
-      layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
+      scheduled: List<extdeps.coverage.Subject>,
+      remaining: List<extdeps.coverage.Subject>,
+      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
     }
 
 type SchedulerRunState<Subject> {
-  scheduled: std.types.List<extdeps.coverage.Subject>
-  remaining: std.types.List<extdeps.coverage.Subject>
-  layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
+  scheduled: List<extdeps.coverage.Subject>
+  remaining: List<extdeps.coverage.Subject>
+  layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
   frontier: RunnableFrontier<extdeps.coverage.Subject>
 }
 
@@ -68,12 +68,12 @@ fn scheduler_relation_orders_execution<S>(relation: v2.std.dependency.Dependency
 }
 
 fn scheduler_execution_relations<S>(
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>
-) -> std.types.List<v2.std.dependency.DependencyRelation<S>> {
+  relations: List<v2.std.dependency.DependencyRelation<S>>
+) -> List<v2.std.dependency.DependencyRelation<S>> {
   filter(xs: relations, predicate: scheduler_relation_orders_execution)
 }
 
-fn scheduler_append_subject_once<S>(xs: std.types.List<S>, item: S, eq: fn(S, S) -> Bool) -> std.types.List<S> {
+fn scheduler_append_subject_once<S>(xs: List<S>, item: S, eq: fn(S, S) -> Bool) -> List<S> {
   if contains(xs: xs, item: item, eq: eq) {
     xs
   } else {
@@ -82,9 +82,9 @@ fn scheduler_append_subject_once<S>(xs: std.types.List<S>, item: S, eq: fn(S, S)
 }
 
 fn scheduler_relation_subjects<S>(
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
   eq: fn(S, S) -> Bool
-) -> std.types.List<S> {
+) -> List<S> {
   fold(relations, init: [], f: fn(acc, relation) {
     scheduler_append_subject_once(
       xs: scheduler_append_subject_once(xs: acc, item: relation.prerequisite, eq: eq),
@@ -96,7 +96,7 @@ fn scheduler_relation_subjects<S>(
 
 fn scheduler_relation_unblocked<S>(
   relation: v2.std.dependency.DependencyRelation<S>,
-  scheduled: std.types.List<S>,
+  scheduled: List<S>,
   candidate: S,
   eq: fn(S, S) -> Bool
 ) -> Bool {
@@ -108,8 +108,8 @@ fn scheduler_relation_unblocked<S>(
 }
 
 fn scheduler_subject_unblocked<S>(
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
-  scheduled: std.types.List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
+  scheduled: List<S>,
   candidate: S,
   eq: fn(S, S) -> Bool
 ) -> Bool {
@@ -126,14 +126,14 @@ fn scheduler_subject_unblocked<S>(
   )
 }
 
-fn scheduler_subject_unscheduled<S>(scheduled: std.types.List<S>, candidate: S, eq: fn(S, S) -> Bool) -> Bool {
+fn scheduler_subject_unscheduled<S>(scheduled: List<S>, candidate: S, eq: fn(S, S) -> Bool) -> Bool {
   contains(xs: scheduled, item: candidate, eq: eq) == false
 }
 
 fn runnable_frontier_from_relations<S>(
-  subjects: std.types.List<S>,
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> RunnableFrontier<S> {
   let execution_relations = scheduler_execution_relations(relations: relations)
@@ -154,10 +154,10 @@ fn runnable_frontier_from_relations<S>(
 }
 
 fn scheduler_remaining_subjects<S>(
-  subjects: std.types.List<S>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
-) -> std.types.List<S> {
+) -> List<S> {
   filter(
     xs: subjects,
     predicate: fn(candidate) {
@@ -171,19 +171,19 @@ fn scheduler_blocked_evidence() -> SchedulerBlockedEvidence {
 }
 
 fn scheduler_schedule_frontier<S>(
-  scheduled: std.types.List<S>,
+  scheduled: List<S>,
   frontier: RunnableFrontier<S>,
   eq: fn(S, S) -> Bool
-) -> std.types.List<S> {
+) -> List<S> {
   fold(frontier.ready, init: scheduled, f: fn(acc, item) {
     scheduler_append_subject_once(xs: acc, item: item, eq: eq)
   })
 }
 
 fn scheduler_append_frontier_layer<S>(
-  layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>,
+  layers: List<v2.std.dependency.ReadinessLayer<S>>,
   frontier: RunnableFrontier<S>
-) -> std.types.List<v2.std.dependency.ReadinessLayer<S>> {
+) -> List<v2.std.dependency.ReadinessLayer<S>> {
   if non_empty(xs: frontier.ready) {
     list_snoc_item(
       xs: layers,
@@ -195,8 +195,8 @@ fn scheduler_append_frontier_layer<S>(
 }
 
 fn scheduler_run_init<S>(
-  subjects: std.types.List<S>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerRunState<S> {
   SchedulerRunState {
@@ -208,8 +208,8 @@ fn scheduler_run_init<S>(
 }
 
 fn scheduler_step_state_from_relations<S>(
-  subjects: std.types.List<S>,
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
+  subjects: List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
   state: SchedulerRunState<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerRunState<S> {
@@ -267,9 +267,9 @@ fn scheduler_plan_from_state<S>(state: SchedulerRunState<S>) -> SchedulerPlan<S>
 }
 
 fn scheduler_step_plan_from_relations<S>(
-  subjects: std.types.List<S>,
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerPlan<S> {
   scheduler_plan_from_state(
@@ -287,9 +287,9 @@ fn scheduler_step_plan_from_relations<S>(
 // the frontier is empty and the state stops changing, so one pass per subject reaches the fixed
 // point for any acyclic graph and a cyclic one lands in the blocked arm rather than spinning.
 fn scheduler_run_to_fixed_point<S>(
-  subjects: std.types.List<S>,
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerRunState<S> {
   fold(subjects, init: scheduler_run_init(subjects: subjects, scheduled: scheduled, eq: eq), f: fn(state, _) {
@@ -303,9 +303,9 @@ fn scheduler_run_to_fixed_point<S>(
 }
 
 fn scheduler_plan_from_relations<S>(
-  subjects: std.types.List<S>,
-  relations: std.types.List<v2.std.dependency.DependencyRelation<S>>,
-  scheduled: std.types.List<S>,
+  subjects: List<S>,
+  relations: List<v2.std.dependency.DependencyRelation<S>>,
+  scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerPlan<S> {
   scheduler_plan_from_state(
@@ -318,13 +318,13 @@ fn scheduler_plan_from_relations<S>(
   )
 }
 
-fn scheduler_nodes_from_layers<S>(layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>) -> std.types.List<S> {
+fn scheduler_nodes_from_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> List<S> {
   fold(layers, init: [], f: fn(nodes, layer) {
     list_append(left: nodes, right: layer.ready)
   })
 }
 
-fn scheduler_plan_for_layers<S>(layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>, blocked: std.types.List<S>) -> SchedulerPlan<S> {
+fn scheduler_plan_for_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>, blocked: List<S>) -> SchedulerPlan<S> {
   let runnable = runnable_frontier_from_layers(layers: layers)
   if non_empty(xs: runnable.ready) {
     SchedulerPlanComplete {
@@ -341,13 +341,13 @@ fn scheduler_plan_for_layers<S>(layers: std.types.List<v2.std.dependency.Readine
   }
 }
 
-fn scheduler_first_readiness_layer<S>(layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>) -> v2.std.witness.Witness<v2.std.dependency.ReadinessLayer<S>> {
+fn scheduler_first_readiness_layer<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> v2.std.witness.Witness<v2.std.dependency.ReadinessLayer<S>> {
   optional_present_witness(
     opt: list_at_optional(xs: layers, index: 0)
   )
 }
 
-fn runnable_frontier_from_layers<S>(layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>) -> RunnableFrontier<S> {
+fn runnable_frontier_from_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> RunnableFrontier<S> {
   match scheduler_first_readiness_layer(layers: layers) {
     Holds { value: layer } => RunnableFrontier { ready: layer.ready }
     Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
@@ -358,7 +358,7 @@ fn runnable_frontier(graph_node: v2.std.node.Node) -> RunnableFrontier<v2.std.no
   runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
 }
 
-fn scheduler_layers(graph_node: v2.std.node.Node) -> std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>> {
+fn scheduler_layers(graph_node: v2.std.node.Node) -> List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>> {
   topological_layers(graph_node: graph_node)
 }
 
@@ -377,9 +377,9 @@ fn scheduler_node_eq(left: v2.std.node.Node, right: v2.std.node.Node) -> Bool {
 }
 
 fn runnable_frontier_from_dependencies(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
-  scheduled: std.types.List<v2.std.node.Node>
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
+  scheduled: List<v2.std.node.Node>
 ) -> RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_relations(
     subjects: nodes,
@@ -389,18 +389,18 @@ fn runnable_frontier_from_dependencies(
   )
 }
 
-fn scheduler_remaining_nodes(nodes: std.types.List<v2.std.node.Node>, scheduled: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
+fn scheduler_remaining_nodes(nodes: List<v2.std.node.Node>, scheduled: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   scheduler_remaining_subjects(subjects: nodes, scheduled: scheduled, eq: scheduler_node_eq)
 }
 
-fn scheduler_append_node_once(nodes: std.types.List<v2.std.node.Node>, node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn scheduler_append_node_once(nodes: List<v2.std.node.Node>, node: v2.std.node.Node) -> List<v2.std.node.Node> {
   scheduler_append_subject_once(xs: nodes, item: node, eq: scheduler_node_eq)
 }
 
 // The v2.std.node.Node-subject view filter, kept at its established name and signature. Consumers ask which
 // dependencies order execution and get DependencyViews back, because that is what they hold and what
 // carries their usage_site; the generic kernel answers the same question over relations.
-fn scheduler_execution_dependencies(dependencies: std.types.List<v2.std.dependency.DependencyView>) -> std.types.List<v2.std.dependency.DependencyView> {
+fn scheduler_execution_dependencies(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
   filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
 }
 
@@ -412,9 +412,9 @@ fn scheduler_dependency_orders_execution(dependency: v2.std.dependency.Dependenc
 }
 
 fn scheduler_step_plan_from_dependencies(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
-  scheduled: std.types.List<v2.std.node.Node>
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
+  scheduled: List<v2.std.node.Node>
 ) -> SchedulerPlan<v2.std.node.Node> {
   scheduler_step_plan_from_relations(
     subjects: nodes,
@@ -425,9 +425,9 @@ fn scheduler_step_plan_from_dependencies(
 }
 
 fn scheduler_plan_from_dependencies(
-  nodes: std.types.List<v2.std.node.Node>,
-  dependencies: std.types.List<v2.std.dependency.DependencyView>,
-  scheduled: std.types.List<v2.std.node.Node>
+  nodes: List<v2.std.node.Node>,
+  dependencies: List<v2.std.dependency.DependencyView>,
+  scheduled: List<v2.std.node.Node>
 ) -> SchedulerPlan<v2.std.node.Node> {
   scheduler_plan_from_relations(
     subjects: nodes,

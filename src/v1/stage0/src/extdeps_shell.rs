@@ -343,7 +343,7 @@ impl ShellPosixCommandV {
     }
 }
 
-pub fn posix_command_v_check_argv(command: String) -> Vec<String> {
+pub fn posix_command_v_check_argv(command: String) -> Rc<Vec<String>> {
     Rc::new(vec![
         "sh".to_string(),
         "-c".to_string(),
@@ -504,7 +504,7 @@ impl ShellTest {
     }
 }
 
-pub fn shell_test_is_executable_argv(path: String) -> Vec<String> {
+pub fn shell_test_is_executable_argv(path: String) -> Rc<Vec<String>> {
     Rc::new(vec!["test".to_string(), "-x".to_string(), path.clone()])
 }
 

@@ -103,7 +103,7 @@ fn spark_serving_health_version_timeout_word() -> String {
   to_string(second_count(spark_serving_health_version_timeout()))
 }
 
-fn spark_serving_health_version_probe_argv() -> std.types.List<String> {
+fn spark_serving_health_version_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
     "--max-time", spark_serving_health_version_timeout_word(),
@@ -111,7 +111,7 @@ fn spark_serving_health_version_probe_argv() -> std.types.List<String> {
   ]
 }
 
-fn spark_serving_health_generate_probe_argv() -> std.types.List<String> {
+fn spark_serving_health_generate_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
     "--max-time", spark_serving_health_generate_timeout_word(),

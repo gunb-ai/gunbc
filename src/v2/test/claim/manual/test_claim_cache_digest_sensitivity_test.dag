@@ -332,7 +332,7 @@ fn tcc_stub_alloc_a(_node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvi
 
 fn tcc_stub_call_b(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Accepted { value: tcc_cache_runtime_unit(), diagnostics: v2.std.diagnostic.None }
@@ -526,7 +526,7 @@ test fn tcc_cache_same_pin_match_only_slot_identical_digest_equal() -> Bool {
   digest_a == digest_b
 }
 
-fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.verification.TestClaim {
+fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<v2.std.diagnostic.Diagnostic>) -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: label_suffix,
     anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),

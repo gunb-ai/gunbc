@@ -57,7 +57,7 @@ fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> gunbc.host_effect.
 // the whole locus would also make the builders unreachable to any witness, because the execution
 // context is sealed with an admitted caller list and no test can mint one. A wall that makes the
 // wrong factoring untestable is the wall doing its job.
-fn deployed_tree_revision_argv(repo: std.types.NonEmptyStr) -> std.types.List<String> {
+fn deployed_tree_revision_argv(repo: std.types.NonEmptyStr) -> List<String> {
   ["git", "-C", repo as String, "rev-parse", "HEAD"]
 }
 
@@ -161,7 +161,7 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // sparse-checkout configuration can set skip-worktree bits in the temporary index, and a MISSING
 // tracked path then reads as intentionally absent rather than as drift. That is a false CLEAN on
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
-fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: String, index_path: String) -> std.types.List<String> {
+fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
   [
     "env", join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
@@ -170,7 +170,7 @@ fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: Strin
 
 // `env` carries GIT_INDEX_FILE because that variable has no command-line equivalent, and every word
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
-fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) -> std.types.List<String> {
+fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
   [
     "env", join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "--no-optional-locks",
@@ -189,7 +189,7 @@ fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) ->
 // It runs under the same temporary index for the same reason the status leg does: `ls-files --others`
 // consults the index to decide what "other" means, and the deployed repo's index is the artifact this
 // module refuses to trust.
-fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -> std.types.List<String> {
+fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
   [
     "env", join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String,
@@ -204,7 +204,7 @@ type DeployedTreeLegOutcome
   = DeployedTreeLegRan { result: extdeps.ssh.session.SshSessionExecResult }
   | DeployedTreeLegNotAttempted { reason: String }
 
-fn deployed_tree_leg(locus: DeployedTreeLocus, argv: std.types.List<String>) -> DeployedTreeLegOutcome {
+fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
   match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
     TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
     TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }

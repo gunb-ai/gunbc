@@ -16,7 +16,7 @@ fn probe_ref(path: String) -> v2.compiler.source_authority.SourceRef {
   }
 }
 
-data probe_refs: std.types.List<v2.compiler.source_authority.SourceRef> = [
+data probe_refs: List<v2.compiler.source_authority.SourceRef> = [
   probe_ref(path: "src/v2/pilot/probe_a.dag"),
   probe_ref(path: "src/v2/pilot/probe_b.dag")
 ]

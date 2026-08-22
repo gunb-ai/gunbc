@@ -43,7 +43,7 @@ type CargoBinRepoPathProjection
   | CargoBinRepoPathProjectionRefused { authored_path: String, detail: String }
 
 type CargoBinRepoPathsProjection
-  = CargoBinRepoPathsProjected { paths: std.types.List<String> }
+  = CargoBinRepoPathsProjected { paths: List<String> }
   | CargoBinRepoPathsProjectionRefused { authored_path: String, detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {
@@ -55,7 +55,7 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
   }
 }
 
-fn rust_paths_from_nul(raw: String) -> std.types.List<String> {
+fn rust_paths_from_nul(raw: String) -> List<String> {
   filter(
     xs: split(s: raw, delimiter: from_code_point(0)),
     predicate: fn(path) {
@@ -101,7 +101,7 @@ fn normalize_cargo_bin_repo_path(package_root: String, authored_path: String) ->
 
 fn normalize_cargo_bin_repo_paths(
   package_root: String,
-  authored_paths: std.types.List<String>
+  authored_paths: List<String>
 ) -> CargoBinRepoPathsProjection {
   v2.std.algebra.fold_list(
     xs: authored_paths,

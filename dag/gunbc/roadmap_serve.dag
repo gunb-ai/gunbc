@@ -52,7 +52,7 @@ type RoadmapServeTableBuild
   = RoadmapServeTable { table: extdeps.http.server.ServedRouteTable<RoadmapServeHandler> }
   | RoadmapServeTableRefused { raw: String, segment: String, reason: String }
 
-fn roadmap_serve_route_specs() -> std.types.List<RoadmapServeRouteSpec> {
+fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
     RoadmapServeRouteSpec { method: std.types.GET, raw: "/", handler: RoadmapDailyPageHandler },
     RoadmapServeRouteSpec { method: std.types.GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
@@ -96,7 +96,7 @@ fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow 
   }
 }
 
-fn roadmap_serve_build_from_specs(specs: std.types.List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
+fn roadmap_serve_build_from_specs(specs: List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
   let rows = map(specs, spec => roadmap_serve_route_row(spec: spec))
   let first_refusal = fold(rows, init: none, f: (acc, r) =>
     match acc {
@@ -189,7 +189,7 @@ data serve_dispatch_param_note: String = "The node_id param is bound by the rout
 
 fn serve_dispatch_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: std.types.List<std.http_path.PathParamBinding>,
+  params: List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
   let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -209,7 +209,7 @@ data serve_publish_note: String = "POST /publish/NODE_ID is the publication prod
 
 fn serve_publish_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: std.types.List<std.http_path.PathParamBinding>,
+  params: List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
   let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -228,7 +228,7 @@ fn serve_publish_handler_response_for_instance(
   }
 }
 
-fn serve_dispatch_handler_response(params: std.types.List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
+fn serve_dispatch_handler_response(params: List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     params: params,
@@ -302,7 +302,7 @@ data serve_invoke_request_note: String = "Every handler receives the FULL modele
 fn roadmap_serve_invoke_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   handler: RoadmapServeHandler,
-  params: std.types.List<std.http_path.PathParamBinding>,
+  params: List<std.http_path.PathParamBinding>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
@@ -346,7 +346,7 @@ fn roadmap_serve_invoke_for_instance(
 
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
-  params: std.types.List<std.http_path.PathParamBinding>,
+  params: List<std.http_path.PathParamBinding>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
@@ -361,7 +361,7 @@ fn roadmap_serve_invoke(
 
 fn serve_stop_handler_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  params: std.types.List<std.http_path.PathParamBinding>,
+  params: List<std.http_path.PathParamBinding>,
 ) -> extdeps.http.server.ServeHttpResponse {
   let node_id = std.http_path.path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -379,7 +379,7 @@ fn serve_stop_handler_response_for_instance(
   }
 }
 
-fn serve_stop_handler_response(params: std.types.List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
+fn serve_stop_handler_response(params: List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
   serve_stop_handler_response_for_instance(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     params: params,
@@ -454,7 +454,7 @@ fn serve_sessions_response() -> extdeps.http.server.ServeHttpResponse {
   serve_sessions_response_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
 }
 
-fn http_method_label_join(methods: std.types.List<std.types.HttpMethod>) -> String {
+fn http_method_label_join(methods: List<std.types.HttpMethod>) -> String {
   join(map(methods, m => match m {
     GET => "GET"
     POST => "POST"

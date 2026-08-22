@@ -120,7 +120,7 @@ fn emit_field_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.std.
 
 fn emit_field_eval_call_primitive(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match emit_field_eval_field_index_from_transform(node: node) {

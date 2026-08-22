@@ -9,33 +9,33 @@ type LifecycleTotalityUnderivedAxis
 
 data lifecycle_totality_retirement_trigger_underived_reason: String = "RetirementTrigger carrier not modeled — cannot derive disposition-without-retirement-trigger path set until gunbc.stage0_rust_source_lifecycle_scaffold lands the authority (see zero_hand_maintained_rust_finish_line_attachment_note). Named LifecycleTotalityRetirementTriggerUnmodeled rather than a bare RetirementTrigger declaration: a bare RetirementTrigger already exists elsewhere in the tree as an unrelated RustHonestFrontierDeferredAxis variant (gunbc.stage0_rust_honest_frontier_projection), and gunbc.v1_complexity_capability_census documents a prior real incident of exactly this class — a top-level RetirementTrigger declaration shadowing that variant and breaking an unrelated module's CI. Declaring a placeholder RetirementTrigger type here would also pre-empt the name owed to the real carrier's single authority, gunbc.stage0_rust_source_lifecycle_scaffold, before it lands. This carrier fabricates neither. (One-variant sum spelled as an empty-record variant, not `type X = Y`, per the documented language-layer finding in std.realization_schedule: that alias production reads its RHS as an existing type name, which is the exact trap the original defect fell into.)"
 
-data stage0_rust_lifecycle_totality_underived_axes: std.types.List<LifecycleTotalityUnderivedAxis> = [
+data stage0_rust_lifecycle_totality_underived_axes: List<LifecycleTotalityUnderivedAxis> = [
   LifecycleTotalityRetirementTriggerUnmodeled {}
 ]
 
-data empty_string_list: std.types.List<String> = []
+data empty_string_list: List<String> = []
 
 type LifecycleTotalityReceipt
   = LifecycleTotalityDerived {
-      tracked_paths: std.types.List<String>,
-      generated_paths: std.types.List<String>,
-      maintenance_disposition_paths: std.types.List<String>,
-      unclassified_paths: std.types.List<String>,
-      stale_disposition_paths: std.types.List<String>,
-      duplicate_generated_paths: std.types.List<String>,
-      duplicate_disposition_paths: std.types.List<String>,
-      duplicate_role_paths: std.types.List<String>,
-      cross_axis_overlap_paths: std.types.List<String>,
-      role_without_disposition_paths: std.types.List<String>,
-      ill_formed_maintenance_disposition_paths: std.types.List<String>
+      tracked_paths: List<String>,
+      generated_paths: List<String>,
+      maintenance_disposition_paths: List<String>,
+      unclassified_paths: List<String>,
+      stale_disposition_paths: List<String>,
+      duplicate_generated_paths: List<String>,
+      duplicate_disposition_paths: List<String>,
+      duplicate_role_paths: List<String>,
+      cross_axis_overlap_paths: List<String>,
+      role_without_disposition_paths: List<String>,
+      ill_formed_maintenance_disposition_paths: List<String>
     }
   | LifecycleTotalityObservationRefused
 
-fn raw_disposition_authority_paths() -> std.types.List<String> {
+fn raw_disposition_authority_paths() -> List<String> {
   v2.std.algebra.list_map(xs: gunbc.stage0_rust_source_lifecycle_scaffold.disposition_authority_rows(), f: fn(row) { row.path })
 }
 
-fn exact_duplicate_paths_within_authority(paths: std.types.List<String>) -> std.types.List<String> {
+fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: paths,
     empty: empty_string_list,
@@ -51,16 +51,16 @@ fn exact_duplicate_paths_within_authority(paths: std.types.List<String>) -> std.
 }
 
 fn exact_cross_axis_overlap_paths(
-  generated_paths: std.types.List<String>,
-  disposition_paths: std.types.List<String>
-) -> std.types.List<String> {
+  generated_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
   v2.std.algebra.filter(
     xs: generated_paths,
     predicate: fn(path) { gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: disposition_paths) }
   )
 }
 
-fn well_formed_maintenance_disposition_paths() -> std.types.List<String> {
+fn well_formed_maintenance_disposition_paths() -> List<String> {
   v2.std.algebra.list_map(
     xs: v2.std.algebra.filter(
       xs: gunbc.stage0_rust_source_lifecycle_scaffold.disposition_authority_rows(),
@@ -114,9 +114,9 @@ fn derived_file_grain_classified_repo_paths(
 }
 
 fn exact_unclassified_tracked_paths(
-  tracked_paths: std.types.List<String>,
-  classified_paths: std.types.List<String>
-) -> std.types.List<String> {
+  tracked_paths: List<String>,
+  classified_paths: List<String>
+) -> List<String> {
   v2.std.algebra.filter(
     xs: tracked_paths,
     predicate: fn(path) { !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: classified_paths) }
@@ -124,9 +124,9 @@ fn exact_unclassified_tracked_paths(
 }
 
 fn exact_stale_disposition_paths(
-  tracked_paths: std.types.List<String>,
-  lifecycle_paths: std.types.List<String>
-) -> std.types.List<String> {
+  tracked_paths: List<String>,
+  lifecycle_paths: List<String>
+) -> List<String> {
   v2.std.algebra.filter(
     xs: lifecycle_paths,
     predicate: fn(path) { !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: tracked_paths) }
@@ -134,9 +134,9 @@ fn exact_stale_disposition_paths(
 }
 
 fn exact_role_without_disposition_paths(
-  cargo_bin_repo_paths: std.types.List<String>,
-  disposition_paths: std.types.List<String>
-) -> std.types.List<String> {
+  cargo_bin_repo_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
   v2.std.algebra.filter(
     xs: cargo_bin_repo_paths,
     predicate: fn(path) { !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: disposition_paths) }
@@ -152,7 +152,7 @@ fn row_has_ill_formed_maintenance_disposition(row: gunbc.stage0_rust_source_life
   )
 }
 
-fn exact_ill_formed_maintenance_disposition_paths() -> std.types.List<String> {
+fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
   v2.std.algebra.list_map(
     xs: v2.std.algebra.filter(
       xs: gunbc.stage0_rust_source_lifecycle_scaffold.disposition_authority_rows(),
@@ -287,14 +287,14 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
 // observation would contain only what it already named and could never exercise the filter.
 // It is built the other way round, from the authored dispositions plus the scaffold's
 // synthetic generated fixture paths, which the derivation then re-finds as generated.
-fn lifecycle_totality_witness_classified_paths() -> std.types.List<String> {
+fn lifecycle_totality_witness_classified_paths() -> List<String> {
   gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(
     acc: gunbc.stage0_rust_source_lifecycle_scaffold.witness_generated_stage0_fixture_paths,
     items: well_formed_maintenance_disposition_paths()
   )
 }
 
-fn lifecycle_totality_witness_observation(extra_paths: std.types.List<String>) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = lifecycle_totality_witness_classified_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",

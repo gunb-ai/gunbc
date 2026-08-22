@@ -42,14 +42,14 @@ fn token_item_serialize_measure(item: v2.std.node.Node, target: v2.std.compilers
     }
   )
 }
-fn token_list_node_budget(tokens: std.types.List<v2.std.node.Node>) -> Int {
+fn token_list_node_budget(tokens: List<v2.std.node.Node>) -> Int {
   v2.std.algebra.fold_list(
     xs: tokens,
     empty: 0,
     cons: fn(acc, item) { acc + v2.std.node.node_subtree_count(n: item) }
   )
 }
-fn token_sequence_serialize_measure(tokens: std.types.List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Int> {
+fn token_sequence_serialize_measure(tokens: List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Int> {
   v2.std.diagnostic.bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -442,7 +442,7 @@ fn grammar_inverse_bodied_arrow_validated(
 fn translate_bodied_arrow_preserve_producer_ir(arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.outcome_accepted(arrow)
 }
-fn conj_positional_targets(parent: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn conj_positional_targets(parent: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match parent.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       v2.std.diagnostic.Accepted {
@@ -577,7 +577,7 @@ fn serialize_source_tokens_fold_child(serialize_source: v2.std.node.Node) -> v2.
   )
 }
 
-fn serialize_source_fold_list_targets(remaining: Int, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn serialize_source_fold_list_targets(remaining: Int, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   if remaining <= 0 {
     v2.std.diagnostic.outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
@@ -608,7 +608,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: v2.std.node.Node) ->
   }
 }
 
-fn serialize_source_token_targets(serialize_source: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn serialize_source_token_targets(serialize_source: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match serialize_source_tokens_fold_child(serialize_source: serialize_source) {
     Present { value: tokens_fold } =>
       serialize_source_fold_list_targets(
@@ -620,7 +620,7 @@ fn serialize_source_token_targets(serialize_source: v2.std.node.Node) -> v2.std.
   }
 }
 
-fn grammar_tokens_node_targets(tokens_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn grammar_tokens_node_targets(tokens_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   v2.std.diagnostic.bind_outcome(
     o: optional_named_child_ignoring_positional(
       parent: tokens_node,
@@ -698,7 +698,7 @@ fn grammar_inverse_source_validated(
 }
 fn serialize_concrete_syntax_tokens_to_source(
   target: v2.std.compilers.target_model.TargetModel,
-  tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.std.diagnostic.bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
@@ -709,7 +709,7 @@ fn serialize_concrete_syntax_tokens_to_source(
 }
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: v2.std.compilers.target_model.TargetModel,
-  tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: tokens,
@@ -951,7 +951,7 @@ fn token_item_to_source(item: v2.std.node.Node, target: v2.std.compilers.target_
 }
 fn token_sequence_to_source_bounded(
   remaining: Int,
-  tokens: std.types.List<v2.std.node.Node>,
+  tokens: List<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   v2.std.algebra.fold_list(
@@ -976,7 +976,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: std.types.List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
+fn token_sequence_to_source(tokens: List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   v2.std.diagnostic.bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -1525,14 +1525,14 @@ fn project_free_monoid_via_vec_choice(
 }
 type TypeExprHeadTail {
   head: v2.std.node.Node
-  tail: std.types.List<v2.std.node.Node>
+  tail: List<v2.std.node.Node>
 }
 type TypeExprArrowSplit {
-  inputs: std.types.List<v2.std.node.Node>
+  inputs: List<v2.std.node.Node>
   output: v2.std.node.Node
 }
 fn type_expr_arrow_split_from_types(
-  types: std.types.List<v2.std.node.Node>,
+  types: List<v2.std.node.Node>,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<TypeExprArrowSplit> {
   v2.std.diagnostic.bind_outcome(
@@ -1557,7 +1557,7 @@ fn type_expr_arrow_split_from_types(
     }
   )
 }
-fn list_head_and_tail(xs: std.types.List<v2.std.node.Node>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TypeExprHeadTail> {
+fn list_head_and_tail(xs: List<v2.std.node.Node>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TypeExprHeadTail> {
   match v2.std.collection.list_at_optional(xs: xs, index: 0) {
     Absent =>
       v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
@@ -1572,9 +1572,9 @@ fn list_head_and_tail(xs: std.types.List<v2.std.node.Node>, node: v2.std.node.No
 }
 
 type TypeExprTranslateAcc
-  = TypeExprTranslateSlots { slots: std.types.List<v2.std.compilers.target_model.TargetTypeExprFieldSlot> }
-  | TypeExprTranslateVariants { variants: std.types.List<v2.std.compilers.target_model.TargetTypeExprVariantSlot> }
-  | TypeExprTranslatePositional { items: std.types.List<v2.std.node.Node> }
+  = TypeExprTranslateSlots { slots: List<v2.std.compilers.target_model.TargetTypeExprFieldSlot> }
+  | TypeExprTranslateVariants { variants: List<v2.std.compilers.target_model.TargetTypeExprVariantSlot> }
+  | TypeExprTranslatePositional { items: List<v2.std.node.Node> }
   | TypeExprTranslateDone { node: v2.std.node.Node }
 
 fn translate_algebra_finalize(
@@ -1953,7 +1953,7 @@ fn translate_type_expression_project(
   }
 }
 fn type_expr_atom_binding_from_positional(
-  targets: std.types.List<v2.std.node.Node>,
+  targets: List<v2.std.node.Node>,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   v2.std.diagnostic.bind_outcome(
@@ -2084,7 +2084,7 @@ fn serialize_type_expr_args_bounded(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   form: v2.std.compilers.target_model.TargetGenericApply,
-  args: std.types.List<v2.std.node.Node>,
+  args: List<v2.std.node.Node>,
   anchor: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
@@ -2135,7 +2135,7 @@ fn serialize_type_expr_separated_bounded(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   separator: v2.std.node.Symbol,
-  items: std.types.List<v2.std.node.Node>,
+  items: List<v2.std.node.Node>,
   anchor: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
@@ -2188,7 +2188,7 @@ fn serialize_type_expr_record_fields_bounded(
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   separator: v2.std.node.Symbol,
   field_label_separator: v2.std.node.Symbol,
-  fields: std.types.List<v2.std.node.Edge>,
+  fields: List<v2.std.node.Edge>,
   anchor: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
@@ -2362,7 +2362,7 @@ fn serialize_type_expr_arrow_params_bounded(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   form: v2.std.compilers.target_model.TargetFunctionTypeShape,
-  params: std.types.List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>,
+  params: List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>,
   anchor: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
@@ -2521,7 +2521,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   form: v2.std.compilers.target_model.TargetFunctionTypeShape,
-  inputs: std.types.List<v2.std.node.Node>,
+  inputs: List<v2.std.node.Node>,
   anchor: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
@@ -2889,10 +2889,10 @@ fn translate_apply_use_site_ownership_to_instantiation_boundary(
 }
 
 fn translate_project_arrow_input_types(
-  original_inputs: std.types.List<v2.std.node.Node>,
+  original_inputs: List<v2.std.node.Node>,
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   v2.std.algebra.fold_list(
     xs: original_inputs,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -3646,7 +3646,7 @@ fn translate_type_expression_children_in_node(
   node: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   fold(
     node.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -3959,7 +3959,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
 
-fn translate_diagnostic_reason_variants() -> std.types.List<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
     TargetBundleMalformed,
     TargetBundleDuplicateEdge,
@@ -4005,7 +4005,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> v2.s
 
 fn translate_diagnostic_reason_find_by_symbol(
   sym: v2.std.node.Symbol,
-  variants: std.types.List<TranslateDiagnosticReason>
+  variants: List<TranslateDiagnosticReason>
 ) -> v2.std.optional.Optional<TranslateDiagnosticReason> {
   fold(variants, init: v2.std.optional.optional_absent(), f: fn(acc, variant) {
     match acc {
@@ -4027,7 +4027,7 @@ fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> v2.std.op
   )
 }
 
-fn translate_diagnostic_reason_roster() -> std.types.List<v2.std.node.Symbol> {
+fn translate_diagnostic_reason_roster() -> List<v2.std.node.Symbol> {
   fold(translate_diagnostic_reason_variants(), init: std.algebra.Empty, f: fn(acc, variant) {
     v2.std.algebra.list_snoc_item(
       xs: acc,

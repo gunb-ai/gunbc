@@ -34,7 +34,7 @@ type GitRefUpdateSpec {
 
 type GitPushRequest {
   remote: std.types.NonEmptyStr
-  ref_updates: std.types.List<GitRefUpdateSpec>
+  ref_updates: List<GitRefUpdateSpec>
 }
 
 type GitCommitRequest {

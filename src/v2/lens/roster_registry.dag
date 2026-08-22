@@ -7,11 +7,11 @@ type NonStandardRegistration {
   roster_decl_name: String
 }
 
-data empty_nonstandard_registrations: std.types.List<NonStandardRegistration> = []
+data empty_nonstandard_registrations: List<NonStandardRegistration> = []
 
 fn nonstandard_registrations_from(
-  registrations: std.types.List<gunbc.roster_registry.RosterRegistration>
-) -> std.types.List<NonStandardRegistration> {
+  registrations: List<gunbc.roster_registry.RosterRegistration>
+) -> List<NonStandardRegistration> {
   v2.std.algebra.fold_list(
     xs: registrations,
     empty: empty_nonstandard_registrations,
@@ -31,7 +31,7 @@ fn nonstandard_registrations_from(
   )
 }
 
-fn roster_registry_nonstandard_count_from(registrations: std.types.List<gunbc.roster_registry.RosterRegistration>) -> Int {
+fn roster_registry_nonstandard_count_from(registrations: List<gunbc.roster_registry.RosterRegistration>) -> Int {
   v2.std.algebra.count_where(
     xs: registrations,
     predicate: fn(r) { !gunbc.roster_registry.registration_membership_is_standard(r: r) }
@@ -48,9 +48,9 @@ fn roster_registry_standard_holds() -> v2.std.logic.Bool {
 
 data roster_registry_declaration_refs_note: String = "WHY THIS PROJECTION EXISTS: a registration is built out of typed DeclarationRefs — the roster it names, and, for a ByDerivation row, the predicate it claims computes membership. Nothing resolved either of them, so a registration could name a declaration that had been deleted and stay green forever, and one did: gunbc.stage0_emit_plan_generated generated_stage0_files was registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan long after that module was deleted, so the registry reported the DERIVED rung over a roster that had become hand-maintained in fact. The registration passed registration_membership_is_standard because that check reads the membership SHAPE and never asks whether the shape's payload names anything real. This projection is the population that closes it: v2.lens.cited_symbol_resolution folds these refs into the enrolled cited-symbol resolution census, which is exactly the widening that lens's own law names as its next step (enrollment widens to every structural DeclarationRef carrier). A ByDerivation row contributes BOTH refs deliberately — the predicate is the half that rotted, and a projection carrying only the roster would have left the defect it was written for undetected."
 
-data empty_declaration_refs: std.types.List<std.decl_ref.DeclarationRef> = []
+data empty_declaration_refs: List<std.decl_ref.DeclarationRef> = []
 
-fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistration) -> std.types.List<std.decl_ref.DeclarationRef> {
+fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistration) -> List<std.decl_ref.DeclarationRef> {
   match r.membership {
     ByContainment => [r.roster]
     ByDerivation { predicate: p } => [r.roster, p]
@@ -59,8 +59,8 @@ fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistratio
 }
 
 fn roster_registry_declaration_refs_from(
-  registrations: std.types.List<gunbc.roster_registry.RosterRegistration>
-) -> std.types.List<std.decl_ref.DeclarationRef> {
+  registrations: List<gunbc.roster_registry.RosterRegistration>
+) -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.fold_list(
     xs: registrations,
     empty: empty_declaration_refs,
@@ -68,7 +68,7 @@ fn roster_registry_declaration_refs_from(
   )
 }
 
-fn roster_registry_declaration_refs() -> std.types.List<std.decl_ref.DeclarationRef> {
+fn roster_registry_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   roster_registry_declaration_refs_from(registrations: gunbc.roster_registry.roster_registry)
 }
 

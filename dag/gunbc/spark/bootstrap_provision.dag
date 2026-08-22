@@ -45,7 +45,7 @@ fn spark_credential_occurrence(host: product.placement_supply.HostIdentity, kind
   SparkCredentialOccurrence { host: host, kind: kind }
 }
 
-fn spark_credential_population() -> std.types.List<SparkCredentialOccurrence> {
+fn spark_credential_population() -> List<SparkCredentialOccurrence> {
   [
     SparkCredentialOccurrence { host: spark_srv5(), kind: FactoryHotspotCredential },
     SparkCredentialOccurrence { host: spark_srv5(), kind: AdministratorCredential },
@@ -104,7 +104,7 @@ data spark_legacy_hotspot_container: SparkLegacyContainerStanding = ObservedLega
 
 data spark_legacy_administrator_container: SparkLegacyContainerStanding = ObservedLegacyUnbound { handle: "spark-administrator-password" }
 
-data spark_legacy_containers: std.types.List<SparkLegacyContainerStanding> = [
+data spark_legacy_containers: List<SparkLegacyContainerStanding> = [
   spark_legacy_hotspot_container,
   spark_legacy_administrator_container
 ]
@@ -281,7 +281,7 @@ type AccessScopeEvolution
   | TracksNamespaceMembership { roster: std.types.NonEmptyStr }
 
 type SparkCloudScope {
-  resources: std.types.List<std.types.NonEmptyStr>
+  resources: List<std.types.NonEmptyStr>
   evolution: AccessScopeEvolution
 }
 
@@ -307,7 +307,7 @@ type SparkCloudContext {
 
 type SparkCloudGrant {
   principal: FleetCloudPrincipalKey
-  operations: std.types.List<SecretManagerOperation>
+  operations: List<SecretManagerOperation>
   scope: SparkCloudScope
   context: SparkCloudContext
 }
@@ -470,24 +470,24 @@ fn spark_wif_issuance_standing() -> WifCredentialIssuanceStanding {
 // Overbreadth is likewise UNOBSERVED rather than absent: nothing enumerated the policy, so no
 // probe could have found a binding it did not think to ask about.
 type EffectiveAccessStanding
-  = EffectiveAccessExact { observed_cells: std.types.List<AccessGrantCell> }
-  | EffectiveAccessOverbroad { extra_cells: std.types.List<AccessGrantCell> }
+  = EffectiveAccessExact { observed_cells: List<AccessGrantCell> }
+  | EffectiveAccessOverbroad { extra_cells: List<AccessGrantCell> }
   | EffectiveAccessPartiallyObserved {
-      positively_observed: std.types.List<AccessGrantCell>
-      requested_but_not_returned: std.types.List<AccessGrantCell>
+      positively_observed: List<AccessGrantCell>
+      requested_but_not_returned: List<AccessGrantCell>
       overbreadth_unobserved_cause: std.types.NonEmptyStr
     }
   | EffectiveAccessUnobserved { cause: std.types.NonEmptyStr }
 
 // The ONE cell the run positively established. A returned permission is a real observation; it is
 // the only kind this probe produced.
-fn spark_positively_observed_cells() -> std.types.List<AccessGrantCell> {
+fn spark_positively_observed_cells() -> List<AccessGrantCell> {
   [ AccessGrantCell { operation: SmAccessVersion, resource: "fleet-automation-ssh-key" } ]
 }
 
 // Requested and not returned. NOT called missing: for these subjects the run never established
 // that the resource exists, so absence of permission and absence of resource are not separated.
-fn spark_requested_but_not_returned_cells() -> std.types.List<AccessGrantCell> {
+fn spark_requested_but_not_returned_cells() -> List<AccessGrantCell> {
   [
     AccessGrantCell { operation: SmGetSecret, resource: "fleet-automation-ssh-key" },
     AccessGrantCell { operation: SmGetSecret, resource: "spark-hotspot-password" },
@@ -630,9 +630,9 @@ fn classify_spark_container(
 // wire binding list is recovered by grouping cells back by (role, condition) at the boundary, so a
 // cell nobody authored survives the round trip instead of being dropped by a role-level replace.
 type SparkIamDelta {
-  add: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
-  remove: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
-  preserve: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
+  add: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
+  remove: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
+  preserve: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
 }
 
 // Condition equality is part of cell identity, not a detail. Two cells with the same role and
@@ -651,7 +651,7 @@ fn spark_cell_eq(a: extdeps.cloud.gcp.iam.GcpIamBindingCell, b: extdeps.cloud.gc
   gcp_cell_eq(a: a, b: b)
 }
 
-fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>) -> Bool {
+fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>) -> Bool {
   gcp_cell_in(c: c, xs: xs)
 }
 
@@ -660,9 +660,9 @@ fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: std.types.List<
 // reason this model cannot see, so removing it would be acting outside our authority even though
 // the member is one we recognise.
 fn spark_iam_delta(
-  observed: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
-  desired_owned: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
-  owned_universe: std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
+  observed: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
+  desired_owned: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
+  owned_universe: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
 ) -> SparkIamDelta {
   SparkIamDelta {
     add: desired_owned |> filter(c => !spark_cell_in(c: c, xs: observed)),
@@ -842,7 +842,7 @@ type ExternalAccessDemand {
   context: SparkCloudContext
 }
 
-data no_access_demand: std.types.List<ExternalAccessDemand> = []
+data no_access_demand: List<ExternalAccessDemand> = []
 
 // A selected step: the effect plus the identity of the plan step that selected it. source_effect
 // is what makes a demand cell explicable -- it answers "why is this permission being requested"
@@ -857,7 +857,7 @@ type SelectedSparkEffect {
 // demand. Those are different states: "this effect needs nothing" would admit the effect with no
 // grant at all, which is the fail-open an empty list quietly performs.
 type DemandProjection
-  = DemandDerived { cells: std.types.List<ExternalAccessDemand> }
+  = DemandDerived { cells: List<ExternalAccessDemand> }
   | DemandIncomplete { step: std.types.NonEmptyStr, operation: v2.std.operation_argv.OperationRef, cause: std.types.NonEmptyStr }
 
 fn spark_demand_for_selected(
@@ -892,7 +892,7 @@ fn spark_demand_for_selected(
 // refuses the WHOLE derivation rather than contributing nothing and letting the rest look
 // complete -- a partial demand population read as total is how an ungranted effect slips through.
 fn spark_plan_demand(
-  selected: std.types.List<SelectedSparkEffect>,
+  selected: List<SelectedSparkEffect>,
   executor: FleetCloudPrincipalKey,
   context: SparkCloudContext
 ) -> DemandProjection {
@@ -1020,7 +1020,7 @@ type SecretConsumer {
 }
 
 type SecretDemandStanding
-  = SecretDemandActive { secret: std.types.NonEmptyStr, consumers: std.types.List<SecretConsumer> }
+  = SecretDemandActive { secret: std.types.NonEmptyStr, consumers: List<SecretConsumer> }
   | SecretDemandRetainedForRecovery { secret: std.types.NonEmptyStr, recovery_consumer: std.types.NonEmptyStr }
   | SecretDemandRetiredAfterOobe { secret: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
   | SecretDemandUnobserved { secret: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }

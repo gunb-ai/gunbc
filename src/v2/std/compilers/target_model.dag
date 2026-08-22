@@ -42,8 +42,8 @@ type ProducedDeclSupport
 type TargetModel {
   bundle: v2.std.node.Node
   lex: v2.std.compilers.lexing.LexRules
-  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
-  token_class_emit_transforms: std.types.Map<v2.std.node.Symbol, fn(String) -> String>
+  binding_spellings: Map<v2.std.node.Symbol, String>
+  token_class_emit_transforms: Map<v2.std.node.Symbol, fn(String) -> String>
   authority_source_text: String
   runtime_row: v2.std.host_transport.TargetEmitHostRuntimeRow
   produced_decl_support: v2.std.compilers.target_model.ProducedDeclSupport
@@ -63,13 +63,13 @@ fn target_model_selection_priority(target: v2.std.compilers.target_model.TargetM
   )
 }
 
-data target_model_emit_transforms_empty: std.types.Map<v2.std.node.Symbol, fn(String) -> String> = empty_map()
+data target_model_emit_transforms_empty: Map<v2.std.node.Symbol, fn(String) -> String> = empty_map()
 
 fn target_model_make_with_emit_transforms(
   bundle: v2.std.node.Node,
   lex: v2.std.compilers.lexing.LexRules,
-  binding_spellings: std.types.Map<v2.std.node.Symbol, String>,
-  token_class_emit_transforms: std.types.Map<v2.std.node.Symbol, fn(String) -> String>,
+  binding_spellings: Map<v2.std.node.Symbol, String>,
+  token_class_emit_transforms: Map<v2.std.node.Symbol, fn(String) -> String>,
   authority_source_text: String,
   runtime_row: v2.std.host_transport.TargetEmitHostRuntimeRow
 ) -> v2.std.compilers.target_model.TargetModel {
@@ -158,7 +158,7 @@ fn concrete_syntax_token_class(token: v2.std.compilers.target_model.ConcreteSynt
   }
 }
 
-fn phrase_to_fixed_concrete_tokens(p: v2.std.compilers.lexing.LexicalPhrase) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn phrase_to_fixed_concrete_tokens(p: v2.std.compilers.lexing.LexicalPhrase) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   fold_list(
     xs: p.spans,
     empty: std.algebra.Empty,
@@ -357,7 +357,7 @@ fn lex_rules_literal(target: v2.std.compilers.target_model.TargetModel, token_cl
 }
 
 fn bound_spelling_from_map(
-  binding_spellings: std.types.Map<v2.std.node.Symbol, String>,
+  binding_spellings: Map<v2.std.node.Symbol, String>,
   binding: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match v2.std.collection.map_get(binding_spellings, binding) {
@@ -392,9 +392,9 @@ fn target_text_is_empty(t: v2.std.compilers.target_model.TargetText) -> v2.std.l
 }
 
 fn bound_tokens_source_text(
-  tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   lex: v2.std.compilers.lexing.LexRules,
-  binding_spellings: std.types.Map<v2.std.node.Symbol, String>
+  binding_spellings: Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   fold_list(
     xs: tokens,
@@ -590,7 +590,7 @@ type CanonicalOperation
   | OrderingComparison { compare_field: v2.std.node.Symbol, predicate: v2.std.compilers.target_model.OrderingPredicate }
   | EqualityComparison { eq_field: v2.std.node.Symbol, predicate: v2.std.compilers.target_model.EqualityPredicate }
 
-fn ordering_predicate_accepts(predicate: v2.std.compilers.target_model.OrderingPredicate) -> std.types.List<std.algebra.Ordering> {
+fn ordering_predicate_accepts(predicate: v2.std.compilers.target_model.OrderingPredicate) -> List<std.algebra.Ordering> {
   match predicate {
     IsLess => [Less]
     IsLessOrEqual => [Less, Equal]
@@ -702,7 +702,7 @@ type TargetEffectCalleeRow {
 }
 
 type TargetEffectApplyShape {
-  callees: std.types.List<v2.std.compilers.target_model.TargetEffectCalleeRow>
+  callees: List<v2.std.compilers.target_model.TargetEffectCalleeRow>
   open: v2.std.node.Symbol
   close: v2.std.node.Symbol
   separator: v2.std.node.Symbol
@@ -803,8 +803,8 @@ type TargetValueExpressionProjection {
 }
 
 type TargetBodiedArrowStatementScaffold {
-  prefix: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-  suffix: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  prefix: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  suffix: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type TargetImportShape
@@ -827,13 +827,13 @@ type TargetModuleProjection {
 }
 
 type TargetImport {
-  path_segments: std.types.List<v2.std.node.Symbol>
-  names: std.types.List<v2.std.node.Symbol>
+  path_segments: List<v2.std.node.Symbol>
+  names: List<v2.std.node.Symbol>
 }
 
 fn derive_bodied_arrow_scaffold(
-  signature_with_open: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  block_close: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  signature_with_open: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  block_close: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   mode: v2.std.compilers.target_model.BlockEvaluationMode
 ) -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   match mode {
@@ -867,7 +867,7 @@ fn target_model_type_atom_node(identity: v2.std.node.Symbol) -> v2.std.node.Node
   }
 }
 
-fn target_model_type_conj_node(children: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn target_model_type_conj_node(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: children,
@@ -1461,7 +1461,7 @@ fn target_operator_realization_node(
   )
 }
 
-fn target_operator_realizations_catalog_node(rows: std.types.List<v2.std.node.Node>) -> v2.std.node.Node {
+fn target_operator_realizations_catalog_node(rows: List<v2.std.node.Node>) -> v2.std.node.Node {
   target_model_type_conj_node(
     children: fold_list(
       xs: rows,
@@ -1551,7 +1551,7 @@ fn decode_primitive_apply_shape_bundle(bundle: v2.std.node.Node) -> v2.std.diagn
 // The encode side of the two decoders below. A closing target writes its token(s)
 // beside the discriminant; a self-delimiting one writes only the discriminant, so
 // there is no field for a fictional token even in the wire form.
-fn conditional_delimiting_edges(delimiting: v2.std.compilers.target_model.ConditionalDelimiting) -> std.types.List<v2.std.node.Edge> {
+fn conditional_delimiting_edges(delimiting: v2.std.compilers.target_model.ConditionalDelimiting) -> List<v2.std.node.Edge> {
   match delimiting {
     ConditionalSelfDelimiting =>
       [
@@ -2035,7 +2035,7 @@ fn target_value_expr_effect_callee_row_from_wire(row: v2.std.node.Node) -> v2.st
   )
 }
 
-fn decode_effect_apply_callee_rows(bundle: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetEffectCalleeRow>> {
+fn decode_effect_apply_callee_rows(bundle: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetEffectCalleeRow>> {
   match fold(
     bundle.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -2807,7 +2807,7 @@ fn type_expression_projection_from_target(
   )
 }
 
-fn concrete_syntax_token_list_to_node(tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.node.Node {
+fn concrete_syntax_token_list_to_node(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.node.Node {
   fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
 }
 
@@ -2880,15 +2880,15 @@ fn bodied_arrow_scaffold_from_grammar_relation_row(
 
 fn target_bodied_arrow_compose_statement_tokens(
   scaffold: v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold,
-  body: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+  body: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   list_append(
     left: list_append(left: scaffold.prefix, right: body),
     right: scaffold.suffix
   )
 }
 
-fn concrete_syntax_token_node_targets_from_list_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn concrete_syntax_token_node_targets_from_list_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match node.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       if v2.std.algebra.is_empty(xs: node.children) {
@@ -2918,7 +2918,7 @@ fn concrete_syntax_token_node_targets_from_list_node(node: v2.std.node.Node) -> 
   }
 }
 
-fn concrete_syntax_token_list_from_node(list_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn concrete_syntax_token_list_from_node(list_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
     f: fn(token_nodes) {
@@ -3489,8 +3489,8 @@ fn target_value_expression_binding_ref(binding: v2.std.node.Symbol) -> v2.std.co
 }
 
 fn target_value_expr_primitive_apply_operand_edges(
-  operands: std.types.List<v2.std.compilers.target_model.TargetValueExpression>
-) -> std.types.List<v2.std.node.Edge> {
+  operands: List<v2.std.compilers.target_model.TargetValueExpression>
+) -> List<v2.std.node.Edge> {
   fold_list_right(
     xs: operands,
     empty: std.algebra.Empty,
@@ -3645,7 +3645,7 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: v2.std.node.Node) -
   }
 }
 
-fn target_value_expr_primitive_apply_operand_bindings(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
+fn target_value_expr_primitive_apply_operand_bindings(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: wire),
     f: fn(_) {
@@ -3692,7 +3692,7 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: v2.std.node.Node) ->
 
 fn target_value_expression_primitive_apply(
   operation: v2.std.compilers.target_model.CanonicalOperation,
-  operands: std.types.List<v2.std.compilers.target_model.TargetValueExpression>
+  operands: List<v2.std.compilers.target_model.TargetValueExpression>
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprPrimitiveApply,
@@ -3716,7 +3716,7 @@ fn target_value_expression_primitive_apply(
 
 fn target_value_expression_effect_apply(
   effect_kind_discriminant: v2.std.node.Symbol,
-  operands: std.types.List<v2.std.compilers.target_model.TargetValueExpression>
+  operands: List<v2.std.compilers.target_model.TargetValueExpression>
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprEffectApply,
@@ -3815,7 +3815,7 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: v2.std.node.Node) -> v2.s
   }
 }
 
-fn target_value_expr_effect_apply_operand_bindings(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
+fn target_value_expr_effect_apply_operand_bindings(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: target_value_expr_effect_apply_wire_schema_valid(wire: wire),
     f: fn(_) {
@@ -3888,7 +3888,7 @@ fn target_value_expr_effect_apply_callee(
 fn target_value_expression_effect_apply_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_effect_apply_kind_from_wire(wire: expr.node),
     f: fn(effect_kind) {
@@ -4016,7 +4016,7 @@ type TargetValueExprFieldInitSlot {
   value: v2.std.compilers.target_model.TargetValueExpression
 }
 
-fn target_value_expr_field_init_slot_edges(slots: std.types.List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>) -> std.types.List<v2.std.node.Edge> {
+fn target_value_expr_field_init_slot_edges(slots: List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>) -> List<v2.std.node.Edge> {
   fold(slots, init: std.algebra.Empty, f: fn(acc, slot) {
     list_snoc_item(
       xs: acc,
@@ -4027,7 +4027,7 @@ fn target_value_expr_field_init_slot_edges(slots: std.types.List<v2.std.compiler
 
 fn target_value_expression_record_construct(
   type_name: v2.std.node.Symbol,
-  fields: std.types.List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>
+  fields: List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprRecordConstruct,
@@ -4088,7 +4088,7 @@ type TargetValueExprMatchArmSlot {
 }
 
 type TargetValueExprMatchArmEdgeFold {
-  edges: std.types.List<v2.std.node.Edge>
+  edges: List<v2.std.node.Edge>
   skipped_scrutinee: v2.std.logic.Bool
 }
 
@@ -4096,7 +4096,7 @@ fn target_value_expr_positional_child_optional(node: v2.std.node.Node, index: In
   list_at_optional(xs: node_positional_child_targets(node: node), index: index)
 }
 
-fn target_value_expr_match_arm_edges_after_scrutinee(children: std.types.List<v2.std.node.Edge>) -> std.types.List<v2.std.node.Edge> {
+fn target_value_expr_match_arm_edges_after_scrutinee(children: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
   let folded = fold(
     children,
     init: v2.std.compilers.target_model.TargetValueExprMatchArmEdgeFold { edges: std.algebra.Empty, skipped_scrutinee: false },
@@ -4132,7 +4132,7 @@ fn target_value_expr_match_arm_wire(arm: v2.std.compilers.target_model.TargetVal
   }
 }
 
-fn target_value_expr_match_arm_edges(arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>) -> std.types.List<v2.std.node.Edge> {
+fn target_value_expr_match_arm_edges(arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>) -> List<v2.std.node.Edge> {
   fold(arms, init: std.algebra.Empty, f: fn(acc, arm) {
     list_snoc_item(xs: acc, item: v2.std.node.Edge { label: v2.std.node.Positional, target: target_value_expr_match_arm_wire(arm: arm) })
   })
@@ -4140,7 +4140,7 @@ fn target_value_expr_match_arm_edges(arms: std.types.List<v2.std.compilers.targe
 
 fn target_value_expression_match(
   scrutinee: v2.std.compilers.target_model.TargetValueExpression,
-  arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
+  arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprMatch,
@@ -4163,8 +4163,8 @@ fn target_value_expression_match(
 }
 
 fn target_value_expr_callable_arg_edges(
-  args: std.types.List<v2.std.compilers.target_model.TargetValueExpression>
-) -> std.types.List<v2.std.node.Edge> {
+  args: List<v2.std.compilers.target_model.TargetValueExpression>
+) -> List<v2.std.node.Edge> {
   fold_list_right(
     xs: args,
     empty: std.algebra.Empty,
@@ -4182,7 +4182,7 @@ fn target_value_expr_callable_arg_edges(
 
 fn target_value_expression_callable_apply(
   callee: v2.std.node.Symbol,
-  args: std.types.List<v2.std.compilers.target_model.TargetValueExpression>
+  args: List<v2.std.compilers.target_model.TargetValueExpression>
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprCallableApply,
@@ -4204,7 +4204,7 @@ fn target_value_expression_callable_apply(
   }
 }
 
-fn target_value_expr_closure_param_edges(params: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Edge> {
+fn target_value_expr_closure_param_edges(params: List<v2.std.node.Symbol>) -> List<v2.std.node.Edge> {
   fold_list_right(
     xs: params,
     empty: std.algebra.Empty,
@@ -4221,7 +4221,7 @@ fn target_value_expr_closure_param_edges(params: std.types.List<v2.std.node.Symb
 }
 
 fn target_value_expression_closure(
-  params: std.types.List<v2.std.node.Symbol>,
+  params: List<v2.std.node.Symbol>,
   body: v2.std.compilers.target_model.TargetValueExpression
 ) -> v2.std.compilers.target_model.TargetValueExpression {
   TargetValueExpression {
@@ -4442,10 +4442,10 @@ fn target_value_expression_binding_ref_token(
 }
 
 fn target_value_expression_binding_refs_intersperse_separator(
-  bindings: std.types.List<v2.std.node.Symbol>,
+  bindings: List<v2.std.node.Symbol>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   separator: v2.std.node.Symbol
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   fold_list_right(
     xs: bindings,
     empty: std.algebra.Empty,
@@ -4472,9 +4472,9 @@ fn target_value_expression_binding_refs_intersperse_separator(
 fn target_operator_shape_emit_primitive_apply_tokens(
   shape: v2.std.compilers.target_model.TargetOperatorShape,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
-  bindings: std.types.List<v2.std.node.Symbol>,
+  bindings: List<v2.std.node.Symbol>,
   expr: v2.std.compilers.target_model.TargetValueExpression
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match shape {
     InfixToken { token: op_token } =>
       if length(xs: bindings) != 2 {
@@ -4575,7 +4575,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -4610,7 +4610,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
 fn target_value_expression_binding_ref_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
     f: fn(binding) {
@@ -4890,10 +4890,10 @@ fn target_value_expr_bind_let_child_from_wire(
 
 fn bind_let_value_producing_tokens(
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
-  key_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  value_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  body_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+  key_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  value_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  body_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   list_append(
     left: list_append(
       left: list_append(
@@ -4920,12 +4920,12 @@ fn bind_let_value_producing_tokens(
 
 fn bind_let_statement_sequenced_tokens(
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
-  key_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  value_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  body_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  key_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  value_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  body_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   return_token: v2.std.node.Symbol,
   statement_terminator: v2.std.node.Symbol
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   list_append(
     left: list_append(
       left: list_append(
@@ -4969,7 +4969,7 @@ fn target_value_expression_bind_let_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -5112,7 +5112,7 @@ fn target_value_expression_loop_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
       block_evaluation_mode: projection.block_evaluation_mode,
@@ -5132,7 +5132,7 @@ fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -5237,7 +5237,7 @@ fn target_value_expr_record_construct_type_from_wire(wire: v2.std.node.Node) -> 
 
 fn target_value_expr_record_construct_field_slots_from_wire(
   wire: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>> {
   match fold(
     wire.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -5275,7 +5275,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
   }
 }
 
-fn target_value_expr_labeled_edge_head(labeled: std.types.List<v2.std.node.Edge>) -> v2.std.optional.Optional<v2.std.node.Edge> {
+fn target_value_expr_labeled_edge_head(labeled: List<v2.std.node.Edge>) -> v2.std.optional.Optional<v2.std.node.Edge> {
   fold(labeled, init: optional_absent(), f: fn(acc, edge) {
     match acc {
       Present { value: _ } => acc
@@ -5284,7 +5284,7 @@ fn target_value_expr_labeled_edge_head(labeled: std.types.List<v2.std.node.Edge>
   })
 }
 
-fn target_value_expr_labeled_edges_tail(labeled: std.types.List<v2.std.node.Edge>) -> std.types.List<v2.std.node.Edge> {
+fn target_value_expr_labeled_edges_tail(labeled: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
   match list_tail(xs: labeled) {
     TailFound { tail: rest } => rest
     TailAbsent => std.algebra.Empty
@@ -5292,10 +5292,10 @@ fn target_value_expr_labeled_edges_tail(labeled: std.types.List<v2.std.node.Edge
 }
 
 fn target_value_expr_record_construct_field_tokens(
-  slots: std.types.List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>,
+  slots: List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match fold(
     slots,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -5360,7 +5360,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -5436,10 +5436,10 @@ fn target_import_empty_path_diagnostic() -> v2.std.diagnostic.Diagnostic {
 }
 
 fn target_import_bound_tokens_intersperse(
-  bindings: std.types.List<v2.std.node.Symbol>,
+  bindings: List<v2.std.node.Symbol>,
   ident_token: v2.std.node.Symbol,
   separator: v2.std.node.Symbol
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   fold(
     bindings,
     init: std.algebra.Empty,
@@ -5465,7 +5465,7 @@ fn target_import_bound_tokens_intersperse(
 fn target_import_to_concrete_tokens(
   import_value: v2.std.compilers.target_model.TargetImport,
   projection: v2.std.compilers.target_model.TargetModuleProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match projection.import_form {
     EsModuleImport {
       import_token: import_token,
@@ -5524,7 +5524,7 @@ fn target_import_to_concrete_tokens(
   }
 }
 
-fn import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> std.types.List<v2.std.node.Symbol> {
+fn import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> List<v2.std.node.Symbol> {
   match qn {
     Empty => std.algebra.Empty
     Cons { head: h, tail: t } =>
@@ -5532,7 +5532,7 @@ fn import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> std
   }
 }
 
-fn import_name_symbols_from_block(block: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
+fn import_name_symbols_from_block(block: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   fold(
     node_positional_child_targets(node: block),
     init: outcome_accepted(value: std.algebra.Empty),
@@ -5837,7 +5837,7 @@ fn target_value_expression_field_access_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -6029,7 +6029,7 @@ fn target_value_expr_match_arm_slot_from_wire(arm_wire: v2.std.node.Node) -> v2.
 
 fn target_value_expr_match_arms_from_wire(
   wire: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>> {
   match fold(
     wire.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6056,16 +6056,16 @@ fn target_value_expr_match_arms_from_wire(
 }
 
 fn concrete_syntax_tokens_extend(
-  acc: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  more: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+  acc: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  more: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   list_append(left: acc, right: more)
 }
 
 fn concrete_syntax_tokens_snoc_fixed(
-  acc: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  acc: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   token_class: v2.std.node.Symbol
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   list_snoc_item(
     xs: acc,
     item: FixedToken { token_class: token_class }
@@ -6073,10 +6073,10 @@ fn concrete_syntax_tokens_snoc_fixed(
 }
 
 fn target_value_expr_match_arm_tokens(
-  arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>,
+  arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match fold(
     arms,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6235,7 +6235,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 }
 
 fn target_value_expr_match_arms_are_int_bool_octet_channel(
-  arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
+  arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
 ) -> v2.std.logic.Bool {
   if is_empty(xs: arms) {
     false
@@ -6252,7 +6252,7 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
 
 fn target_value_expr_match_is_int_bool_octet_channel(
   scrutinee: v2.std.compilers.target_model.TargetValueExpression,
-  arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
+  arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>
 ) -> v2.std.logic.Bool {
   match scrutinee.kind {
     TargetValueExprBindingRef =>
@@ -6264,7 +6264,7 @@ fn target_value_expr_match_is_int_bool_octet_channel(
 fn target_value_expr_bool_literal_octet_body_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBoolLiteral =>
       match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
@@ -6307,10 +6307,10 @@ fn target_value_expr_bool_literal_octet_body_tokens(
 }
 
 fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
-  scrutinee_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  scrutinee_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   catalog: v2.std.node.Node,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_operator_realization_catalog_lookup(
       catalog: catalog,
@@ -6347,10 +6347,10 @@ fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
 }
 
 fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
-  arms: std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>,
+  arms: List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match fold(
     arms,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6407,7 +6407,7 @@ fn target_value_expression_match_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
       block_evaluation_mode: projection.block_evaluation_mode,
@@ -6427,7 +6427,7 @@ fn target_value_expression_match_to_concrete_tokens_inner(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -6502,10 +6502,10 @@ fn target_value_expression_match_to_concrete_tokens_inner(
 }
 
 fn target_value_expression_match_concrete_token_shell(
-  scrutinee_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  arm_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  scrutinee_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  arm_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   let prefix = concrete_syntax_tokens_snoc_fixed(
     acc: concrete_syntax_tokens_snoc_fixed(
       acc: std.algebra.Empty,
@@ -6538,7 +6538,7 @@ fn target_value_expression_match_concrete_token_shell(
 fn target_value_expression_bool_literal_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBoolLiteral =>
       match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
@@ -6575,7 +6575,7 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
 fn target_value_expression_symbol_identity_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
     f: fn(token_class) {
@@ -6607,10 +6607,10 @@ fn target_value_expression_symbol_identity_to_concrete_tokens(
 // target, so a brace-closing language had no way to emit its own close.
 fn conditional_delimited_tokens(
   conditional_form: v2.std.compilers.target_model.TargetConditionalShape,
-  cond_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  then_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  else_tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+  cond_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  then_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  else_tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   let opened = list_append(
     left: list_append(
       left: list_append(
@@ -6641,7 +6641,7 @@ fn target_value_expression_conditional_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
     f: fn(_) {
@@ -6742,7 +6742,7 @@ fn target_value_expr_callable_apply_callee_from_wire(wire: v2.std.node.Node) -> 
 
 fn target_value_expr_callable_apply_args_from_wire(
   wire: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetValueExpression>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetValueExpression>> {
   fold(
     wire.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6777,11 +6777,11 @@ fn target_value_expr_callable_apply_args_from_wire(
 }
 
 fn target_value_expr_tokenize_intersperse(
-  exprs: std.types.List<v2.std.compilers.target_model.TargetValueExpression>,
+  exprs: List<v2.std.compilers.target_model.TargetValueExpression>,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node,
   separator: v2.std.node.Symbol
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   fold(
     exprs,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6823,7 +6823,7 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
     f: fn(callee) {
@@ -6871,7 +6871,7 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
   )
 }
 
-fn target_value_expr_closure_params_from_wire(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
+fn target_value_expr_closure_params_from_wire(wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   fold(
     wire.children,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -6915,10 +6915,10 @@ fn target_value_expr_closure_body_from_wire(wire: v2.std.node.Node) -> v2.std.di
 }
 
 fn target_value_expr_closure_param_tokens(
-  params: std.types.List<v2.std.node.Symbol>,
+  params: List<v2.std.node.Symbol>,
   ident_token: v2.std.node.Symbol,
   separator: v2.std.node.Symbol
-) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   fold_list_right(
     xs: params,
     empty: std.algebra.Empty,
@@ -6943,7 +6943,7 @@ fn target_value_expression_closure_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
       block_evaluation_mode: projection.block_evaluation_mode,
@@ -6963,7 +6963,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
     f: fn(params) {
@@ -7033,7 +7033,7 @@ fn target_value_expression_to_concrete_tokens(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBindingRef =>
       target_value_expression_binding_ref_to_concrete_tokens(
@@ -7116,7 +7116,7 @@ fn target_value_expression_to_concrete_tokens(
   }
 }
 
-fn target_declared_inhabitants_edge_targets(root: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn target_declared_inhabitants_edge_targets(root: v2.std.node.Node) -> List<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       fold(root.children, init: std.algebra.Empty, f: fn(acc, edge) {
@@ -7158,7 +7158,7 @@ fn target_inhabitant_wire_primary_atom_identity(wire: v2.std.node.Node) -> v2.st
 
 fn target_catalog_contains_node_shape(
   slot: v2.std.node.Node,
-  catalog_targets: std.types.List<v2.std.node.Node>
+  catalog_targets: List<v2.std.node.Node>
 ) -> v2.std.logic.Bool {
   fold_list(
     xs: catalog_targets,
@@ -7177,7 +7177,7 @@ fn target_catalog_contains_node_shape(
 
 fn target_catalog_atom_identity_matches_inhabitant_wires(
   slot_atom: v2.std.node.Symbol,
-  catalog_targets: std.types.List<v2.std.node.Node>
+  catalog_targets: List<v2.std.node.Node>
 ) -> v2.std.logic.Bool {
   fold_list(
     xs: catalog_targets,
@@ -7753,7 +7753,7 @@ fn target_atom_realization_lookup_extract_row_step(
 }
 
 fn target_atom_realization_lookup_extract_row(
-  catalog: std.types.List<v2.std.compilers.target_model.TargetAtomRealization>,
+  catalog: List<v2.std.compilers.target_model.TargetAtomRealization>,
   source_carrier: v2.std.node.Node
 ) -> v2.std.optional.Optional<v2.std.compilers.target_model.TargetAtomRealization> {
   fold(catalog, init: optional_absent(), f: fn(acc, item) {
@@ -7766,7 +7766,7 @@ fn target_atom_realization_lookup_extract_row(
 }
 
 fn target_atom_realization_lookup_in_catalog(
-  catalog: std.types.List<v2.std.compilers.target_model.TargetAtomRealization>,
+  catalog: List<v2.std.compilers.target_model.TargetAtomRealization>,
   source_carrier: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetAtomRealization> {
   match fold_list(
@@ -7906,7 +7906,7 @@ fn target_constructor_template_from_node(
   }
 }
 
-fn target_model_bundle_core_keep_edge(acc: std.types.List<v2.std.node.Edge>, edge: v2.std.node.Edge) -> std.types.List<v2.std.node.Edge> {
+fn target_model_bundle_core_keep_edge(acc: List<v2.std.node.Edge>, edge: v2.std.node.Edge) -> List<v2.std.node.Edge> {
   match edge.label {
     Named { name: n } =>
 
@@ -7990,10 +7990,10 @@ fn target_atom_realization_catalog_edge(
 }
 
 fn target_atom_realization_catalog_snoc_edge(
-  acc: std.types.List<v2.std.node.Edge>,
+  acc: List<v2.std.node.Edge>,
   row: v2.std.compilers.target_model.TargetAtomRealization,
   host_bundle: v2.std.node.Node
-) -> std.types.List<v2.std.node.Edge> {
+) -> List<v2.std.node.Edge> {
   list_snoc_item(
     xs: acc,
     item: target_atom_realization_catalog_edge(row: row, host_bundle: host_bundle)
@@ -8001,7 +8001,7 @@ fn target_atom_realization_catalog_snoc_edge(
 }
 
 fn target_atom_realization_catalog_node(
-  rows: std.types.List<v2.std.compilers.target_model.TargetAtomRealization>,
+  rows: List<v2.std.compilers.target_model.TargetAtomRealization>,
   host_bundle: v2.std.node.Node
 ) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -8434,9 +8434,9 @@ fn target_function_signature_realization_catalog_edge(
 }
 
 fn target_function_signature_realization_catalog_snoc_edge(
-  acc: std.types.List<v2.std.node.Edge>,
+  acc: List<v2.std.node.Edge>,
   row: v2.std.compilers.target_model.TargetFunctionSignatureRealization
-) -> std.types.List<v2.std.node.Edge> {
+) -> List<v2.std.node.Edge> {
   list_snoc_item(
     xs: acc,
     item: target_function_signature_realization_catalog_edge(row: row)
@@ -8444,7 +8444,7 @@ fn target_function_signature_realization_catalog_snoc_edge(
 }
 
 fn target_function_signature_realization_catalog_node(
-  rows: std.types.List<v2.std.compilers.target_model.TargetFunctionSignatureRealization>
+  rows: List<v2.std.compilers.target_model.TargetFunctionSignatureRealization>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -8800,7 +8800,7 @@ fn target_type_expr_kind_edge(kind: v2.std.compilers.target_model.TargetTypeExpr
   }
 }
 
-fn target_type_expr_positional_edges(children: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Edge> {
+fn target_type_expr_positional_edges(children: List<v2.std.node.Node>) -> List<v2.std.node.Edge> {
   fold_list(
     xs: children,
     empty: std.algebra.Empty,
@@ -8816,7 +8816,7 @@ fn target_type_expr_positional_edges(children: std.types.List<v2.std.node.Node>)
 fn target_type_expr_wrapped_emitted(
   kind: v2.std.compilers.target_model.TargetTypeExprKind,
   surface: v2.std.node.Symbol,
-  children: std.types.List<v2.std.node.Node>
+  children: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -8858,7 +8858,7 @@ fn target_atom_alias_type_expression(
 fn target_type_expr_wrapped_emitted_labeled(
   kind: v2.std.compilers.target_model.TargetTypeExprKind,
   surface: v2.std.node.Symbol,
-  slot_edges: std.types.List<v2.std.node.Edge>
+  slot_edges: List<v2.std.node.Edge>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -8876,7 +8876,7 @@ fn target_type_expr_wrapped_emitted_labeled(
 fn target_type_expr_instantiation_emitted(
   form: v2.std.compilers.target_model.TargetGenericApply,
   head: v2.std.node.Node,
-  args: std.types.List<v2.std.node.Node>
+  args: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprInstantiation,
@@ -8891,7 +8891,7 @@ fn target_type_expr_instantiation_emitted(
 fn target_type_expr_cardinality_emitted(
   form: v2.std.compilers.target_model.TargetGenericApply,
   head: v2.std.node.Node,
-  args: std.types.List<v2.std.node.Node>
+  args: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprCardinality,
@@ -8903,7 +8903,7 @@ fn target_type_expr_cardinality_emitted(
   )
 }
 
-fn target_type_expr_field_slot_edges(fields: std.types.List<v2.std.compilers.target_model.TargetTypeExprFieldSlot>) -> std.types.List<v2.std.node.Edge> {
+fn target_type_expr_field_slot_edges(fields: List<v2.std.compilers.target_model.TargetTypeExprFieldSlot>) -> List<v2.std.node.Edge> {
   fold(fields, init: std.algebra.Empty, f: fn(acc, field) {
     list_snoc_item(
       xs: acc,
@@ -8912,7 +8912,7 @@ fn target_type_expr_field_slot_edges(fields: std.types.List<v2.std.compilers.tar
   })
 }
 
-fn target_type_expr_arrow_param_slot_edges(params: std.types.List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>) -> std.types.List<v2.std.node.Edge> {
+fn target_type_expr_arrow_param_slot_edges(params: List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>) -> List<v2.std.node.Edge> {
   fold(params, init: std.algebra.Empty, f: fn(acc, param) {
     list_snoc_item(
       xs: acc,
@@ -8921,7 +8921,7 @@ fn target_type_expr_arrow_param_slot_edges(params: std.types.List<v2.std.compile
   })
 }
 
-fn target_type_expr_variant_slot_edges(variants: std.types.List<v2.std.compilers.target_model.TargetTypeExprVariantSlot>) -> std.types.List<v2.std.node.Edge> {
+fn target_type_expr_variant_slot_edges(variants: List<v2.std.compilers.target_model.TargetTypeExprVariantSlot>) -> List<v2.std.node.Edge> {
   fold(variants, init: std.algebra.Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
@@ -8930,7 +8930,7 @@ fn target_type_expr_variant_slot_edges(variants: std.types.List<v2.std.compilers
   })
 }
 
-fn target_type_expr_emitted_slot_type_nodes(node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
+fn target_type_expr_emitted_slot_type_nodes(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
     match e.label {
       Named { name: n } =>
@@ -9220,7 +9220,7 @@ fn target_type_expr_emitted_wire_decode(
   }
 }
 
-fn target_type_expr_emitted_labeled_slot_nodes(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
+fn target_type_expr_emitted_labeled_slot_nodes(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   if is_empty(xs: node_positional_child_targets(node: node)) {
     v2.std.diagnostic.Accepted {
       value: target_type_expr_emitted_slot_type_nodes(node: node),
@@ -9231,7 +9231,7 @@ fn target_type_expr_emitted_labeled_slot_nodes(node: v2.std.node.Node) -> v2.std
   }
 }
 
-fn target_type_expr_emitted_labeled_slot_edges(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Edge>> {
+fn target_type_expr_emitted_labeled_slot_edges(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   if is_empty(xs: node_positional_child_targets(node: node)) {
     v2.std.diagnostic.Accepted {
       value: fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
@@ -9254,7 +9254,7 @@ fn target_type_expr_emitted_labeled_slot_edges(node: v2.std.node.Node) -> v2.std
 
 fn target_type_expr_record_emitted(
   form: v2.std.compilers.target_model.TargetGenericApply,
-  fields: std.types.List<v2.std.compilers.target_model.TargetTypeExprFieldSlot>
+  fields: List<v2.std.compilers.target_model.TargetTypeExprFieldSlot>
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted_labeled(
     kind: TargetTypeExprRecord,
@@ -9265,7 +9265,7 @@ fn target_type_expr_record_emitted(
 
 fn target_type_expr_sum_emitted(
   form: v2.std.compilers.target_model.TargetSumTypeShape,
-  variants: std.types.List<v2.std.compilers.target_model.TargetTypeExprVariantSlot>
+  variants: List<v2.std.compilers.target_model.TargetTypeExprVariantSlot>
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted_labeled(
     kind: TargetTypeExprSum,
@@ -9276,7 +9276,7 @@ fn target_type_expr_sum_emitted(
 
 fn target_type_expr_arrow_emitted(
   form: v2.std.compilers.target_model.TargetFunctionTypeShape,
-  inputs: std.types.List<v2.std.node.Node>,
+  inputs: List<v2.std.node.Node>,
   output: v2.std.node.Node
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted(
@@ -9288,7 +9288,7 @@ fn target_type_expr_arrow_emitted(
 
 fn target_type_expr_arrow_emitted_named(
   form: v2.std.compilers.target_model.TargetFunctionTypeShape,
-  params: std.types.List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>,
+  params: List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>,
   output: v2.std.node.Node
 ) -> v2.std.node.Node {
   target_type_expr_wrapped_emitted_labeled(
@@ -9325,7 +9325,7 @@ fn target_type_expr_arrow_labeled_codomain(node: v2.std.node.Node) -> v2.std.dia
   }
 }
 
-fn target_type_expr_arrow_labeled_param_slots(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>> {
+fn target_type_expr_arrow_labeled_param_slots(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome(
@@ -9399,7 +9399,7 @@ type TargetCapabilityRequirement {
 }
 
 type TargetCapabilityElementEligibility {
-  kernel_atoms: std.types.List<v2.std.node.Symbol>
+  kernel_atoms: List<v2.std.node.Symbol>
 }
 
 type TargetCapabilityEligibilityRow {
@@ -9419,7 +9419,7 @@ type TargetRepresentationParameterSlot {}
 
 type TargetDeriveSupplementalGenericBoundContractAuthority {
   authority: extdeps.external_authority.ExternalAuthority
-  requirements: std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>
+  requirements: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>
 }
 
 type TargetRepresentationChoice {
@@ -9472,7 +9472,7 @@ fn target_derive_supplemental_generic_bound_requirement_set_empty() -> v2.std.co
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_requirements_empty() -> std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
+fn target_derive_supplemental_generic_bound_contract_requirements_empty() -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   empty_map()
 }
 
@@ -9480,7 +9480,7 @@ fn target_representation_parameter_slot_empty() -> v2.std.compilers.target_model
   TargetRepresentationParameterSlot {}
 }
 
-fn target_representation_parameter_slots_empty() -> std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot> {
+fn target_representation_parameter_slots_empty() -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot> {
   empty_map()
 }
 
@@ -9795,7 +9795,7 @@ fn target_derive_supplemental_generic_bound_contract_wire_from_node(
 
 fn target_representation_parameter_slots_from_node(
   node: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>> {
+) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>> {
   bind_outcome(
     o: node_list_from_node(
       node: node,
@@ -9835,7 +9835,7 @@ fn target_representation_parameter_slots_from_node(
 }
 
 fn target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
-  requirements: std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>,
+  requirements: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>,
   representation_parameter: v2.std.node.Symbol
 ) -> v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet {
   match requirements.lookup(representation_parameter) {
@@ -9865,11 +9865,11 @@ fn target_derive_supplemental_generic_bound_contract_requirements_insert(
 }
 
 fn target_derive_supplemental_generic_bound_wire_requirement_apply(
-  acc: v2.std.diagnostic.Outcome<std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>>,
-  representation_parameters: std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
+  acc: v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>>,
+  representation_parameters: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
   requirement: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementWire,
   at: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>> {
+) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>> {
   match acc {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: requirements, diagnostics: _ } =>
@@ -9909,10 +9909,10 @@ fn target_derive_supplemental_generic_bound_wire_requirement_apply(
 }
 
 fn target_derive_supplemental_generic_bound_wire_requirements_apply(
-  representation_parameters: std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
-  requirements: std.types.List<v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementWire>,
+  representation_parameters: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
+  requirements: List<v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementWire>,
   at: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>> {
+) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>> {
   fold_list(
     xs: requirements,
     empty: outcome_accepted(
@@ -9973,7 +9973,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
 }
 
 fn target_derive_supplemental_generic_bound_contract_catalog_from_node(
-  representation_parameters: std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
+  representation_parameters: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
   node: v2.std.node.Node,
   at: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractCatalog> {
@@ -10005,7 +10005,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_from_node(
 
 fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
   contract_authority: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority
-) -> std.types.List<v2.std.node.Node> {
+) -> List<v2.std.node.Node> {
   fold_list(
     xs: map_keys(contract_authority.requirements),
     empty: std.algebra.Empty,
@@ -10554,7 +10554,7 @@ fn target_collection_choice_constraints_satisfied(
 fn target_collection_select_choice(
   eligibility_table: List<TargetCapabilityEligibilityRow>,
   primary: TargetRepresentationChoice,
-  alternatives: std.types.List<TargetRepresentationChoice>,
+  alternatives: List<TargetRepresentationChoice>,
   elem: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.optional.Optional<TargetRepresentationChoice>> {
   bind_outcome(
@@ -11024,7 +11024,7 @@ fn target_use_site_ownership_lookup_step(
 }
 
 fn target_use_site_ownership_lookup_in_catalog(
-  catalog: std.types.List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>,
+  catalog: List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
@@ -11248,7 +11248,7 @@ fn target_use_site_ownership_reference_catalog_lookup(
 
 fn target_use_site_ownership_lookup_in_catalog_node(
   catalog: v2.std.node.Node,
-  value_semantics_carriers: std.types.List<v2.std.node.Symbol>,
+  value_semantics_carriers: List<v2.std.node.Symbol>,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetCarrierOwnership> {
@@ -11288,7 +11288,7 @@ fn wrap_decision_from_carrier_ownership(
 
 fn wrap_decision_lookup_in_catalog_node(
   catalog: v2.std.node.Node,
-  value_semantics_carriers: std.types.List<v2.std.node.Symbol>,
+  value_semantics_carriers: List<v2.std.node.Symbol>,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.WrapDecision> {
@@ -11360,14 +11360,14 @@ fn target_use_site_ownership_catalog_edge(row: v2.std.compilers.target_model.Tar
 }
 
 fn target_use_site_ownership_catalog_snoc_edge(
-  acc: std.types.List<v2.std.node.Edge>,
+  acc: List<v2.std.node.Edge>,
   row: v2.std.compilers.target_model.TargetUseSiteOwnershipRealization
-) -> std.types.List<v2.std.node.Edge> {
+) -> List<v2.std.node.Edge> {
   list_snoc_item(xs: acc, item: target_use_site_ownership_catalog_edge(row: row))
 }
 
 fn target_use_site_ownership_catalog_node(
-  rows: std.types.List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
+  rows: List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -11391,7 +11391,7 @@ fn target_use_site_ownership_catalog_positional_edge(
 
 fn target_use_site_ownership_catalog_append_derived_rows(
   catalog: v2.std.node.Node,
-  derived_rows: std.types.List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
+  derived_rows: List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
 ) -> v2.std.node.Node {
   match catalog.kind {
     TypeNode { connective: v2.std.node.Conj } =>
@@ -11447,16 +11447,16 @@ fn target_model_bundle_replace_edge_target(
 }
 
 fn target_value_semantics_carrier_atom_seen(
-  atoms: std.types.List<v2.std.node.Symbol>,
+  atoms: List<v2.std.node.Symbol>,
   atom: v2.std.node.Symbol
 ) -> v2.std.logic.Bool {
   any(xs: atoms, predicate: fn(id) { id == atom })
 }
 
 fn target_value_semantics_carriers_snoc_unique(
-  atoms: std.types.List<v2.std.node.Symbol>,
+  atoms: List<v2.std.node.Symbol>,
   atom: v2.std.node.Symbol
-) -> std.types.List<v2.std.node.Symbol> {
+) -> List<v2.std.node.Symbol> {
   if target_value_semantics_carrier_atom_seen(atoms: atoms, atom: atom) {
     atoms
   } else {
@@ -11465,9 +11465,9 @@ fn target_value_semantics_carriers_snoc_unique(
 }
 
 fn target_value_semantics_carriers_merge_atoms(
-  base: std.types.List<v2.std.node.Symbol>,
-  extra: std.types.List<v2.std.node.Symbol>
-) -> std.types.List<v2.std.node.Symbol> {
+  base: List<v2.std.node.Symbol>,
+  extra: List<v2.std.node.Symbol>
+) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: extra,
     empty: base,
@@ -11517,7 +11517,7 @@ fn target_model_with_produced_scaffold(
 
 fn target_model_augment_use_site_ownership_catalog(
   target: v2.std.compilers.target_model.TargetModel,
-  derived_rows: std.types.List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
+  derived_rows: List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization>
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   if is_empty(xs: derived_rows) {
     outcome_accepted(target)
@@ -11567,7 +11567,7 @@ fn target_model_augment_use_site_ownership_catalog(
 
 fn target_model_augment_value_semantics_carriers(
   target: v2.std.compilers.target_model.TargetModel,
-  extra_atoms: std.types.List<v2.std.node.Symbol>
+  extra_atoms: List<v2.std.node.Symbol>
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   if is_empty(xs: extra_atoms) {
     outcome_accepted(target)
@@ -11623,7 +11623,7 @@ fn target_value_semantics_carrier_atom_node(id: v2.std.node.Symbol) -> v2.std.no
 }
 }
 
-fn target_value_semantics_carriers_node(atoms: std.types.List<v2.std.node.Symbol>) -> v2.std.node.Node {
+fn target_value_semantics_carriers_node(atoms: List<v2.std.node.Symbol>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: fold_list(
@@ -11640,14 +11640,14 @@ fn target_value_semantics_carriers_node(atoms: std.types.List<v2.std.node.Symbol
 }
 }
 
-fn target_value_semantics_carrier_snoc(acc: std.types.List<v2.std.node.Symbol>, edge: v2.std.node.Edge) -> std.types.List<v2.std.node.Symbol> {
+fn target_value_semantics_carrier_snoc(acc: List<v2.std.node.Symbol>, edge: v2.std.node.Edge) -> List<v2.std.node.Symbol> {
   match edge.label {
     Named { name: n } => list_snoc_item(xs: acc, item: n)
     _ => acc
   }
 }
 
-fn target_value_semantics_carriers_from_node(node: v2.std.node.Node) -> std.types.List<v2.std.node.Symbol> {
+fn target_value_semantics_carriers_from_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       fold_list(
@@ -12395,7 +12395,7 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: v2.std.node.Node) ->
 
 fn target_value_expr_binding_in_declared_param_list(
   binding: v2.std.node.Symbol,
-  bindings: std.types.List<v2.std.node.Symbol>
+  bindings: List<v2.std.node.Symbol>
 ) -> v2.std.logic.Bool {
   fold_list(xs: bindings, empty: false, cons: fn(acc, sym) {
     if acc {
@@ -12410,7 +12410,7 @@ fn target_value_expr_binding_in_declared_param_list(
 
 fn target_value_expr_param_binding_for_referent(
   referent: v2.std.node.Symbol,
-  bindings: std.types.List<v2.std.node.Symbol>,
+  bindings: List<v2.std.node.Symbol>,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if target_value_expr_binding_in_declared_param_list(binding: referent, bindings: bindings) {
@@ -12873,11 +12873,11 @@ fn target_value_expr_record_construct_gate(node: v2.std.node.Node) -> v2.std.log
 
 fn target_value_expr_record_construct_field_slots_from_edges(
   arrow: v2.std.node.Node,
-  edges: std.types.List<v2.std.node.Edge>,
+  edges: List<v2.std.node.Edge>,
   target: v2.std.compilers.target_model.TargetModel,
   source_bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape,
   handle_transform: fn(v2.std.node.Node, v2.std.node.Node, v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetValueExpression>
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetValueExprFieldInitSlot>> {
   match fold(
     edges,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -13126,11 +13126,11 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
 
 fn target_value_expr_match_project_arms(
   arrow: v2.std.node.Node,
-  children: std.types.List<v2.std.node.Edge>,
+  children: List<v2.std.node.Edge>,
   target: v2.std.compilers.target_model.TargetModel,
   source_bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape,
   handle_transform: fn(v2.std.node.Node, v2.std.node.Node, v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetValueExpression>
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.TargetValueExprMatchArmSlot>> {
   match fold(
     target_value_expr_match_arm_edges_after_scrutinee(children: children),
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -13561,7 +13561,7 @@ fn target_value_expression_tokens_from_target(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: projection_bundle_child(
       bundle: target.bundle,

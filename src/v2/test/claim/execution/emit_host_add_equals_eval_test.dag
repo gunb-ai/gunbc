@@ -28,7 +28,7 @@ fn emit_eval_arg_is_two(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool
   value == emit_eval_oct5_value(n: 2)
 }
 
-fn emit_eval_args_are_two_twos(args: std.types.List<v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
+fn emit_eval_args_are_two_twos(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   if count(args) == 2 {
     match v2.std.collection.list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: v2.test.manual.eval_runtime.eval_add_subgraph_node)) {
       Holds { value: left } =>
@@ -44,7 +44,7 @@ fn emit_eval_args_are_two_twos(args: std.types.List<v2.std.runtime.RuntimeValue>
   }
 }
 
-fn emit_eval_call_primitive_sum(result: Int, node: v2.std.node.Node, args: std.types.List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn emit_eval_call_primitive_sum(result: Int, node: v2.std.node.Node, args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if emit_eval_args_are_two_twos(args: args) {
     v2.std.diagnostic.Accepted { value: emit_eval_oct5_value(n: result), diagnostics: v2.std.diagnostic.None }
   } else {
@@ -52,11 +52,11 @@ fn emit_eval_call_primitive_sum(result: Int, node: v2.std.node.Node, args: std.t
   }
 }
 
-fn emit_eval_call_primitive_five(node: v2.std.node.Node, args: std.types.List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn emit_eval_call_primitive_five(node: v2.std.node.Node, args: List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   emit_eval_call_primitive_sum(result: 5, node: node, args: args, _env: env)
 }
 
-fn emit_eval_call_primitive_six(node: v2.std.node.Node, args: std.types.List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn emit_eval_call_primitive_six(node: v2.std.node.Node, args: List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   emit_eval_call_primitive_sum(result: 6, node: node, args: args, _env: env)
 }
 
@@ -73,7 +73,7 @@ fn emit_eval_bind_value(_key: v2.std.runtime.EnvironmentBindingKey, _value: v2.s
 }
 
 fn emit_eval_interpretation(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
@@ -99,7 +99,7 @@ fn emit_eval_structure_witness(call_primitive_identity: v2.std.node.Symbol) -> v
 }
 
 fn emit_eval_context(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.EvalContext {  v2.compiler.eval.eval_context_with_semantics(
     runtime_identity: ^emit_eval_interpretation_pin,
@@ -146,7 +146,7 @@ fn emit_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verification.Tes
 }
 
 fn emit_eval_subject(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.eval_test_claim_subject(
@@ -157,7 +157,7 @@ fn emit_eval_subject(
 }
 
 fn emit_eval_run(
-  call_primitive: fn(v2.std.node.Node, std.types.List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
+  call_primitive: fn(v2.std.node.Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   call_primitive_identity: v2.std.node.Symbol
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {  v2.compiler.emit_host.run_test_claim_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),

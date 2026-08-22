@@ -251,7 +251,7 @@ fn lazy_arm_choose_branch(
 
 fn lazy_arm_call_primitive(
   _node: v2.std.node.Node,
-  _args: std.types.List<v2.std.runtime.RuntimeValue>,
+  _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: _node))

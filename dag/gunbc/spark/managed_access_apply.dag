@@ -33,10 +33,10 @@ type SparkApplyStep {
 // nothing has no constructor: reporting an apply with zero steps would be indistinguishable from one
 // where everything converged, which is the shape a caller most wants to trust.
 type SparkApplyReport
-  = ApplyAttempted { first: SparkApplyStep, more: std.types.List<SparkApplyStep> }
+  = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
   | ApplyNotAttempted { cause: String }
 
-fn spark_apply_steps(report: SparkApplyReport) -> std.types.List<SparkApplyStep> {
+fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
   match report {
     ApplyAttempted { first: f, more: m } => concat([f], m)
     ApplyNotAttempted { cause: _ } => []
@@ -162,7 +162,7 @@ fn managed_principal_leg(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: String,
   managed_principal: String,
-  raw_words: std.types.List<String>,
+  raw_words: List<String>,
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: raw_words) {
     Absent => gunbc.spark.managed_access_apply.ApplyRefused { cause: "non-portable remote word" }

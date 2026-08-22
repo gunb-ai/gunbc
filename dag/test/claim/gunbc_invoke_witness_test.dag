@@ -66,7 +66,7 @@ test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
   !string_contains(s: shell, pattern: "--notice-title")
 }
 
-fn transport_argv_contains_flag(argv: std.types.List<String>, flag: String) -> Bool {
+fn transport_argv_contains_flag(argv: List<String>, flag: String) -> Bool {
   fold(argv, init: false, f: (acc, arg) => acc || arg == flag)
 }
 

@@ -41,7 +41,7 @@ fn add_arrow_eval_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.D
   }
 }
 
-fn add_arrow_eval_ordered_add_args(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn add_arrow_eval_ordered_add_args(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match v2.std.collection.list_at_optional(xs: args, index: 0) {
       Present { value: left } =>
@@ -69,7 +69,7 @@ fn add_arrow_eval_int_runtime_value(n: v2.std.integer.Int) -> v2.std.runtime.Run
 
 fn add_arrow_eval_call_primitive(
   node: v2.std.node.Node,
-  args: std.types.List<v2.std.runtime.RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if add_arrow_eval_ordered_add_args(args: args) {

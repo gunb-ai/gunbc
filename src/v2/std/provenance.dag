@@ -2,15 +2,15 @@ module v2.std.provenance
 
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
-  | DerivedBy { producer: v2.std.node.Symbol, from: std.types.List<std.occurrence_identity.OccurrenceId> }
-  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: std.types.List<std.occurrence_identity.OccurrenceId> }
+  | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
+  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<std.occurrence_identity.OccurrenceId> }
 
 fn origin_event_from_source(locus: v2.std.diagnostic.Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
 type SpanIndex {
-  entries: std.types.Map<std.occurrence_identity.OccurrenceId, OriginEvent>
+  entries: Map<std.occurrence_identity.OccurrenceId, OriginEvent>
 }
 
 fn span_index_empty() -> SpanIndex {
@@ -64,7 +64,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnosti
 
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
-  ids: std.types.List<std.occurrence_identity.OccurrenceId>
+  ids: List<std.occurrence_identity.OccurrenceId>
 ) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
   v2.std.algebra.fold_list(
     xs: ids,

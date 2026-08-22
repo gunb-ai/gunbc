@@ -95,7 +95,7 @@ type ExecutionGrant<P> {
   object: FabricGrantObject<P>
   context: FabricGrantContext<P>
   evidence: FabricGrantEvidence
-  resource_reservations: std.types.List<ReservationRef>
+  resource_reservations: List<ReservationRef>
   money_reservation: ReservationRef
 }
 

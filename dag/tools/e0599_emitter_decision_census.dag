@@ -83,7 +83,7 @@ data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
   cited_upstream: v2.std.optional.Absent,
 }
 
-data e0599_lowering_rows: std.types.List<E0599LoweringRow> = [
+data e0599_lowering_rows: List<E0599LoweringRow> = [
   E0599LoweringRow {
     operation: FreeMonoidEmptyTest,
     ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
@@ -349,7 +349,7 @@ fn e0599_classify_from_blob(blob: String) -> std.error_primitives.Result<String,
   })
 }
 
-data e0599_rollup_cause_order: std.types.List<E0599RequirementCause> = [
+data e0599_rollup_cause_order: List<E0599RequirementCause> = [
   TargetApiRequirement,
   OwnedDeconstructionRequirement,
   CloneSharedRequirement,
