@@ -22,7 +22,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action, upload_artifact_action
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
@@ -418,7 +418,57 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
       role: capability_neutral,
       step_name: "All witnesses (one prepared subject, one fold)",
     },
+    WitnessFloorBoundStep {
+      step: witness_floor_disposition_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload floor disposition receipts",
+    },
   ]
+}
+
+// THE THREE TSVs THE JOB ALREADY WRITES AND THEN THREW AWAY.
+//
+// The job env has named GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
+// GUNBC_LONG_HOME_STORAGE_AGREEMENT for as long as the fold has run, so the identity-grain
+// receipts were produced on every run and discarded with the runner. The consequence is not
+// theoretical: a PR was blocked by sixteen failures in witness families its diff could not
+// reach, the summary counters said fifteen identities had moved between dispositions, and the
+// incident could not be closed because the rows naming WHICH fifteen no longer existed
+// anywhere. Two independent recomputations from the trees then disagreed with the floor's own
+// counts at both ends -- so the only instrument that could settle it is the one the job was
+// deleting. A receipt computed and dropped is worse than one never computed, because the
+// summary it backs keeps being quoted as though the detail were available.
+//
+// long_home_storage_agreement.tsv is in the set deliberately rather than incidentally: it is
+// the row that records a file whose PATH and whose declared MODULE disagree about long-home,
+// which is the first hypothesis any recurrence of that incident has to eliminate.
+//
+// if_condition is the status guard rather than success(): the run this evidence is FOR is the
+// failing one, so a step that only fires after a green floor would capture exactly the runs
+// nobody needs it for. Cancellation is excluded because a cancelled run's TSVs are partial by
+// construction and a partial receipt read as a complete one is the fabricated-output failure.
+fn witness_floor_disposition_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload floor disposition receipts" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: "required-floor-receipts")),
+        kv(
+          key: "path",
+          value: yaml_string(
+            s: "required_floor_disposition.tsv\nexpected_red_roster_join.tsv\nlong_home_storage_agreement.tsv"
+          )
+        ),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn"))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn witness_floor_steps() -> List<Step> {

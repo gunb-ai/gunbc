@@ -29,6 +29,16 @@ data single_statement_source: String = "module m.t\nfn f() -> Int {\n  1\n}\n"
 
 data unbound_statement_prefix_source: String = "module m.t\nfn f() -> Int {\n  1\n  2\n}\n"
 
+// The two controls #8828 owed and did not land. The `in` form is the
+// alternative the statement form is NOT, and the PR argued from control flow
+// that it keeps its pre-existing path; that argument deserves an executed row.
+// The typed statement form exercises the grammar's optional annotation, which
+// the original matrix never did -- a spine reader that keys on the position of
+// the `=` finds a different node once `: T` is present.
+data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x\n}\n"
+
+data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
+
 test fn statement_let_then_reference_lowers_holds() -> Bool {
   normalize_outcome(src: statement_let_then_reference_source) == "ACCEPTED"
 }
@@ -44,4 +54,12 @@ test fn unbound_statement_prefix_refuses_holds() -> Bool {
 
 test fn single_statement_body_unchanged_holds() -> Bool {
   normalize_outcome(src: single_statement_source) == "ACCEPTED"
+}
+
+test fn let_in_form_unchanged_holds() -> Bool {
+  normalize_outcome(src: let_in_form_source) == "ACCEPTED"
+}
+
+test fn typed_statement_let_lowers_holds() -> Bool {
+  normalize_outcome(src: typed_statement_let_source) == "ACCEPTED"
 }

@@ -14,6 +14,13 @@ import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
 import extdeps.cache.sccache { sccache_install_dissolution_trigger }
 import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
 import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
+import gunbc.dissolution_observation {
+  DissolutionCensusAnswered,
+  DissolutionCensusRefused,
+  dissolution_census_verdict_for,
+}
+import v2.std.decl_index { decl_facts }
+import v2.lens.module_graph { module_declaration_facts_live }
 import std.roster_frontier { FrontierRow, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }
 
 fn planted_bound_ref() -> DeclarationRef {
@@ -103,6 +110,63 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
     && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
     && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
     && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
+}
+
+// THE LIVE DISCRIMINATOR, AND IT IS DELIBERATELY NOT A COUNT.
+//
+// Once `present_decls` is real, the two trigger arms read the population in OPPOSITE
+// directions, so a wrong or partial population mass-fires one of them while
+// mass-silencing the other — and any assertion phrased as a total is satisfied by both
+// mistakes. The pair below is phrased at identity grain instead: one subject KNOWN to be
+// present and one KNOWN to be absent, asserted in opposite directions IN THE SAME RUN
+// against the same resolver answer. A population that lost the tree fails the first; a
+// population that fabricated it fails the second.
+//
+// The pool is the purpose-built fixture rather than a production directory: the subject
+// under test is the RESOLVER's behaviour, and scanning production to establish it prices
+// the mechanism at that directory's breadth — the cost-shape defect DESIGN §6 names.
+// Measured rather than assumed: pointed at `dag/std` this row was BUDGET-REFUSED at
+// 5510ms against the floor's 5000ms deadline and went undecided, which is a worse
+// outcome than a failure because nothing then claims it is broken.
+data live_discriminator_pool_roots: List<String> = ["dag/test/fixture/dissolution_live_discriminator"]
+
+fn live_discriminator_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "present_subject_row"),
+      reason: "live discriminator: subject known present, so its retirement is PENDING",
+      dissolution: retires_dissolution(
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "present_subject_declaration",
+        ),
+      ),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "absent_subject_row"),
+      reason: "live discriminator: subject known absent, so its arrival is PENDING",
+      dissolution: bound_dissolution(
+        ref: decl_ref(
+          module_path: "test.fixture.dissolution_live_discriminator.subject",
+          decl_name: "absent_subject_declaration",
+        ),
+      ),
+    ),
+  ]
+}
+
+test fn opposite_trigger_directions_agree_on_one_live_population() -> Bool {
+  match dissolution_census_verdict_for(
+    rows: live_discriminator_rows(),
+    facts: decl_facts(pool_roots: live_discriminator_pool_roots),
+    modules: module_declaration_facts_live(pool_roots: live_discriminator_pool_roots),
+  ) {
+    DissolutionCensusRefused { undecided: _ } => false
+    DissolutionCensusAnswered { report: r } =>
+      r.pending_count == 2
+        && r.fired_still_present_count == 0
+        && r.unbound_count == 0
+  }
 }
 
 fn w_unbound_dissolution_empty_literal_red() -> Bool {
