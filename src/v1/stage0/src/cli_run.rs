@@ -1180,6 +1180,52 @@ mod process_workspace_root_tests {
         );
     }
 
+    /// THE PLANT MUST BE A DEFECT, not a shape. If the planted module compiled clean, the
+    /// census's `PlantedDefectUnobserved` refusal would be guarding a control that can never fire,
+    /// and the whole instrument would be back to a probe whose RED and its absence look alike.
+    ///
+    /// This asserts the plant's CONTENT rather than merely that it parses: the callee name it
+    /// calls must be absent from the module, which is the property that makes the compiler judge
+    /// it. A plant edited into something declared would pass any "it has a body" assertion.
+    #[test]
+    fn planted_control_source_calls_a_name_it_does_not_declare() {
+        let planted = super::corpus_judgment_planted_source();
+        let content = &planted.content;
+        assert!(
+            content.contains(&format!("module {}", super::CORPUS_JUDGMENT_PLANTED_MODULE)),
+            "the plant must be the module the census excludes and requires: {content}"
+        );
+        let callee = "corpus_type_judgment_absent_callee_zzz";
+        assert!(
+            content.contains(callee),
+            "the plant must call the absent name: {content}"
+        );
+        assert!(
+            !content.contains(&format!("fn {callee}")),
+            "the plant must NOT declare the name it calls — a declared callee compiles clean and \
+             the control silently stops discriminating: {content}"
+        );
+    }
+
+    /// The join key is the whole of constraint 2, so its rendering is asserted rather than trusted:
+    /// a key that dropped the offsets would silently degrade an identity join into a per-file
+    /// count, which is the comparison DESIGN rules out as an oracle.
+    #[test]
+    fn judgment_site_identity_carries_file_offsets_and_class() {
+        let site = super::CorpusJudgmentSite {
+            file: "dag/std/x.dag".to_string(),
+            start: 12,
+            end: 34,
+            line: 3,
+            col: 5,
+            class: "TypeMismatch".to_string(),
+            subject_name: "Foo".to_string(),
+            severity: super::CorpusJudgmentSeverity::Blocking,
+            module: "std.x".to_string(),
+        };
+        assert_eq!(site.identity(), "dag/std/x.dag:12:34:TypeMismatch:Foo");
+    }
+
     #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
@@ -39671,13 +39717,44 @@ fn register_floor_prepared_authority_guard(
     FloorPreparedAuthorityGuard
 }
 
-/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
-/// typecheck gate, and returns everything a later consumer could want to know about the
-/// subject so that none of them reaches for the repository again.
-pub fn prepare_repository_once(
+/// THE SUBJECT THE REQUIRED RUN PREPARES — assembled once, BEFORE any judgment is passed on it.
+///
+/// Split out of [`prepare_repository_once`] rather than copied beside it because a consumer that
+/// wants to MEASURE the compiler's judgment over the required run's population must read the same
+/// population BY CONSTRUCTION, not by a second discovery that happens to agree today (DESIGN §3:
+/// one authority for "which modules CI compiles"). Two discoveries that drift make a measurement
+/// silently narrow, and a narrowed subject is exactly what makes a small number look like a quiet
+/// corpus.
+///
+/// Assembly is read-and-fold only: no resolve, no typecheck, no evaluation. Whether the subject is
+/// then judged strictly (the floor) or merely measured (the census) is the caller's question.
+pub struct PreparedSubject {
+    pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pub inventory: Vec<PreparedSourceView>,
+    pub witness_files: Vec<InventoryWitnessFile>,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+impl PreparedSubject {
+    /// The statement of WHICH population a number was taken over. Every count derived from this
+    /// subject prints beside it, so a reader never has to assume the denominator.
+    pub fn statement(&self) -> String {
+        format!(
+            "subject={} modules_resolved={} modules_excluded={}",
+            self.subject_digest, self.modules_resolved, self.modules_excluded
+        )
+    }
+}
+
+/// Read the active sources once and fold them into the subject. Refuses an empty corpus rather
+/// than returning an empty one: zero modules and a quiet corpus are different states, and only the
+/// refusal distinguishes them for every consumer downstream.
+pub fn assemble_prepared_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
-) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+) -> Result<PreparedSubject, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
@@ -39706,6 +39783,25 @@ pub fn prepare_repository_once(
     let modules_excluded = total - sources.len();
     witness_files.sort_by(|a, b| a.path.cmp(&b.path));
     let subject_digest = subject_digest_for_closure(&sources);
+    let modules_resolved = total - modules_excluded;
+    Ok(PreparedSubject {
+        sources,
+        inventory,
+        witness_files,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    })
+}
+
+/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
+/// typecheck gate, and returns everything a later consumer could want to know about the
+/// subject so that none of them reaches for the repository again.
+pub fn prepare_repository_once(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+    let subject = assemble_prepared_subject(source_roots, exclude_substrings)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
@@ -39715,10 +39811,15 @@ pub fn prepare_repository_once(
     // are indistinguishable in a log, and a subject that silently narrowed reads exactly like
     // one that did not. A receipt identifying the subject must precede the gate that can reject
     // it, so the error carries them rather than a second emit site racing the first.
-    let modules_resolved = total - modules_excluded;
-    let subject_statement = format!(
-        "subject={subject_digest} modules_resolved={modules_resolved} modules_excluded={modules_excluded}"
-    );
+    let subject_statement = subject.statement();
+    let PreparedSubject {
+        sources,
+        inventory,
+        witness_files,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     Ok((
@@ -39732,6 +39833,292 @@ pub fn prepare_repository_once(
         },
         inventory,
     ))
+}
+
+/// WHERE ONE DIAGNOSTIC CLASS SITS IN THE SEVERITY POLICY — three states, never two.
+///
+/// `Unclassified` exists because the policy is TWO INDEPENDENT PREDICATES, not a partition:
+/// `compile_clean_diagnostic_is_hard` decides blocking, and `compile_clean_diagnostic_is_advisory`
+/// is a CLOSED ALLOWLIST rather than its complement. A non-blocking variant absent from that
+/// allowlist is therefore admitted by neither, and a census that folded it into "advisory" — or,
+/// worse, dropped it — would report a frontier as counted while nothing counted it. That exact
+/// defect has already been found once in this repository (the method/conformance wall's residue,
+/// recorded on `CompilerDiagnostic`'s hand-Rust gate receipt). A third constructor makes the
+/// unpoliced case a visible number instead of an absence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CorpusJudgmentSeverity {
+    Blocking,
+    Advisory,
+    Unclassified,
+}
+
+impl CorpusJudgmentSeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocking => "blocking",
+            Self::Advisory => "advisory",
+            Self::Unclassified => "unclassified",
+        }
+    }
+
+    fn of(d: &Rc<ErrorNode>) -> Self {
+        if compile_clean_diagnostic_is_hard(d) {
+            Self::Blocking
+        } else if compile_clean_diagnostic_is_advisory(d) {
+            Self::Advisory
+        } else {
+            Self::Unclassified
+        }
+    }
+}
+
+/// ONE JUDGMENT AT ONE SOURCE LOCUS — the unit of the census, and deliberately NOT an aggregate.
+///
+/// The census reports sites rather than per-class counts because ACCEPTANCE IS AN IDENTITY JOIN,
+/// NOT A COUNT (DESIGN §5, the oracle rule): two different sets of the same size satisfy a count
+/// and prove nothing, so a per-class histogram cannot be checked against required-ci's own output
+/// at all. `file`/`start`/`end` are the join key — byte offsets rather than line/column, because
+/// they are what the diagnostic actually carries; `line`/`col` are rendered beside them for a
+/// human and are derived, never the identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CorpusJudgmentSite {
+    pub file: String,
+    pub start: i64,
+    pub end: i64,
+    pub line: i64,
+    pub col: i64,
+    pub class: String,
+    pub subject_name: String,
+    pub severity: CorpusJudgmentSeverity,
+    pub module: String,
+}
+
+impl CorpusJudgmentSite {
+    /// The identity a join is performed on. Rendering it in one place means the receipt's key and
+    /// any consumer's key cannot drift apart.
+    pub fn identity(&self) -> String {
+        format!(
+            "{}:{}:{}:{}:{}",
+            self.file, self.start, self.end, self.class, self.subject_name
+        )
+    }
+}
+
+/// The judgment the v1 resolve+typecheck passed over the required run's own subject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorpusTypeJudgmentCensus {
+    /// Content identity of exactly what was compiled — stronger than a commit sha, which names a
+    /// tree the process may not have read.
+    pub subject_digest: String,
+    /// The commit, when the environment states one. Absent is reported as absent, never as a
+    /// plausible default.
+    pub commit: Option<String>,
+    pub source_roots: Vec<String>,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub declarations_reached: usize,
+    pub sites: Vec<CorpusJudgmentSite>,
+    pub blocking_total: usize,
+    pub advisory_total: usize,
+    pub unclassified_total: usize,
+    /// The planted defect's own sites, kept OUT of `sites` and reported separately: the control
+    /// must be visible without contaminating the population it vouches for.
+    pub planted_sites: Vec<CorpusJudgmentSite>,
+}
+
+impl CorpusTypeJudgmentCensus {
+    pub fn subject_statement(&self) -> String {
+        format!(
+            "subject={} commit={} roots={} modules_resolved={} modules_excluded={} declarations={}",
+            self.subject_digest,
+            self.commit.as_deref().unwrap_or("<unstated>"),
+            self.source_roots.join(","),
+            self.modules_resolved,
+            self.modules_excluded,
+            self.declarations_reached
+        )
+    }
+}
+
+/// The module path of the planted control. Named once; the census excludes exactly this module
+/// from the population and requires exactly this module to have been judged.
+pub const CORPUS_JUDGMENT_PLANTED_MODULE: &str = "corpus_type_judgment_planted_control";
+
+/// THE PLANTED DEFECT, compiled by the real pipeline alongside the corpus.
+///
+/// The previous revision of this control was a hand-built `ErrorNode` pushed through the census
+/// fold. That proved the fold could count, and NOTHING ELSE — it never reached the compiler, so it
+/// could not distinguish a working measurement from a compile that judged nothing at all, which is
+/// precisely the failure this instrument exists to prevent (a probe whose RED and its absence
+/// produce identical verdicts). The plant is now a source module carrying a call to a name no
+/// declaration provides: the compiler must judge it, the census must observe that judgment at the
+/// plant's own locus, and a run where it does not is refused rather than reported.
+///
+/// It is injected into the assembled subject rather than written to the tree, so the measurement
+/// leaves no artifact and cannot be forgotten in a working copy.
+///
+/// ITS NAMES ARE CHECKED-UNIQUE, not assumed so. The plant joins a FLAT namespace, so a name it
+/// declares that the corpus also declares would make the plant perturb the very population it
+/// vouches for — a control that changes the measurement is not a control. Measured 2026-08-22:
+/// `planted_caller` and `corpus_type_judgment_absent_callee_zzz` occur zero times across `dag/`
+/// and `src/v2/`. Keep any name added here equally distinctive.
+fn corpus_judgment_planted_source() -> Rc<v1_compiler_compile::SourceFile> {
+    Rc::new(v1_compiler_compile::SourceFile {
+        path: format!("<planted>/{CORPUS_JUDGMENT_PLANTED_MODULE}.dag"),
+        content: format!(
+            "module {CORPUS_JUDGMENT_PLANTED_MODULE}\n\nfn planted_caller() -> Int {{\n  \
+             corpus_type_judgment_absent_callee_zzz(a: 1)\n}}\n"
+        ),
+    })
+}
+
+/// Fold one diagnostic into a located site. Returns `None` only when the diagnostic carries no
+/// file at all, which is itself counted by the caller rather than dropped.
+fn corpus_judgment_site(
+    d: &Rc<ErrorNode>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+) -> Option<CorpusJudgmentSite> {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    if span.file.is_empty() {
+        return None;
+    }
+    let (line, col) = match source_indices.get(&span.file) {
+        Some(idx) => {
+            let lc = byte_to_line_col(idx.clone(), span.start);
+            (lc.line, lc.col)
+        }
+        None => (-1, -1),
+    };
+    let (class, subject_name) = compile_clean_diagnostic_histogram_key(d);
+    Some(CorpusJudgmentSite {
+        file: normalize_repo_relative_path_for_census(&span.file),
+        start: span.start,
+        end: span.end,
+        line,
+        col,
+        class,
+        subject_name,
+        severity: CorpusJudgmentSeverity::of(d),
+        module: d.module_name.clone(),
+    })
+}
+
+/// MEASURE THE COMPILER'S JUDGMENT OVER THE REQUIRED RUN'S SUBJECT, AND STOP THERE.
+///
+/// This is the required run's preparation up to — and deliberately not past — the point where a
+/// verdict is taken: the same subject assembly (`assemble_prepared_subject` with the floor's own
+/// exclusions) over the same source roots, and the same whole-corpus `compile_to_resolved` that
+/// [`prepare_repository_once`]'s strict gate runs. It builds no evaluation context, resolves no
+/// claim scope, and runs no witness.
+///
+/// THE SUBJECT IS NOT A PARAMETER. The roots come from `witness_layer_roots()` — the
+/// `gunbc.ci_layer_roots` authority the workflow itself passes — and this function takes no root
+/// or entry argument at all. That is the construction move rather than a check: every instrument
+/// this lane has seen fail measured some closure and reported it as the corpus, and a scoping flag
+/// only relocates that error onto whoever forgets it. There is no spelling of "measure part of it"
+/// here, so there is nothing to forget.
+///
+/// WHAT IT ADDS, and why the required run cannot answer it today: the strict gate asks that compile
+/// one question — is any diagnostic blocking — and having answered it, discards the population.
+/// Every advisory the corpus's typecheck produced (the method-existence frontier, the unenforced
+/// refinements, the unlisted-import residue) is computed on every CI run and thrown away uncounted,
+/// which is the state DESIGN §4b forbids: a frontier whose deficit frequency is unobservable never
+/// ranks for climbing.
+///
+/// IT CANNOT FAIL TOWARD ZERO. Each way this measurement could report a falsely small number is a
+/// refusal rather than a small number:
+///   * subject assembly fails, or the corpus is empty — refused by `assemble_prepared_subject`;
+///   * the compile produced no graph — refused here: a compile that did not get far enough to
+///     judge the corpus has not judged it quiet;
+///   * the compile judged nothing it was PLANTED to judge — refused here: the planted module's
+///     diagnostic must appear, at the plant's own locus, in the same run that reports the
+///     population, so every zero is paired with a nonzero taken by the same instrument on the same
+///     pass.
+/// And every figure is reported with the subject it was taken over, so a narrowed population
+/// cannot be read as a quiet one. A real zero remains possible and reportable — that is the point
+/// of the plant being a separate, visible row beside it.
+pub fn corpus_type_judgment_census() -> Result<CorpusTypeJudgmentCensus, String> {
+    let source_roots = witness_layer_roots();
+    let subject = assemble_prepared_subject(&source_roots, &floor_prepared_subject_exclusions())
+        .map_err(|e| format!("CORPUS-TYPE-JUDGMENT REFUSAL cause=SubjectUnassembled — {e}"))?;
+    let subject_digest = subject.subject_digest.clone();
+    let modules_resolved = subject.modules_resolved;
+    let modules_excluded = subject.modules_excluded;
+
+    // The plant rides in the same compile as the corpus. Appended AFTER the digest is taken, so
+    // the reported subject identity names the corpus and not the instrument's own addition.
+    let mut sources = subject.sources;
+    sources.push(corpus_judgment_planted_source());
+
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let Some(graph) = result.graph.clone() else {
+        return Err(format!(
+            "CORPUS-TYPE-JUDGMENT REFUSAL cause=NoResolvedGraph — the corpus compile produced no \
+             graph, so no judgment over the corpus was reached; a diagnostic count taken here \
+             would describe how far the compile got, not what it judged (subject={subject_digest})"
+        ));
+    };
+    let declarations_reached = graph.item_registry.len();
+
+    let source_indices: HashMap<String, Rc<NewlineIndex>> = result
+        .newline_indices
+        .iter()
+        .map(|idx| (idx.file.clone(), idx.clone()))
+        .collect();
+
+    let mut sites: Vec<CorpusJudgmentSite> = Vec::new();
+    let mut planted_sites: Vec<CorpusJudgmentSite> = Vec::new();
+    let mut spanless = 0usize;
+    for d in result.diagnostics.iter() {
+        match corpus_judgment_site(d, &source_indices) {
+            Some(site) => {
+                if site.module == CORPUS_JUDGMENT_PLANTED_MODULE
+                    || site.file.contains(CORPUS_JUDGMENT_PLANTED_MODULE)
+                {
+                    planted_sites.push(site);
+                } else {
+                    sites.push(site);
+                }
+            }
+            // A judgment with no file is still a judgment. It cannot enter an identity join, so it
+            // is refused rather than silently dropped from a population the join will be checked
+            // against — a dropped row is exactly the narrow this instrument exists to prevent.
+            None => spanless += 1,
+        }
+    }
+    if spanless > 0 {
+        return Err(format!(
+            "CORPUS-TYPE-JUDGMENT REFUSAL cause=SpanlessJudgment — {spanless} diagnostic(s) carry \
+             no source file, so they have no join identity; reporting the remaining rows would be \
+             a partial population presented as a population (subject={subject_digest})"
+        ));
+    }
+    if planted_sites.is_empty() {
+        return Err(format!(
+            "CORPUS-TYPE-JUDGMENT REFUSAL cause=PlantedDefectUnobserved — the planted module \
+             `{CORPUS_JUDGMENT_PLANTED_MODULE}` calls a name no declaration provides and the \
+             compile reported no judgment against it, so this run cannot be shown capable of \
+             observing a defect it was given; its population figure is not reportable \
+             (subject={subject_digest})"
+        ));
+    }
+
+    sites.sort();
+    planted_sites.sort();
+    let total_for = |s: CorpusJudgmentSeverity| sites.iter().filter(|r| r.severity == s).count();
+    Ok(CorpusTypeJudgmentCensus {
+        subject_digest,
+        commit: std::env::var("GITHUB_SHA").ok().filter(|s| !s.is_empty()),
+        source_roots,
+        modules_resolved,
+        modules_excluded,
+        declarations_reached,
+        blocking_total: total_for(CorpusJudgmentSeverity::Blocking),
+        advisory_total: total_for(CorpusJudgmentSeverity::Advisory),
+        unclassified_total: total_for(CorpusJudgmentSeverity::Unclassified),
+        sites,
+        planted_sites,
+    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a

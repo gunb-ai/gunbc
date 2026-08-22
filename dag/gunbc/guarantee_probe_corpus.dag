@@ -62,6 +62,7 @@ data bare_none_field_admission_class: gunbc.guarantee_measurement.GuaranteeClass
 data call_label_surplus_class: gunbc.guarantee_measurement.GuaranteeClassId = "call-label-and-surplus" as gunbc.guarantee_measurement.GuaranteeClassId
 data method_established_surface_class: gunbc.guarantee_measurement.GuaranteeClassId = "method-established-surface" as gunbc.guarantee_measurement.GuaranteeClassId
 data declared_conformance_ground_class: gunbc.guarantee_measurement.GuaranteeClassId = "declared-conformance-ground-fragment" as gunbc.guarantee_measurement.GuaranteeClassId
+data direct_call_argument_type_class: gunbc.guarantee_measurement.GuaranteeClassId = "direct-call-argument-type" as gunbc.guarantee_measurement.GuaranteeClassId
 data sole_constructor_cross_module_class: gunbc.guarantee_measurement.GuaranteeClassId = "sole-constructor-cross-module" as gunbc.guarantee_measurement.GuaranteeClassId
 data v2_self_grounding_frontier_class: gunbc.guarantee_measurement.GuaranteeClassId = "v2-self-grounding-frontier" as gunbc.guarantee_measurement.GuaranteeClassId
 
@@ -70,6 +71,7 @@ fn guarantee_probe_class_ids() -> std.types.List<gunbc.guarantee_measurement.Gua
     bare_none_field_admission_class,
     call_label_surplus_class,
     declared_conformance_ground_class,
+    direct_call_argument_type_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -91,6 +93,42 @@ data method_green_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "method-
 
 data conformance_scalar_red_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "declared-conformance-ground-scalar-red" as gunbc.guarantee_measurement.GuaranteeProbeId
 data conformance_green_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "declared-conformance-ground-green-control" as gunbc.guarantee_measurement.GuaranteeProbeId
+
+// THE DIRECT-CALL ARGUMENT-TYPE SEAM, and specifically the seam's behaviour for a caller whose
+// module name begins with "v2." -- which v1.compiler.infer module_skips_direct_call_arg_check
+// exempts from this judgment for the entire active v2 corpus.
+//
+// THE EXEMPTION IS STILL STANDING. These rows are enrolled BEFORE its deletion rather than after,
+// and that is the point of them: the deletion is blocked (gunbc#8886) behind a resolve change that
+// was declined at the layer that would own it, so without an enrolled row the class becomes
+// invisible again -- which is strictly worse than never having measured it, because the corpus
+// would not know what we now know is there. DESIGN 4b(4) keeps a climb's evidence enrolled when
+// the climb completes; the same reasoning holds when the climb is BLOCKED, and the roster is what
+// makes a blocked class countable instead of forgotten.
+//
+// direct_call_arg_type_v2_module_red_probe is THE DISCRIMINATING RED and it CANNOT PASS while the
+// exemption stands, so it is enrolled in v2.workflow.floor_expected_red as a known red with its
+// trigger named. It is not a broken witness: it is the class, counted. The day the exemption is
+// deleted it flips to a permanent regression control and comes OFF that roster -- and a reviewer
+// who sees it green while still rostered is looking at a coherence failure, which is what the
+// expected-red coherence witness exists to catch.
+//
+// Its source differs from the ordinary-module row below in exactly one byte-run -- the module name
+// -- so the pair isolates the exemption and nothing else. That is what makes the red interpretable
+// at all: a red on the v2 row alone cannot distinguish "the judgment is switched off for v2
+// callers" from "the harness reds on anything", and the ordinary-module row is the paired nonzero
+// that separates them. It PASSES today, on main, with the exemption in place, because the
+// exemption never covered it.
+//
+// direct_call_arg_type_v2_green_control_probe holds the other side: a CORRECT call in a v2.-named
+// module compiles clean. Without it, a seam refusing every argument in a v2.* module would satisfy
+// both reds. It also passes today.
+//
+// So two of the three are live evidence now and one is a counted, triggered known-red. That
+// asymmetry IS the class's shape and the roster records it rather than averaging it away.
+data direct_call_arg_type_v2_module_red_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "direct-call-argument-type-v2-module-red" as gunbc.guarantee_measurement.GuaranteeProbeId
+data direct_call_arg_type_ordinary_module_red_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "direct-call-argument-type-ordinary-module-red" as gunbc.guarantee_measurement.GuaranteeProbeId
+data direct_call_arg_type_v2_green_control_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "direct-call-argument-type-v2-green-control" as gunbc.guarantee_measurement.GuaranteeProbeId
 
 data sole_ctor_forged_red_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as gunbc.guarantee_measurement.GuaranteeProbeId
 data sole_ctor_green_probe: gunbc.guarantee_measurement.GuaranteeProbeId = "sole-constructor-cross-module-green-control" as gunbc.guarantee_measurement.GuaranteeProbeId
@@ -371,6 +409,24 @@ fn guarantee_probe_rows() -> std.types.List<GuaranteeProbeRow> {
       class: declared_conformance_ground_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as std.types.NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_ordinary_module_red_probe,
+      class: direct_call_argument_type_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_v2_green_control_probe,
+      class: direct_call_argument_type_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: direct_call_arg_type_v2_module_red_probe,
+      class: direct_call_argument_type_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: method_green_probe,

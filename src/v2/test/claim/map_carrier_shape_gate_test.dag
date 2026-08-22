@@ -1,0 +1,59 @@
+module v2.test.claim.map_carrier_shape_gate
+
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
+import std.types { Map }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE GATE ON THE MAP CONSTRUCTION DELEGATE, AND WHY IT IS A WITNESS RATHER THAN AN AGREEMENT.
+//
+// `Map` is reached through two constructors today: `empty_map()` yields the host's native map,
+// and a `Map { lookup: ... }` record literal yields a closure carrying its own lookup. The
+// interpreter grounds `v2.std.collection` `map_insert` on the NATIVE shape only —
+// `eval_builtin`'s `free_call.map_insert` arm matches `[Value::Map, k, v]` and answers `Ok(None)`
+// for anything else, which `try_v2_std_collection_map_primitive_grounding` turns into `None`,
+// falling through to the `.dag` body. So `map_insert`'s body is NOT dead: it is the live arm for
+// every record-shaped map.
+//
+// That was learned the expensive way. `map_insert` was switched to delegate to its primitive
+// after measuring zero cross-module references in the EMITTED tree — true, and true only of the
+// emitted path. The interpreter half was inferred from the same premise rather than measured, and
+// 14 floor witnesses died with "call depth exceeded 100000 at fn 'map_insert_primitive_delegate'".
+// A review approved the diff; the defect was not in the diff.
+//
+// These two arms are that measurement, enrolled. `record_shaped` is the discriminating one: it
+// passes only while a record-shaped map can still reach `map_insert`, so it goes RED the moment
+// the delegate lands while any `Map { lookup: ... }` literal survives — which is exactly the
+// premature-landing defect, caught in seconds instead of by a floor run.
+//
+// DISSOLUTION: when the finite `Map { lookup: ... }` literals have migrated to
+// `empty_map` + `map_insert` and the delegate lands as the closing move, `record_shaped` inverts —
+// it must then assert that the record route is unrepresentable, not that it works. It does not
+// simply delete: deleting it would remove the only executing evidence that the two shapes were
+// ever reconciled.
+data map_carrier_shape_gate_note: String = "Gate for the map construction delegate. map_insert grounds on the native map shape only; its .dag body is the live arm for record-shaped maps built by Map { lookup: ... } literals. record_shaped_map_reaches_map_insert reds if the delegate lands while any such literal survives."
+
+fn native_map_after_insert() -> Optional<String> {
+  let m = empty_map()
+  map_lookup(m: map_insert(m, "k", "v"), key: "k")
+}
+
+fn record_shaped_map_after_insert() -> Optional<String> {
+  let m = Map { lookup: fn(_) { Absent } }
+  map_lookup(m: map_insert(m, "k", "v"), key: "k")
+}
+
+test fn native_map_reaches_map_insert() -> Bool {
+  match native_map_after_insert() {
+    Present { value: v } => v == "v"
+    Absent => false
+  }
+}
+
+test fn record_shaped_map_reaches_map_insert() -> Bool {
+  match record_shaped_map_after_insert() {
+    Present { value: v } => v == "v"
+    Absent => false
+  }
+}

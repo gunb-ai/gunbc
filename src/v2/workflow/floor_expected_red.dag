@@ -406,7 +406,7 @@ fn floor_expected_red_chunk_18() -> std.types.List<String> {
 }
 
 fn floor_expected_red_chunk_19() -> std.types.List<String> {
-  std.algebra.Empty {}
+  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: std.algebra.Empty {} }
 }
 
 fn floor_expected_red_chunks() -> std.types.List<std.types.List<String>> {

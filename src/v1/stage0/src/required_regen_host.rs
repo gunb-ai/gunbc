@@ -1,7 +1,7 @@
 //! Host realization for `v2.workflow.required_regen` — committed seed vs fresh emit.
 
 use serde::Serialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -505,7 +505,10 @@ pub fn run_required_regen_fixed_point(
         return Err("refusal: fixed-point emit produced zero files".to_string());
     }
     let emitted_basenames = generated_basenames_from_emit(&emitted);
-    if let Some(reason) = validate_compared_populations(&committed_basenames, &emitted_basenames) {
+    let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
+    if let Some(reason) =
+        validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
+    {
         return Err(reason);
     }
     let pass2 = tree_digest_from_map(&emitted, &committed_basenames)?;
@@ -629,7 +632,10 @@ fn adjudicate_generated_surface(
     emitted_basenames: &[String],
 ) -> Result<GeneratedSurfaceAdjudicated, String> {
     let committed = committed_generated_basenames(stage0_src)?;
-    if let Some(reason) = validate_compared_populations(&committed, emitted_basenames) {
+    let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src)?;
+    if let Some(reason) =
+        validate_compared_populations(&committed, emitted_basenames, &hand_dir_shadows)
+    {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
     let sync = compare_generated_surfaces(stage0_src, emitted, &committed)?;
@@ -751,7 +757,9 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
         .map(|(path, content)| Rc::new(SourceFile { path, content }))
         .collect();
     let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
-    if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
+    if let Some(message) =
+        stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
+    {
         return Err(message);
     }
     let mut out = HashMap::new();
@@ -841,7 +849,82 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
     Ok(names.into_iter().collect())
 }
 
-fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Option<String> {
+/// The only seam where `HAND_MAINTAINED_STAGE0_DIRS` reaches the population comparison, and it
+/// CLASSIFIES a refusal rather than excluding anything from one.
+///
+/// Both compared populations key on basename, and the committed walk enumerates only the top level
+/// of the stage0 crate, so a file living inside a hand-maintained DIRECTORY is invisible to it. An
+/// emitted basename equal to one of those files therefore lands in `emitted_not_committed`, where
+/// the two remedies on offer -- install the produced mirror, or investigate an emitter that
+/// invented a surface -- BOTH destroy hand-authored code: installing overwrites it with generated
+/// bytes, deleting removes it. This map lets that population be named under its own cause with the
+/// remedy that actually applies (de-collide the module name).
+///
+/// IT DOES NOT EXCLUDE, AND THAT IS THE WHOLE DESIGN. Teaching `is_hand_maintained_path` about the
+/// directory list would drop the colliding path out of the compared population entirely, which
+/// silently stops comparing a genuinely generated surface -- a wrong refusal traded for no
+/// refusal. Same failure as making the committed walk descend, entered from the other side.
+///
+/// ZERO EXPOSURE, stated so this is not read as repairing a live defect. Emitted Rust filenames are
+/// flat by construction (`v1.compiler.emit_core_support` `module_to_filename` is split(".") joined
+/// with "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained
+/// directory; the collision is reachable only by authoring a module whose bare name equals one of
+/// those files. Measured 2026-08-22: zero collisions in the corpus, required-regen green on main
+/// at 90986d19469, and no upstream guard was found that would refuse such a module name (the
+/// nearest candidates, `gunbc.stage0_rust_source_lifecycle_scaffold`
+/// `classified_residue_disjoint_holds` and the generated/hand disposition joins beside it, are
+/// scoped to top-level stage0 paths and cannot see a subdirectory file).
+fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let mut shadows = BTreeMap::new();
+    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        let dir = stage0_src.join(dir_name);
+        if !dir.is_dir() {
+            continue;
+        }
+        collect_dir_shadows(&dir, dir_name, &mut shadows)?;
+    }
+    // Sorted so the refusal text is a function of the collision, not of the roster's authoring
+    // order: two clones must print the same remedy for the same tree.
+    for homes in shadows.values_mut() {
+        homes.sort();
+    }
+    Ok(shadows)
+}
+
+fn collect_dir_shadows(
+    dir: &Path,
+    home: &str,
+    shadows: &mut BTreeMap<String, Vec<String>>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("read dir {}: {e}", dir.display()))? {
+        let entry = entry.map_err(|e| format!("read dir entry under {}: {e}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dir_shadows(&path, home, shadows)?;
+            continue;
+        }
+        if let Some(basename) = path.file_name().and_then(|n| n.to_str()) {
+            if is_compared_generated_basename(basename) {
+                // EVERY HOME, NOT THE LAST ONE SEEN. `insert` here was last-write-wins, so one
+                // basename hand-authored under two hand-maintained directories -- `mod.rs` being
+                // the obvious candidate -- refused while naming only one of them, sending the
+                // author to the wrong file. Authority for the list shape:
+                // `v2.workflow.required_regen` `EmittedNotCommittedShadowsHandMaintained`.
+                let homes = shadows.entry(basename.to_string()).or_default();
+                if !homes.iter().any(|h| h == home) {
+                    homes.push(home.to_string());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_compared_populations(
+    committed: &[String],
+    emitted: &[String],
+    hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+) -> Option<String> {
     if committed.is_empty() {
         return Some("refusal: committed generated population is empty".to_string());
     }
@@ -851,9 +934,17 @@ fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Op
     let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
     let emitted_set: BTreeSet<&str> = emitted.iter().map(String::as_str).collect();
     let mut emitted_not_committed = Vec::new();
+    let mut shadowing_hand_maintained = Vec::new();
     for name in emitted {
-        if !committed_set.contains(name.as_str()) {
-            emitted_not_committed.push(name.clone());
+        if committed_set.contains(name.as_str()) {
+            continue;
+        }
+        match hand_dir_shadows.get(name.as_str()) {
+            Some(homes) => shadowing_hand_maintained.push(format!(
+                "{name} (hand-maintained under {})",
+                homes.join(", ")
+            )),
+            None => emitted_not_committed.push(name.clone()),
         }
     }
     let mut committed_not_emitted = Vec::new();
@@ -883,6 +974,15 @@ fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Op
     if !committed_not_emitted.is_empty() {
         reasons.push(format!(
             "refusal: committed mirror is no longer emitted — {committed_not_emitted:?}; the emitter stopped producing these surfaces, so either the authority that emitted them was removed on purpose (delete the committed mirror) or it regressed (restore it) — do NOT install anything for this class"
+        ));
+    }
+    if !shadowing_hand_maintained.is_empty() {
+        // A THIRD CAUSE BECAUSE THE OTHER TWO REMEDIES DAMAGE THIS CLASS. Authority:
+        // `v2.workflow.required_regen` `MirrorMissingShadowsHandMaintainedSource`. The refusal is
+        // not softer than the one above -- the line still stops -- it is the same stop pointed at
+        // the move that actually resolves the state.
+        reasons.push(format!(
+            "refusal: emitted surface collides with hand-maintained source — {shadowing_hand_maintained:?}; the emitted basename addresses a file that is hand-authored under a hand-maintained directory, so BOTH remedies for a missing mirror would damage it (installing overwrites hand-authored code with generated bytes; deleting destroys it). Rename the emitting module so its basename no longer collides, or move the hand-maintained file — do NOT install anything for this class"
         ));
     }
     if reasons.is_empty() {

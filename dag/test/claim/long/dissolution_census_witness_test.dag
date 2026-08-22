@@ -14,16 +14,47 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 
 data dissolution_census_cost_class_note: String = "unbound_dissolution_empty_literal_refuses (below) was investigated as a possible third import-closure-pollution exemplar for the witness-cost-class lane (gunbc.roadmap_authority adhoc-0e6f8ea5-158) and FALSIFIED -- NOT import-closure pollution, and not fixable by closure-narrowing. w_unbound_dissolution_empty_literal_red / w_unbound_dissolution_nonempty_literal_green both call compile_dag_rust_emit_check, whose uncached path (compile_dag_rust_emit_check_uncached, src/v1/stage0/src/cli_run.rs) rebuilds a FULL corpus-rooted module index (build_module_path_index_from_witness_roots) and compiles the supplied virtual source against it on every call -- a cost driven entirely by that helper's own corpus-wide work, unrelated to this witness ENTRY's own transitive import closure. The helper is memoized (COMPILE_DAG_RUST_EMIT_CHECK_MEMO) but the memo is only consulted when floor_prepared_inventory_digest() returns Some, i.e. only under a real claim_executor --required-floor run; a standalone claim run never populates or reads it. This produces a first-toucher shared-fill signature within the same module: whichever of this module's compile_dag_rust_emit_check-calling rows the floor visits first under a given inventory pays the uncached full rebuild, and its sibling(s) hit the warm memo -- confirmed against the floor's own [floor-witness-slow] line, 42129ms vs 825ms for two same-module sibling rows, a ~51x gap with no import-closure difference between them. This is the same underlying mechanism as the Class B and loop/bind falsifications in spirit (a fixed corpus-wide cost masquerading as an entry-closure cost) but a DIFFERENT mechanism in kind -- a per-call memo gated on the floor guard, not a witness entry's own static import graph -- so it belongs to the class-2 per-claim deterministic-reconstruction/memoization bucket, not this lane's closure-narrowing scope. No repair attempted here; this module is left as-is."
 
+// THE VERDICT IS THE SUBJECT NOW, NOT A REPORT. The census used to fold against
+// `present_decls: []`, under which no forward trigger could be found and
+// `fired_still_present_count` was 0 by construction — so the three assertions below were
+// reading a predicate with one reachable answer. They are unchanged in intent and now
+// answered against the live declaration index, which is what makes them able to fail.
+//
+// A refused verdict is a distinct outcome from a dirty roster: it means the resolver
+// could not decide one of the roster's own trigger refs, and the census declines to
+// answer rather than guessing a direction.
+// A REFUSAL IS LOCATED, NOT JUST COUNTED. The assertion is that the refused set is
+// EMPTY at identity grain — `dissolution_census_refused_keys` renders each undecided ref
+// as its display key — so a run that starts refusing says WHICH roster refs the resolver
+// could not decide instead of reporting a bare false. A count would have said the same
+// thing about a different set.
+test fn census_verdict_is_answered_over_the_live_tree() -> Bool {
+  let verdict = dissolution_census_verdict()
+  length(xs: dissolution_census_refused_keys(verdict: verdict)) == 0
+    && match verdict {
+      DissolutionCensusAnswered { report: _ } => true
+      DissolutionCensusRefused { undecided: _ } => false
+    }
+}
+
 test fn census_counters_exhaustively_partition_the_rows() -> Bool {
-  let r = gunbc.dissolution_census.dissolution_census_report()
-  (r.unbound_count + r.pending_count + r.fired_still_present_count) == length(xs: gunbc.census_closure_frontier.census_closure_frontier_rows())
+  match gunbc.dissolution_census.dissolution_census_verdict() {
+    gunbc.dissolution_observation.DissolutionCensusRefused { undecided: _ } => false
+    gunbc.dissolution_observation.DissolutionCensusAnswered { report: r } =>
+      (r.unbound_count + r.pending_count + r.fired_still_present_count)
+        == length(xs: gunbc.census_closure_frontier.census_closure_frontier_rows())
+  }
 }
 
 test fn bound_and_unbound_partition_the_same_rows() -> Bool {
-  let r = gunbc.dissolution_census.dissolution_census_report()
-  let bound = gunbc.dissolution_census.frontier_rows_bound_count(rows: gunbc.census_closure_frontier.census_closure_frontier_rows())
-  bound == (r.pending_count + r.fired_still_present_count)
-    && (bound + r.unbound_count) == gunbc.dissolution_census.dissolution_census_total()
+  match gunbc.dissolution_census.dissolution_census_verdict() {
+    gunbc.dissolution_observation.DissolutionCensusRefused { undecided: _ } => false
+    gunbc.dissolution_observation.DissolutionCensusAnswered { report: r } => {
+      let bound = gunbc.dissolution_census.frontier_rows_bound_count(rows: gunbc.census_closure_frontier.census_closure_frontier_rows())
+      bound == (r.pending_count + r.fired_still_present_count)
+        && (bound + r.unbound_count) == length(xs: gunbc.census_closure_frontier.census_closure_frontier_rows())
+    }
+  }
 }
 
 test fn census_holds_on_the_live_roster() -> Bool {
@@ -32,5 +63,8 @@ test fn census_holds_on_the_live_roster() -> Bool {
 }
 
 test fn nothing_is_fired_and_still_present_today() -> Bool {
-  gunbc.dissolution_census.dissolution_census_report().fired_still_present_count == 0
+  match gunbc.dissolution_census.dissolution_census_verdict() {
+    gunbc.dissolution_observation.DissolutionCensusRefused { undecided: _ } => false
+    gunbc.dissolution_observation.DissolutionCensusAnswered { report: r } => r.fired_still_present_count == 0
+  }
 }

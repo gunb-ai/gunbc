@@ -2689,14 +2689,17 @@ pub fn interpreter_blocking_diagnostic_messages(
     })
 }
 
-pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option<String> {
+pub fn stage0_self_compile_refusal_message(
+    subject: String,
+    result: Rc<PipelineResult>,
+) -> Option<String> {
     {
         let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
         if ((hard_messages.clone().len() as i64) > 0) {
             Some(v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        "v2 self-compile produced ".to_string(),
+                        v1_rt::concat(subject.clone(), " produced ".to_string()),
                         (hard_messages.clone().len() as i64).to_string(),
                     ),
                     " hard diagnostic(s):\n".to_string(),
@@ -2705,7 +2708,10 @@ pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option
             ))
         } else {
             if ((result.files.clone().len() as i64) == 0) {
-                Some("v2 self-compile emitted no files".to_string())
+                Some(v1_rt::concat(
+                    subject.clone(),
+                    " emitted no files".to_string(),
+                ))
             } else {
                 None
             }

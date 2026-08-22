@@ -181,7 +181,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   gunbc.host_axis_caps.deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, units: units)
     && string_contains(s: sh, pattern: cap_block)
     && string_contains(s: sh, pattern: "20-fleet-width.conf")
-    && string_contains(s: sh, pattern: "sudo -n systemctl revert ")
+    && string_contains(s: sh, pattern: gunbc.host_axis_caps.deploy_memory_cap_shadow_revert_script(units: units))
     && string_contains(s: sh, pattern: to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max)))
 }
 
