@@ -46,7 +46,28 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument: the universe it decodes, and the five defects found in building it
+## 2. Instrument: the universe it decodes, and the six defects found in building it
+
+**One cause produced most of what follows, and it is worth stating once instead of six
+times.** Every defect below except 1 and 4 has the same shape: *a conclusion was drawn
+without reading the surface that would settle it.* Defect 3 scored the accelerator family
+dead without reading qualified calls; defect 5 froze two `tools/` rows against a real
+re-add anchor without reading the `entry:` field surface, and ten more of that class turn
+out to be invoked (see the re-score below); defect 6 scored `module_refs` dead without
+reading bare-symbol resolution. The sequencing inversion in §5 is the same failure applied
+to a decision rather than a measurement. **In every instance the reasoning was locally
+valid and the missing surface was the whole of the error**, which is why "was this
+argument sound" is the wrong review question here and "which surface settles this, and did
+you read it" is the right one.
+
+A corollary, because it governs how this document should be read rather than how it was
+built: **where a confidence label and an explicit standing disagree, the standing
+governs.** `RESIDUE-UNMENTIONED` reads as strong evidence of deadness; §6's
+`LowerBoundOnly` says no class in this population is blind-spot-free. The label was
+attached to the thing being sequenced and the standing sat three sections away, so the
+label won and 13 live-called modules went into the lead deletion slot. A sequencing
+decision that cites a class name rather than the standing is unevidenced no matter how
+reasonable the name sounds.
 
 Attribution matters here, because a lesson that reads as one session's mistakes gets
 discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
@@ -156,6 +177,12 @@ class that was **observed, not anticipated**:
 - **Identifiers preceded by `.` or followed by `:` are not references.** The first excludes
   a qualified call's tail (`extdeps.ebay.ebay.create_offer` must not score `create_offer`
   as bare) and field projection; the second excludes record fields and parameter labels.
+
+**Each filter is reported with what it cost, because the intermediate values are what let
+a reader judge them:** the raw pass scored **98**, excluding qualified-tail and
+field/label identifiers took it to **93**, and the character-scanner string strip took it
+to **91**. A bare 91 would hide the fact that no single filter dominates — which is itself
+evidence that none of them is a fudge factor tuned to a target.
 
 **Attribution is by unique ownership, which is what makes a hit decisive.** A bare symbol
 declared by exactly one module in the corpus attributes to that module and nothing else. A
