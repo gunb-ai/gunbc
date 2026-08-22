@@ -29,8 +29,14 @@ a repair aimed at the emitter would have been aimed at working code.
 | `type Algebra { combine: fn(Thunk, Thunk) -> Thunk }` | emits `(a.apply)(…)`, clean |
 | `type Algebra<R> { combine: fn(R, R) -> R }` | `method 'apply' cannot be resolved: receiver type 'Primitive()' establishes no method surface` |
 
-Same body, same call, same tree, same binary. `v2.std.compilers.lexing` `LexPatternFold<R>` is the
-generic form, so every lambda parameter in `v2.compiler.tokenize`'s algebra (`open_r`, `body_r`,
+Same body, same call, same tree, same binary. **The generic carrier is the ALGEBRA, never the
+thunk** — a distinction worth stating flatly, because the lane briefly lost a cycle to reading it
+the other way: `v2.compiler.tokenize` `LexMatchThunk` is a concrete `fn(String) -> LexMatchResult`
+and always was, and a minimal thunk with no algebra around it does **not** reproduce the refusal.
+The refusing receiver is `open_r`, a parameter of the lambda initializing `delimited: fn(R, R, R)
+-> R` on the generic `v2.std.compilers.lexing` `LexPatternFold<R>`. The runnable pair that varies
+*only* algebra genericity, with the same non-generic thunk in both arms, is in
+[`controls/`](controls/). `LexPatternFold<R>` is the generic form, so every lambda parameter in `v2.compiler.tokenize`'s algebra (`open_r`, `body_r`,
 `close_r`, …) reaches the emitter **with no type at all**. That is exactly the shape
 `v1.compiler.infer` `unresolved_method_frontier_note` already records as `Primitive()` — "a lambda
 parameter whose type never propagates" — and the same note names "the v2 tokenizer's own
