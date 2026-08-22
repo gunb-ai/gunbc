@@ -54,6 +54,7 @@ for s in pos nega negb reach; do
   emit "variantpayload_$s" "data a_vp: Rel = Wrapped($v)"
   emit "lambdaret_$s" "data a_fn: fn(Int) -> Rel = fn(n) { $v }"
   emit "paramdefault_$s" "fn a_pd(r: Rel = $v) -> Int { 1 }"
+  emit "callableparam_$s" "fn a_cb(cb: fn(Rel) -> Int) -> Int { cb($v) }"
 done
 
 # map KEY position (declared key type Rel)
