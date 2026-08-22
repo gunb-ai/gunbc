@@ -129,3 +129,83 @@ for two depths and **cannot exist** for the third — so the single-axis perturb
 than the brief's decision table assumes. Building the dynamic tracer on the assumption of a
 three-depth join would instrument a question the cluster cannot answer. Adjudication of Findings 1–3
 comes before that.
+
+---
+
+# CORRECTION: R1 is 32, not 36 — and the delta-shape-invariance call
+
+## The corrected arithmetic
+
+Finding 0 above reported **3** misclassifications, found by inspection. A mechanical rule finds
+**7**. The rule: *a site is R1 only if erasing every `Rc` wrapper from both sides makes them equal*;
+any residue is a different axis. Decidable, and independent of what anyone notices.
+
+| site | after `Rc`-erasure | actual axis |
+|---|---|---|
+| `v2_compiler_body_lowering_fold.rs:3176` ×2 | `Outcome<Option<Node>>` vs `Outcome<Node>` | R2 — `Option` presence |
+| `v2_std_fold_assembly.rs:258` | `Outcome<Vector<Vector<Node>>>` vs `Outcome<Vector<Node>>` | ELEM-COLL — extra nesting layer |
+| `v2_lens_complexity_lowering.rs:48` | `Vector<()>` vs `Vector<ComplexityLowering>` | C — carrier collapses to `()` |
+| `std_realization_schedule.rs:64` ×2, `:83` | `Measure<(), S, i64>` vs `Measure<(), _, i64>` | type-parameter binding (`()`/`S`/`_`) |
+
+**True R1 = 32**: OUTER 17, TYPE-ARGUMENT 8, ELEMENT 5, OUTER+CONTAINER 2.
+
+*A near-miss worth recording:* the first eraser was `re.sub(r'Rc<([^<>]*)>', …)`, which silently
+fails on `Rc` wrapping a generic — `Rc<Refined<Artifact>>` survives untouched and looks like a
+residual difference, so the rule dropped **11**. It was caught only by self-testing the eraser on
+known pairs before reading any count off it. Testing the instrument on inputs whose answer you
+already know, before trusting its output, is the same discipline as an instrument control.
+
+**Findings 1 and 2 survive and strengthen.** `Nat`/`Int` remains the only cross-depth declaration —
+OUTER 4 + TYPE-ARGUMENT 8 = 12 sites, now 38% of true R1. Element depth remains fully disjoint
+(`PortReading` ×2, `NarrowingReason` ×2, `Finding`); `ComplexityLowering` left via the C
+reclassification. No X exists at all three depths.
+
+## Delta-shape invariance — the call, made before the run
+
+**Observation to explain:** the delta shape is identical across the base-realization fork —
+`Rc<i64>` vs `i64` where the numeric alias fires, `Rc<Nat>` vs `Nat` where it does not.
+
+**CALL: invariance HOLDS. The reference-layer decision does not consult base realization, and the
+fork is an orthogonal axis.** R1's `Nat`/`Int` subpopulation is a reference-layer problem *despite*
+the fork, not because of it.
+
+**Grounds — the two decisions key on different things:**
+
+| decision | authority | key |
+|---|---|---|
+| reference-layer wrap | `v1.compiler.emit_rust`, `set_contains(shared_types, leaf)` | the bare **name** |
+| base realization | `v1.compiler.coercion` `rust_seed_host_numeric_alias(name, decl_file)` | **(name, decl_file)** |
+
+`rust_type_is_rc_wrapped` is *not* the wrap decision — it delegates to
+`v1.languages` `sharing_type_is_wrapped_for_target`, which is a **prefix test on the rendered
+string** (does this spelling already begin with the target's wrap prefix). It is an
+already-wrapped guard, not a policy. The policy is set membership on the leaf name, which never sees
+`decl_file`.
+
+Since both the `i64`-realized and `Nat`-realized sites descend from the same name, a name-keyed wrap
+decision must treat them identically — which is exactly the invariant delta shape observed.
+
+**What would falsify this call:** the two `Nat`-spelled sites (`v2_lens_cost.rs:312`, `:315`) moving
+under a perturbation keyed on `(declaration, decl_file)` restricted to the natively-realizing arm.
+They are outside that key and must not move. If they do, the wrap decision is reachable from base
+realization after all and the 12 sites belong to a different cluster.
+
+**Verified vs not:** the key difference is read from the two functions' signatures and bodies. What
+is *not* established is how `shared_types` is populated — if its membership were itself derived from
+`decl_file` upstream, the two keys would be coupled through a path this reading does not cover.
+That is the one way the call could be wrong, and it is named rather than left implicit.
+
+## Instrument design, given all of the above
+
+Perturb **(`Nat`/`Int`, natively-realizing `decl_file`)** — the alias-fired subset, which spans
+OUTER 2 and TYPE-ARGUMENT 8 with one base realization held fixed.
+
+| observation | conclusion |
+|---|---|
+| both OUTER and TYPE-ARGUMENT move | outer and type-argument share one recursively consumed authority |
+| OUTER moves, TYPE-ARGUMENT does not | separate producer roots |
+| TYPE-ARGUMENT moves, OUTER does not | the recursive renderer has its own producer |
+| sites change direction rather than resolving | verdict still wrong, or declaration and value consumers disagree |
+| **`v2_lens_cost.rs:312/315` move** | **REJECT** — keyed on the name, not the pair; base realization was not held fixed |
+| **any ELEMENT site moves** | **REJECT** — no `Nat`/`Int` site exists at element depth |
+| any non-R1 cluster moves | **REJECT** — more than one axis changed |
