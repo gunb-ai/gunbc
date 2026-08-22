@@ -11,7 +11,6 @@ import gunbc.fleet_shell_transport_observation {
   ShellTransportReachRefused,
   ShellTransportUnobserved,
 }
-import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data host_disk_observation_authority_disposition: Disposition = SingleAuthority
 
@@ -43,22 +42,6 @@ fn host_disk_observed_producer(host: HostIdentity) -> HostDiskObservation {
 
 fn host_disk_observation(host: HostIdentity) -> HostDiskObservation {
   host_disk_observed_producer(host: host)
-}
-
-fn host_disk_unobserved_count(hosts: List<HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match host_disk_observation(host: h) {
-        DiskUnobserved { reason: _ } => true
-        DiskObserved { free_bytes: _, observed_on: _ } => false
-        DiskObservationRefused { detail: _ } => false
-      },
-  ).length()
-}
-
-fn host_disk_fleet_unobserved_count() -> Int {
-  host_disk_unobserved_count(hosts: fleet_subsumption_hosts)
 }
 
 data host_disk_observed_producer_dissolve_on: Disposition = Scaffold {
