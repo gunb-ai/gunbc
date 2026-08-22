@@ -297,23 +297,33 @@ live module into the residue, so a name bound as a parameter in one declaration 
 referenced in another would silently lose its real reference. The shadow is scoped to the
 binding declaration's region.
 
-**A correction to this document's own reason for dropping the `service` short-name credit.**
-It was dropped citing a false-consumption claim measured on the *other* lane's instrument. That
-reason was never true here: their specimen is `service gcp.Metadata`, a **dotted** name this
-lane's pattern never matched in either configuration. Re-run with the credit restored and (f)
-fixed, `extdeps.cloud.gcp.sts` scores DEAD-CONSUMER-ONLY either way and the aggregate counts
-are identical — the credit moves nothing on this population. The honest reason is therefore
-**"no measured effect here"**, not "it causes false consumption".
+**The `service` short-name credit: dropped, then restored, and the second reason is the one
+that holds.** It was first dropped citing a false-consumption claim measured on the *other*
+lane's instrument — a reason never true here, since their specimen `service gcp.Metadata` is
+**dotted** and this lane's pattern never matched it. It was then justified as *"no measured
+effect on this population"*, which is also wrong as a basis: the measured effect is nil, so it
+argues for either choice and settles nothing.
 
-The evidence in fact points the other way, and it is the seventh discriminator:
-`v2.extdeps.realization.artifact_store_fs` names `Filesystem.Write`, `.Read` and `.Delete`
-with **no import of `Filesystem` anywhere in its import block**, and `Filesystem` is declared
-undotted twice — `service Filesystem` in `extdeps.filesystem.filesystem_io` and `resource
-Filesystem` in `std.resources`. So a consumer *does* bare-resolve an undotted service short
-name through whole-pool resolution, and being declared in both places is exactly what should
-make the symbol non-uniquely-owned. Withdrawing the declaring-side credit wholesale is too
-blunt: it stops `filesystem_io` owning a symbol it visibly declares, which is the own-nothing
-direction (e) exists to catch.
+**The basis that holds is correctness of ownership.** `extdeps.filesystem.filesystem_io`
+declares `service Filesystem`; an instrument that says otherwise is wrong whether or not a row
+moves today. And withholding the credit is not merely a missing fact — `Filesystem` is
+declared **twice**, as a `service` there and as a `resource` in `std.resources`, so dropping
+the service side hands `std.resources` **false sole ownership** of a name two modules declare.
+That is *manufactured uniqueness*: the exact mechanism behind every confident wrong attribution
+in this chain, created by the fix meant to avoid it.
+
+The evidence is the seventh discriminator: `v2.extdeps.realization.artifact_store_fs` uses
+`Filesystem.Write`, `.Read` and `.Delete` as a qualifier with **no import of `Filesystem` in
+its import block**. A consumer does bare-resolve an undotted service short name through
+whole-pool resolution. Credited, dotted forms included by last segment (`service gcp.Metadata`
+declares `Metadata`); zero modules in this corpus own nothing without it, but the same basis
+applies, since under-extraction is the delete-a-live-module direction.
+
+**How the real cause was located, which is the transferable part.** This lane could not
+reproduce the other's false positive *at all* — the patterns differ on dotted names. That
+**inability to reproduce, with a stated reason**, is what identified (f) as the actual cause
+and the service credit as merely adjacent to it. A cross-check that agrees tells you less than
+one that fails to reproduce and can say why.
 
 **Direction check, stated because it is what makes (f) safe to have found late:** (f) and the
 service-short-name credit both *inflate* consumption, so neither can cause a wrong
