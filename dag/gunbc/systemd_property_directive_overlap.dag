@@ -70,6 +70,26 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
   }
 }
 
+// THE MEMBER ROSTER IS A PARALLEL REPRESENTATION OF THE COPRODUCT, AND IT IS ONLY HALF WALLED.
+//
+// Declared rather than left for a reader to notice, because the obvious reassurance is wrong in the
+// likelier direction. The classifier below is a total match, so ADDING A VARIANT AND NOT
+// CLASSIFYING IT is a compile error -- that half is genuinely covered. But adding a variant,
+// classifying it, and forgetting THIS list compiles clean: the wire projections silently omit the
+// member, and every count and predicate derived from them under-reports. That is the more likely
+// sequence, because the author is looking at the compile error in the classifier, not at a list
+// below it.
+//
+// It is not fixable here. A `.dag` source module has no facility for enumerating a coproduct's
+// variants -- the substrate's own `v2.std.node` `behavior_coproduct_variants` hand-authors the same
+// roster for the same reason -- so the completeness of this list is exactly as strong as the
+// author's attention, which is the definition of the mitigatable rung rather than a wall.
+//
+// NEXT-RUNG TRIGGER: a variant-enumeration surface over a declared coproduct, at which point this
+// row is derived and deleted rather than maintained. Until then the honest statement is that the
+// classification is walled and the enumeration is not, and a census derived from the enumeration
+// carries that weakness -- which is why the consumer roster below is measured by grep against the
+// corpus rather than computed from this list.
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState,
