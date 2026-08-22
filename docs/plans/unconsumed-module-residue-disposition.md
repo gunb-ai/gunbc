@@ -34,7 +34,7 @@ that no longer exists. Re-deriving also re-runs the census's controls: `v2.compi
 `gunbc.accelerator_demo_gpu` all score reachable here, and RESIDUE-EMPTY again scores 0
 consumed, so the instrument is neither finding consumption everywhere nor nowhere.
 
-**Of the corrected 114-row residue, this change deletes 56.** The deleted set is the rows
+**Of the corrected 114-row residue, this change deletes 55.** The deleted set is the rows
 that carry no obligation to anything outside themselves, on every surface the instrument
 decodes *and* every surface it does not:
 
@@ -57,9 +57,9 @@ before and after the cut:
 
 | | before | after | delta |
 | --- | --- | --- | --- |
-| modules | 3851 | 3795 | -56 |
+| modules | 3851 | 3796 | -55 |
 | **reachable** | **3549** | **3549** | **0** |
-| population | 302 | 246 | -56 |
+| population | 302 | 247 | -55 |
 | **CONSUMED-DECISIVE** | **91** | **91** | **0** |
 | AMBIGUOUS-SHARED-ONLY | 97 | 97 | 0 |
 | STILL-UNCONSUMED | 80 | 29 | -51 |
@@ -451,7 +451,7 @@ The specimen is this branch, and it is usable *precisely because it contains no 
 | | tree | failed | planned |
 | --- | --- | --- | --- |
 | base `90986d19469` | as-is | **16** | 10425 |
-| this branch | base minus 56 deleted modules | **1** (unrelated) | **10425** |
+| this branch | base minus 55 deleted modules | **1** (unrelated) | **10425** |
 
 The 16 are the `fold_lowering` / `body_lowering.statement_let_bind` family, every one
 reporting `non-exhaustive pattern match on: OccurrenceId { value: 79 }`. All 16 identities are
@@ -471,7 +471,7 @@ not a pure function of the committed tree, and a matching count is weaker eviden
 looks.
 
 The comparison still stands as a controlled one — the base and post-deletion runs agree on
-every reported discovery figure, and the tree difference between them is exactly the 56
+every reported discovery figure, and the tree difference between them is exactly the 55
 deletions — but it is corroboration, not proof, and the isolated-variable claim is downgraded
 accordingly. This is the same failure this document records elsewhere, committed in its own
 write-up: **a count treated as a check.**
@@ -506,7 +506,7 @@ proven unconsumed — and **a live module among them would present exactly as th
 bucket cannot distinguish it.** So the honest statement is *thirteen rows of unknown status
 that I would have deleted*, and the near-miss count is **1, found by execution**.
 
-**The same standard applied to the 56 being deleted, because it follows and should not go
+**The same standard applied to the 55 being deleted, because it follows and should not go
 unstated.** They are STILL-UNCONSUMED or island-closed DEAD-CONSUMER-ONLY: zero on three
 *decoded* surfaces whose declared standing is `LowerBoundOnly`. That is the best-evidenced set
 this instrument can produce. **It is not proof.** Which is the argument *for* landing it and
@@ -514,7 +514,7 @@ reading the refusals, not a risk being run in spite of them.
 
 ## 4l. Editing this set means re-running the fixed point, not adjusting the count
 
-`69 − 13 + 1 = 56` reconciles arithmetically **by the wrong route**: the 13 left on
+`69 − 13 + 1 = 56` reconciled (a fourth term lands in §4m, making it 55)  arithmetically **by the wrong route**: the 13 left on
 *evidential* grounds (the corrected extractor moved them to AMBIGUOUS) and the 14th,
 `v2.std.rust_leaf_model_claim`, left on a *structural* one — restoring
 `v2.test.language_model.rust` re-created its in-population consumer, so deleting it would have
@@ -528,7 +528,46 @@ adjust the count.** Eligibility is a property of the set (§4g), a restore can c
 violation as readily as a deletion can, and the failure mode is silent — the arithmetic will
 keep agreeing.
 
-## 5. The 56 deleted
+## 4m. The merge was the third census, and it refused one module
+
+**`v2.workflow.floor2_prepared_subject` was deleted by this branch and is restored here.**
+Not because the measurement was wrong -- it was STILL-UNCONSUMED at base `90986d19469`, on
+every decoded surface, and it still is at that commit. It acquired a consumer *while this
+branch was open*: #8896 landed `src/v2/workflow/floor_terminal_ledger.dag`, which imports
+`WitnessIdentity` and `witness_identity_qualified_name` from it by name, and its test does
+the same.
+
+**What makes this worth a section rather than a line in the table is the shape of the
+failure, which no measurement in this document could have had.** The two branches touch
+disjoint files: #8896 adds two files this branch never saw, this branch deletes one file
+#8896 never saw. **git merged them clean.** There is no textual conflict to resolve, no
+marker, no driver refusal -- and the merged tree does not compile. A three-way textual merge
+answers *did the same bytes change twice*, and the question that decides this case is *does
+the merged tree still resolve*, which is not a question about bytes at all. **So a merge
+preserves bytes, not measurements**: every count in this document is a statement about a
+tree, and the merge produced a tree none of them were measured against.
+
+The correction is the doctrine's own mechanism arriving one stage later than expected. §3
+says the deletion is the census and the refusals are the instrument; here the refusal is a
+*merge-time* one, and the instrument that would have reported it is the floor running on the
+merged tree -- which had not existed until the merge created it. **The re-score against the
+merged tree found exactly one**, and the §4l rule was followed rather than the count
+adjusted: the restore's own imports were checked for in-population consumers, the fixed point
+closed at one, and no cascade followed.
+
+**The near-miss ledger now reads 2, both found by execution and neither by the census.**
+`gunbc.pr_digests` (defect 7, the floor refusing on an unread declaration surface) and this
+one (the merge refusing on a tree that did not exist when the surface was read). They are the
+same finding from different directions: **a static census is a statement about the tree it
+read, and both of its blind spots are trees -- the part it decoded wrongly, and the part that
+had not been written yet.** The second is not fixable by improving the instrument.
+
+**And the arithmetic breaks the same way §4l says it does, for a third unrelated reason.**
+`69 - 13 + 1 - 1 = 55` now reconciles, and the fourth term shares no mechanism with the other
+three: 13 evidential, 1 structural, 1 temporal. Anyone tempted to read that chain as a
+derivation should read §4l instead.
+
+## 5. The 55 deleted
 
 | module | path | bucket |
 | --- | --- | --- |
@@ -585,7 +624,6 @@ keep agreeing.
 | `v2.std.type_expr_projection_row_schema` | `src/v2/std/type_expr_projection_row_schema.dag` | STILL-UNCONSUMED |
 | `v2.workflow.ci_stage0_partition_compile_gate_emit` | `src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag` | STILL-UNCONSUMED |
 | `v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit` | `src/v2/workflow/ci_v1_compiler_test_targets_compile_gate_emit.dag` | STILL-UNCONSUMED |
-| `v2.workflow.floor2_prepared_subject` | `src/v2/workflow/floor2_prepared_subject.dag` | STILL-UNCONSUMED |
 | `v2.test.workflow.host_discovered_owned_data_manifest` | `src/v2/workflow/host_discovered_owned_data_manifest.dag` | STILL-UNCONSUMED |
 | `v2.workflow.probe_selector_host_health` | `src/v2/workflow/probe_selector_host_health.dag` | STILL-UNCONSUMED |
 
@@ -680,7 +718,7 @@ DESIGN §3 frozen-X. Deleting these deletes what the re-add queue exists to re-a
 
 ## 7. What this change does NOT claim
 
-- **Not that 56 is the maximum safe cut.** It is the subset provable clean on every decoded
+- **Not that 55 is the maximum safe cut.** It is the subset provable clean on every decoded
   surface, with its islands closed. The 35 rows held for a per-row read are held on a *string
   mention*, which is weak evidence in both directions.
 - **Not that the residue is now 58.** Five modules moved DEAD-CONSUMER-ONLY to
