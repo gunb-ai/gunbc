@@ -27,6 +27,7 @@ import gunbc.fleet_host_budget {
   compile_pool_bytes_for,
   gunbc_compile_pool_placement,
 }
+import gunbc.fabric_control_plane_charge { host_fabric_control_plane_claim }
 import extdeps.jobserver { jobserver_config }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
@@ -357,7 +358,8 @@ fn accumulate_with_session_slice(
           headroom: headroom,
           runner_pool: gunbc_runner_pool_budget_for(host: host_id),
           session_pool: session_pool,
-          compile_pool: compile_pool
+          compile_pool: compile_pool,
+          control_plane: host_fabric_control_plane_claim(host: host_id)
         ) {
           let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
           DeploymentAccumulator {
