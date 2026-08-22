@@ -17,15 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // builtin, so a caller that reaches for a shell to ask it pays for a shell parse and inherits that
 // shell's own quoting rules. Spawning the utility asks the same question of a real program with a
 // real argv, which is exactly what this repository's ArgvCommand carrier is for.
-// PATH-RESOLVED PROGRAM NAME, DELIBERATELY, AND NOT A DECLINE TO SAY WHICH BINARY. An absolute path
-// is a CLAIM ABOUT AN OBSERVED FILESYSTEM: extdeps.tools.mkdir and extdeps.tools.chmod record theirs
-// because a sudoers NOPASSWD rule names those commands by path on hosts this repository provisions,
-// which is an observation with a consumer. This repository has made no such observation for the
-// hosts these commands run on -- fleet members, runner images, a BMC -- so writing one here would
-// replace a vague spelling with a confident false host fact, which is the fabrication DESIGN section
-// 5 forbids rather than an improvement on it. The name is resolved by the target's own PATH, and
-// that is what the previous hand-spelled call sites did too: this conversion changes WHERE the
-// spelling lives, not WHICH program runs.
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data test_program: NonEmptyStr = "test"
 
 // -f IS "EXISTS AND IS A REGULAR FILE", which is a stronger claim than -e ("exists"): a directory, a
