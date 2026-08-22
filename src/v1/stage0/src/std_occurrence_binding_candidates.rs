@@ -252,7 +252,7 @@ pub fn module_by_occurrence_fold_step(
 pub fn module_by_occurrence_build(
     rows: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
 ) -> Rc<OccurrenceModulePathIndexBuild> {
-    rows.clone().iter().cloned().fold(
+    rows.iter().cloned().fold(
         Rc::new(OccurrenceModulePathIndexBuild {
             module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
             refusal: None,
@@ -485,7 +485,7 @@ pub fn declaration_exposure_fold_step(
 pub fn exposure_by_occurrence_build(
     rows: Rc<Vec<Rc<DeclarationExposureRow>>>,
 ) -> Rc<DeclarationExposureIndexBuild> {
-    rows.clone().iter().cloned().fold(
+    rows.iter().cloned().fold(
         Rc::new(DeclarationExposureIndexBuild {
             exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
             refusal: None,
@@ -568,7 +568,7 @@ pub fn authored_order_fold_step(
 pub fn authored_order_by_occurrence_build(
     rows: Rc<Vec<Rc<AuthoredOrderRow>>>,
 ) -> Rc<AuthoredOrderIndexBuild> {
-    rows.clone().iter().cloned().fold(
+    rows.iter().cloned().fold(
         Rc::new(AuthoredOrderIndexBuild {
             order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
             refusal: None,
@@ -684,7 +684,7 @@ pub fn exposure_validate_transport_declarations(
     declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
     exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
 ) -> Option<Rc<DeclarationExposureIndexRefusal>> {
-    declarations.clone().iter().cloned().fold(
+    declarations.iter().cloned().fold(
         None,
         |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
             Some(_) => refusal.clone(),
@@ -900,7 +900,7 @@ pub fn declarations_by_name_build(
     declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
 ) -> Rc<DeclarationsByNameBuild> {
     {
-        let fold_result = declarations.clone().iter().cloned().fold(
+        let fold_result = declarations.iter().cloned().fold(
             Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
                 by_name: v1_rt::rc_empty_map::<_, _>(),
             }),
@@ -1194,7 +1194,6 @@ pub fn direct_module_dependencies_from_providers(
 ) -> Rc<Vec<Rc<DirectModuleDependency>>> {
     v1_rt::reverse(
         providers
-            .clone()
             .iter()
             .cloned()
             .fold(
@@ -1421,7 +1420,7 @@ pub fn bound_reference_population_from_projections(
     projections: Rc<Vec<Rc<ReferenceBindingProjection>>>,
 ) -> Rc<BoundReferencePopulation> {
     {
-        let build = projections.clone().iter().cloned().fold(
+        let build = projections.iter().cloned().fold(
             Rc::new(BoundReferencePopulationBuild {
                 providers_reversed: Rc::new(vec![]),
                 first_failure: None,
@@ -1600,7 +1599,7 @@ pub fn module_path_file_index_from_rows(
     rows: Rc<Vec<Rc<ModulePathFileRow>>>,
 ) -> Rc<ModulePathFileIndex> {
     {
-        let build = rows.clone().iter().cloned().fold(
+        let build = rows.iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
                 entries: v1_rt::rc_empty_map::<String, String>(),
                 refusal: None,
@@ -1788,7 +1787,7 @@ pub fn cross_file_binding_provenance_from_bound_population(
             providers: providers,
             ..
         } => {
-            let build = providers.clone().iter().cloned().fold(
+            let build = providers.iter().cloned().fold(
                 Rc::new(CrossFileBindingProvenanceBuild {
                     module_files: module_files.clone(),
                     provenances_reversed: Rc::new(vec![]),
@@ -1906,7 +1905,6 @@ pub fn provider_files_for_consumer_file(
         let mut __result = Vec::new();
         for edge in v1_rt::reverse(
             provenances
-                .clone()
                 .iter()
                 .cloned()
                 .fold(
@@ -1942,7 +1940,6 @@ pub fn direct_file_dependencies_from_provenances(
 ) -> Rc<Vec<Rc<DirectFileDependency>>> {
     v1_rt::reverse(
         provenances
-            .clone()
             .iter()
             .cloned()
             .fold(
@@ -2090,7 +2087,7 @@ pub fn reference_derived_dependency_binding_references(
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
     {
-        let build = references.clone().iter().cloned().fold(Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
+        let build = references.iter().cloned().fold(Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
     references_reversed: Rc::new(vec![]),
 }), |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>, reference: Rc<ReferenceOccurrence>| match (*occurrence_category_clause_e_dependency_inducing_verdict(reference.category.clone())).clone() {
     OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
@@ -2724,7 +2721,7 @@ pub fn assemble_cross_file_binding_closure(
             })]),
             remap_state: consumer_inputs_rekey.state.clone(),
         });
-        let assembled = providers.clone().iter().cloned().fold(
+        let assembled = providers.iter().cloned().fold(
             seed.clone(),
             |acc: Rc<AssembledCrossFileFold>, provider: Rc<CrossFileBindingClosureRow>| {
                 let acc = v1_rt::take_owned(acc);
@@ -2927,7 +2924,7 @@ pub fn reference_derived_provider_files_for_assembled_closure(
     match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
     AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { projection: projection, .. } => match (*projection.clone()).clone() {
     ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: dependencies, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureReady {
-    provider_files: Rc::new({ let mut __result = Vec::new(); for edge in dependencies.clone().iter().cloned() { __result.push(edge.provider_file.clone()); } __result }),
+    provider_files: Rc::new({ let mut __result = Vec::new(); for edge in dependencies.iter().cloned() { __result.push(edge.provider_file.clone()); } __result }),
 }),
     ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionBindingRefused { population: population, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureRefused {
     refusal: Rc::new(AssembledClosureDependencyProjectionRefusal::AssembledClosureDependencyProjectionBindingRefused {
@@ -3227,7 +3224,7 @@ pub fn resolve_all_references_via_structural_candidates(
 ) -> Rc<Vec<Rc<ReferenceBindingProjection>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for reference in references.clone().iter().cloned() {
+        for reference in references.iter().cloned() {
             __result.push(resolve_reference_via_structural_candidates(
                 transport.clone(),
                 index.clone(),
@@ -3421,7 +3418,7 @@ pub fn section13_roster_has_law(
 ) -> bool {
     {
         let mut __found = false;
-        for row in rows.clone().iter().cloned() {
+        for row in rows.iter().cloned() {
             if section13_population_law_id_eq(row.law.clone(), law.clone()) {
                 __found = true;
                 break;
@@ -3463,7 +3460,7 @@ pub fn section13_roster_has_duplicate_law(
         |found: bool, row: Rc<Section13PopulationLawRosterRow>| match found {
             true => true,
             false => {
-                (rows.clone().iter().cloned().fold(
+                (rows.iter().cloned().fold(
                     0,
                     |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
@@ -3485,7 +3482,7 @@ pub fn section13_first_duplicate_law(
         |found: _, row: Rc<Section13PopulationLawRosterRow>| match found.clone() {
             Some(_) => found.clone(),
             None => {
-                if (rows.clone().iter().cloned().fold(
+                if (rows.iter().cloned().fold(
                     0,
                     |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
@@ -3554,7 +3551,7 @@ pub fn section13_observation_joins_receipt(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> Option<bool> {
-    observations.clone().iter().cloned().fold(
+    observations.iter().cloned().fold(
         None,
         |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
             Some(_) => found.clone(),
@@ -3619,7 +3616,7 @@ pub fn section13_population_law_roster_adjudicate(
     Some(law) => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw {
     law: law.clone(),
 }),
-    None => rows.clone().iter().cloned().fold(Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Rc<Section13PopulationLawRosterVerdict>, row: Rc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
+    None => rows.iter().cloned().fold(Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Rc<Section13PopulationLawRosterVerdict>, row: Rc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => section13_adjudicate_row(row.clone(), observations.clone(), required_head.clone()),
     _ => verdict.clone(),
 }),
