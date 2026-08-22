@@ -37,6 +37,10 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.image {
   ImageRefusal,
+  ImageEncodeOutcome,
+  ImageEncoded,
+  ImageEncodeRefused,
+  encode_image_checked,
   ImageLoadOutcome,
   ImageLoaded,
   ImageRefused,
@@ -64,14 +68,31 @@ type CommitClosureLoadOutcome
   = CommitClosureLoaded { store: ObjectStore, root: ObjectId }
   | CommitClosureLoadRefused { cause: CommitClosureRefusal }
 
+// ENCODING IS ADJUDICATED BEFORE ANYTHING IS WRITTEN, and the ordering is the point.
+//
+// An earlier revision encoded unconditionally and reported CommitClosureSaved whenever the
+// filesystem write succeeded. For an INCOMPLETE closure -- which object_store's copy_object can
+// legitimately build -- that wrote bytes carrying unresolvable references, reported success, and the
+// very next load refused them. A successful write must never upgrade an encoding failure into
+// Saved; the write is not the claim, the loadability of what was written is.
+//
+// Refusing BEFORE the write also means a failed save leaves no partial file at the path at all,
+// rather than replacing a good repository with an unloadable one.
 func commit_closure_save(path: String, store: ObjectStore, root: ObjectId) -> CommitClosureSaveOutcome {
-  let text = serialize_json(v: encode_image(store: store, root: root))
-  let written = Filesystem.Write(path: path, content: text)
-  if written.success {
-    CommitClosureSaved { path: path }
-  } else {
-    CommitClosureSaveRefused {
-      cause: CommitClosureWriteFailed { path: path, error: written.error },
+  match encode_image_checked(store: store, root: root) {
+    ImageEncodeRefused { cause: cause } =>
+      CommitClosureSaveRefused {
+        cause: CommitClosureImageRefused { path: path, cause: cause },
+      }
+    ImageEncoded { value: encoded } => {
+      let written = Filesystem.Write(path: path, content: serialize_json(v: encoded))
+      if written.success {
+        CommitClosureSaved { path: path }
+      } else {
+        CommitClosureSaveRefused {
+          cause: CommitClosureWriteFailed { path: path, error: written.error },
+        }
+      }
     }
   }
 }

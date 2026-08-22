@@ -32,6 +32,7 @@ import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 
 data fixture_prior_hex: String = "1111111111111111111111111111111111111111"
 data fixture_candidate_hex: String = "2222222222222222222222222222222222222222"
+data fixture_judge_hex: String = "4444444444444444444444444444444444444444"
 data fixture_repo: String = "gunb-ai/gunbc"
 
 fn fixture_oid(hex: String) -> GitObjectId {
@@ -340,6 +341,7 @@ test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
@@ -361,6 +363,7 @@ test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   string_contains(s: script, pattern: concat(concat("admitted ", fixture_candidate_hex), concat(" expected-prior ", fixture_prior_hex)))
 }
@@ -374,12 +377,14 @@ test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
 test fn a_no_op_action_still_renders_a_nonempty_script() -> Bool {
   let converged = fleet_desired_authorized_action_script(
     action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   let superseded = fleet_desired_authorized_action_script(
     action: FleetDesiredSupersededAction {
       accepted: fixture_oid(hex: fixture_prior_hex),
       current: fixture_oid(hex: fixture_candidate_hex),
     },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   (string_length(s: converged) > 0) && (string_length(s: superseded) > 0)
 }
@@ -389,12 +394,14 @@ test fn a_no_op_action_still_renders_a_nonempty_script() -> Bool {
 test fn a_no_op_action_renders_no_ref_mutation() -> Bool {
   let converged = fleet_desired_authorized_action_script(
     action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   let superseded = fleet_desired_authorized_action_script(
     action: FleetDesiredSupersededAction {
       accepted: fixture_oid(hex: fixture_prior_hex),
       current: fixture_oid(hex: fixture_candidate_hex),
     },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
   !string_contains(s: converged, pattern: "git push")
     && !string_contains(s: superseded, pattern: "git push")
@@ -531,4 +538,65 @@ test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_a
   let yml = expected_fleet_desired_yml()
   let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
   string_contains(s: after_toolchain, pattern: "cache: false")
+}
+
+// WHAT THIS FIELD IS, AND WHAT IT IS NOT. The receipt records the revision of the SOURCE TREE the
+// admission checkout was sitting on, OBSERVED AFTER the authorized action was derived and BEFORE
+// that action was materialized -- nothing stronger, and in particular not an atomic reading taken
+// at the instant of adjudication. The wet entry point derives the action first and only then reads
+// HEAD, so a tree mutated in between would be reported rather than the tree that actually decided;
+// nothing in today's single-checkout job does that, which is a property of the CALLER again.
+// It is NOT the revision of the binary that ran (nothing embeds that yet), NOT the candidate
+// being admitted, and NOT the workflow transport identity that GITHUB_WORKFLOW_SHA carries.
+// Those four coincide in today's workflow only because the job checks out one tree, builds the
+// deciding binary from it in the same job, and adjudicates in that same checkout -- a property
+// of the CALLER, not of this function. They diverge the moment the binary is pinned or prebuilt,
+// which is exactly the cut this recording exists to make falsifiable. The field is named for the
+// observation, not for the inference, so the later pinning work has something to contradict.
+test fn the_advance_receipt_names_the_observed_judge_source_revision() -> Bool {
+  let script = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
+    },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
+  ) as String
+  string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_judge_hex))
+}
+
+// PRESENCE BEFORE DISTINCTNESS, AND THE FIRST CONJUNCT IS NOT REDUNDANT. An earlier form of this
+// row asserted only the two negations. Both are satisfied VACUOUSLY by deleting the operand
+// altogether, so the row returned PASS against a receipt carrying no judge field at all while its
+// sibling above returned FAIL -- a claim that could not fail for the reason it existed. Caught by
+// a deliberately-emptied receipt, not by review.
+test fn the_observed_judge_source_is_present_and_distinct_from_target_and_prior() -> Bool {
+  let script = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
+    },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
+  ) as String
+  string_contains(s: script, pattern: " judge-source-observed ")
+    && !string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_candidate_hex))
+    && !string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_prior_hex))
+}
+
+// A NO-OP IS ALSO AN ADJUDICATION. Both no-op arms carry the field too: "this source decided not
+// to mutate" is exactly as attributable a decision as an advance, and recording it only on the
+// mutating arm would leave the two most common outcomes unattributable.
+test fn both_no_op_receipts_also_name_the_observed_judge_source() -> Bool {
+  let converged = fleet_desired_authorized_action_script(
+    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
+  ) as String
+  let superseded = fleet_desired_authorized_action_script(
+    action: FleetDesiredSupersededAction {
+      accepted: fixture_oid(hex: fixture_prior_hex),
+      current: fixture_oid(hex: fixture_candidate_hex),
+    },
+    judge_source_observed: fixture_oid(hex: fixture_judge_hex),
+  ) as String
+  string_contains(s: converged, pattern: concat(" judge-source-observed ", fixture_judge_hex))
+    && string_contains(s: superseded, pattern: concat(" judge-source-observed ", fixture_judge_hex))
 }
