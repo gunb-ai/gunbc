@@ -942,6 +942,33 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
   }
 
+  // FORCED, REPOSITORY-ADDRESSED REF EXCHANGE. `--force` and an explicit refspec are git's
+  // own interface for "make the destination equal the source", which is what a scratch
+  // exchange channel between two processes needs and what a publication does NOT -- so these
+  // are deliberately NOT the operations git.PublicationTransport declares, and neither is a
+  // lease-bearing form. `--quiet` suppresses progress on a channel whose only consumer reads
+  // exit_code and stderr. Both take their repository as a parameter rather than inheriting the
+  // process working directory, per remote_url_takes_its_repository_as_a_parameter_note.
+  operation FetchForcedRefInRepo {
+    input { repo: FilePath, remote: String, refspec: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
+  operation PushForcedRefInRepo {
+    input { repo: FilePath, remote: String, refspec: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
   operation CatFileBlobInRepo {
     input { repo: FilePath, oid: String }
     output {
