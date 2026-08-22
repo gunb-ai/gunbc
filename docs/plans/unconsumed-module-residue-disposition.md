@@ -258,6 +258,49 @@ substrate refuses on an authority the rule had no part in building. And defects 
 found by **hand-reading rows**, with counters that stayed consistent throughout — the same
 lesson arriving a second time, from the other direction.
 
+## 4h. Five discriminators, and the count/set rule that resolves two instruments disagreeing
+
+The extraction defects were settled by **discriminating cases, not by descriptions**, and that
+is the reusable result. Three bug *descriptions* relayed from `silent-deer-368` found one bug
+in this lane's extractor; their four *test cases* found a second one nobody had named. **A
+discriminator travels; a description does not.**
+
+The roster, each failing on exactly the defect it names:
+
+| case | specimen | catches |
+| --- | --- | --- |
+| `Apply` | `std.upsert_decision` | (a) generic header |
+| `Select` | `v2.extdeps.languages.llvm_ir` | (b) multi-line variant record |
+| `Ready` | `gunbc.pr_digests` | defect 7, variant constructors |
+| `Capability` | `std.behavioral` | (d) same-line coproduct |
+| `Run` | `gunbc.cli_services` | (e) service-namespace-only module |
+
+**(e) is contributed back and is the sharpest of the five**, because its specimen's declared
+set is *empty* under an unfixed extractor rather than merely incomplete: `gunbc.cli_services`
+is a `service` block with three `operation`s and **zero** `fn`/`data`/`type`/`const`. Owning
+nothing is the exact precondition for the delete-a-live-module failure, so the case sits
+directly on it. Measured exposure today: none — and reported the way that lane reported
+theirs, **in the bucket where it would be dangerous** rather than over the population: of the
+operation-bearing rows, none sits in STILL-UNCONSUMED.
+
+**The two lanes' (c) fixes are not equivalent, and reconciling them would be wrong.**
+`silent-deer-368` subtracts declaration-keyword names from the *consuming* file's reference
+set; this lane adds them to the *declaring* module's owned set, which makes the symbol
+non-uniquely-owned and parks the row in AMBIGUOUS instead of removing the reference.
+Subtraction is more precise; addition is more conservative. Their rule, recorded verbatim
+because it settles what looked like a discrepancy:
+
+> **A residue COUNT should come from the precise implementation, a deletion SET from the
+> conservative one. Our numbers disagreeing in a known direction is a property to state, not
+> a discrepancy to reconcile.**
+
+**Two independent populations, same skew, and it is the finding rather than the bookkeeping.**
+13 of this lane's 69 left the residue on re-derivation and 12 of 14 left theirs — in both
+cases **almost entirely to AMBIGUOUS and near-zero to CONSUMED**. The residue list shrank far
+more than the consumption claim grew. That gap is the entire reason the ambiguous bucket
+exists, and the natural one-line summary — *"the residue shrank, so more modules are live"* —
+is precisely the reading that collapses it into unevidenced deletions.
+
 ## 4g. Eligibility is a fixed point over the set, not a property of a module
 
 31 residue rows are named bare only from *inside* the population. A per-module verdict over a
