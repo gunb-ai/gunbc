@@ -2017,11 +2017,23 @@ fn type_name_transparently_aliases_to(
 // the confusion instead of inferring it from an absence, so a refusal here always names a
 // spelling the author can point at: the wrapping arm is in the same declaration.
 //
+// NAME IDENTITY IS BORROWED, NOT REBUILT. A first measured version of this wall refused the direct
+// shape (`CppHolder { subject: cpp_inner() }`) and stayed SILENT on the production specimen this
+// lane was given as its acceptance target -- `v2.std.materialize` storing `content_hash(n)` into a
+// field declared `ContentHash` -- and the isolating pair says why: an otherwise identical fixture
+// whose producer returns a TRANSPARENT ALIAS of the payload type was not refused, while the same
+// fixture returning the payload type outright was. `content_hash` returns `v2.std.node` `Hash`,
+// which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
+// aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
+// recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
+// census construction. This wall therefore consumes `transparent_alias_identity_agrees` over the
+// `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
+// the coordination ruling recorded on that lane.
+//
 // COST. Every guard ahead of the declaration walk is a string compare or a cardinality read, and
 // the walk itself is bounded by the formal declaration's own variant/field count -- never by the
 // corpus. Nothing is re-derived from normalized structure: the judgment reads the same resolved
-// formal node the seam already holds, and defers name identity to application_type_names_compatible,
-// the one relation the neighbouring lanes maintain.
+// formal node the seam already holds, and the alias relation is a map lookup on a census built once.
 fn coproduct_variant_payload_admits_type_name(
   decl: Node,
   actual_name: String,
@@ -2036,12 +2048,14 @@ fn coproduct_variant_payload_admits_type_name(
         _ => field_node_type_expr(n: payload)
       }
       let payload_name = authored_name_at(source_indices: source_indices, node: payload_type)
-      payload_name != "" && application_type_names_compatible(
+      let names_agree = application_type_names_compatible(
         formal_name: payload_name,
         lit_name: actual_name,
         type_env: type_env,
         module_name: module_name,
-        source_indices: source_indices)
+        source_indices: source_indices) || transparent_alias_identity_agrees(
+          index: type_env.symbol_index, left: payload_name, right: actual_name)
+      payload_name != "" && names_agree
     )
   )
 }
@@ -2079,16 +2093,19 @@ fn coproduct_payload_where_parent_required(
         module_name: scope.module_name,
         source_indices: source_indices) {
       false
+    } else if transparent_alias_identity_agrees(
+        index: scope.type_env.symbol_index, left: formal_name, right: actual_name) {
+      false
     } else {
+      let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
       match lookup_type_by_name(env: scope.type_env, name: formal_name) {
         Present { value: decl } =>
           let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
+          let names_a_variant = has_child_named(n: decl, name: qualified_last_segment(name: actual_name), source_indices: source_indices) ||
+            has_child_named(n: decl, name: qualified_last_segment(name: actual_rep), source_indices: source_indices)
           if decl_is_concrete_coproduct == false {
             false
-          } else if has_child_named(
-              n: decl,
-              name: qualified_last_segment(name: actual_name),
-              source_indices: source_indices) {
+          } else if names_a_variant {
             false
           } else {
             coproduct_variant_payload_admits_type_name(
