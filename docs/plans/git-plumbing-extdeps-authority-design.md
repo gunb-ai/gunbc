@@ -1,7 +1,9 @@
 # Git plumbing as an extdeps authority
 
-DRAFT, design-note-first. No code lands from this note yet. It scopes one PR (`GIT-PLUMBING-0`) —
-the dissolution of a split Git authority — and states what it deliberately does not decide.
+LANDED, in part, by `GIT-PLUMBING-0`. This note scoped the dissolution of a split Git authority;
+the operation family and the whole devboot migration are now in tree, and §7 below records exactly
+which acceptance rows landed and which did not, so the note is neither read as a plan for work
+already done nor as a receipt for work that is not.
 
 ## 1. The finding
 
@@ -183,3 +185,51 @@ realization is Git. Either way its uniformity work is exactly §5's cut and noth
 This note dissolves into the carriers it names when the family lands: the model and operations in
 `extdeps.git`, and the deleted rows in `gunbc.devboot.transport`. The §6 materialization finding
 does not dissolve with it; it is owed a lane of its own.
+
+## 7. What landed, and what did not (added when `GIT-PLUMBING-0` merged)
+
+Landed:
+
+- `extdeps.git.plumbing` — `service git.Plumbing`, seventeen operations covering the object
+  database, index and tree, commit, repository init and the ref store. Repository addressing is one
+  parameter (`GitRepositoryAddress`, worktree `-C` versus store `--git-dir=`) rather than two
+  operation families; `GIT_INDEX_FILE` is an operation-owned transport prefix rather than an `env`
+  spelled at a call site. Every operation reports `exit_code` and `stderr`, never a `success` Bool,
+  and none declares an `exit` block — both per the notes in `extdeps.git` that already ruled it.
+- `extdeps.git` gains `FetchForcedRefInRepo` and `PushForcedRefInRepo`. These are not plumbing and
+  are not publication; they are the repository-addressed forced-refspec exchange devboot's git-only
+  channel runs on, which no operation in the corpus could express.
+- `GitExactRefMutation` — the three arms, with `expected_old` refused as an `Optional` exactly as
+  §3 argued. Git's empty-string old value now appears once, inside `CreateRefIfAbsent`'s transport
+  row.
+- The outcome table of §3, as `git_ref_mutation_outcome`, decided from an independent read-back
+  rather than from the exit code. `Applied` is unreachable without the read-back.
+- All thirty-seven git argv sites in `gunbc.devboot` are gone; the seventeen `RetainedWitnessRun`
+  rows are deleted rather than repointed. The thirteen host-effect rows remain, still pointing at
+  `host_effect_apply`.
+- §4's discriminator: `publish_produced_tree` wrote the per-token answer ref unconditionally and now
+  creates it, so a re-serve of one token refuses loudly instead of silently replacing an answer a
+  client may already have read. It returns a typed `ProducedPublication` rather than a Bool, because
+  the Bool could not carry which of the five outcomes occurred. The lease take and the three
+  artifact bindings are creates for the same reason; the stranded-lease break is an exact delete.
+
+Did NOT land, and is not a stall: **acceptance row 1** — generalizing the *pure R0 model*
+`git_model_update_ref_exact` in `extdeps.git.object_store` to the three-arm family. It is left
+undone deliberately rather than forgotten. That model simulates a repository state; nothing in this
+cut consumes it, and devboot decides from an executing observation instead, so generalizing it here
+would have added authority with no consumer — the §6 tell this repository treats as a finding.
+NEXT TRIGGER: the first consumer that simulates a ref transition rather than performing one, which
+is the P3 boundary `git_modeled_ref_transition_boundary_note` already names. Until then the R0 model
+answers exactly the question it has always answered, and the execution-side family answers the other
+one.
+
+**Acceptance row 3 (execution against real repositories with independent read-back on every
+success) is likewise NOT claimed by this PR, and that bound is stated rather than left to be
+inferred from a green witness suite.** What executes is the DECISION: `git_ref_mutation_outcome`
+takes the three values a caller holds after an attempt, so all five arms — including the pair that
+share exit 128 — are reachable hermetically and are claimed in
+`test.claim.git_plumbing_ref_mutation_witness_test`. What does not execute is any
+`git.Plumbing` operation, so a change that broke a transport argv while leaving the decision intact
+would keep those witnesses green. The residue is the transport spellings; the wet receipt that would
+close it is the same shape as
+`test.manual.git_upstream_model_execution`'s and belongs with a live devboot run.
