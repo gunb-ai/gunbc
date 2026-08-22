@@ -26828,44 +26828,52 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         }
                                         None => Rc::new(vec![]),
                                     };
-                                    let phantom_strs =
+                                    let phantom_decl =
                                         match crate::v1_compiler_infer_env::lookup_type_by_name(
                                             scope.type_env.clone(),
                                             ctor_name.clone(),
                                         ) {
-                                            Some(struct_decl) => {
-                                                let is_struct = (struct_decl.connective.clone()
-                                                    == Connective::Conj);
-                                                let pnames = Rc::new({
-                                                    let mut __result = Vec::new();
-                                                    for p in
-                                                        struct_decl.params.clone().iter().cloned()
-                                                    {
-                                                        __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), si.clone()));
-                                                    }
-                                                    __result
-                                                });
-                                                let unused = struct_unused_param_names(
-                                                    pnames.clone(),
-                                                    struct_decl.children.clone(),
-                                                    si.clone(),
-                                                );
-                                                let has_unused =
-                                                    ((unused.clone().len() as i64) > 0);
-                                                if (is_struct.clone() && has_unused.clone()) {
-                                                    Rc::new(vec![v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "    ".to_string(),
-                                                            rust_phantom_field_name(),
-                                                        ),
-                                                        ": std::marker::PhantomData,".to_string(),
-                                                    )])
-                                                } else {
-                                                    Rc::new(vec![])
-                                                }
-                                            }
-                                            None => Rc::new(vec![]),
+                                            Some(struct_decl) => struct_decl.clone(),
+                                            None => crate::v1_compiler_infer_resolve::resolve_node(
+                                                resolved_type.clone(),
+                                                scope.type_env.clone(),
+                                                scope.module_name.clone(),
+                                            )
+                                            .resolved
+                                            .clone(),
                                         };
+                                    let phantom_is_struct =
+                                        (phantom_decl.connective.clone() == Connective::Conj);
+                                    let phantom_pnames = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in phantom_decl.params.clone().iter().cloned() {
+                                            __result.push(
+                                                crate::v1_std_core::generic_param_name_at(
+                                                    p.clone(),
+                                                    si.clone(),
+                                                ),
+                                            );
+                                        }
+                                        __result
+                                    });
+                                    let phantom_unused = struct_unused_param_names(
+                                        phantom_pnames.clone(),
+                                        phantom_decl.children.clone(),
+                                        si.clone(),
+                                    );
+                                    let phantom_strs = if (phantom_is_struct.clone()
+                                        && ((phantom_unused.clone().len() as i64) > 0))
+                                    {
+                                        Rc::new(vec![v1_rt::concat(
+                                            v1_rt::concat(
+                                                "    ".to_string(),
+                                                rust_phantom_field_name(),
+                                            ),
+                                            ": std::marker::PhantomData,".to_string(),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![])
+                                    };
                                     let all_field_strs = v1_rt::concat(
                                         v1_rt::concat(field_strs.clone(), default_strs.clone()),
                                         phantom_strs.clone(),
