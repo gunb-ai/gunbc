@@ -27,6 +27,7 @@ import gunbc.fleet_desired_admission {
   fleet_desired_action_from_decision,
   fleet_desired_authorized_action_script,
   fleet_desired_admission_authorized_action_path,
+  fleet_desired_unobservable_judge_source_refusal_reason,
 }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 
@@ -599,4 +600,33 @@ test fn both_no_op_receipts_also_name_the_observed_judge_source() -> Bool {
   ) as String
   string_contains(s: converged, pattern: concat(" judge-source-observed ", fixture_judge_hex))
     && string_contains(s: superseded, pattern: concat(" judge-source-observed ", fixture_judge_hex))
+}
+
+// THE REFUSAL NAMES THE FIELD IT COULD NOT FILL. An operator reading this line at 3am needs to
+// know WHICH receipt field is missing, not merely that something was unobservable -- the string is
+// the only artifact they get, because the process exits here. Naming `judge-source-observed`
+// joins the failure to the receipt grammar the successful arms emit.
+test fn the_unobservable_judge_source_refusal_names_the_field_it_could_not_record() -> Bool {
+  let reason = fleet_desired_unobservable_judge_source_refusal_reason()
+  string_contains(s: reason, pattern: "judge-source-observed")
+    && string_contains(s: reason, pattern: "could not be observed")
+}
+
+// AND IT CLAIMS NOTHING ABOUT THE BINARY. This row exists because the sentence outran the
+// mechanism TWICE and execution caught neither time. It first said the run could not record
+// "which code adjudicated" the advance; narrowed, it said "which source this run was running
+// from". Both invite the reader to infer the provenance of the EXECUTING BINARY, which nothing
+// here establishes -- the mechanism reads the admission checkout's HEAD after the action is
+// derived and before it is materialized, and no binary embeds its own source revision.
+//
+// PRESENCE BEFORE ABSENCE, for the same reason the distinctness row upstream carries it: three
+// bare negations are satisfied by a reason string that is empty, or that was deleted outright.
+// The positive conjunct pins the subject so the negations have something to be true OF.
+// Discriminating control: restore either older phrasing and this row goes red.
+test fn the_unobservable_judge_source_refusal_claims_no_binary_provenance() -> Bool {
+  let reason = fleet_desired_unobservable_judge_source_refusal_reason()
+  string_contains(s: reason, pattern: "after adjudication")
+    && !string_contains(s: reason, pattern: "adjudicated from")
+    && !string_contains(s: reason, pattern: "was running from")
+    && !string_contains(s: reason, pattern: "which code")
 }
