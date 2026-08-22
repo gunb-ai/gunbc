@@ -347,6 +347,15 @@ data systemctl_program: NonEmptyStr = "systemctl"
 // refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
 // activation path later wants the two facts apart, that is its own change with its own witness.
 //
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
 // ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
 // system manager, so an unelevated invocation is not a weaker version of this request, it is a
 // different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
