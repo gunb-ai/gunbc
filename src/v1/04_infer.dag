@@ -10258,14 +10258,16 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
-    fn_decl_items: empty_map()
+    fn_decl_items: empty_map(),
+    structural_alias_fn_surface_names: empty_map(),
+    structural_alias_direct_fn_names: empty_set()
   }
   let built_raw = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
