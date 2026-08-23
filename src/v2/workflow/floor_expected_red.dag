@@ -486,39 +486,15 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // is the whole point of authoring them as reds instead of as assertions of today's behaviour, which
 // would have been a change detector pointing the wrong way.
 //
-// THE THREE ROWS ARE GONE FROM THIS CHUNK AND THE REASON INVERTS THE SENTENCE THAT STOOD HERE.
-// It read: the file declares ReadsLiveTree and is therefore DeclinedLiveTree today, so these three
-// are enrolled and not yet planned, and "until it lands they are held here so that admission does
-// not red main." Enrolment is what RED MAIN. run_required_floor refuses with
-// cause=ExpectedRedIdentityDidNotExecute on any enrolled identity absent from the executed claims,
-// so a row whose home declines execution cannot satisfy its own enrolment -- the roster requires
-// observation, and a declined identity is never observed. Measured, not argued: gunbc#9022's own
-// witnesses check reported this exact refusal, count=3, naming these three, before it merged.
-//
-// This is the authority-substitution shape DESIGN names -- I registered it in A, so B now does X --
-// with A the expected-red roster, B the floor's admission, and no relation between them that points
-// the way the sentence assumed. The relation that does exist points the other way.
-//
-// WHAT AN ENROLMENT ASSERTS is that this identity RAN and FAILED as predicted. For an identity that
-// cannot run, that assertion has no truth value to hold: it is not a red being tracked, it is a
-// claim about an observation nobody can make. So the enrolment follows execution rather than
-// preceding it, and the rows come out until the identities can be observed.
-//
-// NOTHING IS HIDDEN BY THIS. The three do not execute either way, so removing them conceals no
-// failing assertion and deletes no evidence -- the probes, their two positive controls and the
-// module's own reasoning all stay exactly where they are, in
-// dag/test/claim/compile_accepted_unevaluable_program_control_test.dag.
-//
-// DECLARED RESTORATION TRIGGER (DESIGN 4b(3)): re-enrol all three in this chunk in the same change
-// that admits the file to execution -- the DeclinedLiveTree arm's deletion, gunbc#8977 or
-// gunbc#8982, both OPEN at the time of writing. On that change they become planned, they return
-// false, and the roster holds them as the reds they were authored to be; if instead they PASS, the
-// stale-quarantine arm reds the build naming them, which is the outcome the family wants.
+// THE THREE ROWS STAY ENROLLED HERE AS THE AUTHORED REDS THEY ARE. Their home currently declares
+// ReadsLiveTree and is declined before execution, so floor_expected_red_is_live excludes them from
+// the live roster until that decline is removed. Keeping identity and temporary liveness separate
+// preserves the enrolment and gives the coupling below one mechanism rather than two accounts.
 //
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
@@ -530,19 +506,11 @@ fn floor_expected_red_chunks() -> List<List<String>> {
 // but exclude the now-green family from the live expected-red roster.
 //
 // THE THREE compile_accepted_unevaluable_program_control ROWS ARE EXCLUDED FOR THE OPPOSITE
-// REASON, AND CHUNK 21 SAYS SO IN A SENTENCE EXECUTION REFUTES. That chunk's annotation reads
-// "until it lands they are held here so that admission does not red main". Held-in-the-roster is
-// exactly what reds main: the floor requires every ENROLLED identity to be observed among the
-// EXECUTED claims, so an identity that is enrolled and never planned refuses the whole run with
-// cause=ExpectedRedIdentityDidNotExecute. It is not a quiet parking spot. Measured twice, on the
-// authoring PR's own run (32644795043, which was merged red) and again on gunbc#9031
-// (32649496046), where it was the sole floor refusal once the ArgvCommand seal that had been
-// masking it was repaired.
-//
-// The rows are correct and stay in chunk 21. What is wrong is only their LIVENESS: the file
+// REASON. They remain the authored-red identities in chunk 21; only their LIVENESS is false. The file
 // declares ReadsLiveTree, the DeclinedLiveTree arm declines it (declined_live=899 on that run),
 // and the arm's deletion is still unmerged (gunbc#8977, gunbc#8982 both OPEN at the time of
-// writing) -- so the enrolment was authored against a precondition that had not landed.
+// writing). A declined identity is never executed, while live expected-red enrolment requires an
+// observed failure, so the filter keeps the identity and temporary execution standing distinct.
 //
 // RESTORATION TRIGGER, and it is a COUPLING someone must honour rather than a note: when either
 // #8977 or #8982 lands and these identities become executable, DELETE these three exclusions in
