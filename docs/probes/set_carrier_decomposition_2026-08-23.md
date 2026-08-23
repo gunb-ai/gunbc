@@ -82,3 +82,38 @@ does not yet make the Set side's invalid state unwritable.
   src/v2/compiler/03_ingest.dag`) rather than against a re-run of `curated_cargo_probe_one.sh`. The
   claim "18 of 27 close" is derived from the site-to-literal correspondence above, and is a
   prediction about the next board, not a measurement of one.
+
+## Addendum — the Map lane is not the shape the scoping doc predicted (full read, 2026-08-23)
+
+`decomposition_scope.md` classified the 97 `lookup: <named fn>` delegates from a **sample** and
+flagged that row as "the one number here that a full read could move." It moves. Read
+mechanically over every delegate body in `src/v2` + `dag`:
+
+| classification | count | test |
+|---|---:|---|
+| finite — branches on the key | **6** | the delegate body contains `<key> ==` or `match <key>` |
+| finite one level down | **3** | a callee receiving the key does | 
+| **open — no key comparison anywhere in two levels** | **78** | computes a fact from the key unconditionally |
+
+92 delegate names, 87 bodies resolved. The sample that produced the "if-chain over a fixed key list"
+reading landed on `v2.program` `program_facts_lookup`, which is one of the 6.
+
+The overwhelming majority are shaped like
+
+```
+fn bind_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(resolved: key, ..))
+}
+```
+
+— a **total function of the key**, not a table. So most of the Map population is a genuine partial
+function that should name `PartialFunction` under its own authority, exactly the move this change
+made on the Set side, rather than 145 re-authorings into finite maps. That makes the Map lane far
+cheaper than scoped and brings the joint alias retarget closer.
+
+**What this does and does not establish.** The classifier is a text predicate over the body and one
+level of callees, so it is a *lower bound on openness*: a delegate could still be finite through a
+deeper helper. The 9 finite ones are confirmed by reading them; the 78 are "no key comparison found
+within two levels", and the classification converged rather than drifted (going from one level to
+two moved 3 of 81), which is evidence it is near-stable but not a proof. The remaining 5 unresolved
+names are declared here rather than absorbed into either column.
