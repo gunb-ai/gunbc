@@ -662,7 +662,7 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
         ))
     } else {
         if (name.clone() == "string_head".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
         } else {
             if (name.clone() == "string_tail".to_string()) {
                 Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Rc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
