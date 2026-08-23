@@ -1,6 +1,6 @@
 module v2.workflow.floor_expected_red
 
-import v2.std.algebra { Cons, Empty, list_flat_map }
+import v2.std.algebra { Cons, Empty, filter, list_flat_map }
 import v2.std.collection { List }
 import v2.std.text { String }
 
@@ -451,6 +451,36 @@ fn floor_expected_red_chunks() -> List<List<String>> {
   Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}
 }
 
+// Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
+// closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
+// but exclude the now-green family from the live expected-red roster.
+fn floor_expected_red_is_live(name: String) -> Bool {
+  !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds"
+    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds")
+}
+
 fn floor_expected_red_roster() -> List<String> {
-  list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk })
+  filter(
+    xs: list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk }),
+    predicate: floor_expected_red_is_live
+  )
 }
