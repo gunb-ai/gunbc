@@ -1,0 +1,204 @@
+module gunbc.runner_disk_reclaim
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { Second, second }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv4 }
+import gunbc.ownership { Ownership, Owned }
+import v2.std.algebra { any }
+
+// GROUND TRUTH FIRST, MODEL SECOND. gunbc.runner_lifecycle's ADD path states the rule this module
+// follows: read the deployed artifact as ground truth for what it does, then subsume it through
+// typed arms -- never fork it, never invoke it. So the first thing here is a faithful record of the
+// script that is running on the fleet right now, pinned by content digest, and the decomposition
+// below is derived from reading it rather than from what a unit Description says it does.
+//
+// THIS IS NOT AN extdeps CITATION AND MUST NOT BECOME ONE. ctrl is void as a live upstream by
+// operator ruling 2026-08-06 -- gunbc may not cite it as a repository. What is cited here is a HOST
+// OBSERVATION: a file that exists on machines this repository operates, read over SSH. DESIGN's
+// external-upstream rule puts observations produced by this repository in the observing layer as
+// receipts, never as facts owned by an upstream module, and that is exactly what this is.
+
+type ReclaimSourceObservation {
+  path: NonEmptyStr
+  sha256: NonEmptyStr
+  line_count: Int
+  observed_on: HostIdentity
+  observed_at: NonEmptyStr
+}
+
+// THE OPERATIONS, DECOMPOSED BY WHAT THEY OWN RATHER THAN BY WHAT THEY DELETE. The deployed script
+// is one procedure; the reclaim it performs is five operations with different owners, different
+// lifetimes and different safety arguments, and collapsing them into "reclaim disk" is what made
+// the disk axis unmodellable in the first place. A per-slot workspace repack and a host-wide
+// container-cache prune are not the same resource, are not reclaimable under the same conditions,
+// and do not answer to the same admission rule.
+type ReclaimOperation
+  = DiagLogRotation { max_age: Second }
+  | StaleTempPackSweep { min_age: Second }
+  | WedgedReviewStoreHeal
+  | IdleSlotGitRepack { min_packs: Int, timeout: Second }
+  | ContainerCachePrune { daemon: ContainerDaemon }
+
+type ContainerDaemon
+  = HostDaemon
+  | RootlessJobUserDaemon { job_user: NonEmptyStr }
+
+// WHICH OPERATIONS MAY TOUCH A SLOT RUNNING A JOB, AND THE ANSWER IS NOT UNIFORM. The deployed
+// script draws this line by hand and draws it correctly: git work is skipped entirely for a slot
+// with a live Runner.Worker, while diagnostic rotation and container prune run regardless because
+// they touch nothing a job depends on. Modeling that as one flag over "the reclaimer" would lose
+// the distinction and either over-restrict (no reclaim while any job runs, on a fleet that is
+// almost never idle) or under-restrict (repacking a checkout under a running build).
+fn operation_requires_idle_slot(op: ReclaimOperation) -> Bool {
+  match op {
+    DiagLogRotation { max_age: _ } => false
+    StaleTempPackSweep { min_age: _ } => false
+    WedgedReviewStoreHeal => true
+    IdleSlotGitRepack { min_packs: _, timeout: _ } => true
+    ContainerCachePrune { daemon: _ } => false
+  }
+}
+
+// BUSY IS DETECTED BY CGROUP MEMBERSHIP, NOT BY DIRECTORY MTIME OR A LOCK FILE, and the distinction
+// is the whole safety argument. Every Runner.Worker process lives in its slot's
+// actions-runner@<slot>.service cgroup, so the question "is this slot running a job" has a
+// structural answer the kernel already holds. An mtime heuristic would be a guess whose error rate
+// is unmeasurable, which DESIGN rules out in a closed system where the richer source exists.
+type SlotActivityObservation
+  = SlotHasLiveWorker
+  | SlotIdle
+  | SlotActivityUnobserved { cause: NonEmptyStr }
+
+type ReclaimAdmission
+  = ReclaimAdmitted { operation: ReclaimOperation }
+  | ReclaimRefusedSlotBusy { operation: ReclaimOperation }
+  | ReclaimRefusedActivityUnknown { operation: ReclaimOperation, cause: NonEmptyStr }
+
+// THE UNOBSERVED ARM REFUSES RATHER THAN ASSUMING EITHER ANSWER, and it is a separate arm from
+// busy on purpose. "This slot is running a job" and "I could not tell whether this slot is running
+// a job" have the same immediate action and different owners: the first is the mechanism working,
+// the second is a producer that failed and needs fixing. Collapsing them zeroes the second's
+// frequency by construction, so the producer defect never ranks -- the absorbing-fallback shape
+// DESIGN 5 names, arrived at from the cautious direction rather than the permissive one.
+fn admit_reclaim_operation(op: ReclaimOperation, activity: SlotActivityObservation) -> ReclaimAdmission {
+  if !operation_requires_idle_slot(op: op) {
+    ReclaimAdmitted { operation: op }
+  } else {
+    match activity {
+      SlotIdle => ReclaimAdmitted { operation: op }
+      SlotHasLiveWorker => ReclaimRefusedSlotBusy { operation: op }
+      SlotActivityUnobserved { cause: c } => ReclaimRefusedActivityUnknown { operation: op, cause: c }
+    }
+  }
+}
+
+fn reclaim_admission_proceeds(a: ReclaimAdmission) -> Bool {
+  match a {
+    ReclaimAdmitted { operation: _ } => true
+    ReclaimRefusedSlotBusy { operation: _ } => false
+    ReclaimRefusedActivityUnknown { operation: _, cause: _ } => false
+  }
+}
+
+// THE HEAL IS NOT DISK RECLAIM AND IS THE MOST LOAD-BEARING THING THE SCRIPT DOES. A review killed
+// mid-run leaks a review/pr-<N>-<sha> ref; if its target object later goes missing the ref becomes
+// a bad object, git gc dies on it, and the failure writes a gc.log that DISABLES ALL FUTURE AUTO-GC
+// on that store -- wedging every subsequent review on that runner until a human intervenes. The
+// repair drops only refs that fail to resolve, so a concurrent reviewer's live ref is never
+// touched, and removes the poisoning gc.log.
+//
+// IT IS MODELED AS ITS OWN OPERATION BECAUSE DELETING THE RECLAIMER WOULD SILENTLY TAKE IT. Read as
+// "the disk cleanup timer", the whole unit looks discretionary; read at operation grain, one of its
+// five arms is an availability repair for the review fleet and has nothing to do with disk.
+type ReviewRefDisposition
+  = ReviewRefResolves
+  | ReviewRefBadObject
+
+fn review_ref_should_be_dropped(d: ReviewRefDisposition) -> Bool {
+  match d {
+    ReviewRefResolves => false
+    ReviewRefBadObject => true
+  }
+}
+
+// THE FRAGMENTATION GATE IS AN ADMISSION, NOT AN OPTIMIZATION. Repacking an already-packed store
+// costs real I/O on a host serving CI and reclaims nothing, so a repo at or below the pack floor is
+// refused rather than run and discarded.
+fn repack_admits_pack_count(observed_packs: Int, min_packs: Int) -> Bool {
+  observed_packs > min_packs
+}
+
+data reclaim_diag_max_age: Second = second(259200)
+
+data reclaim_stale_temp_pack_min_age: Second = second(86400)
+
+data reclaim_repack_min_packs: Int = 8
+
+data reclaim_repack_timeout: Second = second(1800)
+
+data reclaim_job_user: NonEmptyStr = "ghrunner"
+
+data reclaim_operations: List<ReclaimOperation> = [
+  DiagLogRotation { max_age: reclaim_diag_max_age },
+  StaleTempPackSweep { min_age: reclaim_stale_temp_pack_min_age },
+  WedgedReviewStoreHeal,
+  IdleSlotGitRepack { min_packs: reclaim_repack_min_packs, timeout: reclaim_repack_timeout },
+  ContainerCachePrune { daemon: HostDaemon },
+  ContainerCachePrune { daemon: RootlessJobUserDaemon { job_user: reclaim_job_user } },
+]
+
+data reclaim_source_observed_on_srv4: ReclaimSourceObservation = ReclaimSourceObservation {
+  path: "/usr/local/bin/reclaim-runner-disk.sh",
+  sha256: "e5055a9e92730b7b7955a82acd1a54dcaa2699ff5365a15b009294877037cb97",
+  line_count: 191,
+  observed_on: operator_host_srv4,
+  observed_at: "2026-08-23, read over SSH from the session terminal",
+}
+
+// THE MEMBER. gunbc.host_axis_caps owns CapMember and gunbc.fleet_converge_plan reconciles it; this
+// follows that shape exactly rather than inventing a second one -- the member type belongs to the
+// module that knows what the artifact IS, and the convergence plan knows how to reconcile members
+// in general. Identity is the unit path, so a content drift is MemberChanged and never
+// Remove-then-Add: the reclaimer must not be torn down and recreated to change its schedule, which
+// on a timer means a window with no reclaim at all.
+type ReclaimMemberAt = NonEmptyStr
+
+type ReclaimMember {
+  unit_path: NonEmptyStr
+  content: String
+}
+
+fn reclaim_member_key(m: ReclaimMember) -> NonEmptyStr {
+  m.unit_path
+}
+
+fn reclaim_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn reclaim_member_value_eq(a: ReclaimMember, b: ReclaimMember) -> Bool {
+  a.content == b.content
+}
+
+// OWNERSHIP IS DERIVED FROM THE PATH, NEVER STORED, mirroring host_axis_caps: a file at a managed
+// path is ours, anything else is a foreign occupant the reconcile must refuse rather than delete.
+// Storing ownership on the member would let an observation claim to own a path it does not.
+fn reclaim_managed_unit_paths() -> List<NonEmptyStr> {
+  [
+    "/etc/systemd/system/gunbc-runner-reclaim.service",
+    "/etc/systemd/system/gunbc-runner-reclaim.timer",
+  ]
+}
+
+fn reclaim_path_is_managed(p: NonEmptyStr) -> Bool {
+  any(reclaim_managed_unit_paths(), q => q as String == p as String)
+}
+
+fn reclaim_member_ownership(m: ReclaimMember) -> Ownership? {
+  if reclaim_path_is_managed(p: m.unit_path) {
+    Present { value: Owned }
+  } else {
+    none
+  }
+}

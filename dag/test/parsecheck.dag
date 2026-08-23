@@ -1,0 +1,56 @@
+module test.parsecheck
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.runner_disk_reclaim {
+  admit_reclaim_operation, reclaim_admission_proceeds, reclaim_operations,
+  operation_requires_idle_slot, repack_admits_pack_count, review_ref_should_be_dropped,
+  SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved,
+  DiagLogRotation, IdleSlotGitRepack, WedgedReviewStoreHeal,
+  ReviewRefResolves, ReviewRefBadObject,
+  reclaim_diag_max_age, reclaim_repack_min_packs, reclaim_repack_timeout,
+  reclaim_source_observed_on_srv4,
+  ReclaimMember, reclaim_member_value_eq, reclaim_path_is_managed,
+}
+
+// Git work refuses on a busy slot and proceeds on an idle one, while diagnostic rotation proceeds
+// regardless -- the asymmetry IS the safety argument, so both directions are asserted. An
+// unobserved slot refuses rather than assuming either answer. The pack gate is exercised at its
+// boundary (46 admits, 8 does not, against a floor of 8). A managed path is owned and a foreign
+// occupant is not, so the reconcile refuses instead of deleting somebody else's unit. And differing
+// content at one path is a CHANGE to one member rather than two members, which is what keeps a
+// schedule edit from becoming a teardown-and-recreate with no reclaim in between.
+fn parsecheck_holds() -> Bool {
+  let gc = IdleSlotGitRepack { min_packs: reclaim_repack_min_packs, timeout: reclaim_repack_timeout }
+  let rotate = DiagLogRotation { max_age: reclaim_diag_max_age }
+  !reclaim_admission_proceeds(a: admit_reclaim_operation(op: gc, activity: SlotHasLiveWorker))
+    && reclaim_admission_proceeds(a: admit_reclaim_operation(op: gc, activity: SlotIdle))
+    && reclaim_admission_proceeds(a: admit_reclaim_operation(op: rotate, activity: SlotHasLiveWorker))
+    && !reclaim_admission_proceeds(
+         a: admit_reclaim_operation(op: gc, activity: SlotActivityUnobserved { cause: "no cgroup read" })
+       )
+    && operation_requires_idle_slot(op: WedgedReviewStoreHeal)
+    && repack_admits_pack_count(observed_packs: 46, min_packs: 8)
+    && !repack_admits_pack_count(observed_packs: 8, min_packs: 8)
+    && review_ref_should_be_dropped(d: ReviewRefBadObject)
+    && !review_ref_should_be_dropped(d: ReviewRefResolves)
+    && reclaim_operations.length() == 6
+    && reclaim_source_observed_on_srv4.line_count == 191
+    && reclaim_path_is_managed(p: "/etc/systemd/system/gunbc-runner-reclaim.timer")
+    && !reclaim_path_is_managed(p: "/etc/systemd/system/ctrl-runner-reclaim.timer")
+    && !reclaim_member_value_eq(
+         a: ReclaimMember { unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer", content: "a" },
+         b: ReclaimMember { unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer", content: "b" },
+       )
+}
+
+// THE ENTRY RETURNS ProcessExit SO THE EXIT CODE IS THE VERDICT. A Bool-returning entry makes the
+// host refuse to map a verdict to an exit status, and the refusal message is identical whether the
+// function returned true or false -- so a reader who loses that one line to output truncation
+// cannot tell a pass from a failure, and the safe-looking assumption is the wrong one.
+fn parsecheck_main() -> ProcessExit {
+  if parsecheck_holds() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "parsecheck_holds returned false")
+  }
+}
