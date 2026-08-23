@@ -80,12 +80,22 @@ type SupplyLane {
 
 // Rounding UP a partial quantum, exactly as suppliers bill. A lane with quantum 0 is
 // continuous and is billed what it used -- the modeled advantage of owned capacity.
-fn quantum_billed_slots(used_slots: Nat, quantum_slots: Nat) -> Nat {
-  if quantum_slots == 0 {
-    used_slots
-  } else {
-    ((used_slots + (quantum_slots - 1)) / quantum_slots) * quantum_slots
-  }
+// THE QUANTUM ROUNDS A JOB'S DURATION, NEVER A SLOT'S CONCURRENCY.
+// This distinction is the whole reason the function exists and an earlier revision got it
+// backwards: it passed the number of jobs running in a slot as the used_slots argument, so
+// a 60-slot quantum billed two concurrent jobs as sixty rather than billing each of the two
+// for sixty. Same arithmetic, wrong subject -- concurrency and duration are different
+// magnitudes and only one of them is what a supplier's minimum increment applies to. The
+// error survived typechecking because both are Nat, and execution is what caught it.
+//
+// ONE SLOT IS ONE JOB'S RUNTIME IN THIS MODEL, stated here as an assumption rather than
+// left implicit. Every job occupies exactly one slot, so each placed job bills whichever is
+// larger, its one slot or the supplier's whole minimum increment. Jobs of differing
+// duration are NOT modeled and cannot be until arrivals carry a duration alongside a count;
+// that is the next extension, and until it lands a quantum finer than one slot is
+// indistinguishable from continuous billing here.
+fn billed_slots_per_job(quantum_slots: Nat) -> Nat {
+  nat_max(a: quantum_slots, b: 1)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -107,7 +117,7 @@ type PlacementAccum {
 
 fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
   let taken = nat_min(a: acc.remaining, b: lane.capacity)
-  let billed = quantum_billed_slots(used_slots: taken, quantum_slots: lane.billing_quantum_slots)
+  let billed = taken * billed_slots_per_job(quantum_slots: lane.billing_quantum_slots)
   PlacementAccum {
     remaining: acc.remaining - taken,
     variable_micros: acc.variable_micros + (billed * lane.variable_micros_per_slot),
@@ -194,8 +204,13 @@ fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slo
   run_step(acc: acc, placed: place_slot(lanes: lanes, concurrent: concurrent), concurrent: concurrent)
 }
 
+// nat_max keeps the empty-run case from needing a branch in two places below. On the grid,
+// slots == 0 yields the single index 0, whose slot the fold places zero work into anyway.
+// On the occupancy quotient, a zero denominator needs no branch either: no committed
+// capacity and no slots both force committed_slot_jobs to zero, so the quotient is zero
+// either way and nat_max only keeps the division total.
 fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> SimulationResult {
-  let grid = nat_range_inclusive(lo: 0, hi: if slots == 0 { 0 } else { slots - 1 })
+  let grid = nat_range_inclusive(lo: 0, hi: nat_max(a: slots, b: 1) - 1)
   let seeded = RunAccum {
     variable_micros: 0,
     committed_slot_jobs: 0,
@@ -218,11 +233,7 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
     unplaced_slot_jobs: run.unplaced_slot_jobs,
     peak_concurrency: run.peak_concurrency,
     total_concurrency: run.total_concurrency,
-    committed_occupancy_permille: if committed_capacity == 0 || slots == 0 {
-        0
-      } else {
-        (run.committed_slot_jobs * 1000) / (committed_capacity * slots)
-      },
+    committed_occupancy_permille: (run.committed_slot_jobs * 1000) / nat_max(a: committed_capacity * slots, b: 1),
   }
 }
 
