@@ -1,21 +1,19 @@
-//! THROWAWAY MEASUREMENT — not for merge.
+//! THROWAWAY MEASUREMENT — not for merge. Two questions, one whole-corpus prepare.
 //!
-//! WHAT DECIDES THE OWNER. For an enrolled expected-red identity that RUNTIME-ERRORS with
-//! `no such function: <name>`, is the declaring module ABSENT FROM THE CLAIM SCOPE
-//! (a `claim_scope_for` defect), or PRESENT IN SCOPE but missing from the interpreter's
-//! `fn_nodes` index (a declaration-identity defect one layer down, in `authored_name_at`)?
-//! Opposite repairs, different owners.
+//! PART A (blocking main): `test.claim.live_deploy.emit.twin_and_production_configure_
+//! disjoint_tailscale_endpoints` is BUDGET-REFUSED on the required floor at "at least
+//! 5001ms against 5000ms". 5001 is the INTERRUPT POINT, not the cost — the row has never
+//! run to completion on the required path, so its true cost is unmeasured. `evaluation_frame`
+//! applies NO budget (the cap lives in the floor runner), so calling `run_claim_measured`
+//! directly runs it to completion and yields the real number.
+//!   Siblings in the same module are controls: if they are also slow, the cost is
+//!   module/corpus-shaped; if only this row is, it is the row's own work.
 //!
-//! THE DISCRIMINATING PAIR. Both modules bare-reference `srv3_install_hang_no_router_lease_ms`
-//! — a module-scope `data` declared exactly once, in `gunbc.srv3_os_install_diagnostic` — and
-//! NEITHER imports it. They differ only in enrollment:
-//!
-//!   SPECIMEN: test.claim.host_standup_assimilation_deduction — enrolled expected-red (5 ids)
-//!   CONTROL:  test.claim.temporal_effect_spine               — NOT on the roster
-//!
-//! If the CONTROL passes, a bare cross-module `data` reference resolves fine in general, and
-//! "the reference closure cannot see bare data references" is refuted as the general cause.
-//! If BOTH error, the cause is the edge kind, not anything about the specimen's module.
+//! PART B: for an enrolled expected-red identity that RUNTIME-ERRORS with
+//! `no such function: <name>`, is the declaring module ABSENT FROM SCOPE (a
+//! `claim_scope_for` defect) or PRESENT but missing from the interpreter's `fn_nodes`
+//! index (`authored_name_at`)? Measured population: 60 of 72 distinct missing names are
+//! module-scope `data`, and NONE is multiply declared.
 
 use v1_compiler::cli_run::{
     claim_scope_for, evaluation_frame, floor_prepared_subject_exclusions, prepare_repository_once,
@@ -25,20 +23,54 @@ use v1_compiler::v1_interpreter::ExecutionMode;
 
 #[test]
 #[ignore = "whole-corpus prepare; measurement only"]
-fn scope_seam_discriminating_pair() {
+fn probe() {
     let roots = vec!["dag".to_string(), "src/v2".to_string()];
     let (prepared, _views) =
         prepare_repository_once(&roots, &floor_prepared_subject_exclusions()).expect("prepare");
+    eprintln!(
+        "[probe] prepared_subject_modules={}",
+        prepared.graph.modules.len()
+    );
 
-    // Is the provider even in the prepared subject? If not, both arms are meaningless.
+    // ---------- PART A: the cost that is blocking main ----------
+    let emit_entry = "test.claim.live_deploy.emit";
+    match claim_scope_for(&prepared, emit_entry) {
+        Ok(scope) => {
+            eprintln!(
+                "[probe] COST entry={emit_entry} scope_modules={}",
+                scope.module_count
+            );
+            let frame = evaluation_frame(&scope, ExecutionMode::Hermetic, None, None);
+            for f in [
+                "twin_and_production_configure_disjoint_tailscale_endpoints",
+                "witness_spec_targets_srv1",
+                "witness_spec_listen_port_is_8080",
+                "witness_apply_script_contains_systemd_and_tailscale",
+            ] {
+                let q = format!("{emit_entry}.{f}");
+                let t0 = std::time::Instant::now();
+                let (outcome, receipt) = run_claim_measured(&frame, &prepared.subject_digest, &q);
+                eprintln!(
+                    "[probe] COST fn={f} instant_ms={} receipt_wall_ms={} outcome={outcome:?}",
+                    t0.elapsed().as_millis(),
+                    receipt.wall_nanos / 1_000_000
+                );
+                eprintln!("[probe] COST receipt={receipt:?}");
+            }
+        }
+        Err(e) => eprintln!("[probe] COST SCOPE-REFUSED: {e}"),
+    }
+
+    // ---------- PART B: scope membership vs declaration index ----------
     let provider = "gunbc.srv3_os_install_diagnostic";
-    let in_subject = prepared
-        .graph
-        .modules
-        .iter()
-        .any(|m| m.func_env.name == provider);
-    eprintln!("[scope-probe] provider_in_prepared_subject={in_subject}");
-
+    eprintln!(
+        "[probe] provider_in_prepared_subject={}",
+        prepared
+            .graph
+            .modules
+            .iter()
+            .any(|m| m.func_env.name == provider)
+    );
     for (label, entry, function) in [
         (
             "SPECIMEN(enrolled)",
@@ -53,16 +85,12 @@ fn scope_seam_discriminating_pair() {
     ] {
         match claim_scope_for(&prepared, entry) {
             Ok(scope) => {
-                eprintln!(
-                    "[scope-probe] {label} entry={entry} module_count={} ambiguous_bare_names={}",
-                    scope.module_count, scope.ambiguous_bare_names
-                );
+                eprintln!("[probe] {label} scope_modules={}", scope.module_count);
                 let frame = evaluation_frame(&scope, ExecutionMode::Hermetic, None, None);
-                let (outcome, _) =
-                    run_claim_measured(&frame, &prepared.subject_digest, function);
-                eprintln!("[scope-probe] {label} outcome={outcome:?}");
+                let (outcome, _) = run_claim_measured(&frame, &prepared.subject_digest, function);
+                eprintln!("[probe] {label} outcome={outcome:?}");
             }
-            Err(e) => eprintln!("[scope-probe] {label} SCOPE-REFUSED: {e}"),
+            Err(e) => eprintln!("[probe] {label} SCOPE-REFUSED: {e}"),
         }
     }
 }
