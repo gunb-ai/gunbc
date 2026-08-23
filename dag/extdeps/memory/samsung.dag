@@ -26,7 +26,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data stick_capacity_bytes: ByteSize = byte_size(34359738368)
+data stick_capacity_bytes_32g: ByteSize = byte_size(34359738368)
 
 // PROVENANCE, SPLIT BY WHAT ACTUALLY SUPPORTS EACH FACT, because the module scope binds its
 // citation to this exact declaration and a generic DDR4 reference cannot carry a vendor SKU.
@@ -55,7 +55,7 @@ data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "M386A4G40DM0-CPB",
   manufacturer: samsung,
   generation: dram_generation_ddr4,
-  capacity_bytes: stick_capacity_bytes,
+  capacity_bytes: stick_capacity_bytes_32g,
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,
