@@ -43,7 +43,7 @@ import gunbc.managed_directory {
   managed_directory_permissions,
   srv1_attempt_state_directory,
 }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
@@ -53,11 +53,13 @@ import extdeps.tailscale.serve {
   tailscale_serve_off_argv,
 }
 import extdeps.exec.command { shell_quote }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.apt { apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
+  install_directory_command,
   rm_force_command,
   rm_empty_directory_command,
   rm_force_recursive_command,
@@ -72,6 +74,8 @@ import gunbc.live_deploy.operations {
 }
 import gunbc.live_deploy.emit {
   deploy_receipt_command,
+  install_d_shared_mode,
+  path_parent_dir,
   RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   live_deploy_tree_sync_unit_for,
@@ -391,7 +395,7 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
     && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
@@ -634,12 +638,26 @@ data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE L
 test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/bin")
-    && !string_contains(s: twin, pattern: "install -d -m 0755 /opt/gunbc/bin")
-    && string_contains(
-         s: twin,
-         pattern: "install -d -m 0755 /home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin",
-       )
+  let live_parent = serve_binary_parent_install_command(instance: srv1_live_dashboard_instance())
+  let twin_parent = serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance())
+  string_contains(s: live, pattern: live_parent)
+    && !string_contains(s: twin, pattern: live_parent)
+    && string_contains(s: twin, pattern: twin_parent)
+}
+
+// The parent-directory command is DERIVED from the same instance field the binary path is derived
+// from, at the same two calls the emitter makes (path_parent_dir over instance.serve_binary, then
+// install_directory_command). Transcribing `install -d -m 0755 /opt/gunbc/bin` here — which this
+// claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
+// fact: the discriminating half is the PATH differing between the two instances, and a literal
+// re-states production's path a second time, which is exactly the half-parameterization
+// serve_binary_parent_was_a_literal_note records the cost of.
+fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
+  install_directory_command(
+    mode: install_d_shared_mode,
+    path: path_parent_dir(path: instance.serve_binary as String),
+    privileged: true,
+  )
 }
 
 data teardown_disposition_after_the_mapping_started_acting_note: String = "THIS CLAIM ASSERTED THE WRONG ANSWER CONFIDENTLY, and it is worth keeping the record of how. review 45217 correctly found that the emitter was hand-walking three coproducts to decide teardown, and the repair lifted the fact to the model and gave the refusal a CAUSE — so the claim then pinned TailscaleServeMapping to TeardownWouldExceedOwnership and treated that as the discriminating half.\\n\\nThe discrimination was real and the cause was fiction. The mapping refused because the model asserted, with no citation, that the CLI's only removal verb is node-global; the upstream documents scoped removal. So a well-formed claim, over a well-modeled fact, faithfully pinned a false premise — and every conjunct here would have stayed green for as long as the premise went unchecked. A cause is only as good as its grounding, and nothing in a claim can supply that.\\n\\nWHAT SURVIVES is the shape rather than the cause list: every OWNED artifact acts, and the one surviving refusal is about ownership rather than tooling. TeardownWouldExceedOwnership is deleted with its premise, so the cause coproduct has one variant and this claim can no longer discriminate between two — it discriminates between the two LAYERS instead, which is the distinction that was always load-bearing.\\n\\nThe acting arms are the ratchet: if a future change made refusal the default for an owned artifact — the safe-looking direction — this reds instead of silently converting the retract into a no-op that still prints its convergence receipt."
@@ -680,7 +698,7 @@ test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
     && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
-    && !string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 off")
+    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
@@ -725,13 +743,13 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
   let measured = witness_retract_script()
   string_contains(s: unobserved, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: unobserved, pattern: "UNOBSERVED")
-    && !string_contains(s: unobserved, pattern: "sudo -n tailscale")
+    && !string_contains(s: unobserved, pattern: emitted_tailscale_binary_word())
     && string_contains(s: too_old, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: too_old, pattern: "1.40.0")
     && !string_contains(s: too_old, pattern: "UNOBSERVED")
-    && !string_contains(s: too_old, pattern: "sudo -n tailscale")
+    && !string_contains(s: too_old, pattern: emitted_tailscale_binary_word())
     && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
-    && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: measured, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
 // Fleet converge timer is RETIRED from live_deploy apply membership (sleek-heron-218).
@@ -772,6 +790,17 @@ test fn emit_staged_unit_body_is_quoted_by_the_posix_authority() -> Bool {
 // same rows the emitter consumes, rather than transcribed. Transcribing them is what let an
 // invented `tailscale_serve_path` label sit in the model while the emitted command derived from
 // the port alone — endpoint_identity_is_the_collision_axis_note is the receipt.
+// The absence conjuncts below cannot be spelled as a derived COMMAND, because what they assert is
+// that no tailscale invocation was emitted at all — there is no particular command whose absence
+// says that. They assert the binary WORD as the grammar spells it instead, which every invocation
+// through the single authority must contain. Spelled `"sudo -n tailscale"` (as they were until the
+// emitter's quoting moved into the bash grammar) the conjunct became VACUOUS rather than red: the
+// unquoted prefix can no longer appear in any emitted script, so the absence held for a reason that
+// has nothing to do with the refusal these claims exist to pin.
+fn emitted_tailscale_binary_word() -> String {
+  posix_single_quote(spelling: "tailscale")
+}
+
 fn tailscale_enable_command(endpoint: TailscaleServeEndpoint) -> String {
   shell_privileged_command_text_of_argv(
     argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: endpoint)),
