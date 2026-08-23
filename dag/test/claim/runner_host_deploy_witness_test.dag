@@ -1,7 +1,7 @@
 module test.claim.runner_host_deploy
 
 import std.logic { Bool }
-import std.types { list_length, join, String }
+import std.types { list_length }
 import extdeps.exec.command { shell_command_render }
 import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
 import extdeps.systemd.systemctl { systemctl_program }
@@ -119,11 +119,14 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
        )
     && string_contains(
          s: enable,
-         pattern: join(["'", sudo_binary_path as String, "' '", sudo_non_interactive_flag as String, "'"], ""),
+         pattern: concat(
+           concat("'", sudo_binary_path as String),
+           concat("' '", concat(sudo_non_interactive_flag as String, "'")),
+         ),
        )
     && string_contains(
          s: enable,
-         pattern: join(["'", systemctl_program as String, "' 'enable' '--now'"], ""),
+         pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
        )
 }
 
