@@ -41,6 +41,7 @@ data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
 data readlink_program: NonEmptyStr = "readlink"
+data ls_program: NonEmptyStr = "ls"
 
 fn cat_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program, arguments: [path])
@@ -79,6 +80,15 @@ fn whoami_command() -> ArgvCommand {
 // executing", and a non-symlink there is a broken assumption, not empty output.
 fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program, arguments: [path])
+}
+
+// -1 ALONE, NEVER -la OR A GLOB. One entry per line is what makes the output parseable as a list
+// of names; a long listing would put mode, owner and size in front of every name and force the
+// caller to re-parse them out. The directory is the operand, so an out-of-band entry -- one nobody
+// desired -- is listed like any other, which is what keeps an observed population independent of
+// the desired one.
+fn ls_one_per_line_command(directory: String) -> ArgvCommand {
+  argv_command(program: ls_program, arguments: ["-1", directory])
 }
 
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
