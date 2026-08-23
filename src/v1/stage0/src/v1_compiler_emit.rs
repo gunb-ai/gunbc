@@ -41,7 +41,9 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
+pub use crate::v1_compiler_infer::{
+    build_params_scope, call_arg_label_matches_param, extend_scope,
+};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
@@ -658,6 +660,15 @@ pub fn lookup_func_sig_in_scope(
     ))
 }
 
+pub fn typed_named_arg_matches_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_arg_label_matches_param, so this projection consumes that authority rather than comparing exact declaration spelling independently: a declaration-side unused parameter `_args` carries caller label `args`. A bare anonymous `_` stays positional because it has no unique caller-visible identity with which to reorder an argument. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn typed_named_arg_matches(
     arg: Rc<Node>,
     name: String,
@@ -668,7 +679,8 @@ pub fn typed_named_arg_matches(
         if (n.clone() == None) {
             false
         } else {
-            (n.clone().unwrap() == name.clone())
+            ((name.clone() != "_".to_string())
+                && call_arg_label_matches_param(name.clone(), n.clone().unwrap()))
         }
     }
 }
@@ -696,46 +708,34 @@ pub fn order_typed_call_args(
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
                 None => args.clone(),
                 Some(sig) => {
-                    let arg_map = args.iter().cloned().fold(
-                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                        |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
-                            let n = arg_name_at(
-                                arg.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            if (n.clone() != None) {
-                                v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
-                            } else {
-                                acc.clone()
-                            }
-                        },
-                    );
-                    let param_name_set = sig.params.clone().iter().cloned().fold(
-                        v1_rt::rc_empty_map::<String, bool>(),
-                        |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
-                            v1_rt::rc_map_insert(
-                                acc,
-                                param_node_name_at(
-                                    param.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                true,
-                            )
-                        },
-                    );
                     let ordered = Rc::new({
                         let mut __result = Vec::new();
                         for param in sig.params.clone().iter().cloned() {
                             __result.extend(
-                                (*match v1_rt::map_get(
-                                    &arg_map,
-                                    param_node_name_at(
+                                (*{
+                                    let param_name = param_node_name_at(
                                         param.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    ),
-                                ) {
-                                    Some(arg) => Rc::new(vec![arg.clone()]),
-                                    None => Rc::new(vec![]),
+                                    );
+                                    match Rc::new({
+                                        let mut __result = Vec::new();
+                                        for arg in args.iter().cloned() {
+                                            if typed_named_arg_matches(
+                                                arg.clone(),
+                                                param_name.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ) {
+                                                __result.push(arg);
+                                            }
+                                        }
+                                        __result
+                                    })
+                                    .first()
+                                    .cloned()
+                                    {
+                                        Some(arg) => Rc::new(vec![arg.clone()]),
+                                        None => Rc::new(vec![]),
+                                    }
                                 })
                                 .iter()
                                 .cloned(),
@@ -754,8 +754,23 @@ pub fn order_typed_call_args(
                                 if (n.clone() == None) {
                                     true
                                 } else {
-                                    (emit_map_has(param_name_set.clone(), n.clone().unwrap())
-                                        == false)
+                                    ({
+                                        let mut __found = false;
+                                        for param in sig.params.clone().iter().cloned() {
+                                            if typed_named_arg_matches(
+                                                arg.clone(),
+                                                param_node_name_at(
+                                                    param.clone(),
+                                                    scope.type_env.clone().source_indices.clone(),
+                                                ),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } == false)
                                 }
                             } {
                                 __result.push(arg);
