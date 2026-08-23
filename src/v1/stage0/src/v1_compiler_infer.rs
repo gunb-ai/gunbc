@@ -20822,6 +20822,8 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
             type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
         });
         let built_raw = modules.iter().cloned().fold(
             init.clone(),
@@ -20839,9 +20841,15 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             },
         );
         let built = Rc::new(EmitInfoBuildState {
-            type_summaries: close_fn_fields(built_raw.type_summaries.clone()),
+            type_summaries: close_fn_fields(
+                built_raw.type_summaries.clone(),
+                built_raw.structural_alias_fn_surface_names.clone(),
+                built_raw.structural_alias_direct_fn_names.clone(),
+            ),
             type_decl_items: built_raw.type_decl_items.clone(),
             fn_decl_items: built_raw.fn_decl_items.clone(),
+            structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names.clone(),
+            structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names.clone(),
         });
         let all_recursive = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
