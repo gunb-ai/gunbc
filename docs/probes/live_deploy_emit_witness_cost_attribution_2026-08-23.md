@@ -1,8 +1,13 @@
 # Where the live_deploy.emit witnesses spend their 5000ms
 
-**Subject:** the five `test.claim.live_deploy.emit` witnesses reported
+**Subject:** the `test.claim.live_deploy.emit` witnesses reported
 INTERRUPTED-BEFORE-VERDICT against `required_floor_claim_cpu_safety_limit_ms`
 (`v2.workflow.required_floor`). Their verdicts are unknown — not passing, not failing.
+
+**THE POPULATION IS SIXTEEN, NOT FIVE**, and the dispatch title that said five (and this
+document's own first draft, which repeated it) was a mismeasurement — §1 is the correction.
+A single floor run is a SAMPLE of a population sitting uniformly under the line; the union
+across runs is the population. Three unrelated trees reported 5, then 1, then 3.
 
 **Instrument:** `claim_batch` with `GUNBC_INTERP_PROFILE=1`, which prints per-witness
 thread-CPU and total interpreter node-evals. Local arm64 session container, release build
@@ -134,3 +139,54 @@ be split into cheaper claims).
 it moves, the live_deploy.emit population's headroom is a function of fleet runner-slot
 width — at ~21k evals (~30ms CI) per emitted command, another width increase re-crosses the
 line, and the interrupts return.
+
+## 7. The shape question, asked and answered: FLAT in production-table size
+
+Raised on review of this receipt: `v2.std.grammar` `formal_production_unique_lhs_exact_match`
+calls `formal_productions_for_lhs(productions: productions, lhs: lhs)` — a full filter of the
+production table — from inside the per-child match. If that filter re-ran per emitted word,
+the real shape would be **words × |productions|**, which is a cost-shape defect that DESIGN
+§6's standing rule fixes without needing anyone's ranking, since `n` is not time-stable.
+
+Measured directly, holding the child count fixed at eight and varying the table by padding it
+with rows whose `lhs` matches nothing (so the answer is unchanged):
+
+```
+table                     node-evals   CPU
+base (bash_fold)               5,037   10ms
+base + 100 inert rows          6,450   12ms
+base + 400 inert rows         10,650   21ms
+```
+
+**~14 evals per padding row, ONCE — not once per child.** Were the filter re-running per
+child, +400 rows would have cost 400 × 14 × 8; it cost 400 × 14. So
+`formal_productions_for_lhs` is memo-collapsed across the words that share a table and an
+`lhs`, which is exactly the production case: `bash_fold_formal_productions()` is nullary, so
+every word in a claim is handed the same table value.
+
+Two consequences, and the second is the one that matters for how the lane is classified:
+
+- **The per-word cost is flat in production-table size.** The hypothesis is falsified.
+- **Production selection is not where the per-word cost is.** Eight matches over the real
+  table cost 5,037 evals *including* building the eight child nodes — an upper bound of
+  ~630 per match against ~6,714 per word. So the whole lhs-exact selection is under **10%**
+  of a word's cost, and removing it entirely would buy under 10%. The other ~90% is the rest
+  of the leaf path — `bash_fold_target_model_for_emitted_witness` building the
+  serialize-source and rules nodes, and `target_serialize_source_from_model` doing the
+  token-directed spelling.
+
+SCOPE, STATED SO IT IS NOT OVERREAD: this varies the table at
+`formal_production_unique_lhs_exact_match`'s own parameter, which is the function the
+hypothesis named and the one that calls the filter. It does not vary the table seen by the
+whole word path, because nothing outside `bash_command_fold` can inject one.
+
+**So the classification is: a linear-in-input path with a large constant, not a shape
+defect.** DESIGN §6's always-fix rule does not reach it, and pricing it in elegance is the
+purity trap that clause names. It is an honest ranking question for the operator, and the
+number to rank it against is the ~6,714 evals per emitted word that every emit consumer in
+the corpus pays — not this module's sixteen rows.
+
+**If that lane opens, its evidence must be behavioural, not fast.** Changing how emit selects
+or spells a production is a correctness change; the discriminating receipt is BYTE-IDENTICAL
+emitted output over a discriminating corpus, with the speedup as a secondary measurement. A
+cost repair that changes output is a correctness change wearing a performance PR's clothes.
