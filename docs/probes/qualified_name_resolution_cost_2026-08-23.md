@@ -196,6 +196,53 @@ what ran here. The wall figures agree (44.9s local cold vs 57.3s floor, and the 
 note measured for exactly this tail), and the RSS shape is consistent with a whole-tree entry
 resolve, but "consistent with" is not "measured", and this document does not upgrade it.
 
+## THE REPAIR — landed in this change, and re-measured
+
+`compile_clean_unlisted_import_use_blocks_from_policy` no longer calls `default_source_roots()`.
+It assembles the policy entry's **own import closure** (`compile_clean_policy_entry_closure_sources`)
+and resolves that explicit source set through `resolved_graph_from_sources(.., Strict)`.
+
+**Every failure arm refuses; none widens.** An import naming no module in the roots, or a file that
+cannot be read, returns a located `Err` naming the module and the path. It must never fall back to
+the whole tree: that arm would restore today's cost, zero the deficit's frequency by construction,
+and make the widening unrankable ever after (DESIGN §5, the absorbing fallback). This is also why
+the closure builder is a new function rather than a reuse of `resolve_virtual_source_with_imports`,
+whose BFS *silently skips* an import it cannot resolve — a silent skip here would answer the policy
+question from a graph missing the module the answer depends on.
+
+### Measured, same probe, same orderings, post-fix
+
+| roots | probe | pre-fix | post-fix |
+|---|---|---|---|
+| `dag` only | C (first qualified) | 44886ms | **109ms** |
+| `dag` only | B (bare) | 12967ms | 12881ms |
+| `dag` only | A (second qualified) | 6ms | 6ms |
+| `dag` + `src/v2` | C (first qualified) | 216ms | **151ms** |
+| `dag` + `src/v2` | A, D, B, E | 5-7ms | 6-8ms |
+
+All probes PASS, so the narrowed closure still resolves and still returns the policy `Bool` — the
+repair removed work, not evidence.
+
+**The asymmetry is gone rather than reduced.** On the cold root set the qualified arm went from
+3.5× the bare arm to *cheaper* than it (109ms against 12881ms, the bare arm now merely paying the
+generic first-call warmup). There is no longer a qualified-spelling premium to attribute.
+
+### The residue this exposes — reported, not absorbed
+
+**`B` did not move: 12967ms → 12881ms on the `dag`-only root set.** That cost is paid by the *bare*
+arm too, so it was never part of the qualified asymmetry and this repair does not touch it. It is a
+separate cold-index term for a root set that does not match the process's warm index, and it is
+named here rather than folded into this row's result — a fix that quietly widened its own claim to
+cover a neighbouring cost would be the same conflation this document exists to undo.
+
+## The RSS claim is NOT upgraded by the repair
+
+The floor's 1.22GB was never attributed by execution and still is not. Three wall figures agree
+(44.9s local cold, 57.3s floor, 57.8s in the 2026-07-25 note) and a whole-tree entry resolve is a
+plausible shape for GB-scale growth, but plausible-shape is not measurement. If the memory line
+survives on the floor after this repair, that is a **second defect to find**, not a result to absorb
+into this one.
+
 ## Apparatus — re-run recipe
 
 The probe module is reproduced here rather than left in the tree: it has no consumer, so as a
