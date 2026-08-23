@@ -156,9 +156,19 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
   }
 }
 
-// THE LIFECYCLE CLAIM IS "PAST THE COMMITTED WIDTH", WHICH IS WHAT RETIRED MEANS, rather than an
-// index equality that has to be re-typed every time the fleet's width moves. Asserting the property
-// the decoder actually decides makes this row survive a width change instead of being broken by one.
+// THE CLAIM IS "PAST THE COMMITTED WIDTH", WHICH IS WHAT RETIRED MEANS, rather than an index
+// equality that has to be re-typed every time the fleet's width moves. Asserting the property the
+// decoder actually decides makes this row survive a width change instead of being broken by one.
+//
+// THIS COMMENT SAT INSIDE THE MATCH BODY UNTIL 2026-08-23 AND REFUSED THE WHOLE FLOOR. DESIGN 4c
+// admits standalone leading blocks attached to MODULE-SCOPE declarations and nothing else, so an
+// annotation indented into a declaration body is a located parse refusal rather than a style note --
+// and it refuses at PREPARATION, taking every witness in the corpus with it rather than failing the
+// row it sits in. Worth recording where the check does and does not live: --required-cited-symbol
+// parses the corpus and passed this file clean, because annotation grain is enforced in the floor's
+// preparation and not in that census. A green parse is not evidence that an annotation is placed
+// legally, which is exactly the class of "my local check passed" this lane has now been bitten by
+// twice in one night.
 test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   match observe_placement_full(
     path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
