@@ -2993,6 +2993,145 @@ pub fn type_name_transparently_aliases_to(
     }
 }
 
+pub fn coproduct_variant_payload_admits_type_name(
+    decl: Rc<Node>,
+    actual_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for variant in decl.children.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for payload in variant.children.clone().iter().cloned() {
+                    if {
+                        let payload_type = match payload.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                            _ => field_node_type_expr(payload.clone()),
+                        };
+                        let payload_name =
+                            authored_name_at(source_indices.clone(), payload_type.clone());
+                        let names_agree = (application_type_names_compatible(
+                            payload_name.clone(),
+                            actual_name.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ) || transparent_alias_identity_agrees(
+                            type_env.symbol_index.clone(),
+                            payload_name.clone(),
+                            actual_name.clone(),
+                        ));
+                        ((payload_name.clone() != "".to_string()) && names_agree.clone())
+                    } {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn coproduct_payload_where_parent_required(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let either_optional = ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+            || (actual.return_cardinality.clone() == Cardinality::CardOptional));
+        if ((either_optional.clone() || type_node_is_callable(formal.clone()))
+            || type_node_is_callable(actual.clone()))
+        {
+            false
+        } else {
+            {
+                let formal_name = authored_name_at(source_indices.clone(), formal.clone());
+                let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+                let either_is_optional_carrier = ((qualified_last_segment(formal_name.clone())
+                    == "Optional".to_string())
+                    || (qualified_last_segment(actual_name.clone()) == "Optional".to_string()));
+                if (((formal_name.clone() == "".to_string())
+                    || (actual_name.clone() == "".to_string()))
+                    || either_is_optional_carrier.clone())
+                {
+                    false
+                } else {
+                    if application_type_names_compatible(
+                        formal_name.clone(),
+                        actual_name.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        false
+                    } else {
+                        if transparent_alias_identity_agrees(
+                            scope.type_env.clone().symbol_index.clone(),
+                            formal_name.clone(),
+                            actual_name.clone(),
+                        ) {
+                            false
+                        } else {
+                            {
+                                let actual_rep = transparent_alias_representative(
+                                    scope.type_env.clone().symbol_index.clone(),
+                                    actual_name.clone(),
+                                );
+                                match lookup_type_by_name(
+                                    scope.type_env.clone(),
+                                    formal_name.clone(),
+                                ) {
+                                    Some(decl) => {
+                                        let decl_is_concrete_coproduct =
+                                            (((decl.connective.clone() == Connective::Disj)
+                                                && ((decl.params.clone().len() as i64) == 0))
+                                                && ((decl.children.clone().len() as i64) > 0));
+                                        let names_a_variant = (has_child_named(
+                                            decl.clone(),
+                                            qualified_last_segment(actual_name.clone()),
+                                            source_indices.clone(),
+                                        ) || has_child_named(
+                                            decl.clone(),
+                                            qualified_last_segment(actual_rep.clone()),
+                                            source_indices.clone(),
+                                        ));
+                                        if (decl_is_concrete_coproduct.clone() == false) {
+                                            false
+                                        } else {
+                                            if names_a_variant.clone() {
+                                                false
+                                            } else {
+                                                coproduct_variant_payload_admits_type_name(
+                                                    decl.clone(),
+                                                    actual_name.clone(),
+                                                    scope.type_env.clone(),
+                                                    scope.module_name.clone(),
+                                                    source_indices.clone(),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    None => false,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn structured_application_site_type_mismatch(
     formal: Rc<Node>,
     actual_expr: Rc<Node>,
@@ -10003,7 +10142,37 @@ pub fn infer_record_lit_structural(
                                                 scope.module_name.clone(),
                                             )])
                                         } else {
-                                            Rc::new(vec![])
+                                            if ((expected_node.return_cardinality.clone()
+                                                != Cardinality::CardOptional)
+                                                && coproduct_payload_where_parent_required(
+                                                    formal_peeled.clone(),
+                                                    actual_peeled.clone(),
+                                                    scope.clone(),
+                                                ))
+                                            {
+                                                Rc::new(vec![type_mismatch_error(
+                                                    node_type_shape(
+                                                        formal_peeled.clone(),
+                                                        scope
+                                                            .type_env
+                                                            .clone()
+                                                            .source_indices
+                                                            .clone(),
+                                                    ),
+                                                    node_type_shape(
+                                                        actual_peeled.clone(),
+                                                        scope
+                                                            .type_env
+                                                            .clone()
+                                                            .source_indices
+                                                            .clone(),
+                                                    ),
+                                                    ar_typed.span.clone(),
+                                                    scope.module_name.clone(),
+                                                )])
+                                            } else {
+                                                Rc::new(vec![])
+                                            }
                                         }
                                     }
                                 }

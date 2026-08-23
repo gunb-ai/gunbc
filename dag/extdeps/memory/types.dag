@@ -98,6 +98,29 @@ fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
     })
 }
 
+// WHY die_stacking IS A REQUIRED FIELD ON THE ROW AND NOT AN OPTION (2026-08-22).
+// DramDieStacking already existed as an axis, declared above for the controller-admission
+// question, but the catalog row could not say which value a module carried -- so a 3DS RDIMM
+// and a monolithic RDIMM were indistinguishable in the only carrier a consumer reads. That is
+// the fused-axis defect the DramModuleClass comment above repairs for the CONTROLLER, left
+// standing in the MODULE. The two must agree or the admission check answers about a class no
+// row can claim membership in.
+//
+// It is required rather than optional because the state it excludes is exactly the one that
+// caused this: a stacked module authored by someone who did not know the axis existed, landing
+// as a monolithic-looking row that the Altra admission check then grades against the wrong
+// class. An Option would have made forgetting it representable and re-opened that door
+// (DESIGN 5 -- prefer the shape in which the bad state cannot be written).
+//
+// rank_count STAYS ONE FIELD, and that is a deliberate finding rather than an omission. Both
+// of its consumers are correct for a stacked part when it carries the module's LOGICAL rank
+// organization: dram_module_required_die_density divides capacity by (data chips x ranks) to
+// get PER-DIE density, which is the figure JEDEC's monolithic ceiling actually bounds, and
+// devices_per_stick multiplies chips-per-rank by ranks to get a DIE count, which is what a
+// stacked package contains. Neither wanted a package count. A management controller's own
+// reported rank number is a DIFFERENT fact -- an observation of one host's slot, not a
+// property of the part -- and belongs in the observing layer, never authored back here
+// (DESIGN 3, external upstream decomposition).
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: Vendor<Hardware>
@@ -109,6 +132,7 @@ type DramModuleCatalogRow {
   ecc: Bool
 
   buffering: DimmBuffering
+  die_stacking: DramDieStacking
 
   chip_width: BitWidth
 
@@ -137,6 +161,35 @@ fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenera
     byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: jedec.max_monolithic_die_density)
   }
 }
+
+// --- OEM RESALE IDENTITY -------------------------------------------------------------------------
+//
+// AN OEM OFFERING AND THE MODULE INSIDE IT ARE TWO INDEPENDENTLY GOVERNED FACTS (DESIGN 3,
+// external upstream decomposition). Cisco assigns a PID and a Cisco part number, publishes its
+// own specification, and controls that offering's lifecycle; Samsung manufactures a module with
+// its own part number and its own organization. Flattening them into one catalog row -- an
+// "OEM part_number" field, or a Cisco row duplicating the Samsung organization axes -- makes one
+// authority answer for the other, and the duplicate drifts the moment either side revises.
+//
+// So the offering REFERENCES the module rather than restating it. Adding a second OEM that
+// resells the same Samsung part is then a new offering row and no edit at all to the module.
+type OemModuleOffering {
+  oem: Vendor<Hardware>
+  oem_product_id: NonEmptyStr
+  oem_part_number: NonEmptyStr
+  underlying_module: DramModuleCatalogRow
+  link_evidence: OemModuleLinkEvidence
+}
+
+// HOW WE KNOW THE OFFERING CONTAINS THAT MODULE, and the arms are not interchangeable.
+// A supplier document is an upstream claim we can cite and re-read. A physical label read off
+// the part in hand is an OBSERVATION this repository produced -- a receipt in the observing
+// layer, admissible and often the only thing available for an EOL SKU, but never citable as
+// though the OEM had documented it. Recording which one we have is the difference between a
+// grounded row and one that merely looks grounded (DESIGN 4b, rung honesty).
+type OemModuleLinkEvidence
+  = OemLinkDocumentedBySupplier { citation: ExternalAuthority }
+  | OemLinkPhysicalLabelObserved { label_text: NonEmptyStr, observer: NonEmptyStr }
 
 type MemoryPopulationRow {
   module: DramModuleCatalogRow

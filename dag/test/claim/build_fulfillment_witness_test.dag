@@ -13,6 +13,7 @@ import extdeps.memory.types {
   Registered,
   bit_width,
   dram_generation_ddr4,
+  MonolithicDie,
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
 import gunbc.memory_provisioning { FullChannel, PopulationOption }
@@ -122,6 +123,7 @@ data fixture_dimm: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 3200,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 4),
   rank_count: 2,
 }
