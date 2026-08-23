@@ -518,7 +518,6 @@ pub struct ServiceConfig {
     pub auth_input: Option<Rc<Node>>,
     pub auth_source: Option<Rc<Node>>,
     pub rate_limit: Option<Rc<Node>>,
-    pub retry: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -7149,7 +7148,6 @@ pub fn parse_service_after_kw(
                 cfg.auth_input.clone(),
                 cfg.auth_source.clone(),
                 cfg.rate_limit.clone(),
-                cfg.retry.clone(),
             ),
             None => Rc::new(vec![]),
         };
@@ -7371,16 +7369,7 @@ pub fn parse_service_config_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConfigResult> {
-    parse_config_fields(
-        tokens.clone(),
-        ctx.clone(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    parse_config_fields(tokens.clone(), ctx.clone(), None, None, None, None, None)
 }
 
 pub fn parse_config_fields(
@@ -7391,7 +7380,6 @@ pub fn parse_config_fields(
     mut auth_input: Option<Rc<Node>>,
     mut auth_source: Option<Rc<Node>>,
     mut rate_limit: Option<Rc<Node>>,
-    mut retry: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7416,7 +7404,6 @@ pub fn parse_config_fields(
                 auth_input: auth_input.clone(),
                 auth_source: auth_source.clone(),
                 rate_limit: rate_limit.clone(),
-                retry: retry.clone(),
             });
             break Rc::new(ConfigResult {
                 config: cfg.clone(),
@@ -7440,7 +7427,6 @@ pub fn parse_config_fields(
                 auth_input: None,
                 auth_source: None,
                 rate_limit: None,
-                retry: None,
             });
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -7503,17 +7489,12 @@ pub fn parse_config_fields(
                     rate_limit = __tco_0;
                     continue;
                 }
-                "retry" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    retry = __tco_0;
-                    continue;
-                }
                 _ => {
                     break Rc::new(ConfigResult {
     config: dummy_cfg.clone(),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`".to_string()), r.span.clone())),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source` and `rate_limit`".to_string()), r.span.clone())),
 });
                 }
             }

@@ -164,8 +164,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
+    TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -15269,7 +15269,31 @@ pub fn infer_property_values(
     }
 }
 
-pub fn infer_auth_source_properties(
+pub fn service_config_field_reference_judged(field: String) -> bool {
+    (((field.clone() == "svc_endpoint".to_string()) || (field.clone() == "svc_auth".to_string()))
+        || (field.clone() == "svc_auth_source".to_string()))
+}
+
+pub fn service_config_field_deferral_trigger(field: String) -> String {
+    if (field.clone() == "svc_auth_input".to_string()) {
+        "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string()
+    } else {
+        if (field.clone() == "svc_rate_limit".to_string()) {
+            "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string()
+        } else {
+            "no field-specific trigger is declared for this service config field".to_string()
+        }
+    }
+}
+
+pub fn service_config_property_referenced_name(p: Rc<Node>, scope: Rc<InferScope>) -> String {
+    authored_name_at(
+        scope.type_env.clone().source_indices.clone(),
+        field_init_node_value(p.clone()),
+    )
+}
+
+pub fn infer_service_config_properties(
     props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<InferPropertiesResult> {
@@ -15277,12 +15301,12 @@ pub fn infer_auth_source_properties(
         let results = Rc::new({
             let mut __result = Vec::new();
             for p in props.iter().cloned() {
-                __result.push(
-                    if (field_init_node_name_at(
+                __result.push({
+                    let field = field_init_node_name_at(
                         p.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                    ) == "svc_auth_source".to_string())
-                    {
+                    );
+                    if service_config_field_reference_judged(field.clone()) {
                         {
                             let val = field_init_node_value(p.clone());
                             let val_result = infer_expr(val.clone(), scope.clone(), None);
@@ -15311,9 +15335,27 @@ pub fn infer_auth_source_properties(
                             )
                         }
                     } else {
-                        (p.clone(), Rc::new(vec![]))
-                    },
-                );
+                        (
+                            p.clone(),
+                            Rc::new(vec![make_error_node(
+                                Rc::new(
+                                    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
+                                        field: field.clone(),
+                                        referenced_name: service_config_property_referenced_name(
+                                            p.clone(),
+                                            scope.clone(),
+                                        ),
+                                        trigger: service_config_field_deferral_trigger(
+                                            field.clone(),
+                                        ),
+                                        span: p.span.clone(),
+                                    },
+                                ),
+                                scope.module_name.clone(),
+                            )]),
+                        )
+                    }
+                });
             }
             __result
         });
@@ -15386,7 +15428,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
             infer_transport_node(item.transport.clone(), transport_scope.clone());
         let typed_transport = transport_result.transport.clone();
         let transport_diags = transport_result.diagnostics.clone();
-        let props_result = infer_auth_source_properties(item.properties.clone(), scope.clone());
+        let props_result = infer_service_config_properties(item.properties.clone(), scope.clone());
         let typed_properties = props_result.props.clone();
         let props_diags = props_result.diagnostics.clone();
         if ((item.connective.clone() != Connective::NoConnective)

@@ -573,6 +573,12 @@ pub enum CompilerDiagnostic {
         container_leaf: String,
         span: Rc<SourceSpan>,
     },
+    ServiceConfigReferenceJudgmentDeferred {
+        field: String,
+        referenced_name: String,
+        trigger: String,
+        span: Rc<SourceSpan>,
+    },
     TransportEmissionNotModeled {
         transport_kind: String,
         service: String,
@@ -692,6 +698,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
     }
 }
@@ -736,6 +743,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
+    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
 }
 }
@@ -825,6 +833,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => false,
         _ => true,
     }
 }
@@ -834,6 +843,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -3405,7 +3415,6 @@ pub fn service_config_properties(
     auth_input: Option<Rc<Node>>,
     auth_source: Option<Rc<Node>>,
     rate_limit: Option<Rc<Node>>,
-    retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = no_span();
@@ -3451,27 +3460,15 @@ pub fn service_config_properties(
             )]),
             None => Rc::new(vec![]),
         };
-        let retry_prop = match retry.clone() {
-            Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_retry".to_string(),
-                r.clone(),
-                zero_span.clone(),
-                zero_span.clone(),
-            )]),
-            None => Rc::new(vec![]),
-        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
-                        auth_input_prop.clone(),
-                    ),
-                    auth_source_prop.clone(),
+                    v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
+                    auth_input_prop.clone(),
                 ),
-                rate_prop.clone(),
+                auth_source_prop.clone(),
             ),
-            retry_prop.clone(),
+            rate_prop.clone(),
         )
     }
 }
@@ -3523,17 +3520,6 @@ pub fn service_config_rate_limit(
     find_property(
         n.properties.clone(),
         "svc_rate_limit".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_retry(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_retry".to_string(),
         source_indices.clone(),
     )
 }
