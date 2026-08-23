@@ -4,6 +4,7 @@ import std.types { String, Bool, Int }
 import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.compile_diagnostic_census { census_blocking_rows, census_total_count, CensusObserved, CensusNotRunnable }
 
 // A CALLABLE NAME WITH TWO AUTHORITIES REFUSES, AND ONE WITH A LEXICAL OWNER STILL RESOLVES.
 //
@@ -61,7 +62,22 @@ fn blocking_ambiguous_reference_count(source: String) -> Int {
   }
 }
 
-data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserName }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+
+// A BROKEN FIXTURE MUST NOT LOOK LIKE A QUIET WALL. The first version of the RED source imported
+// `PosixUserName`, which extdeps.posix.identity does not export: the source then failed for an
+// unrelated reason, produced zero AmbiguousReference rows, and the RED read `false` -- which is
+// indistinguishable from "the wall did not fire". So the pair below is joined by a THIRD
+// assertion: the RED's only blocking diagnostics are the ambiguity itself. A fixture that breaks
+// for any other reason now fails loudly on that assertion instead of masquerading as a verdict
+// about the wall.
+fn blocking_total(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserId }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
 
 data green_named_authority_source: String = "module probe_callable_named_authority\nimport v2.std.collection { map_get }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Accepted { value: inner } => 0\n    Rejected { diagnostics: _ } => 0\n  }\n}\n"
 
@@ -69,6 +85,16 @@ data green_own_declaration_source: String = "module probe_callable_own_declarati
 
 test fn a_bare_call_whose_only_declarer_is_reached_transitively_refuses() -> Bool {
   blocking_ambiguous_reference_count(source: red_transitive_reach_source) >= 1
+}
+
+test fn the_red_source_refuses_for_the_ambiguity_and_for_nothing_else() -> Bool {
+  blocking_total(source: red_transitive_reach_source)
+    == blocking_ambiguous_reference_count(source: red_transitive_reach_source)
+}
+
+test fn both_green_sources_compile_with_no_blocking_diagnostic_at_all() -> Bool {
+  blocking_total(source: green_named_authority_source) == 0
+    && blocking_total(source: green_own_declaration_source) == 0
 }
 
 test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
