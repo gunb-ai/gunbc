@@ -1,6 +1,6 @@
 module test.claim.scm_repository_envelope_witness
 
-// The repository envelope, executed. What is under test is the layer image.dag deliberately is not:
+// The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
 // an empty initialized repository with NO root, several commits over ONE shared node population, and
 // a checked-out selection that may be absent but may never dangle.
 //
@@ -176,7 +176,7 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then
-// reintroduced one layer up -- image.dag's sharing claim had exactly this shape and exactly this
+// reintroduced one layer up -- commit_closure_json_v2's sharing claim had exactly this shape and exactly this
 // repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
 // whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
 // downstream count agree with itself.
