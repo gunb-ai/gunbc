@@ -1,0 +1,143 @@
+module product.supplier.ubicloud
+
+import std.types { NonEmptyStr, List, Int, Timestamp }
+import std.measure {
+  MoneyPerHour, MoneyRate, ByteSize, HardwareThreadCount,
+  per_hour_equivalent_from_per_minute,
+}
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.supply { Offer, OfferQuote, QuotedPerHour, OfferEvidence, QuotedSupply }
+import extdeps.pricing.ubicloud {
+  UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
+}
+import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow }
+
+// THE MISSING LAYER BETWEEN A CITED PRICE AND A SELECTABLE OFFER.
+//
+// product.fabric.supply states the division of labour explicitly: "Normalizing a
+// supplier's published terms into one of these is the supplier binding's work, and so
+// are billing quantum, rounding, minimum charge, fixed and setup charges, caps, and
+// when billing starts and stops. The core compares normalized quotes; it does not
+// model any supplier's tariff." Until this module existed there were no supplier
+// bindings at all: Offer was constructed only in test fixtures, so the selection fold
+// had nothing real to rank. This module is that work for one supplier.
+//
+// It RESTATES NOTHING. Shapes come from extdeps.cloud.ubicloud, prices from
+// extdeps.pricing.ubicloud, and both keep their own citations. A previous attempt in
+// this repository re-minted both and produced two disagreeing answers for one vendor
+// fact within a day; the rule that prevents it is to consume the row, never copy it.
+
+// PER-MINUTE NORMALIZES TO PER-HOUR, NOT PER-SECOND, AND THE CHOICE IS ARITHMETIC.
+// OfferQuote offers no per-minute arm. Per-hour is exact -- a per-minute micro count
+// times sixty is an integer. Per-second truncates: 1600 micros per minute is 26.67 per
+// second, and a floor there understates every Ubicloud ask by a quarter of a percent
+// while a ceiling overstates it. A selection fold that ranks suppliers against each
+// other must not carry a rounding bias that favours one billing period.
+fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
+  QuotedPerHour(per_hour_equivalent_from_per_minute(q: row.per_minute))
+}
+
+// WHAT THE FABRIC'S SHAPE CANNOT SAY.
+//
+// Shape is { hard: HardRequirements } and HardRequirements is { threads:
+// HardwareThreadCount }. So an Offer can state the threads it provides and CANNOT state
+// the memory or the disk. That is not a detail of this binding: a selection fold over
+// Shape alone cannot refuse a memory-inadequate offer, so a 2-thread runner with 6 GB
+// and a 2-thread runner with 8 GB are indistinguishable to it -- and Ubicloud sells
+// exactly that pair. The facts are dropped LOUDLY here rather than silently at the
+// boundary, so a consumer can see what the shape did not carry.
+type UnexpressedSupplyFact
+  = MemoryNotExpressibleInShape { provided: ByteSize }
+  | DiskNotExpressibleInShape { provided: ByteSize }
+
+type SupplierOffer<P> {
+  offer: Offer<P>
+  unexpressed: List<UnexpressedSupplyFact>
+}
+
+fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
+  Shape { hard: HardRequirements { threads: catalog.vcpus } }
+}
+
+fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
+  [
+    MemoryNotExpressibleInShape { provided: catalog.memory_bytes },
+    DiskNotExpressibleInShape { provided: catalog.disk_bytes },
+  ]
+}
+
+// BUYER-SIDE POLICY, DECLARED HERE BECAUSE IT IS OURS AND NOT THE VENDOR'S.
+//
+// A scraped list price carries no expiry: the vendor publishes a number, not a quote
+// with a validity window, while QuotedSupply requires valid_until. The gap is closed by
+// OUR freshness policy -- how long we are willing to treat a scraped list price as
+// current -- which is a buyer fact and belongs in the product layer. It is NOT a claim
+// about what the vendor promised.
+data list_price_trust_horizon_note: NonEmptyStr = "A scraped vendor list price has no stated expiry. valid_until is therefore OUR staleness horizon, not the vendor's commitment. Reading it as a vendor promise would turn a buyer-side policy into a supplier guarantee that nobody made."
+
+// Cloud supply is bounded, never unbounded: supply.dag requires a quantity bound
+// because an offer without one cannot be conserved against, and no supplier actually
+// claims infinite capacity. Ubicloud publishes no concurrency cap in the cited rows, so
+// this is the bound WE would place against, which is a buyer policy and not a vendor
+// fact.
+data placement_concurrency_bound: Int = 64
+
+// READINESS IS REFUSED, NOT ASSUMED, AND THAT IS THE POINT.
+//
+// The selection policy is CheapestFungibleWithDelayValuation: ready_at is an INPUT to
+// the ranking, not decoration. Guessing it does not merely add an unmeasured field --
+// it corrupts the exact comparison the policy exists to make, and it does so silently,
+// in the direction that flatters whichever supplier we guessed optimistically about.
+// So provisioning delay must be MEASURED, and until it is this binding refuses rather
+// than binding an offer that would rank on a fabricated number.
+type ReadinessObservation
+  = ReadinessMeasured { ready_at: Timestamp, receipt: ObservationReceiptRef }
+  | ReadinessUnmeasured { obligation: NonEmptyStr }
+
+data ubicloud_readiness: ReadinessObservation = ReadinessUnmeasured {
+  obligation: "Provisioning delay from job dispatch to a Ubicloud runner accepting work has not been measured. Start one job per shape, record dispatch and first-heartbeat timestamps, and land the receipt. Until then no Ubicloud offer may be ranked by a delay-valuing policy.",
+}
+
+type OfferBinding<P>
+  = OfferBound { bound: SupplierOffer<P> }
+  | OfferBindingRefused { runs_on_label: NonEmptyStr, cause: NonEmptyStr }
+
+fn bind_ubicloud_offer<P>(
+  principal: P,
+  executor: P,
+  row: UbicloudRunnerPriceRow,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  quoted_at: Timestamp,
+  valid_until: Timestamp,
+  receipt: ObservationReceiptRef,
+) -> OfferBinding<P> {
+  match readiness {
+    ReadinessUnmeasured { obligation } =>
+      OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
+    ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+      OfferBound {
+        bound: SupplierOffer {
+          offer: Offer {
+            id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
+            executor: executor,
+            shape: ubicloud_shape(catalog: row.catalog),
+            capabilities: capabilities,
+            trust_domain: trust_domain,
+            quantity_bound: placement_concurrency_bound,
+            ready_at: ready_at,
+            quote: ubicloud_quote(row: row),
+            evidence: QuotedSupply {
+              quoted_at: quoted_at,
+              valid_until: valid_until,
+              receipt: receipt,
+            },
+          },
+          unexpressed: ubicloud_unexpressed(catalog: row.catalog),
+        },
+      },
+  }
+}
