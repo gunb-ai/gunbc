@@ -1,6 +1,0 @@
-module std.binding
-
-type Binding {
-  key: String
-  value: String
-}
