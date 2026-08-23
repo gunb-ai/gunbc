@@ -1131,6 +1131,15 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 // refuses as one, through the same counted TransportEmissionNotModeled the wall
 // mints -- deliberately not a fallback to the renderers #8858 deleted, and
 // deliberately not silence.
+//
+// ITS FileBound ARM READS NONE OF THE BOUND FILE FACTS, and that is the refusal
+// being honest rather than a payload with no consumer (review 54885 asked). Go
+// and python have no file renderer, so there is nothing for the verb, the path or
+// the projection to be rendered INTO here, and inventing a use for them is
+// precisely the fabrication #8858's deleted renderers performed. They are read in
+// full by the rust dispatcher, which is a different function -- so the facts have
+// a consumer, and this arm is a capability gap counted through the same wall the
+// whole roster uses.
 fn emit_unified_transport_dispatch(
   bound: BoundOperation,
   op_name: String,
