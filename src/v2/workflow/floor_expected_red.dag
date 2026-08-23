@@ -394,8 +394,29 @@ fn floor_expected_red_chunk_13() -> List<String> {
   Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: Empty {} }
 }
 
+// TWO ARMS OF THE DIRECT-CALL INHABITANCE WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT
+// DOES NOT EXIST AND NEVER DID -- NOT BECAUSE THIS BRANCH BROKE IT. Both arms assert that a
+// value at a direct-call argument is REFUSED. Both are red. The control that settles who
+// caused it was run on 2026-08-23: identical probe sources, identical dispatch, gunbc built
+// from origin/main 907f19c2cc7 and from the branch head, and main returns the same answer at
+// every point.
+//
+//   probe                       branch      main        verdict
+//   kernel 5 at the Peano Nat   accepted    accepted    no change
+//   "forty" at std.nat.Nat      accepted    accepted    no change
+//   40 at std.nat.Nat           accepted    accepted    no change
+//
+// So the refusals were ASSERTED, not broken. The gap is in the consumed predicate
+// v1.compiler.infer kernel_value_declared_type_mismatch, which does not fire for a kernel
+// value at an algebraic type application, and it is older than this branch.
+//
+// NEXT-RUNG TRIGGER: that predicate repaired so a non-numeric at a natively-realized declared
+// type refuses. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
+// reds the build and names them for removal, at which point they become permanent regression
+// controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
+// regression; it is the dissolution event.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused", tail: Empty {} } }
 }
 
 fn floor_expected_red_chunk_15() -> List<String> {

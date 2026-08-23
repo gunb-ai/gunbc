@@ -38,9 +38,12 @@ fn violation_count(source: String, wanted: String) -> Int {
 // which is the whole point of enrolling it: DESIGN 4b(4) keeps the evidence after a climb
 // precisely so the higher rung stays real.
 
-// RED -- a kernel integer at the PEANO Nat. 5 is not Zero and not Succ, and no realization row
-// covers src/v2/std/nat.dag, so this must refuse. It is the arm that fails if identity ever
-// collapses to the spelling "Nat".
+// RED, AND CURRENTLY FAILING -- ENROLLED IN v2.workflow.floor_expected_red rather than fixed.
+// A kernel integer at the PEANO Nat. 5 is not Zero and not Succ and no realization row covers
+// src/v2/std/nat.dag, so this OUGHT to refuse. It does not, and the control run on 2026-08-23
+// establishes that it never did: gunbc built from origin/main 907f19c2cc7 admits this source
+// exactly as the branch does. The refusal was ASSERTED here, not broken by this change.
+// The enrolment row carries the full branch-and-main control table and the next-rung trigger.
 data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport v2.std.nat { Nat }\nfn takes_peano(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
 
 test fn w_kernel_numeric_at_the_peano_nat_is_refused() -> Bool {
@@ -57,10 +60,14 @@ test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
   violation_count(source: native_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
-// THE ADMISSION IS A CONJUNCTION, NOT A CARVE-OUT FOR THE TYPE. The declared side realizing
-// natively is only half of it; the produced value must ALSO be a kernel numeric. A String at the
-// same natively-realized position stays refused. Without this arm, an implementation that
-// admitted ANYTHING at a natively-realized declared type would pass the green arm above.
+// THE ADMISSION IS WRITTEN AS A CONJUNCTION -- the declared side must realize natively AND the
+// produced value must be a kernel numeric -- and this arm is the control for the second half.
+// IT IS CURRENTLY FAILING AND ENROLLED AS A KNOWN RED. A String at the natively-realized Nat is
+// admitted, by this branch and by main alike, so the second half of the conjunction is not
+// enforced anywhere downstream of declared_type_inhabitance: the consumed predicate
+// kernel_value_declared_type_mismatch does not fire for a kernel value at an algebraic type
+// application. That is a pre-existing gap, older than this branch, and it is named as this
+// class's next-rung trigger in the enrolment row.
 data string_at_native_nat_source: String = "module probe_inhabit_native_str\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: \"forty\") }\n"
 
 test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool {
