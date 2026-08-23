@@ -1503,15 +1503,15 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&["foo.rs".to_string()], &[]).expect("expected refusal");
+        let reason = validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new())
+            .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&[], &["foo.rs".to_string()]).expect("expected refusal");
+        let reason = validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new())
+            .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
     }
 
