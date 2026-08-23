@@ -23,7 +23,7 @@ import gunbc.scm.load_standing {
   LoadDocumentMalformed, LoadIdentityCollision,
   standing_may_supersede_generation, standing_loaded,
 }
-import gunbc.scm.commit_closure_json_v1 {
+import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
   ClosureDocNotAnObject, ClosureDocMemberMissing, ClosureDocUnknownKindTag,
   ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers, ClosureDocEdgeTargetUnresolved,
