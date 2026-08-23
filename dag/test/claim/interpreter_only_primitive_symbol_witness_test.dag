@@ -1,0 +1,68 @@
+module test.claim.interpreter_only_primitive_symbol_witness
+
+import std.types { String, Bool, Int, List }
+import std.primitive_identity {
+  PrimitiveSurfaceRow,
+  BuiltinRegistry,
+  PrimitiveContractRow,
+  AlgebraTemplate,
+  EmitHandler,
+  surface_rows_carry_symbol_on,
+  primitive_surface_census_derived,
+  primitive_interpreter_surface_rows,
+}
+
+// NO SYMBOL REACHES THE PRIMITIVE SURFACE THROUGH THE INTERPRETER ROSTER ALONE.
+//
+// WHAT THIS GUARDS AND WHY IT IS NOT DECORATION. `primitive_surface_carries_symbol` is the test
+// that separates DeclarationPrimitiveUndisposed from DeclarationProjectsNoPrimitive, and it is
+// defined over FIVE surfaces -- registry, contract, algebra, emit, and the interpreter dispatch
+// roster. The interpreter roster is the only one of the five whose authority
+// (gunbc.v1_interpreter_primitive_surface) reaches v2.* modules, which is why a consumer that
+// cannot carry v2.* in its closure would want the other four alone. That substitution is sound
+// only while the four answer identically to the five, and TODAY THEY DO -- but only as an
+// OCCUPANCY fact. Nothing structurally prevents the interpreter roster from acquiring a symbol
+// the other four do not carry; on the day it does, a four-surface reader would answer
+// DeclarationProjectsNoPrimitive where the authority says Undisposed, and would do it silently.
+//
+// SO THE EQUALITY IS CHECKED RATHER THAN ASSUMED. This witness goes RED the day an
+// interpreter-only symbol is added, and names it. RUNG: MECHANICALLY PREVENTABLE, not
+// structural -- the two censuses remain capable of diverging and this check is what catches it.
+// NEXT-RUNG TRIGGER: the projection query being defined over a surface set that structurally
+// cannot differ from the census's, which is a modeling question this witness does not answer.
+//
+// THE POSITIVE CONTROL sits beside it: the interpreter surface is non-empty, so a zero here is
+// an emptiness of the DIFFERENCE and never an emptiness of the subject.
+
+fn symbol_is_carried_outside_the_interpreter_roster(
+  rows: List<PrimitiveSurfaceRow>,
+  authored_symbol: String,
+) -> Bool {
+  surface_rows_carry_symbol_on(rows: rows, authority: BuiltinRegistry, authored_symbol: authored_symbol)
+    || surface_rows_carry_symbol_on(rows: rows, authority: PrimitiveContractRow, authored_symbol: authored_symbol)
+    || surface_rows_carry_symbol_on(rows: rows, authority: AlgebraTemplate, authored_symbol: authored_symbol)
+    || surface_rows_carry_symbol_on(rows: rows, authority: EmitHandler, authored_symbol: authored_symbol)
+}
+
+fn interpreter_only_symbols() -> List<String> {
+  primitive_interpreter_surface_rows()
+    |> map(fn(row) { row.authored_symbol as String })
+    |> filter(fn(sym) {
+      !symbol_is_carried_outside_the_interpreter_roster(
+        rows: primitive_surface_census_derived(),
+        authored_symbol: sym,
+      )
+    })
+}
+
+fn interpreter_only_symbol_count() -> Int {
+  count(interpreter_only_symbols())
+}
+
+test fn no_symbol_reaches_the_primitive_surface_through_the_interpreter_roster_alone() -> Bool {
+  interpreter_only_symbol_count() == 0
+}
+
+test fn the_interpreter_surface_is_non_empty_so_the_zero_is_a_difference_not_a_subject() -> Bool {
+  count(primitive_interpreter_surface_rows()) > 0
+}
