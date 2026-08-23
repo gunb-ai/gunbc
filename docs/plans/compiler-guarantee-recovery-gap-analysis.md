@@ -238,7 +238,8 @@ were priced out one at a time. Independent review corrected it, and the correcte
 **three distinct failure modes**, each with its own receipt:
 
 1. **The implementation never matched the specification, even while the specification was
-   live.** `module_skips_direct_call_arg_check` (the `v2.*`/`v1.compiler.*` exemption) dates
+   live.** `module_skips_direct_call_arg_check` (the `v2.*` exemption; it also skipped
+   `v1.compiler.*` until cut A, gunbc#8873, deleted that arm as dead) dates
    to **2026-06-08** (`a13fb57b149`, first `-S` occurrence) — eight days *before* the
    2026-06-16 bankruptcy. The gaps predate the loss of the document that named them.
 2. **The status ledger overstated completeness.** The recovered
@@ -341,7 +342,7 @@ grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 | Claim (THESIS.md) | Today | Receipt | §5 class |
 |---|---|---|---|
 | Type mismatches caught at compile time | **UNENFORCED** (return position, `data` annotation, generic instantiation) | `fn f() -> Int { "not an int" }` typechecks — probed by execution, PR #7481; argument position *is* checked | wall after grounding |
-| …in compiler source | **UNENFORCED by exemption** | `v1.compiler.infer` `module_skips_direct_call_arg_check` — skips `v2.*` and `v1.compiler.*` | wall now |
+| …in compiler source | **UNENFORCED by exemption** | `v1.compiler.infer` `module_skips_direct_call_arg_check` — skips `v2.*` (the `v1.compiler.*` arm was deleted as dead by cut A, gunbc#8873); the deletion of the remaining arm is gunbc#8924, CLOSED and held indefinitely by decision | wall now |
 | Field typos | **PARTIAL** — concrete types checked; through a type variable, not | `v1.compiler.infer` mints `TypeVariable { id: "field_of_type_var" }` instead of refusing | wall after grounding |
 | Application arity / call shape (missing, extra, misspelled-label args) | **fail-open by construction of the walk** | `v1.compiler.infer` `direct_call_arg_mismatch_diags` is *formal-driven*: per formal it seeks a same-named arg, else falls back to the **positional** arg at the same index (a misspelled label silently binds by position if the type fits), and `Absent => []` (missing arg → no diagnostic); extra args are never visited. The `ArityMismatch` diagnostic is **type-constructor** arity ("expects N *type* arguments"), not invocation arity — invocation arity has no compile diagnostic; #6896's wall is runtime-only | wall now |
 | Non-exhaustive matches | **PARTIAL — one confirmed silent arm** | resolved coproducts have exhaustiveness machinery; but `v1.compiler.infer_patterns` `lookup_variant_in_type` / `lookup_field_in_variant` both have `PatternLookupBlocked => node_lookup_failed(diagnostics: [])` — a blocked scrutinee lookup fails with **zero diagnostics** and the pattern types as `error_type` (`PatternDynamic`, by contrast, does diagnose at these sites). "Exhaustiveness not established" is treated as success-adjacent, not refused | wall after grounding |
@@ -578,7 +579,7 @@ What did not happen is the generic mechanism, or the rest of the dimensions movi
 
 | Dimension | Declared today | Carried on bindings | Enforced |
 |---|---|---|---|
-| Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*`/`v1.compiler.*` exempt |
+| Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*` exempt |
 | Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED in v1** — thesis-era status was "Partial, 421 violations, non-blocking"; **walled in v2 for loops** (`v2.std.cardinality` bound measure) |
 | Cardinality / multiplicity | `v2.std.refinement` (+ scoped lattice plan `gunbc.plans.cardinality_refinement`) | No | **RepresentableButForgeable** — see §4/§4b; operator re-directed 2026-07-04 |
 | Ownership | `src/v1/ownership.dag`, `src/v2/lens/ownership.dag` | No — still a separate pass | **Partial**, plus a known latent fail-open (Rc wrap) |
@@ -2841,6 +2842,348 @@ enforces end to end.
    `dashboard-message` to it returns `recipient session not found` — so the deletion is
    UNOWNED as of 2026-08-22.
 
+
+29. **A symbol name in PROSE is unreachable by any lens by construction, so three real dependents
+   survived a deletion with nothing able to refuse them** (opened 2026-08-22, session proud-ant-819,
+   found by executing the cut B deletion of `v1.compiler.infer` `module_skips_direct_call_arg_check`.
+   **This row is narrower than its first draft, and the narrowing is recorded below because the
+   overstatement was mine.**)
+
+   **STATUS, so the tense is not misread: the deletion was EXECUTED AS A MEASUREMENT and has NOT
+   LANDED.** `module_skips_direct_call_arg_check` still exists on main. Cut B (PR #8924) is held by
+   decision on a declined precondition — see row 30 — so the five sites below still name a symbol that
+   is still there. What was measured is what *would* refuse, and the finding is about the census
+   mechanism, not about main's current state.
+
+   INVALID STATE. DESIGN §3's replacement-migration doctrine rests on a mechanism: *in a fail-closed
+   substrate the deletion IS the census — every real dependent refuses loudly.* A citation living in
+   PROSE — a `String` whose content is commentary, or a §4c source annotation — cannot participate in
+   that census, and not for want of a lens: **§4c states that no `Accepted` program can read an
+   annotation at all**, and a commentary `String` has no row type for a lens to enumerate. The
+   deletion completes; the citation stays; nothing anywhere can notice.
+
+   DISTINGUISHING FACTS, measured by executing the deletion. The symbol was removed from both
+   authorities; **zero** symbol references remain. Five live sites still name it, and they split
+   **two ways, not one**:
+
+   | site | carrier | can anything refuse it? |
+   |---|---|---|
+   | `gunbc.doc_graph_roots` | `HandAuthoredDocBind` → `DeclarationRef { decl_name: … }` | **YES** — the cited-symbol resolver enumerates these rows and answers `REFUSED DECLARATION-ABSENT` |
+   | `test.claim.doc_reachability_witness_test` | string comparison, but **joined to the bind** | **YES, indirectly** — reds when the bind is repointed |
+   | `gunbc.roadmap_authority` | headline / boundary prose | no |
+   | `gunbc.guarantee_probe_corpus` | §4c source annotation | no |
+   | `v2.compiler.02_parse` | §4c source annotation | no |
+
+   So the population is **three**, not five.
+
+   WHAT I GOT WRONG, kept because a corrected row is only trustworthy if the correction is visible.
+   The first draft of this row claimed all five were invisible, reasoning that *a name carried inside
+   a `String` is not reachable from the `Node` tree, so nothing can resolve it.* **That reasoning is
+   false**, and the `doc_graph_roots` row is the counterexample: `decl_name` IS a `String` field, and
+   the citation IS machine-checkable anyway, because the row's TYPE is known and enrolled — a lens
+   enumerates `HandAuthoredDocBind` rows and resolves the `(module_path, decl_name)` pair against the
+   namespace. A planted mutation (`…_MUTANT`) produces `REFUSED DECLARATION-ABSENT` and
+   `FAIL 1 authored reference(s) do not resolve`, verified on `session/quiet-lark-881-phase`. **The
+   discriminating axis is not String-versus-symbol; it is whether the citation sits in a TYPED ROW a
+   lens can enumerate, or in free text nothing can.** My axis was wrong and it happened to be wrong
+   about the one row that disproves the sweeping claim.
+
+   HARM. For the three prose sites: a reader is directed to a symbol that does not exist, and no
+   mechanism can ever tell them. This is §3's positional-citation decay class — the reason the
+   standing rule is *cite the symbol, not the position* — arriving through a carrier the rule does not
+   cover, because a symbol named in prose satisfies "cite the symbol" in appearance while being
+   exactly as unreachable as a `file:line`.
+
+   RUNG FOUND AT: *mitigatable*. The three sites are stale prose discoverable by grep; they mislead a
+   reader rather than passing a gate. Explicitly NOT below-floor — nothing green certifies them,
+   because nothing reads them at all.
+
+   CEILING: **outside the modeled guarantee**, and this is the honest answer rather than a low one.
+   §4c makes annotation content unreadable by any `Accepted` program *by construction*, which is a
+   property the repository chose deliberately; a lens that could refuse a stale name in an annotation
+   would be a lens reading annotations, which §4c forbids. So this class does not climb by building a
+   check. It climbs only by MOVING the citation into a typed carrier — at which point it becomes the
+   `doc_graph_roots` case, which already works.
+
+   NEXT TRIGGER: not a mechanism but a migration — any prose citation of a symbol that a typed carrier
+   could hold instead should move to one, exactly as §3's positional-citation rule says the cheap
+   construction move is to stop writing positions rather than to build a checker for them. The three
+   sites named above are the current bounded population.
+
+   ### DECLARED RUNG DROP (§4b(3)) — CONDITIONAL, and currently **DORMANT: NO DROP IS IN FORCE**
+
+   **Read the whole of this sub-section in the subjunctive.** It was written when cut B was expected
+   to land. Cut B (PR #8924) is **closed** — held by decision, see row 30 — so no deletion lands, no
+   citation goes stale, and **no rung drop is declared or pending.** There is no restoration trigger
+   outstanding and nothing here is waiting on gunbc#8800. The branch and the arms below are retained
+   so that whoever lands the deletion later inherits the analysis rather than re-deriving it; the
+   conditional is theirs to evaluate at *their* land time, not a live declaration made here.
+
+   *(Recorded because a §4b(3) drop that is described but not in force is inflation in the opposite
+   direction — it advertises a safety regression that does not exist and a trigger nobody owes.)*
+
+   The `doc_graph_roots` bind **refuses loudly** on this deletion — but only once the cited-symbol
+   resolver runs **as a required check**, which is gunbc#8800. **THAT HAS NOW MERGED**
+   (`4adfc5a76b`, "Enrol the cited-symbol census as a separately named required check"), and the
+   check is live: it ran and passed as a named gate on this row's own PR. So the sentence that
+   stood here — *until that merges, the refusal exists as a mode nothing invokes* — is superseded,
+   and the conditional below resolves to its **first** arm: were the deletion to land now, the bind
+   would refuse and **no drop would be declared at all**. That is a second, independent reason this
+   sub-section is dormant, and it is recorded rather than left because an unmerged-state claim about
+   a merged PR is premise contamination in the carrier whose subject is rung honesty.
+
+   - **IF gunbc#8800 HAS MERGED at land time:** no drop is declared. The bind refuses, its owning lane
+     (`session/quiet-lark-881-phase`) repoints it, and the joined witness reds with it. **Correct order
+     is this deletion FIRST, the repair SECOND** — pre-updating the citation would make the row false
+     in the other direction (naming a symbol that still exists) for as long as this PR takes.
+   - **IF gunbc#8800 HAS NOT MERGED:** this deletion lands with a declared bounded drop for that window
+     only. PREVIOUS RUNG mechanically preventable (the resolver would refuse). TEMPORARY RUNG
+     mitigatable (the stale citation is grep-discoverable, and the joined witness still passes because
+     its assertion is a string comparison). BOUNDED POPULATION one bind row plus its joined witness.
+     RESTORATION TRIGGER gunbc#8800 merging, after which the resolver refuses and the owning lane
+     repairs.
+   - **Check gunbc#8800's state at land time rather than assuming this evening's answer.**
+
+30. **The `v2.*` argument-type exemption's residue is TWO COMPILER SEAMS, both reproduced minimally,
+   and ZERO source-conformance defects** (opened 2026-08-22, session `proud-ant-819`, measured as
+   cut B; this row supplies the `why` column whose absence retracted the earlier 48/11/8 split in the
+   row above, for two of the three mechanisms).
+
+   Deleting `module_skips_direct_call_arg_check` makes the witness floor refuse on its prepared
+   subject with **19 distinct located diagnostics across 9 modules**. Not one of them is a call site
+   that should be edited.
+
+   **THE 19 IS A COUNT OVER A MOVING CORPUS, so it is bound to its runs rather than stated as a
+   standing fact.** Measured twice, on a branch carrying the deletion:
+
+   | base | floor subject | modules_resolved | diagnostics |
+   |---|---|---|---|
+   | `71d7da4e92` | `ac87f26533b2a89c` | 3867 | 19 |
+   | `abf7194e2b` (main absorbed) | `224767fa49c4a2c4` | 3874 | **the same 19** — set diffed identical, none new, none dropped |
+
+   Seven modules entered the subject between those runs and the diagnostic set did not move, which
+   is evidence that the population is structural rather than incidental to one tree. **It is not a
+   claim that the count is 19 today.** Main has advanced well past `abf7194e2b`; nobody has
+   re-measured since, and a stable value is precisely the one that stops being re-derived because
+   carrying it forward costs nothing and looks like continuity. Anyone citing the number should
+   re-take it against their own ref, or cite it as *19 at `224767fa49c4a2c4`*.
+
+   - **Seam A — a transparent alias whose RHS is a GENERIC INSTANTIATION is not peeled.** Population
+     8 sites, one per formatter module (`type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>` at a
+     `ConfigPatchRecord<Config>` formal). The §2-horizontal modelling is already correct: one shared
+     authority in `v2.std.patch`, instantiated eight times. **Reproduction, 12 lines, one red cell and
+     one green control:** `type Box<T>` / `type IntBox = Box<Int>` — `takes_box(b: b)` refuses for the
+     alias and accepts `Box<Int>` spelled directly. `expected 'Primitive(Box)', got 'Node(IntBox)'`:
+     the expected side has LOST ITS TYPE ARGUMENT and the got side is the alias UNRESOLVED, so neither
+     side was peeled. This is a gap in the transparent-alias relation landed by gunbc#8873, which
+     merged — a main-branch seam, not a review note.
+   - **Seam B — the `T?` cardinality is DROPPED when a variant's field type is read through an
+     IMPORT.** Population 11 sites, all `src/v2/extdeps/github/gha_fold_pilot_emit.dag`, passing
+     `String?` fields of an imported `RunStep` to `Optional<String>` formals. **Reproduction, 3
+     modules, one red cell and one green control**, and the defect needs BOTH variables at once:
+     same-module + `T?` CLEAN, same-module + `Optional<T>` CLEAN, imported + `Optional<T>` CLEAN,
+     imported + `T?` **RED**. So it is neither a sugar defect nor a match-binder defect — both were
+     cleared by the same-module cells, and clearing them is what located it.
+
+   Three readings were refuted before seam B was found, recorded so they are not re-derived: the `?`
+   sugar is not un-equated with `Optional<T>`; the match binder does not lose the wrapper; and these
+   sites are **not** an instance of the `T?`-as-kernel-cardinality class — under that reading the
+   same-module sugar cell would have had to refuse, and it did not. That last is evidence bearing on
+   another lane's class, gathered independently, and is offered as evidence rather than as a verdict
+   on it.
+
+   **Acceptance evidence, and why the clean arm is not vacuous.** Paired arms over the 42 top-level
+   `src/v2/compiler/*.dag` modules at `71d7da4e92`, arm identity carried per arm (predicate occurrence
+   count 0/0 AFTER vs 3/3 BASELINE; binary md5 `7e7da4bf` vs `fa070b6f`) show **no delta** — chunk 2 is
+   identical across both arms INCLUDING its `hard=26` and its one `emit_refused=1`, which is how those
+   26 are known to be pre-existing rather than caused by the deletion. A clean run from a judgment that
+   discriminates nothing is indistinguishable from a clean run from one that works, so the clean arm
+   carries no weight alone. What separates them is the RED CONTROL, flipped on those same two binaries:
+   two probe modules byte-identical below line 1, differing only in that one is named `v2.redcontrol`
+   and the other `redcontrol.user`, each passing a `String` to an `Int` and to a record formal —
+
+   | arm | module | rc | diagnostics |
+   |---|---|---|---|
+   | BASELINE | `v2.redcontrol` | 0 | **none** — silently admitted |
+   | BASELINE | `redcontrol.user` | 1 | 2 located type mismatches — positive control fires |
+   | AFTER | `v2.redcontrol` | 1 | 2 located type mismatches — now refuses |
+   | AFTER | `redcontrol.user` | 1 | 2 located type mismatches — unchanged |
+
+   One cell moved, and only the predicted one. The positive control is nonzero on BOTH arms, so the
+   planted mismatch is one the judgment covers and the `v2` cell's silence was the exemption rather
+   than an inert probe.
+
+   **Instrument note, because it cost three runs.** An earlier form of this control returned four
+   identical cells, which reads as "the exemption never mattered" and is false: two independent defects
+   (a missing required CLI flag, and a baseline revert naming a ref the remote does not carry) both
+   fail toward the same clean table. The fix is that a nonzero exit may not produce a cell at all —
+   the harness prints `UNMEASURED rc=N` with counters `n/a`, never `0`, because "no compile happened"
+   and "compiled, zero diagnostics" must not share a spelling. It caught the third defect on its first
+   run. `unmeasured=0` on every reported total is therefore part of the claim: no zero above is a
+   refusal wearing a zero.
+
+   **The reproductions, as bytes.** Carried here rather than in a separate probe
+   document, so there is one authority rather than two. Measured on `71d7da4e92`
+   plus the deletion, binary md5 `7e7da4bf5ef93fc24e2d8fd600e87a3b`. **These red
+   only on a tree carrying the deletion**; on stock main the modules are `v2.*`
+   and the exemption makes every cell silent, so reproducing there and reading the
+   silence as refutation is the trap to avoid.
+
+   Seam A — 12 lines, one red cell, one green control:
+
+   ```
+   module v2.probe.aliasgen
+   type Box<T>
+   fn takes_box<T>(b: Box<T>) -> Bool { true }
+   type IntBox = Box<Int>
+   fn c_alias_of_generic(b: IntBox) -> Bool { takes_box(b: b) }   // RED
+   fn c_direct_generic(b: Box<Int>)  -> Bool { takes_box(b: b) }  // GREEN control
+       type mismatch: expected 'Primitive(Box)', got 'Node(IntBox)'
+   ```
+
+   The expected side has **lost its type argument** and the got side is the
+   **alias unresolved** — neither was peeled.
+
+   Seam B — 3 modules, one red cell, one green control:
+
+   ```
+   module v2.probe.optdecl                       // the DECLARING module
+   import v2.std.optional { Optional }
+   type S2 = A2 { fs: String?, fl: Optional<String> } | B2 { z: Int }
+
+   module v2.probe.xsugar                        // RED
+   import v2.probe.optdecl { S2, A2, B2 }
+   import v2.std.optional { Optional }
+   fn takes_opt_s(o: Optional<String>) -> Bool { true }
+   fn c_cross_sugar(s: S2) -> Bool {
+     match s { A2 { fs: x, fl: y } => takes_opt_s(o: x)  B2 { z: _ } => true }
+   }
+       type mismatch: expected 'Coproduct(Optional)', got 'Primitive(String)'
+
+   module v2.probe.xlong                         // GREEN control
+   ... identical but passes `y`, the long-form field.  rc=0, zero mismatches.
+   ```
+
+   **These are prose and therefore cannot go red.** When either seam closes,
+   nothing here will notice that the reproduction now passes. The right home is
+   the probe corpus that already carries a sibling —
+   `gunbc.guarantee_probe_corpus` `direct_call_arg_type_v2_module_red_probe`,
+   consumed by `dag/test/claim/direct_call_argument_type_witness_test.dag`.
+
+   **THAT HOME DOES NOT CURRENTLY EXECUTE, and row 28 above — landed while this row
+   was in review — is the receipt.** `test.claim.guarantee_probe_corpus_witness` is
+   one of the five DECLINED carriers: discovered by the floor, counted in
+   `declined_live`, never folded. And the consumer named just above,
+   `test.claim.direct_call_argument_type_witness`, is row 28's *second specimen* of
+   the mis-declaration class — it declares `SubstrateInputsOnly` while calling
+   `compile_dag_diagnostic_census`, and per that row the pairing is currently the
+   only reason any census-compiling probe runs at all.
+
+   **This does not change the disposition; it converts it from a judgement into a
+   measured one.** Enrolling these reproductions there today would place them in a
+   carrier that is either declined (never folded) or executing only by virtue of a
+   mis-declaration slated for correction — in both cases a row asserting that it
+   reaches its subject and answers, when it does not. That is precisely the hazard
+   `v2.workflow.floor_expected_red`'s header names and precisely what its 101 shed
+   rows were. **So the residue is unchanged in substance and firmer in ground: the
+   reproductions stay prose here, and enrolment waits on the arm's owner — which,
+   per row 28's ownership finding, does not currently exist.**
+   *(An earlier revision of this row said that probe was rostered in
+   `v2.workflow.floor_expected_red`. It is not — that file carries zero references
+   to it. The claim was inherited from a neighbouring row and repeated without
+   being resolved, which is the §3 positional-citation failure in its symbolic
+   form: a cited relation neither carrier asserts.)*
+
+   They were **not** enrolled by this row's author, deliberately, and
+   `v2.workflow.floor_expected_red`'s own header states the rule that makes this
+   more than caution: **enrolling an identity asserts that it reaches its subject
+   and answers.** That roster shed 101 rows on 2026-08-20 which had never reached
+   their subject at all, and records why it is the more dangerous mistake — *a
+   genuine red is loud when someone finally looks at it, while a never-executed
+   row looks identical to progress.* These reproductions are exactly that hazard:
+   under a `v2.*` name they are **silent**, because the exemption they demonstrate
+   is the thing suppressing them; under a non-`v2` name they refuse against the
+   corpus immediately. Neither is an enrollable state today. So enrolment is a
+   change to that carrier, not a file drop, and it belongs to whoever owns the
+   seam. **Enrolment is the residue this row leaves behind.**
+
+   **That last claim was measured, not assumed, and the measurement is a finding
+   in its own right that widens seam A well beyond cut B.** One shape, two module
+   names, run against a MAIN binary with the exemption LIVE (occurrence count 3/3,
+   binary md5 `64c35161bf74c4637087eda19bef3d02`):
+
+   | module | judged? | result |
+   |---|---|---|
+   | `v2.gatecheck.aliasgen` | exempt | rc=0, **0 mismatches** |
+   | `gatecheck.user.aliasgen` | judged | rc=1, `expected 'Primitive(BoxB)', got 'Node(IntBoxB)'` |
+
+   **So seam A is a live defect on main TODAY, for ordinary non-`v2` source, with
+   no deletion involved.** Any module outside `v2.*` that declares
+   `type Alias = Generic<Arg>` and passes it at a `Generic<T>` formal is falsely
+   refused right now. The `v2.*` exemption is the only reason the corpus does not
+   show it — the exemption is *masking* seam A, not merely coexisting with it.
+
+   **This is recorded as a CORRECTED PREMISE, not a reversal, and the decline
+   STANDS.** The repair of seam A was declined at the owning layer (`deep-ant-102`)
+   partly on the ground that the residue was *surfaced by deleting the exemption*,
+   which placed seam A inside cut B's blast radius. **That reading was theirs and
+   they have WITHDRAWN it** on the measurement above: the exemption masks seam A
+   rather than coexisting with it, so cut B removes the mask and does not create
+   the population.
+
+   **The surviving ground is now the only ground, and it never depended on who
+   surfaced the population:** the fix is a resolve-layer change carrying applied
+   forms at the formal position, and row 163's exhaustive case split shows no
+   comparison-seam representative exists — either it retains arguments and admits
+   nothing, or it is the bare constructor and erases the distinction between
+   `ConfigPatchRecord<X>` and `ConfigPatchRecord<Y>`. It is a real, uncosted
+   type-system change. *A design outlives its refuted justification only if
+   someone restates it on true grounds* — leaving a decline standing on a premise
+   known to be false is the same defect as a stale hold, because nothing announces
+   it and the next reader inherits the dead reason as live.
+
+   **What changed in substance, which is not nothing: the affected population is
+   no longer the 9 formatter declarations.** It is every non-`v2` author writing
+   `type Alias = Generic<Arg>` passed at a `Generic<T>` formal. **Strictly larger
+   class, unchanged ceiling.**
+
+   **The size of that class is UNKNOWN, and the earlier phrasing here — *nothing in
+   the repository counts them* — was an absence claim this row never established.**
+   No census has been run (deliberately; see the reopening conditions below), and
+   no exhaustive search was made for an existing counter, so the supported
+   statement is *no count is known to this row*, not *no count exists*. Those reach
+   the same disposition by different routes and only one of them was measured.
+
+   One crude datapoint, stated with its limits inside the same sentence so it
+   cannot be quoted as a population: a tree-wide grep for the DECLARATION SHAPE
+   `^type X = Y<` over `dag/` and `src/` returns **185 declarations, which is an
+   upper bound on candidate DECLARATIONS and emphatically not the affected site
+   count** — it does not test whether each is passed at a `Generic<T>` formal, does
+   not exclude `v2.*` (where the exemption still suppresses the judgment), and was
+   produced by one grep rather than by the census. **It does not meet reopening
+   condition (2)**, which asks for a deliberately dispatched census returning a
+   count. Stated so the DISTANCE is legible and not merely disclaimed — a bounded
+   number invites the inference *the census is an afternoon*, which is the second
+   way this figure misleads and is not covered by the population guard above: the
+   census additionally requires the two joins this grep does not perform — resolve
+   each declared alias to its USE SITES and decide, per site, whether the argument
+   lands at a `Generic<T>` formal; and exclude `v2.*`, where the exemption
+   suppresses the judgment so no site there is observable at all. Neither join is
+   a grep, and it is those two, not the enumeration, that the reserved work is.
+
+   REOPENING CONDITIONS for the declined repair, current as of the re-ruling:
+   (1) someone costs the resolve change on its merits as a type-system change; or
+   (2) a **deliberately dispatched** non-`v2` census returns a count. Explicitly
+   NOT a reopening condition: a third reproduction, or a further demonstration
+   that the class is real — that is established twice over. The census in (2) has
+   deliberately not been run from this row; "not bounded" is not a count, and an
+   unbidden corpus census over a shape is the scope creep the decline exists to
+   prevent.
+
+   **Disposition: the deletion REVEALS these seams and the refusal is CORRECT.** Neither is a rung drop
+   caused by this change, and neither is repairable in `extdeps` — coercing the 19 sites would be
+   editing correct source to satisfy a compiler that cannot read it, which is worse than papering over
+   a modelling error. Restoration trigger for each: the owning seam closing.
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
@@ -2990,7 +3333,7 @@ corrected by the seventh-pass verdict: the exemption skips the argument-TYPE jud
 whose false positives are the four measured representation gaps — the label wall never
 gated it, and #7519's wall already runs exemption-free). Once
 `argument-type-compatibility-grounding` and `declared-conformance-grounding` land, rerun
-exemption-free over `v2.*`/`v1.compiler.*`, classify every failure fresh, fix relation or
+exemption-free over `v2.*` (the `v1.compiler.*` arm is already gone), classify every failure fresh, fix relation or
 source, delete; the unsourced 104 is neither a blocker nor a promise.
 
 **Stage 6b — the acceptance door, split mechanism-then-activation (seventh-pass verdict;
