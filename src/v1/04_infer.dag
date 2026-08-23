@@ -1880,41 +1880,11 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
 }
 
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
-  let with_refinement = with_expected_where_refinement_diags(
+  with_expected_where_refinement_diags(
     result: infer_expr_body(texpr: texpr, scope: scope, expected: expected),
     expected: expected,
     scope: scope
   )
-  match expected {
-    Present { value: expected_ty } =>
-      if expression_directed_type_mismatch(
-        formal: expected_ty,
-        actual_expr: texpr,
-        scope: scope
-      ) {
-        InferResult {
-          typed: with_refinement.typed,
-          diagnostics: concat(with_refinement.diagnostics, [type_mismatch_error(
-            expected: node_type_shape(n: expected_ty, source_indices: scope.type_env.source_indices),
-            got: node_type_shape(n: resolved_type(n: with_refinement.typed), source_indices: scope.type_env.source_indices),
-            span: texpr.span,
-            module_name: scope.module_name
-          )])
-        }
-      } else { with_refinement }
-    Absent => with_refinement
-  }
-}
-
-fn expression_directed_type_mismatch(
-  formal: Node,
-  actual_expr: Node,
-  scope: InferScope
-) -> Bool {
-  match actual_expr.expr_data {
-    ExprLiteral { value: _ } => literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
-    _ => false
-  }
 }
 
 fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope) -> InferResult {
@@ -1924,13 +1894,14 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
       let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
       match element.expr_data {
         ExprLiteral { value: _ } =>
-          if is_kernel_type(name: formal_name)
-            && kernel_value_declared_type_mismatch(
-              formal: formal,
-              actual: resolved_type(n: result.typed),
-              type_env: scope.type_env,
-              source_indices: scope.type_env.source_indices
-            ) {
+          if literal_introduction_type_mismatch(formal: formal, actual_expr: element, scope: scope)
+            || (is_kernel_type(name: formal_name)
+              && kernel_value_declared_type_mismatch(
+                formal: formal,
+                actual: resolved_type(n: result.typed),
+                type_env: scope.type_env,
+                source_indices: scope.type_env.source_indices
+              )) {
             InferResult {
               typed: result.typed,
               diagnostics: concat(result.diagnostics, [type_mismatch_error(

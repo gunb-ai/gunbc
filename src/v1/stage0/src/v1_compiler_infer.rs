@@ -2824,57 +2824,11 @@ pub fn infer_expr(
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
-    {
-        let with_refinement = with_expected_where_refinement_diags(
-            infer_expr_body(texpr.clone(), scope.clone(), expected.clone()),
-            expected.clone(),
-            scope.clone(),
-        );
-        match expected.clone() {
-            Some(expected_ty) => {
-                if expression_directed_type_mismatch(
-                    expected_ty.clone(),
-                    texpr.clone(),
-                    scope.clone(),
-                ) {
-                    Rc::new(InferResult {
-                        typed: with_refinement.typed.clone(),
-                        diagnostics: v1_rt::concat(
-                            with_refinement.diagnostics.clone(),
-                            Rc::new(vec![type_mismatch_error(
-                                node_type_shape(
-                                    expected_ty.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                node_type_shape(
-                                    resolved_type(with_refinement.typed.clone()),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                texpr.span.clone(),
-                                scope.module_name.clone(),
-                            )]),
-                        ),
-                    })
-                } else {
-                    with_refinement.clone()
-                }
-            }
-            None => with_refinement.clone(),
-        }
-    }
-}
-
-pub fn expression_directed_type_mismatch(
-    formal: Rc<Node>,
-    actual_expr: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    match (*actual_expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: _, .. } => {
-            literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone())
-        }
-        _ => false,
-    }
+    with_expected_where_refinement_diags(
+        infer_expr_body(texpr.clone(), scope.clone(), expected.clone()),
+        expected.clone(),
+        scope.clone(),
+    )
 }
 
 pub fn infer_list_literal_element(
@@ -2892,13 +2846,17 @@ pub fn infer_list_literal_element(
                 );
                 match (*element.expr_data.clone()).clone() {
                     ExprData::ExprLiteral { value: _, .. } => {
-                        if (is_kernel_type(formal_name.clone())
+                        if (literal_introduction_type_mismatch(
+                            formal.clone(),
+                            element.clone(),
+                            scope.clone(),
+                        ) || (is_kernel_type(formal_name.clone())
                             && kernel_value_declared_type_mismatch(
                                 formal.clone(),
                                 resolved_type(result.typed.clone()),
                                 scope.type_env.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                            ))
+                            )))
                         {
                             Rc::new(InferResult {
                                 typed: result.typed.clone(),
