@@ -1,5 +1,7 @@
 module product.fabric.work
 
+import product.fabric.isolation { IsolationProfile }
+
 import std.types { NonEmptyStr, List }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
@@ -114,6 +116,7 @@ type ExecutionRequirements {
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
+  isolation: IsolationProfile
 }
 
 type Work<P> {

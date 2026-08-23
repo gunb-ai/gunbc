@@ -1,6 +1,6 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int }
+import std.types { Timestamp, Int, List }
 import std.measure {
   MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
@@ -10,6 +10,10 @@ import std.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
+import product.fabric.isolation {
+  IsolationProfile, IsolationGuarantee,
+  unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
+}
 
 // An Offer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
@@ -92,6 +96,7 @@ type Offer<P> {
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
+  isolation: IsolationProfile
   quantity_bound: Int
   ready_at: Timestamp
   quote: OfferQuote
@@ -169,6 +174,7 @@ type OfferFungibility
   | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
   | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
   | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | IsolationNotProvided { missing: List<IsolationGuarantee> }
 
 // GRANT DURATION -- the fact a RATE quote needs before its per-unit price can
 // be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
@@ -221,6 +227,14 @@ fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
   } else if requirements.capabilities != offer.capabilities {
     CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
+  } else if (unsatisfied_isolation_guarantees(
+      required: requirements.isolation, provided: offer.isolation,
+    ) |> count) > 0 {
+    IsolationNotProvided {
+      missing: unsatisfied_isolation_guarantees(
+        required: requirements.isolation, provided: offer.isolation,
+      ),
+    }
   } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
     ShapeNotCovered {
       required_threads: requirements.shape.hard.threads,

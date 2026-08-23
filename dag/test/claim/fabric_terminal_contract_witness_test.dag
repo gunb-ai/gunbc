@@ -30,6 +30,7 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data fixture_contract: WorkContract = WorkContract {
@@ -79,12 +80,14 @@ data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-amd64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
@@ -218,6 +221,7 @@ data owned_offer: Offer<NonEmptyStr> = Offer {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
@@ -230,6 +234,7 @@ data rented_offer: Offer<NonEmptyStr> = Offer {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "rented",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
