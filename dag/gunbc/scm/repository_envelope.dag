@@ -2,7 +2,7 @@ module gunbc.scm.repository_envelope
 
 // THE REPOSITORY ENVELOPE: the layer that gunbc.scm.commit_closure_json_v2 deliberately is not.
 //
-// image.dag holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
+// commit_closure_json_v2 holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
 // and each one is a reason this module exists rather than a field bolted onto that one:
 //
 //   - AN EMPTY INITIALIZED STATE. `init` produces a repository with no commits and no root at all.
@@ -15,7 +15,7 @@ module gunbc.scm.repository_envelope
 //   - A CHECKED-OUT SELECTION, which is local workspace state, not authoritative history.
 //
 // COMMIT IDENTITY IS NOT STORED AND NOT STORABLE HERE. A commit's identity is its root object's
-// identity, and that is re-derived from structure on load exactly as image.dag re-derives every
+// identity, and that is re-derived from structure on load exactly as commit_closure_json_v2 re-derives every
 // other. `message` is a log fact and participates in no identity; two commits with identical roots
 // and different messages name the SAME program, which is the point of content addressing and not a
 // collision.
@@ -150,7 +150,7 @@ type RepositoryEncodeRefusal
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
-// a resolved one: an image-local position is still spelled as bare text here, and image.dag's whole
+// a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
 // reference vocabulary would have to be typed for this to be honest. Naming it here so the next
 // reader finds a declared gap instead of re-deriving it.
 type RepositoryDecodeRefusal
@@ -160,9 +160,9 @@ type RepositoryDecodeRefusal
   | RepositoryCheckoutReferenceUnresolved { reference: String }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
 
-// THE CONTEXT VOCABULARY IS THIS LAYER'S, THE MEMBERSHIP MECHANISM IS SHARED. image.dag owns
+// THE CONTEXT VOCABULARY IS THIS LAYER'S, THE MEMBERSHIP MECHANISM IS SHARED. commit_closure_json_v2 owns
 // `unexpected_member_key`, which answers a context-free question -- which key is not in this set --
-// and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to image.dag's context
+// and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to commit_closure_json_v2's context
 // coproduct would have made the lower carrier enumerate the shapes of a layer above it, which is the
 // inversion DESIGN section 3 names; duplicating the fold here instead would have been a second
 // authority for one rule. Neither is necessary: the mechanism generalizes, the vocabulary does not.
@@ -422,7 +422,7 @@ fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: Obje
 
 // COMMITS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
 // copies the whole accumulator per commit, which is the quadratic shape DESIGN section 6 says is
-// always fixed regardless of the realized n. This stack removed that shape from image.dag and from
+// always fixed regardless of the realized n. This stack removed that shape from commit_closure_json_v2 and from
 // object_store.dag and then reintroduced it here in the same diff -- caught by review, and the point
 // worth recording is that fixing a cost shape at the sites a review names is not the same as not
 // having the defect: the sweep has to be over every accumulator the change touches, or the rule is
