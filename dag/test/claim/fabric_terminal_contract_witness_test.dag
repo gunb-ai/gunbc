@@ -221,6 +221,7 @@ data owned_offer: Offer<NonEmptyStr> = Offer {
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
+  billing_quantum_seconds: 0,
   evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
@@ -233,6 +234,7 @@ data rented_offer: Offer<NonEmptyStr> = Offer {
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
+  billing_quantum_seconds: 0,
   evidence: QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",

@@ -32,11 +32,59 @@ fn t_offer(
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
     quote: quote,
+    billing_quantum_seconds: 0,
     evidence: ObservedSupply {
       observed_at: "2026-08-19T00:00:00Z",
       receipt: "gunbc.observation.fleet-1",
     },
   }
+}
+
+fn t_offer_with_quantum(
+  quote: OfferQuote,
+  quantum_seconds: Nat,
+) -> Offer<NonEmptyStr> {
+  Offer {
+    id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
+    executor: "gunbc",
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) } },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    quantity_bound: 1,
+    ready_at: "2026-08-19T00:00:00Z",
+    quote: quote,
+    billing_quantum_seconds: quantum_seconds,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-19T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// BILLING QUANTUM CHANGES THE BILL, AND THIS IS THE INPUT THAT PROVES IT.
+//
+// One rate, one 90-second job, two suppliers. Continuous capacity is billed the 90
+// seconds it used. An hourly-quantum supplier is billed the whole hour and wastes 3510
+// seconds of it. If the fold ever went back to assuming one quantum for everybody, these
+// two would collapse to the same number and this test goes red -- which is the point:
+// the waste is the modeled advantage of owned compute, and a rate comparison that cannot
+// see it ranks suppliers by the wrong number.
+test fn billing_quantum_separates_continuous_capacity_from_an_hourly_supplier() -> Bool {
+  let ninety = ExactGrantDuration { seconds: second(count: 90) }
+  let rate = QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd })
+  let continuous = offer_affordability_for(
+    offer: t_offer_with_quantum(quote: rate, quantum_seconds: 0),
+    maximum_buy_order: money_amount_micro(count: 100),
+    budget_currency: Usd,
+    duration: ninety,
+  )
+  let hourly = offer_affordability_for(
+    offer: t_offer_with_quantum(quote: rate, quantum_seconds: 3600),
+    maximum_buy_order: money_amount_micro(count: 100),
+    budget_currency: Usd,
+    duration: ninety,
+  )
+  affordable(a: continuous) && !affordable(a: hourly)
 }
 
 fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {

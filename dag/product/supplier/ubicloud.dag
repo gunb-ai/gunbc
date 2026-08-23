@@ -1,14 +1,12 @@
 module product.supplier.ubicloud
 
 import std.types { NonEmptyStr, List, Int, Timestamp }
-import std.measure {
-  MoneyPerHour, MoneyRate, ByteSize, HardwareThreadCount,
-  per_hour_equivalent_from_per_minute,
-}
+import std.nat { Nat }
+import std.measure { MoneyRate, ByteSize, HardwareThreadCount }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
-import product.fabric.supply { Offer, OfferQuote, QuotedPerHour, OfferEvidence, QuotedSupply }
+import product.fabric.supply { Offer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
 import extdeps.pricing.ubicloud {
   UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
 }
@@ -29,15 +27,21 @@ import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow }
 // this repository re-minted both and produced two disagreeing answers for one vendor
 // fact within a day; the rule that prevents it is to consume the row, never copy it.
 
-// PER-MINUTE NORMALIZES TO PER-HOUR, NOT PER-SECOND, AND THE CHOICE IS ARITHMETIC.
-// OfferQuote offers no per-minute arm. Per-hour is exact -- a per-minute micro count
-// times sixty is an integer. Per-second truncates: 1600 micros per minute is 26.67 per
-// second, and a floor there understates every Ubicloud ask by a quarter of a percent
-// while a ceiling overstates it. A selection fold that ranks suppliers against each
-// other must not carry a rounding bias that favours one billing period.
+// THE VENDOR'S OWN BILLING PERIOD IS PRESERVED, NOT NORMALIZED.
+//
+// Ubicloud bills by the minute, so the quote is QuotedPerMinute and the billing quantum
+// is sixty seconds. An earlier revision of this binding squashed the per-minute rate
+// into QuotedPerHour because the core had no per-minute arm; that was a twentyfold
+// overcharge on a three-minute job, since the hourly arm rounds up to whole billed
+// hours. Normalizing a supplier's period is not a presentational choice -- the period
+// and the quantum together ARE the tariff, and a binding that discards them hands the
+// selection fold a number that is not the price.
 fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
-  QuotedPerHour(per_hour_equivalent_from_per_minute(q: row.per_minute))
+  QuotedPerMinute(row.per_minute)
 }
+
+// Sixty seconds, from the vendor's published per-minute billing. Not a default.
+data ubicloud_billing_quantum_seconds: Nat = 60
 
 // WHAT THE FABRIC'S SHAPE CANNOT SAY.
 //
@@ -130,6 +134,7 @@ fn bind_ubicloud_offer<P>(
             quantity_bound: placement_concurrency_bound,
             ready_at: ready_at,
             quote: ubicloud_quote(row: row),
+            billing_quantum_seconds: ubicloud_billing_quantum_seconds,
             evidence: QuotedSupply {
               quoted_at: quoted_at,
               valid_until: valid_until,

@@ -2,7 +2,7 @@ module product.fabric.supply
 
 import std.types { Timestamp, Int }
 import std.measure {
-  MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
+  MoneyAmountMicro, MoneyPerSecond, MoneyPerMinute, MoneyPerHour, MoneyOnce,
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
   Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
 }
@@ -59,12 +59,14 @@ import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, Execu
 
 type OfferQuote =
   | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerMinute(MoneyPerMinute)
   | QuotedPerHour(MoneyPerHour)
   | QuotedFlatPerGrant(MoneyOnce)
 
 fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
   match q {
     QuotedPerSecond(r) => r.amount
+    QuotedPerMinute(r) => r.amount
     QuotedPerHour(r) => r.amount
     QuotedFlatPerGrant(r) => r.amount
   }
@@ -73,6 +75,7 @@ fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
 fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
   match q {
     QuotedPerSecond(r) => r.currency
+    QuotedPerMinute(r) => r.currency
     QuotedPerHour(r) => r.currency
     QuotedFlatPerGrant(r) => r.currency
   }
@@ -95,6 +98,7 @@ type Offer<P> {
   quantity_bound: Int
   ready_at: Timestamp
   quote: OfferQuote
+  billing_quantum_seconds: Nat
   evidence: OfferEvidence
 }
 
@@ -236,22 +240,27 @@ fn seconds_per_hour() -> Nat {
 }
 
 // A BILLING QUANTUM: the smallest interval a supplier ever charges for, and
-// suppliers round UP a partial quantum rather than pro-rating it. Hetzner
-// bills a ONE HOUR MINIMUM, rounded up -- one second of use and 3601 seconds
-// of use both cost two hours if the run crosses an hour boundary. Modeling
-// duration as a bare scalar divided by 3600 (as the old fold modelled a bare
-// rate against a bare ceiling) would understate an hourly bill exactly the
-// way that fold once mispriced a rate as a total.
+// suppliers round UP a partial quantum rather than pro-rating it. It is a
+// PER-SUPPLIER FACT and is carried on the offer, because it is not a property
+// the fabric may choose. Hetzner bills a one-hour minimum rounded up, so one
+// second of use costs an hour; Ubicloud bills by the minute; owned capacity
+// bills nothing at all and is therefore CONTINUOUS.
 //
-// This is a SYNTHETIC one-hour quantum, not the full supplier tariff --
-// gunb-ai/gunbc-private's dag/strategy/ci_product_surface.dag already models
-// a richer per-supplier tariff (attr_billing_quantum, quantum_fit,
-// BillingQuantumFit) for a provider whose minimum billed increment exceeds a
-// typical job; cited by name per DESIGN section 2 rather than reinvented,
-// and not imported because gunbc and gunbc-private are separate repos with
-// no shared symbols. A hard-coded one-hour quantum is enough to make the
-// positive hourly control well-formed without modeling the full assignment
-// economy (variable quantum, renewal boundary, paid-through commitment).
+// A quantum of ZERO means continuous, and that is not a degenerate case to be
+// tolerated -- it is the modeled advantage of owned compute. A 90-second job on
+// an hourly supplier is billed 3600 seconds and wastes 3510 of them; the same
+// job on continuous capacity is billed 90. For short CI work that waste can
+// exceed the entire difference in headline rate, so a fold that compared rates
+// while assuming one quantum for everybody would rank suppliers by the wrong
+// number and never say why.
+//
+// An earlier revision hard-coded a SYNTHETIC one-hour quantum here for every
+// offer, and cited gunbc-private's richer per-supplier tariff by name as the
+// thing it was standing in for. That stand-in silently overcharged every
+// sub-hourly supplier by up to a full hour per grant: normalizing a per-minute
+// vendor into the per-hour arm made a three-minute job project a whole hour, a
+// twentyfold overstatement that would have kept the selection fold from ever
+// choosing that supplier. The quantum is now the supplier's own.
 fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {
     seconds
@@ -275,17 +284,28 @@ fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
 // section 5) one level down: a refusal arm that quietly narrows instead of
 // refusing.
-fn offer_quoted_total_for_grant(quote: OfferQuote, duration: GrantDuration) -> MoneyAmountMicro {
+fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
+  if quantum_seconds == 0 {
+    seconds
+  } else {
+    billed_unit_count(seconds: seconds, quantum_seconds: quantum_seconds) * quantum_seconds
+  }
+}
+
+fn offer_quoted_total_for_grant(
+  quote: OfferQuote,
+  duration: GrantDuration,
+  quantum_seconds: Nat,
+) -> MoneyAmountMicro {
   let seconds = second_count(s: grant_duration_seconds(d: duration))
+  let billed = billed_seconds(seconds: seconds, quantum_seconds: quantum_seconds)
   match quote {
     QuotedFlatPerGrant(r) => r.amount
-    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: seconds, den: 1)
+    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
+    QuotedPerMinute(r) =>
+      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_minute())
     QuotedPerHour(r) =>
-      measure_scale_fraction_ceil(
-        m: r.amount,
-        num: billed_unit_count(seconds: seconds, quantum_seconds: seconds_per_hour()),
-        den: 1,
-      )
+      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_hour())
   }
 }
 
@@ -341,7 +361,7 @@ fn offer_affordability_for<P>(
   if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
-    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration)
+    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum_seconds: offer.billing_quantum_seconds)
     if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
       QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
     } else {
