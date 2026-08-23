@@ -14,7 +14,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 
 fn empty_workspace_html() -> String {
   match try_serialize_html_source(node: roadmap_daily_workspace_page(
@@ -97,9 +97,23 @@ test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
   let binding = host_binding_width_axes(host: operator_host_srv1)
   let label = host_width_binding_label(host: operator_host_srv1)
   (binding |> count) == 1
-    && string_contains(s: label, pattern: "bound by memory")
     && string_contains(s: label, pattern: "disk unmeasured")
     && !string_contains(s: label, pattern: "disk admits")
+}
+
+// TWO HOSTS, TWO DIFFERENT BINDING AXES -- THE WHOLE REASON THE COLUMN EXISTS.
+//
+// srv1 is core-bound at 21 and srv2 is memory-bound at 5, because srv2's 64 GiB DIMM install
+// failed training and was reverted while the other three carry 8x64. So the fleet total is two
+// unrelated stories, and an operator reading only the total would go buy the wrong thing for one
+// of these hosts. This is the discriminating witness: a label function that named one axis for the
+// whole fleet passes every other assertion here and fails this one.
+test fn srv1_and_srv2_are_bound_by_different_axes() -> Bool {
+  let one = host_width_binding_label(host: operator_host_srv1)
+  let two = host_width_binding_label(host: operator_host_srv2)
+  one != two
+    && string_contains(s: one, pattern: "bound by cores")
+    && string_contains(s: two, pattern: "bound by memory")
 }
 
 // THE BINDING AXIS IS DERIVED FROM THE COMMITTED WIDTH RATHER THAN ASSERTED BESIDE IT.
@@ -116,6 +130,7 @@ test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
 
 test fn the_panel_renders_the_binding_axis_for_every_host() -> Bool {
   let h = empty_workspace_html()
-  string_contains(s: h, pattern: "bound by memory")
+  string_contains(s: h, pattern: "bound by cores")
+    && string_contains(s: h, pattern: "bound by memory")
     && string_contains(s: h, pattern: "unmeasured")
 }

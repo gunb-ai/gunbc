@@ -2,6 +2,7 @@ module v2.workflow.floor_terminal_ledger
 
 import v2.std.integer { Int }
 import std.content_hash { Fnv1a64Structural }
+import extdeps.git.object_store { GitObjectId }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -24,14 +25,47 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 // names as a recurring failure. The ledger therefore carries ONE ROW PER PLANNED IDENTITY and
 // every row is terminal. Absence is not a value it can express.
 //
-// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA AND NOTHING CHECKS THE TWO AGREE.
-// `cli_run.rs` is HAND_MAINTAINED, so its `ClaimTerminalRow`, `ClaimDisposition` and
-// `reconcile_terminal_ledger` are authored beside these declarations rather than derived from
-// them. Regen does not compare them, because that file is not generated; the witnesses do not
-// compare them, because each side is exercised alone. The claim "one for one" below is therefore
-// an author's claim, held by diligence -- *mitigatable* -- and an arm added or re-meaned on
-// either side leaves the other silently stale. Declared here rather than left to be inferred
-// from the word "mirror", which reads as derivation and is not.
+// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA. `cli_run.rs` is HAND_MAINTAINED, so its
+// `ClaimTerminalRow`, `ClaimDisposition` and `reconcile_terminal_ledger` are authored beside these
+// declarations rather than derived from them. Regen does not compare them, because that file is
+// not generated; the witnesses do not compare them, because each side is exercised alone.
+//
+// THAT MIRROR IS TWO ERROR CLASSES AT TWO DIFFERENT RUNGS, AND ONE ROW OVER BOTH IS WRONG IN BOTH
+// DIRECTIONS -- it under-rates what the comparator actually guarantees and over-rates what the
+// declarations do. An earlier revision of this note carried the single row, and the correction is
+// recorded rather than silently applied because "the mirror is mitigatable" was cited as settled.
+//
+// CLASS 1 -- `TerminalDispositionWireAgreement`.  Rung: MECHANICALLY PREVENTABLE.
+//   Scope:     every terminal row admitted by this artifact path.
+//   Guarantee: the disposition the seed derived equals the disposition obtained by decoding the
+//              tag it emitted. A disagreement refuses the whole ledger and names the identity.
+//   Not structural: an invalid row is still CONSTRUCTIBLE -- the seed can compute a wrong pair --
+//              it simply cannot become accepted evidence. Construction would require the two
+//              derivations to be one, which is the dissolution below, not a check.
+//   NON-CLAIM, and it is the load-bearing half: neither derivation is proven semantically correct
+//              in isolation. Two mappings that are JOINTLY wrong in the same direction agree, and
+//              agreement is all this class checks. It catches DIVERGENCE, never error.
+//   Coverage bound: the join runs over every row of every run, which is the OBSERVED population
+//              and not every mapping ARM. An arm no live row reaches is unexercised and the join
+//              is silent about it -- §4b(1) rung honesty, since a class's rung is the minimum over
+//              its in-scope paths and an unexercised arm is not on any of them.
+//
+// CLASS 2 -- `SeedDagTerminalSchemaDeclarationLockstep`.  Rung: MITIGATABLE.
+//   Scope:     the declaration vocabulary itself -- payload shapes, arm existence, field contracts.
+//   Held by:   author diligence. Nothing executes over it.
+//   The production join above does NOT retire this, and these all still pass unnoticed:
+//     - Rust grows a variant no live row produces
+//     - this module grows an arm no run exercises
+//     - both sides keep a tag and change its MEANING together
+//     - a payload or cardinality diverges under an unchanged tag
+//     - both mappings are jointly wrong in the same direction (Class 1's stated non-claim)
+//     - a variant disappears from one side but the population never reaches it
+//   Next-rung trigger: a calibration population carrying exactly one row per terminal disposition,
+//              mutation-tested in both directions independently. That converts "enforced for what
+//              ran" into "enforced for every declared arm". Its discriminating case is a mutation
+//              that must NOT red -- change a payload contract while keeping every tag, and Class 1
+//              stays green while this class is the only thing that could have caught it. Without
+//              that case the two rows are indistinguishable and this one is decoration.
 //
 // DISSOLUTION -- one event retires the mirror and the seam together: the self-emitted v2 claim
 // executor. Once v2 drives the floor's execution, the producer holding identity-and-outcome
@@ -112,10 +146,59 @@ type ClaimTerminalRow {
 // `std.content_hash` `Fnv1a64Structural` -- the structural family member DESIGN names, not a bare
 // `String`. A `String` digest admits any text at all and cannot be compared against anything else
 // in the corpus that hashes, which is the hollow-carrier shape.
+// A LOCAL RUN HAS NO CANDIDATE, AND THAT IS AN EVIDENTIAL FACT RATHER THAN A FORMATTING ONE.
+//
+// The completed claim this ledger exists to support is "witness W terminated in candidate C". A
+// run with no published commit has no C, so its ledger is NOT candidate-bound and must not be
+// citable as though it were. Rendering the seed's `"local"` into a commit-shaped field would be
+// the state-space conflation trap in its smallest disguise: a consumer asking "is this
+// candidate-bound?" would have to string-compare a magic value, and the day someone spells it
+// differently the answer silently flips.
+//
+// So it is an ARM. `GitObjectId` cannot represent "no commit" -- that is the type doing its job
+// -- and the absence gets its own case, which makes an unbound ledger unmistakable from the
+// shape instead of by convention.
+//
+// The type is `GitObjectId` and NOT a freshly minted repository-ref type. One exists, it is
+// cited to the upstream authority with validating constructors that enforce family, length and
+// lowercase syntax, and v2 already binds artifacts to it -- `v2.compiler.self_host`
+// `frontier_probe_types` carries `source_commit` and `source_tree` as `GitObjectId` for exactly
+// this purpose. Minting a `RepositoryRef` beside it would be the §3 nicknaming violation
+// committed inside a change whose subject is single authority.
+type RepositorySnapshot
+  = PublishedCommit { commit: GitObjectId }
+  | UnpublishedWorkingTree
+
+// THE REF AND THE DIGEST ARE TWO FACTS, NOT ONE, so they are two fields. The ref says WHICH
+// commit a human opens; the prepared-subject digest says WHAT was actually admitted, and they
+// diverge on every run this floor performs, because preparation declines sites. A binding that
+// carried only one of them would answer only half of "which candidate is this evidence for".
+//
+// `repository_snapshot` could not have been an `Fnv1a64Structural` even if we had wanted it to
+// be: that carrier is `String where lower_hex_16`, so a 40-hex commit id REFUSES AT
+// CONSTRUCTION. The corpus settled this before the question was asked.
+// THE ROSTER IDENTITY IS NOT A FIELD, BECAUSE IT IS NOT A FACT A CALLER HOLDS.
+//
+// An earlier revision carried `roster_identity: Fnv1a64Structural` here, supplied by whoever
+// built the binding. That is a stored value which can DISAGREE with the population it names, and
+// a binding whose roster identity describes a different roster than the rows is worse than
+// carrying none: it is a false claim about which witnesses this evidence covers. It is also a
+// fact nothing in the floor computes -- inventing a parameter for a value that does not exist is
+// how hollow carriers start.
+//
+// So it is derived at render time from the identities actually being published, by the same fold
+// on both sides. A roster identity that disagrees with its rows has no constructor rather than
+// being caught by a check (§5).
 type LedgerBinding {
-  repository_snapshot: Fnv1a64Structural
+  repository_snapshot: RepositorySnapshot
   prepared_subject: Fnv1a64Structural
-  roster_identity: Fnv1a64Structural
+}
+
+fn ledger_is_candidate_bound(binding: LedgerBinding) -> Bool {
+  match binding.repository_snapshot {
+    PublishedCommit { commit: _ } => true
+    UnpublishedWorkingTree => false
+  }
 }
 
 type TerminalLedger {
