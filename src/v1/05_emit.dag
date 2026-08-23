@@ -49,7 +49,7 @@ import v1.compiler.infer_lookup { lookup_func_sig, func_sig_if_resolved }
 
 import v1.compiler.infer {
   InferScope,
-  build_params_scope, extend_scope
+  build_params_scope, extend_scope, call_arg_label_matches_param
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -303,12 +303,14 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   func_sig_if_resolved(lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
 }
 
+data typed_named_arg_matches_note: String = "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_arg_label_matches_param, so this projection consumes that authority rather than comparing exact declaration spelling independently: a declaration-side unused parameter `_args` carries caller label `args`. A bare anonymous `_` stays positional because it has no unique caller-visible identity with which to reorder an argument. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md."
+
 fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   let n = arg_name_at(n: arg, source_indices: source_indices)
   if n == none {
     false
   } else {
-    n.value == name
+    name != "_" && call_arg_label_matches_param(param_name: name, arg_label: n.value)
   }
 }
 
@@ -320,15 +322,9 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
     match lookup_func_sig_in_scope(scope: scope, name: func) {
       Absent => args
       Present { value: sig } => {
-        let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-          let n = arg_name_at(n: arg, source_indices: scope.type_env.source_indices)
-          if n != none { map_insert(acc, n.value, arg) } else { acc }
-        )
-        let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param_node_name_at(n: param, source_indices: scope.type_env.source_indices), true)
-        )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param_node_name_at(n: param, source_indices: scope.type_env.source_indices)) {
+          let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+          match args |> filter(arg => typed_named_arg_matches(arg: arg, name: param_name, source_indices: scope.type_env.source_indices)) |> first {
             Present { value: arg } => [arg]
             Absent => []
           }
@@ -338,7 +334,13 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
           if n == none {
             true
           } else {
-            emit_map_has(m: param_name_set, key: n.value) == false
+            sig.params |> any(param =>
+              typed_named_arg_matches(
+                arg: arg,
+                name: param_node_name_at(n: param, source_indices: scope.type_env.source_indices),
+                source_indices: scope.type_env.source_indices
+              )
+            ) == false
           }
         )
         concat(ordered, leftovers)
