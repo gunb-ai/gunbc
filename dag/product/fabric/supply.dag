@@ -371,6 +371,8 @@ fn offer_affordability_for<P>(
           QuotedFlatPerGrant(_) => Affordable
           QuotedPerSecond(_) =>
             AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+          QuotedPerMinute(_) =>
+            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
           QuotedPerHour(_) =>
             AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
         }

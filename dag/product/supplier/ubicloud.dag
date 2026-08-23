@@ -56,7 +56,12 @@ type UnexpressedSupplyFact
   = MemoryNotExpressibleInShape { provided: ByteSize }
   | DiskNotExpressibleInShape { provided: ByteSize }
 
-type SupplierOffer<P> {
+// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
+// looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
+// called, and the field below then read as referring to this wrapper rather than to the
+// carrier it wraps. Two types under one name is the ambiguity the corpus resolves by silent
+// last-import-wins, so nothing refuses and the reader cannot tell which one a use means.
+type SupplierOfferProjection<P> {
   offer: SupplierOffer<P>
   unexpressed: List<UnexpressedSupplyFact>
 }
@@ -105,7 +110,7 @@ data ubicloud_readiness: ReadinessObservation = ReadinessUnmeasured {
 }
 
 type OfferBinding<P>
-  = OfferBound { bound: SupplierOffer<P> }
+  = OfferBound { bound: SupplierOfferProjection<P> }
   | OfferBindingRefused { runs_on_label: NonEmptyStr, cause: NonEmptyStr }
 
 fn bind_ubicloud_offer<P>(
@@ -124,7 +129,7 @@ fn bind_ubicloud_offer<P>(
       OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
     ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
       OfferBound {
-        bound: SupplierOffer {
+        bound: SupplierOfferProjection {
           offer: SupplierOffer {
             id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
             executor: executor,
