@@ -72,7 +72,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
-        decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
