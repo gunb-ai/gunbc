@@ -658,15 +658,6 @@ pub fn lookup_func_sig_in_scope(
     ))
 }
 
-pub fn order_typed_call_args_label_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_param_caller_labels, the bounded label set consumed by call_arg_label_matches_param, so emission does not compare declaration spelling independently: a declaration-side unused parameter `_args` accepts both exact label `_args` and caller-facing label `args`. A bare anonymous `_` has no caller-visible identity and stays positional. Both argument and parameter indexes use that accepted set, preserving linear construction and lookup rather than scanning either population per member. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn order_typed_call_args(
     args: Rc<Vec<Rc<Node>>>,
     func: String,
