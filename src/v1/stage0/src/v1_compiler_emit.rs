@@ -41,7 +41,7 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_label, extend_scope};
+pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
@@ -661,7 +661,7 @@ pub fn lookup_func_sig_in_scope(
 pub fn order_typed_call_args_label_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_param_caller_label, the canonical projection consumed by call_arg_label_matches_param, so emission does not compare exact declaration spelling independently: a declaration-side unused parameter `_args` carries caller label `args`. A bare anonymous `_` has no caller-visible identity and stays positional. Both argument and parameter indexes use that canonical label, preserving linear construction and lookup rather than scanning either population per member. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
+            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_param_caller_labels, the bounded label set consumed by call_arg_label_matches_param, so emission does not compare declaration spelling independently: a declaration-side unused parameter `_args` accepts both exact label `_args` and caller-facing label `args`. A bare anonymous `_` has no caller-visible identity and stays positional. Both argument and parameter indexes use that accepted set, preserving linear construction and lookup rather than scanning either population per member. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -707,16 +707,18 @@ pub fn order_typed_call_args(
                     let param_label_set = sig.params.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
-                            let caller_label = call_param_caller_label(param_node_name_at(
+                            call_param_caller_labels(param_node_name_at(
                                 param.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                            ));
-                            match caller_label.clone() {
-                                Some(label) => {
-                                    v1_rt::rc_map_insert(acc.clone(), label.clone(), true)
-                                }
-                                None => acc.clone(),
-                            }
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
+                                acc,
+                                |labels: Rc<HashMap<String, bool>>, label: String| {
+                                    v1_rt::rc_map_insert(labels, label.clone(), true)
+                                },
+                            )
                         },
                     );
                     let ordered = Rc::new({
@@ -728,13 +730,25 @@ pub fn order_typed_call_args(
                                         param.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
-                                    match call_param_caller_label(param_name.clone()) {
-                                        Some(label) => {
-                                            match v1_rt::map_get(&arg_map, label.clone()) {
-                                                Some(arg) => Rc::new(vec![arg.clone()]),
-                                                None => Rc::new(vec![]),
-                                            }
+                                    let matching = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for label in call_param_caller_labels(param_name.clone())
+                                            .iter()
+                                            .cloned()
+                                        {
+                                            __result.extend(
+                                                (*match v1_rt::map_get(&arg_map, label.clone()) {
+                                                    Some(arg) => Rc::new(vec![arg.clone()]),
+                                                    None => Rc::new(vec![]),
+                                                })
+                                                .iter()
+                                                .cloned(),
+                                            );
                                         }
+                                        __result
+                                    });
+                                    match matching.clone().first().cloned() {
+                                        Some(arg) => Rc::new(vec![arg.clone()]),
                                         None => Rc::new(vec![]),
                                     }
                                 })

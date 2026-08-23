@@ -522,7 +522,7 @@ mod compiler_tests {
                 // it, so the compile seam must too) all stay silent.
                 let green = compile_one(
                     "green.dag",
-                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn direct_order(a: Int, b: Int) -> Int { b }\nfn underscore_order(_a: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn direct_order_control() -> Int { direct_order(b: 23, a: 11) }\nfn underscore_order_witness() -> Int { underscore_order(b: 23, a: 11) }\n",
+                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn direct_order(a: Int, b: Int) -> Int { b }\nfn underscore_order(_a: Int, b: Int) -> Int { b }\nfn underscore_exact_order(_a: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn direct_order_control() -> Int { direct_order(b: 23, a: 11) }\nfn underscore_order_witness() -> Int { underscore_order(b: 23, a: 11) }\nfn underscore_exact_order_control() -> Int { underscore_exact_order(b: 23, _a: 11) }\n",
                 );
                 assert!(
                     green.diagnostics.is_empty(),
@@ -535,6 +535,11 @@ mod compiler_tests {
                 assert!(
                     emitted.content.contains("direct_order(11, 23)"),
                     "control: ordinary named arguments must follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_exact_order(11, 23)"),
+                    "control: exact underscore-prefixed caller labels must remain accepted and follow declaration order, got: {}",
                     emitted.content
                 );
                 assert!(
