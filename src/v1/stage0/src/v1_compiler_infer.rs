@@ -2856,15 +2856,7 @@ pub fn kernel_value_declared_type_mismatch(
             } else {
                 {
                     let formal_name = authored_name_at(source_indices.clone(), formal_base.clone());
-                    if (((formal_base.children.clone().len() as i64) > 0)
-                        && (declared_realizes_as_kernel_numeric(
-                            formal.clone(),
-                            actual.clone(),
-                            source_indices.clone(),
-                        ) == false))
-                    {
-                        true
-                    } else if (((formal_name.clone() == "".to_string())
+                    if (((formal_name.clone() == "".to_string())
                         || (qualified_last_segment(formal_name.clone())
                             == qualified_last_segment(actual_name.clone())))
                         || dag_can_cast(actual_name.clone(), formal_name.clone()))
@@ -2879,6 +2871,14 @@ pub fn kernel_value_declared_type_mismatch(
                             source_indices.clone(),
                         )) {
                             false
+                        } else if (((formal_base.children.clone().len() as i64) > 0)
+                            && (declared_realizes_as_kernel_numeric(
+                                formal.clone(),
+                                actual.clone(),
+                                source_indices.clone(),
+                            ) == false))
+                        {
+                            true
                         } else {
                             if is_kernel_type(formal_name.clone()) {
                                 true
