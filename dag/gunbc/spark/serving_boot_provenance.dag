@@ -67,26 +67,59 @@ fn spark_serving_active_enter_probe_argv() -> List<String> {
   )
 }
 
+// THE RELATIONAL ORIGIN. `default.target` is what the user manager reaches when every unit
+// wanted by it has come up, and gunbc-spark-serving.service is WantedBy=default.target
+// (verified on both hosts, 2026-08-22). So a unit that came up as part of the startup
+// transaction necessarily enters active NO LATER than the target does, and one started by hand
+// afterwards enters active strictly later. Both sides of that comparison are observed on the
+// host; nothing in it is fitted.
+fn spark_serving_default_target_enter_probe_argv() -> List<String> {
+  concat(
+    ["systemctl", "--user"],
+    skip(systemctl_show_property_argv(
+      unit: spark_serving_default_target_name as NonEmptyStr,
+      property: ActiveEnterTimestampMonotonic,
+    ), n: 1),
+  )
+}
+
+data spark_serving_default_target_name: String = "default.target"
+
 fn spark_serving_uptime_probe_argv() -> List<String> {
   ["cat", "/proc/uptime"]
 }
 
-// THE WINDOW, and it is a declared policy rather than a discovered constant.
-//
-// A unit brought up by the manager during startup enters active within the boot transaction. Ten
-// seconds is generous for that on these hosts and far below any plausible hand-start, which happens
-// minutes or hours in. It is stated as a number with a reason rather than tuned against an
-// observation, because a threshold fitted to the current tree is a snapshot of today's boot rather
-// than a statement about what boot-start means.
-fn spark_serving_boot_start_window() -> Microsecond {
-  microsecond(count: 10000000)
-}
 
 // systemd reports the monotonic timestamp as bare microseconds; /proc/uptime reports seconds with
 // two decimals. Both are converted to microseconds so the comparison is between like magnitudes
 // rather than between a number and a string that happens to sort.
+// THE COMPARISON IS RELATIONAL AND HAS NO CONSTANT IN IT, and the constant it replaced was not
+// merely mis-fitted -- it compared against the WRONG ORIGIN, which is a different defect and one
+// that adjusting the value could never have repaired.
+//
+// What was here: active_enter <= 10,000,000us, a window measured from KERNEL boot. Measured
+// 2026-08-22 on both converged hosts (run 32543249175 and a paired hand probe), the user manager
+// does not itself reach active until ~10.6s into kernel boot, because lingering has to bring the
+// user session up first. So a user unit that came up PERFECTLY with its manager was GUARANTEED to
+// fall outside a kernel-boot window: the check had no true-positive path for the thing it was
+// built to detect, and it duly reported both durable hosts as not durable for two days.
+//
+// Widening the window would have greened both hosts by accident and left the defect intact until a
+// host with a 12s session setup hit it. That is the "fitting a constant to a host until the check
+// means nothing" the deleted carrier warned about, reached by a route it did not anticipate -- so
+// the warning was under-scoped, not wrong.
+//
+// The relation: the unit came up with the startup transaction exactly when it entered active NO
+// LATER than default.target did. Measured 2026-08-22:
+//   srv5  unit 10,670,729us  default.target 10,675,297us   inside by 4,568us
+//   srv6  unit 10,627,595us  default.target 10,632,705us   inside by 5,110us
+// Both sides are observed on the host and neither is authored here. A unit hand-started hours
+// later enters active far past the target, so the predicate can still be FALSE -- which is why
+// this is a relation and not `entered >= manager_start`, a comparison that would have been
+// trivially true for every unit and traded a false negative for silent false positives.
 fn spark_serving_classify_boot_provenance(
   active_enter: SshSessionExecResult,
+  default_target_enter: SshSessionExecResult,
   uptime: SshSessionExecResult,
 ) -> SparkServingBootProvenance {
   if active_enter.success == false {
@@ -94,6 +127,14 @@ fn spark_serving_classify_boot_provenance(
       cause: join([
         "ActiveEnterTimestampMonotonic probe failed exit=", to_string(active_enter.exit_code),
         " stderr=", active_enter.stderr,
+      ], "") as NonEmptyStr,
+    }
+  } else if default_target_enter.success == false {
+    BootProvenanceUnobserved {
+      cause: join([
+        "default.target ActiveEnterTimestampMonotonic probe failed exit=",
+        to_string(default_target_enter.exit_code),
+        " stderr=", default_target_enter.stderr,
       ], "") as NonEmptyStr,
     }
   } else if uptime.success == false {
@@ -133,11 +174,24 @@ fn spark_serving_classify_boot_provenance(
                   }
                 CheckedNatReady { value: entered_nat } => {
                   let entered = microsecond(count: entered_nat)
-                  let window_us = microsecond_count(spark_serving_boot_start_window())
-                  if microsecond_count(entered) <= window_us {
-                    UnitStartedByManagerAtBoot { active_enter_monotonic: entered, uptime: up }
-                  } else {
-                    UnitStartedAfterBoot { active_enter_monotonic: entered, uptime: up }
+                  match parse_int(s: trim(s: default_target_enter.stdout)) {
+                    Absent =>
+                      BootProvenanceUnobserved {
+                        cause: join([
+                          "default.target ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
+                          trim(s: default_target_enter.stdout),
+                        ], "") as NonEmptyStr,
+                      }
+                    Present { value: target_us } =>
+                      if target_us == 0 {
+                        BootProvenanceUnobserved {
+                          cause: "default.target reports no active-enter, so the startup transaction has no observed end to compare against" as NonEmptyStr,
+                        }
+                      } else if entered_nat <= target_us {
+                        UnitStartedByManagerAtBoot { active_enter_monotonic: entered, uptime: up }
+                      } else {
+                        UnitStartedAfterBoot { active_enter_monotonic: entered, uptime: up }
+                      }
                   }
                 }
               }
@@ -197,19 +251,31 @@ fn spark_serving_boot_provenance_establishes_durability(p: SparkServingBootProve
   }
 }
 
+// THE WIRE STATES WHAT WAS MEASURED, NOT WHAT WAS CONCLUDED. This arm used to print "the unit is
+// running but did NOT come up with this boot" -- an assertion of fact the instrument could not
+// support and which was, on the live fleet, false: both converged hosts were reported as
+// not-durable for two days by a check with no true-positive path (see the classification comment
+// above). A diagnostic stating a conclusion its own carrier cannot reach is fabricated plausible
+// output at the wire layer, DESIGN section 5, and this one propagated into operator reports.
+//
+// Now that the comparison is relational, the wire can say the measured thing plainly: whether the
+// unit entered active before or after default.target. That is a fact about one observed ordering,
+// not an inference about a boot nobody watched. Note what it still does NOT claim -- that the
+// host would survive a reboot. Coming up with the manager on THIS boot is evidence for auto-start,
+// and full reboot durability still needs a boot_id compared across an actual boot.
 fn spark_serving_boot_provenance_wire(p: SparkServingBootProvenance) -> String {
   match p {
     UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
       join([
         "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(microsecond_count(e)),
         " uptime_us=", to_string(microsecond_count(u)),
-        " -- the unit came up WITH this boot, so enablement is doing its job",
+        " -- the unit entered active no later than default.target, so it came up WITH the manager startup transaction",
       ], "")
     UnitStartedAfterBoot { active_enter_monotonic: e, uptime: u } =>
       join([
         "boot-provenance=started-after-boot active_enter_us=", to_string(microsecond_count(e)),
         " uptime_us=", to_string(microsecond_count(u)),
-        " -- the unit is running but did NOT come up with this boot; durability is not established by this boot",
+        " -- the unit entered active AFTER default.target did, so it was not part of the manager startup transaction",
       ], "")
     UnitNotActiveAtAll => "boot-provenance=unit-not-active"
     BootProvenanceUnobserved { cause: c } =>

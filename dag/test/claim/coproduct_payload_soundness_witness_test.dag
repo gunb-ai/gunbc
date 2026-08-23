@@ -1,0 +1,136 @@
+module test.claim.coproduct_payload_soundness_witness_test
+
+// A COPRODUCT PAYLOAD CAN INHABIT ITS PARENT COPRODUCT FIELD, AND NOTHING REFUSES IT.
+//
+// This is the general form of the defect repaired in #8853 at one site. There,
+// `dag_int_literal_node_from_magnitude` declared its parameter as
+// `std.occurrence_identity.OccurrenceId` -- the PAYLOAD carried inside `MintedOccurrence` -- and
+// assigned it straight into `Node.occurrence_id`, whose type is the `NodeOccurrenceId` coproduct.
+// Nothing refused the assignment. The consequence surfaced 2,000 lines and one pipeline stage away
+// as `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims, because
+// the total match over that field had no arm for a value that is not in its type.
+//
+// The declaration fix closed the live instance. It established nothing about the class, and the
+// targeted sweep that found no second instance of that exact field/type pair is evidence about a
+// spelling, not about the typing hole. So the question this file asks is the general one: can an
+// ARBITRARY coproduct payload inhabit the field declared as its parent coproduct?
+//
+// MEASURED ANSWER, by direct execution before this witness was written -- minimal pair, no Node, no
+// occurrence, no compiler internals:
+//
+//   type CppInner  { value: Int }
+//   type CppOuter  = CppWrapped { inner: CppInner }
+//   type CppHolder { subject: CppOuter }
+//
+//   POSITIVE   CppHolder { subject: CppWrapped { inner: cpp_inner() } }   accepted, exit 0
+//   NEGATIVE   CppHolder { subject: cpp_inner() }                         ACCEPTED BY TYPING,
+//                                                                        then at runtime:
+//                                                                        PatternMatchFailure
+//                                                                        { value: "CppInner { value: 7 }" }
+//
+// So the mechanism is not Node-specific and not occurrence-specific. It is a floor-class soundness
+// hole -- values inhabit declared types -- and DESIGN section 4b puts a floor failure below the
+// ladder rather than on a rung of it: this is not a class sitting at `mitigatable`, it is the
+// baseline guarantee not holding.
+//
+// WHAT IS ASSERTED. compile_dag_rust_emit_check must REFUSE the fixture below: placing a variant's
+// payload where the variant's own type is declared must be a located, blocking type diagnostic, not
+// a program that compiles and dies at its first match.
+//
+// THE WALL LANDED AND THIS PAIR IS NOW GREEN BY EXECUTION, measured on the remote runner against the
+// same two fixtures, one commit apart, with nothing else changed:
+//
+//   BEFORE  negative -> `compiled: 9 files emitted, 0 diagnostics`   (the hole)
+//   AFTER   negative -> `type mismatch: expected 'Coproduct(CppOuter)', got 'Product(CppInner)'`
+//                       `v2 self-compile produced 1 hard diagnostic(s)`
+//   BEFORE and AFTER, positive control -> `0 diagnostics`
+//
+// The refusing authority is `v1.compiler.infer` `coproduct_payload_where_parent_required`, consulted
+// at the record-literal field seam. Both this file's expecting-red rows -- the
+// gunbc.explicit_witness_admission admission and the v2.workflow.floor_expected_red roster entry --
+// deleted in that same change, and this witness stays enrolled as the permanent regression control
+// DESIGN section 4b(4) requires: deleting the evidence on the climb would recreate
+// specification-without-execution one rung up.
+//
+// WHAT THIS PAIR DOES NOT MEASURE, stated rather than implied covered. The wall closes the
+// record-literal field seam and only it: a `let` binding, a method argument, and the direct-call
+// argument seam are judged by other authorities and are not exercised here. Per gunbc#8868 the seam
+// enumeration for this class is unfinished, so this is one seam closed, not the class closed.
+//
+// ENROLLED IN TWO PLACES, AND THEY ARE NOT THE SAME FACT -- I got this wrong on the first attempt
+// and the floor caught it. `v2.workflow.floor_expected_red` is what GATES the required floor: an
+// identity there still executes and its outcome is still asserted, but a failure counts as
+// agreement. `gunbc.explicit_witness_admission` DOCUMENTS the red and its dissolution and, per the
+// ruling recorded at floor_expected_red_chunk_13, does not itself gate the floor. Enrolling only in
+// the second is what reds a build.
+//
+// THE POSITIVE CONTROL IS NOT OPTIONAL AND IS NOT COSMETIC. Without it, a compiler that refused
+// EVERY record literal would satisfy the claim above. The control asserts that the correct spelling
+// -- payload inside its arm -- still compiles, so what the red measures is the distinction and not
+// the mechanism's blanket refusal.
+//
+// dissolve-on: none. Per DESIGN section 4b(4), a climb deletes the redundant lower-rung production
+// machinery but never the evidence: when the wall lands, this probe's admission row deletes and the
+// witness stays enrolled as a permanent regression control. Deleting it on the climb would recreate
+// specification-without-execution one rung up.
+
+fn cpp_soundness_negative_fixture_source() -> String {
+  "module cpp.probe\n\nimport std.types { Int }\n\ntype CppInner { value: Int }\n\ntype CppOuter\n  = CppWrapped { inner: CppInner }\n\ntype CppHolder {\n  subject: CppOuter\n}\n\nfn cpp_inner() -> CppInner {\n  CppInner { value: 7 }\n}\n\nfn cpp_payload_where_coproduct_required() -> CppHolder {\n  CppHolder { subject: cpp_inner() }\n}\n"
+}
+
+fn cpp_soundness_positive_fixture_source() -> String {
+  "module cpp.control\n\nimport std.types { Int }\n\ntype CppInner { value: Int }\n\ntype CppOuter\n  = CppWrapped { inner: CppInner }\n\ntype CppHolder {\n  subject: CppOuter\n}\n\nfn cpp_inner() -> CppInner {\n  CppInner { value: 7 }\n}\n\nfn cpp_wrapped_holder() -> CppHolder {\n  CppHolder { subject: CppWrapped { inner: cpp_inner() } }\n}\n"
+}
+
+// THE DISCRIMINATING RED, now the regression control. `CppInner` is the payload inside `CppWrapped`,
+// not a member of `CppOuter`, so this assignment must refuse at typing. Before the wall it did not:
+// the program compiled and the failure was deferred to whatever later match read the field.
+test fn cpp_payload_where_coproduct_required_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    cpp_soundness_negative_fixture_source(),
+    "src/cpp_probe.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL. The correct spelling must still compile, or the red above is satisfied by a
+// compiler that refuses everything and measures nothing.
+test fn cpp_payload_inside_its_own_arm_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    cpp_soundness_positive_fixture_source(),
+    "src/cpp_control.rs",
+    [],
+    []
+  )
+}
+
+fn cpp_alias_mediated_negative_fixture_source() -> String {
+  "module cpp.alias\n\nimport std.types { Int }\n\ntype CppInner { value: Int }\n\ntype CppInnerAlias = CppInner\n\ntype CppOuter\n  = CppWrapped(CppInner)\n\ntype CppHolder {\n  subject: CppOuter\n}\n\nfn cpp_inner_via_alias() -> CppInnerAlias {\n  CppInner { value: 7 }\n}\n\nfn cpp_alias_payload_where_coproduct_required() -> CppHolder {\n  CppHolder { subject: cpp_inner_via_alias() }\n}\n"
+}
+
+// THE ALIAS-MEDIATED RED, and it is not a restatement of the one above -- it is the arm that made the
+// difference between a wall that refuses a demonstration and a wall that reaches production.
+//
+// A first measured version of this wall refused the direct spelling and stayed SILENT on the live
+// specimen it was built against: `v2.std.materialize` storing `content_hash(n)` into a field declared
+// `ContentHash`. `content_hash` returns `v2.std.node` `Hash`, a TRANSPARENT ALIAS of the payload type
+// `Fnv1a64Structural`, and that fact does not survive `resolve_item_types` -- so the seam could not
+// recover it by peeling and the refusal never fired. This fixture is that shape reduced to nothing but
+// the mechanism: the producer's declared return type is an alias of the payload rather than the payload
+// itself, and the variant carries its payload positionally rather than as a named field, so neither the
+// name nor the arm shape is doing the work.
+//
+// Measured on the pre-relation binary this fixture COMPILED (`0 diagnostics`); with
+// `transparent_alias_identity_agrees` consulted it refuses
+// (`expected 'Coproduct(COuter)', got 'Primitive(CAlias)'` on the equivalent probe). Deleting the
+// alias arm from the wall leaves both witnesses above green and only this one red, which is exactly why
+// it is enrolled separately.
+test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    cpp_alias_mediated_negative_fixture_source(),
+    "src/cpp_alias.rs",
+    [],
+    []
+  )
+}

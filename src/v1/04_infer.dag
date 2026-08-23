@@ -1263,6 +1263,7 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !is_declared_container_alias_spelling(name: actual_name)
     && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
+    && !transparent_alias_identity_agrees(index: type_env.symbol_index, left: formal_name, right: actual_name)
 }
 
 fn is_where_refinement_type(ty: Node) -> Bool {
@@ -1981,6 +1982,142 @@ fn type_name_transparently_aliases_to(
           alias_name: peeled_name, target_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
     Absent => false
+  }
+}
+
+// THE DECLARED-FIELD INHABITANCE WALL (DESIGN 4b floor: "values inhabit declared types").
+//
+// The state this refuses: a record-literal field declared as a COPRODUCT is initialised with a
+// value whose type is one of that coproduct's own VARIANT PAYLOAD types. The payload is not a
+// member of the parent, so the assignment is unsound -- but until this wall the seam judged only
+// kernel scalars (kernel_value_declared_type_mismatch bails unless the ACTUAL is a kernel type)
+// and record literals (structured_application_site_type_mismatch bails unless the actual EXPR is
+// an ExprRecordLit). An actual that is a CALL -- the overwhelmingly common spelling -- was judged
+// by nothing, so the program compiled and died at the first total match over the field.
+//
+// The receipt is #8865's minimal pair, and the class is not synthetic: it is the mechanism that
+// permitted the 2026-08-22 outage. v2.extdeps.languages.dag built `Node { occurrence_id: <raw
+// OccurrenceId> }` where the field is declared `NodeOccurrenceId` and `OccurrenceId` is the
+// payload of its `MintedOccurrence` arm; the value entered the bad state at that record literal,
+// stayed latent two months, and surfaced 2,000 lines and one pipeline stage away as
+// `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
+//
+// THE SCOPE IS THE RECORD-LITERAL FIELD SEAM, AND ONLY IT. This wall does not judge `let`
+// bindings, method arguments, or the direct-call argument seam (whose TYPE judgment is separately
+// switched off for `v2.*` by module_skips_direct_call_arg_check). Per gunbc#8868, the seam
+// enumeration for this class is UNFINISHED -- assume a further seam until someone enumerates
+// them -- so this closes one seam and says so rather than closing the class.
+//
+// WHY THE PREDICATE IS KEYED ON PAYLOAD MEMBERSHIP RATHER THAN ON MISMATCH IN GENERAL. Once the
+// two names are established incompatible and the formal is a non-generic coproduct, ANY actual is
+// arguably wrong; refusing all of them would make this a general field-type wall, whose
+// false-positive classes are exactly the four representation gaps the conformance wall measured
+// (brand aliases, optionality's two forms, anonymous literals, expansion depth). Requiring the
+// actual to be a DECLARED PAYLOAD TYPE OF ONE OF THE FORMAL'S OWN VARIANTS positively identifies
+// the confusion instead of inferring it from an absence, so a refusal here always names a
+// spelling the author can point at: the wrapping arm is in the same declaration.
+//
+// NAME IDENTITY IS BORROWED, NOT REBUILT. A first measured version of this wall refused the direct
+// shape (`CppHolder { subject: cpp_inner() }`) and stayed SILENT on the production specimen this
+// lane was given as its acceptance target -- `v2.std.materialize` storing `content_hash(n)` into a
+// field declared `ContentHash` -- and the isolating pair says why: an otherwise identical fixture
+// whose producer returns a TRANSPARENT ALIAS of the payload type was not refused, while the same
+// fixture returning the payload type outright was. `content_hash` returns `v2.std.node` `Hash`,
+// which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
+// aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
+// recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
+// census construction. This wall therefore consumes `transparent_alias_identity_agrees` over the
+// `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
+// the coordination ruling recorded on that lane.
+//
+// COST. Every guard ahead of the declaration walk is a string compare or a cardinality read, and
+// the walk itself is bounded by the formal declaration's own variant/field count -- never by the
+// corpus. Nothing is re-derived from normalized structure: the judgment reads the same resolved
+// formal node the seam already holds, and the alias relation is a map lookup on a census built once.
+fn coproduct_variant_payload_admits_type_name(
+  decl: Node,
+  actual_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  decl.children |> any(variant =>
+    variant.children |> any(payload =>
+      let payload_type = match payload.inferred {
+        Present { value: Resolved { node: rt } } => rt
+        _ => field_node_type_expr(n: payload)
+      }
+      let payload_name = authored_name_at(source_indices: source_indices, node: payload_type)
+      let names_agree = application_type_names_compatible(
+        formal_name: payload_name,
+        lit_name: actual_name,
+        type_env: type_env,
+        module_name: module_name,
+        source_indices: source_indices) || transparent_alias_identity_agrees(
+          index: type_env.symbol_index, left: payload_name, right: actual_name)
+      payload_name != "" && names_agree
+    )
+  )
+}
+
+// The wall's decision procedure, over the record-literal field seam's own formal/actual pair.
+//
+// TWO EXCLUSIONS ARE LOAD-BEARING AND NEITHER IS INCIDENTAL. `Optional` is the language's own
+// cardinality carrier rather than an ordinary coproduct -- a `T` standing in an `Optional<T>`
+// position is the declared spelling, not a payload escape -- so both the CardOptional cardinality
+// and a formal or actual literally named `Optional` are excluded before any declaration is walked.
+// And a GENERIC coproduct is excluded because its payload positions can be type variables, which
+// makes "the actual is one of this coproduct's payload types" undecidable from the declaration
+// alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
+// forbids a fabricated success.
+fn coproduct_payload_where_parent_required(
+  formal: Node,
+  actual: Node,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let either_optional = formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional
+  if either_optional || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
+    false
+  } else {
+    let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let either_is_optional_carrier = qualified_last_segment(name: formal_name) == "Optional" ||
+      qualified_last_segment(name: actual_name) == "Optional"
+    if formal_name == "" || actual_name == "" || either_is_optional_carrier {
+      false
+    } else if application_type_names_compatible(
+        formal_name: formal_name,
+        lit_name: actual_name,
+        type_env: scope.type_env,
+        module_name: scope.module_name,
+        source_indices: source_indices) {
+      false
+    } else if transparent_alias_identity_agrees(
+        index: scope.type_env.symbol_index, left: formal_name, right: actual_name) {
+      false
+    } else {
+      let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
+      match lookup_type_by_name(env: scope.type_env, name: formal_name) {
+        Present { value: decl } =>
+          let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
+          let names_a_variant = has_child_named(n: decl, name: qualified_last_segment(name: actual_name), source_indices: source_indices) ||
+            has_child_named(n: decl, name: qualified_last_segment(name: actual_rep), source_indices: source_indices)
+          if decl_is_concrete_coproduct == false {
+            false
+          } else if names_a_variant {
+            false
+          } else {
+            coproduct_variant_payload_admits_type_name(
+              decl: decl,
+              actual_name: actual_name,
+              type_env: scope.type_env,
+              module_name: scope.module_name,
+              source_indices: source_indices)
+          }
+        Absent => false
+      }
+    }
   }
 }
 
@@ -2984,6 +3121,20 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // the defect visible, because the loss is the elimination that never happened, not the target's
 // spelling. A cast whose TARGET is itself optional is not this class: it re-types the carrier
 // with the absence intact, so it is left to validate_cast.
+//
+// WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
+// names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
+// was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
+// entirely. qualified_last_segment is the authority this file already uses for exactly this
+// question (nominal_call_arg_brand_mismatch, is_set_collection); asking it here is using the
+// existing one rather than minting a second.
+//
+// SCOPE, so this is not read as more than it is: this repairs ONE spelling comparison. The
+// wider fact that `T?` and `Optional<T>` are two carriers for one concept is untouched and
+// its remedy is upstream of this seam -- a `String?` field lost its optional marker at
+// pattern destructuring long before any comparison runs, so reconciling the two carriers
+// HERE would not clear those sites. That was measured and the repair withdrawn rather than
+// shipped on a plausible story.
 fn optional_cast_diags(
   source_inferred: InferredNode?,
   target_type: Node,
@@ -2994,7 +3145,8 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional || source_name == "Optional"
+      let source_is_optional = src_node.return_cardinality == CardOptional
+        || qualified_last_segment(name: source_name) == "Optional"
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(
@@ -5435,6 +5587,15 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
             )]
           } else if structured_application_site_type_mismatch(
             formal: expected_node, actual_expr: field_init_node_value(n: fi), scope: scope) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if expected_node.return_cardinality != CardOptional
+            && coproduct_payload_where_parent_required(
+              formal: formal_peeled, actual: actual_peeled, scope: scope) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
@@ -8562,10 +8723,192 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   )
 }
 
+// THE RELATION, AND ITS BOUNDARY. A TRANSPARENT ALIAS is a module-scope `type A = B` whose right-
+// hand side is a bare nominal name: no type parameters on either side, no type arguments, no
+// where-refinement, no optional cardinality, no container spelling, and not the parser's body-less
+// `type A` self-reference. For such a declaration A and B denote the SAME value type, so a
+// judgment that compares authored type names must not read the pair as a mismatch. WHAT IS
+// DELIBERATELY NOT PEELED, because each of these is an intentional distinction and erasing it
+// would recreate the class this relation exists to expose: a coproduct arm is never reduced to its
+// payload (the arm is a different type from what it wraps -- exactly the
+// OccurrenceId/NodeOccurrenceId shape whose absence of a wall made main red on 2026-08-22,
+// gunbc#8854); a where-refinement (`type A = String where p`) parses as a Conj carrying its
+// predicate and is refused by the connective test; an applied generic (`type A = B<C>`) carries
+// its arguments as children and is refused by the children test; a parameterized alias (`type A<T>
+// = ...`) is refused by the params test; a record or coproduct declaration is not an alias at all;
+// and a sole_constructor carrier is a Conj record, never reachable through this arm. A PRIMITIVE-
+// RHS alias (`type Name = String`) IS included, and that adds no new erasure:
+// v1.compiler.infer_resolve is_transparent_primitive_alias_rhs already peels exactly that shape at
+// resolve, so the relation agrees with the peel the corpus already performs rather than widening
+// past it. COST SHAPE IS PART OF THE CONTRACT. The representative is derived ONCE, during symbol-
+// index census construction, over the same module population the census already walks, and every
+// consumer reads it by name through two map lookups. No consumer chases an alias chain, and in
+// particular no consumer calls peel_nominal_alias_identity per comparison -- a previous attempt at
+// this seam did, and moved whole-corpus regeneration from ~100 seconds to beyond 31 minutes.
+// KEYING. Both the fully-qualified declared path (`module.Name`) and the bare name are recorded;
+// the bare key is recorded only when the corpus declares that name exactly once, so a homonym
+// never resolves to one module's alias by accident. A name with no entry is its own
+// representative, which makes a missing key fail toward DIAGNOSING rather than toward silent
+// agreement. CHAINS AND CYCLES. `type A = B` followed by `type B = C` resolves to C by bounded
+// chase at build time; a chase that does not terminate within the bound stops where it is, which
+// can only weaken the relation (two names failing to agree), never strengthen it into a false
+// agreement.
+
+fn transparent_alias_target_name(item: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let item_shape_admits = (item.params |> count) == 0 && item.connective == NoConnective && (item.children |> count) == 0 && (item.properties |> count) == 0 && item.type_annotation == none
+  if !item_shape_admits {
+    ""
+  } else {
+    match item.inferred {
+      Present { value: Resolved { node: target } } =>
+        let self_name = authored_name_at(source_indices: source_indices, node: item)
+        let target_name = authored_name_at(source_indices: source_indices, node: target)
+        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == Required
+        if !target_shape_admits {
+          ""
+        } else if target_name == "" || target_name == self_name {
+          ""
+        } else if is_declared_container_alias_spelling(name: target_name) || is_container_type(name: qualified_last_segment(name: target_name)) {
+          ""
+        } else {
+          target_name
+        }
+      _ => ""
+    }
+  }
+}
+
+// QUALIFYING THE TARGET AT BUILD TIME, so the representative comparison can be exact.
+// An alias target is the AUTHORED right-hand-side name and may be bare (`type Hash =
+// Fnv1a64Structural`), while the other side of a comparison may be qualified. That mismatch is the
+// only reason transparent_alias_identity_agrees reduces to a last segment at all -- and the
+// reduction is a fail-open: `a.Foo = x.Bar` and `b.Baz = y.Bar` are two aliases onto two DIFFERENT
+// types whose names both end in `Bar`, and a last-segment comparison of their representatives
+// equates them, suppressing a genuine brand mismatch (found by review, smart-ram-730).
+//
+// Names in this corpus resolve by global uniqueness rather than by import, so a census-unique bare
+// name has exactly one declaring module and qualifying it is exact rather than a guess. This map is
+// built during census construction and DISCARDED -- it is not stored on SymbolIndex, so the
+// per-query cost and the retained size are both unchanged, and only the stored targets get longer.
+// A census-AMBIGUOUS name has no unique declarer and is left bare; that residue is the one the
+// last-segment fallback still covers, and it is the DESIGN 4b ambiguity hole rather than a new one.
+fn corpus_decl_module_paths(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
+  fold(module_nodes, init: empty_map(), f: (acc, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    fold(module_items(n: module_node), init: acc, f: (inner, item) =>
+      let self_name = authored_name_at(source_indices: source_indices, node: item)
+      let unique = match map_get(item_counts, self_name) {
+        Present { value: 1 } => true
+        _ => false
+      }
+      if self_name == "" || module_path == "" || !unique { inner } else { map_insert(inner, self_name, module_path) }
+    )
+  )
+}
+
+fn transparent_alias_qualified_name(decl_modules: Map<String, String>, name: String) -> String {
+  if (module_path_segments(path: name) |> count) > 1 {
+    name
+  } else {
+    match map_get(decl_modules, name) {
+      Present { value: m } => concat(m, ".", name)
+      Absent => name
+    }
+  }
+}
+
+fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>) -> Map<String, String> {
+  fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    fold(module_items(n: module_node), init: edges, f: (acc, item) =>
+      let raw_target = transparent_alias_target_name(item: item, source_indices: source_indices)
+      if raw_target == "" {
+        acc
+      } else {
+        let target_name = transparent_alias_qualified_name(decl_modules: decl_modules, name: raw_target)
+        let self_name = authored_name_at(source_indices: source_indices, node: item)
+        let qualified = map_insert(acc, concat(module_path, ".", self_name), target_name)
+        match map_get(item_counts, self_name) {
+          Present { value: 1 } => map_insert(qualified, self_name, target_name)
+          _ => qualified
+        }
+      }
+    )
+  )
+}
+
+fn transparent_alias_chase(edges: Map<String, String>, name: String, fuel: Int) -> String {
+  if fuel <= 0 {
+    name
+  } else {
+    match map_get(edges, name) {
+      Present { value: next } =>
+        if next == name { name } else { transparent_alias_chase(edges: edges, name: next, fuel: fuel - 1) }
+      Absent =>
+        match map_get(edges, qualified_last_segment(name: name)) {
+          Present { value: next } =>
+            if next == name || qualified_last_segment(name: next) == qualified_last_segment(name: name) { name }
+            else { transparent_alias_chase(edges: edges, name: next, fuel: fuel - 1) }
+          Absent => name
+        }
+    }
+  }
+}
+
+fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
+  let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
+  let edges = transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules)
+  fold(sorted_map_keys(edges), init: empty_map(), f: (acc, k) =>
+    map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: 16))
+  )
+}
+
+fn transparent_alias_representative(index: SymbolIndex, name: String) -> String {
+  match map_get(index.transparent_alias_rep, name) {
+    Present { value: rep } => rep
+    Absent =>
+      match map_get(index.transparent_alias_rep, qualified_last_segment(name: name)) {
+        Present { value: rep } => rep
+        Absent => name
+      }
+  }
+}
+
+// The agreement is licensed by an ALIAS EDGE, never by spelling alone. At least one side must
+// actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
+// a last-segment comparison would make any two homonymous nominal types from different modules
+// agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
+// distinction whose erasure caused the OccurrenceId/NodeOccurrenceId incident. The caller has
+// already established the names are not equal, so an unchased pair is a refusal, not a question.
+// The last-segment reduction survives only for the chased case, because an alias target is the
+// authored RHS name and may be bare where the other side is qualified. Residual, stated rather
+// than hidden: for a census-AMBIGUOUS bare name that reduction can still equate two distinct
+// declarations -- the same open hole DESIGN 4b names on the source->.dag acceptance path, not one
+// this relation introduces.
+// BOTH sides chased means both representatives are stored targets, and stored targets are
+// qualified at build time wherever the corpus makes qualification exact -- so that comparison is
+// exact string equality and the a.Foo/b.Baz collision has no spelling. Only the ONE-chased case
+// still reduces to a last segment, because there the unchased side is an authored name this
+// relation never rewrote; that residue is narrower than the reduction it replaces and is the
+// remaining known widening, not a closed one.
+fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: String) -> Bool {
+  let left_rep = transparent_alias_representative(index: index, name: left)
+  let right_rep = transparent_alias_representative(index: index, name: right)
+  let left_chased = left_rep != left
+  let right_chased = right_rep != right
+  let both_chased = left_chased && right_chased
+  left != "" && right != "" && (left_chased || right_chased)
+    && if both_chased {
+      left_rep == right_rep
+    } else {
+      qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
+    }
+}
+
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
+  let folded = fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
@@ -8585,6 +8928,13 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
       corpus_item_counts: corpus_item_counts
     )
   )
+  SymbolIndex {
+    entries: folded.entries,
+    global_bare: folded.global_bare,
+    services: folded.services,
+    transparent_alias_rep: transparent_alias_representatives(
+      module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts)
+  }
 }
 
 fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -8798,7 +9148,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
+  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -8818,7 +9168,10 @@ data underlay_fill_direction_note: String = "Fill composition overlays the CLOSU
 fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> SymbolIndex {
   let global2 = map_merge(tree.global_bare, closure.global_bare)
   let services2 = map_merge(tree.services, closure.services)
-  SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
+  SymbolIndex {
+    entries: closure.entries, global_bare: global2, services: services2,
+    transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep)
+  }
 }
 
 fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -8853,7 +9206,10 @@ fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<St
 
 fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
   let entries2 = map_merge(fill.entries, closure.entries)
-  SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
+  SymbolIndex {
+    entries: entries2, global_bare: closure.global_bare, services: closure.services,
+    transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep)
+  }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."

@@ -60,6 +60,7 @@ import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 import v1.compiler.infer_types { algebra_field_kind_name }
 
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
+import v1.compiler.emit { unmodeled_file_transport_diagnostics }
 
 import v1.compiler.emit_rust { emit_rust }
 
@@ -224,6 +225,10 @@ fn compile_bundle_error(message: String) -> ErrorNode {
 }
 
 fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+  let unmodeled_transports = unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target)
+  if unmodeled_transports |> count > 0 {
+    return EmitResult { files: [], diagnostics: unmodeled_transports }
+  }
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
@@ -1200,19 +1205,24 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
     })
 }
 
-fn stage0_self_compile_refusal_message(result: PipelineResult) -> String? {
+// The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
+// "v2 self-compile" while the generic compile path reached them, so a user compiling
+// their own fixture was told a compile they never ran had failed -- a false subject
+// costs the next reader's search, the stale-citation harm class.
+fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) -> String? {
   let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
   if hard_messages |> count > 0 {
     Present {
       value: concat(
-        "v2 self-compile produced ",
+        subject,
+        " produced ",
         to_string(value: hard_messages |> count),
         " hard diagnostic(s):\n",
         hard_messages |> join(separator: "\n")
       )
     }
   } else if result.files |> count == 0 {
-    Present { value: "v2 self-compile emitted no files" }
+    Present { value: concat(subject, " emitted no files") }
   } else {
     none
   }

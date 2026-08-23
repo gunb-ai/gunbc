@@ -35,7 +35,7 @@ import v1.std.core {
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
   NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
-  is_file_transport, empty_intern_table
+  is_file_transport, transport_base_path, empty_intern_table
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
@@ -143,7 +143,12 @@ import v1.compiler.emit {
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
-  emit_typed_let_shared
+  emit_typed_let_shared,
+  emit_unmodeled_file_transport_refusal_with_cause, file_emission_refusal,
+  file_transport_declared_verb, file_operation_has_content_input,
+  file_transport_verb_delete, file_transport_verb_list, file_transport_verb_write_owner_only,
+  child_from_key, unwrap_single_field_product,
+  file_output_channel_fields, file_output_channel_of_field
 }
 import v1.compiler.languages {
   wrap_shared_type,
@@ -7688,8 +7693,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
+            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
             match lookup_item_for_value_ref(
-              resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
+              resolved_name: resolved_name,
               registry: registry
             ) {
               Present { value: info } =>
@@ -7698,10 +7704,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
                 } else {
                   let is_data = info.kind == DataItem
                   if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+                  else { emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info) }
                 }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
+                emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
             }
         }
       }
@@ -8592,9 +8598,39 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, shared_types: Set
   }
 }
 
+type IterOwnedReceiverCloneDisposition
+  = IterOwnedReceiverCloneDropped
+  | IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String }
+  | IterOwnedReceiverCloneRetainedNotSimpleIdentifier
+
+data iter_owned_receiver_clone_disposition_note: String = "Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch) renders its receiver through the general identifier renderer (emit_var_ref), which clones any resolved-type, non-moved identifier unconditionally -- correct in owned position, but sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a real reference and is treated as one) -- retains today's clone. Fail-open by construction: the disposition can only ever retain an unnecessary clone, never drop a needed one. Named per DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather than a single collapsed default, so the retained-for-downstream-reference population (must never be silently indistinguishable from an ordinary unoptimized site) is separately countable from the retained-for-non-simple-receiver population. The decision never consults movable, Read, or any ownership classification -- the syntactic position of the receiver as a sharing.iter_owned argument is itself the borrow-position proof, which is what keeps this sound where a disposition keyed on the ownership pass's Read edge kind would not be (Read fires on genuine by-value-consuming positions too, not only borrow positions)."
+
+fn iter_owned_receiver_clone_disposition(receiver: Node, downstream: List<Node>, source_indices: Map<String, NewlineIndex>) -> IterOwnedReceiverCloneDisposition {
+  match receiver.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: receiver, source_indices: source_indices)
+      if downstream |> any(n => expr_references_var(node: n, var_name: name, source_indices: source_indices)) {
+        IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: name }
+      } else {
+        IterOwnedReceiverCloneDropped
+      }
+    _ => IterOwnedReceiverCloneRetainedNotSimpleIdentifier
+  }
+}
+
+fn emit_typed_iter_owned_receiver(receiver: Node, downstream: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let disposition = iter_owned_receiver_clone_disposition(receiver: receiver, downstream: downstream, source_indices: scope.type_env.source_indices)
+  match disposition {
+    IterOwnedReceiverCloneDropped =>
+      emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    _ =>
+      emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
+}
+
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
-  let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let coll_str = emit_typed_iter_owned_receiver(receiver: collection, downstream: [body], registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: scope.type_env.source_indices)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8761,7 +8797,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 }
 
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
   let contextual_acc_type = match result_type {
     Present { value: Resolved { node: method_result_type } } => Present { value: method_result_type }
@@ -8935,7 +8971,7 @@ fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, New
 }
 
 fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = match receiver.inferred {
     Present { value: Resolved { node: rt } } =>
       let resolved = rt
@@ -8988,7 +9024,8 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     }
   } else {
     let sharing = language_spec(target: Rust).sharing
-    let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
+    let iter_recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: iter_recv_str)
     match args |> first {
       Present { value: a } =>
         match arg_value(n: a).expr_data {
@@ -9009,7 +9046,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
 
 fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
@@ -10846,7 +10883,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, transport: transport, op_node: op_node, source_indices: source_indices) }
   else { emit_local_call(op_name: op_name) }
 }
 
@@ -11070,16 +11107,6 @@ fn emit_rest_body_line(transport: Node, source_indices: Map<String, NewlineIndex
 fn has_response_prefix(name: String) -> Bool {
   if string_length(s: name) < 9 { false }
   else { substring(s: name, start: 0, end: 9) == "response_" }
-}
-
-fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
-    Present { value: prop } => match field_init_node_value(n: prop).expr_data {
-      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
-      _ => none
-    }
-    Absent => none
-  }
 }
 
 fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -11516,28 +11543,132 @@ fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
   if is_optional { concat("Some(", base, ")") } else { base }
 }
 
-fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = is_product_type(n: n)
-  if is_product && n.ident_span == none && n.children |> count == 1 {
-    match n.children |> first {
-      Present { value: field_node } => resolved_type(n: field_node)
-      Absent => n
+// The rust realization handler for `transport file`. It is bound to the shape
+// v1.compiler.emit file_emission_refusal admits, and its FIRST act is to consult that same
+// predicate: an operation this renderer cannot express is refused here with its cause rather than
+// rendered approximately, so the wall in emit_artifact and this renderer can never disagree about
+// which operations are emittable (DESIGN §3 -- one authority, two readers).
+//
+// The emitted body is the image of v1_interpreter dispatch_file / map_file_outputs: the same
+// verb dispatch, the same empty-path refusal, the same per-channel values. That correspondence is
+// the point (DESIGN §4 -- emission and interpretation are one procedure in two directions), and it
+// is what emit_file_action_block's channel bindings exist to keep readable side by side.
+fn emit_file_call(op_name: String, transport: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match file_emission_refusal(op_node: op_node, t: transport, target: Rust, source_indices: source_indices) {
+    Present { value: refusal } =>
+      emit_unmodeled_file_transport_refusal_with_cause(op_name: op_name, target: Rust, refusal: refusal)
+    Absent => {
+      let path_line = emit_file_path_line(transport: transport, source_indices: source_indices)
+      let empty_guard = file_empty_path_guard
+      let action = emit_file_action_block(transport: transport, op_node: op_node, source_indices: source_indices)
+      let return_line = emit_file_return(op_node: op_node, source_indices: source_indices)
+      [path_line, empty_guard, action, return_line] |> join(separator: "\n")
     }
-  } else { n }
+  }
 }
 
-fn emit_file_call(op_name: String, inferred: Node) -> String {
-  let effective = unwrap_single_field_product(n: inferred)
-  let is_product = is_product_type(n: effective)
-  let parse_line = if is_product && effective.children |> count > 1 {
-    "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
-  } else {
-    "Ok(content)"
+fn emit_file_path_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match transport_base_path(t: transport, source_indices: source_indices) {
+    Present { value: path_node } => match path_node.expr_data {
+      ExprLiteral { value: LitStr { value: path_str } } =>
+        concat("let file_path: String = \"", escape_string_literal_body(s: path_str), "\".to_string();")
+      ExprStringInterp => {
+        let parts = path_node.children |> map(child => match child.expr_data {
+          ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+          _ => Interpolation { expr: arg_value(n: child) }
+        })
+        let fmt_str = parts
+          |> map(p => match p {
+            Text { value: v } => escape_rust_interp_text(s: v)
+            Interpolation { expr: _ } => "{}"
+          })
+          |> join(separator: "")
+        let args = parts |> flat_map(p => match p {
+          Text { value: _ } => []
+          Interpolation { expr: e } => {
+            let var_name = emit_ident(name: expr_var_name_at(texpr: e, source_indices: source_indices), target: Rust)
+            if is_optional_typed_expr(e: e) {
+              [concat(var_name, ".as_deref().unwrap_or(\"\")")]
+            } else {
+              [var_name]
+            }
+          }
+        })
+        if args |> count == 0 {
+          concat("let file_path: String = format!(\"", fmt_str, "\");")
+        } else {
+          concat("let file_path: String = format!(\"", fmt_str, "\", ", args |> join(separator: ", "), ");")
+        }
+      }
+      _ => "compile_error!(\"file transport path must be a string literal or interpolation\");"
+    }
+    Absent => "compile_error!(\"file transport declares no path\");"
   }
-  concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    emit_ident(name: op_name, target: Rust), "\");\n",
-    "let content = std::fs::read_to_string(&path)?;\n",
-    parse_line)
+}
+
+// The interpreter refuses an empty resolved path (dispatch_file) rather than reading the
+// process working directory, so the emitted realization carries the same refusal.
+data file_empty_path_guard: String = "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }"
+
+data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = "
+
+fn emit_file_action_block(transport: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let verb = file_transport_declared_verb(t: transport, source_indices: source_indices)
+  let body = match verb {
+    Present { value: v } =>
+      if v == file_transport_verb_delete { file_delete_match_expr }
+      else if v == file_transport_verb_list { file_list_match_expr }
+      else { file_write_owner_only_expr }
+    Absent =>
+      if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { file_write_expr }
+      else { file_read_match_expr }
+  }
+  concat(file_channel_binding_prefix, body)
+}
+
+data file_read_match_expr: String = "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};"
+
+data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};"
+
+data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
+
+data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
+
+data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
+
+// The FLOOR beneath the wall, in the same shape as emit_unmodeled_file_transport_refusal: a key
+// the wall admits must have an expression here, and a key it does not admit is unreachable. The
+// last arm therefore REFUSES rather than answering the content channel by default -- an
+// unrecognised key answered as content is the absorbing fallback DESIGN §5 forbids, and it would
+// hide exactly the wall/renderer disagreement this pair exists to make impossible.
+fn emit_file_channel_expr(channel: String, is_optional: Bool) -> String {
+  let base = if channel == "write_success" || channel == "success" { "file_success" }
+    else if channel == "bytes_written" || channel == "bytes" || channel == "byte_count" { "file_byte_count" }
+    else if channel == "path" { "file_path.clone()" }
+    else if channel == "error" { "file_error.clone()" }
+    else if channel == "content" { "file_content.clone()" }
+    else { concat("compile_error!(\"file transport output key '", channel, "' reached the rust renderer without a modeled channel\")") }
+  if is_optional { concat("Some(", base, ")") } else { base }
+}
+
+// Reads the SAME field list the wall's file_operation_output_channels reads (file_output_channel_fields
+// / file_output_channel_of_field), so an admitted operation is answered field by field in declared
+// order. It deliberately does NOT unwrap a single-field product first: the `from` key lives on the
+// FIELD, and unwrapping to the field's type loses it -- which would answer a declared
+// `success: Bool from "write_success"` with the content channel and emit a String against a bool.
+fn emit_file_return(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let fields = file_output_channel_fields(op_node: op_node)
+  let field_exprs = fields |> map(ch =>
+    emit_file_channel_expr(
+      channel: file_output_channel_of_field(ch: ch, source_indices: source_indices),
+      is_optional: ch.return_cardinality == CardOptional)
+  )
+  if fields |> count == 0 { "Ok(())" }
+  else if fields |> count == 1 {
+    concat("Ok(", field_exprs |> join(separator: ", "), ")")
+  } else {
+    concat("Ok((", field_exprs |> join(separator: ", "), "))")
+  }
 }
 
 fn emit_local_call(op_name: String) -> String {

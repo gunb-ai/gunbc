@@ -40,10 +40,10 @@ import product.placement_supply {
   host_spatial_facts_for,
 }
 import std.types { NonEmptyStr, List }
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_physical_inventory {
   operator_physical_site,
   rack_01,
-  host_srv1,
   fleet_host_spatial_facts,
   fleet_nominal_rackmount_arithmetic_holds,
   srv1_measured_wireless_note,
@@ -206,7 +206,7 @@ test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
 }
 
 test fn srv1_measured_adapter_absent_specimen() -> Bool {
-  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: host_srv1) {
+  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: operator_host_srv1) {
     Present { value: srv1 } =>
       match srv1.wireless {
         WirelessAdapterAbsent =>

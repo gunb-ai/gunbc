@@ -55,6 +55,11 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
+// POPULATION: 311 identities. The five added 2026-08-22 are the previously-INVISIBLE rows
+// described at chunk_20 -- they enter this roster from marker-less files rather than from a
+// regression, which is a route this roster had not carried before. The 306 below is the count
+// before them and the derivation that produced it is unchanged.
+//
 // POPULATION: 306 identities, after the declared rung drop below took 111 out by relocation
 // and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306). Those 52
 // reported STALE-QUARANTINE -- enrolled as expected-red and PASSED -- which is this roster's own
@@ -410,11 +415,40 @@ fn floor_expected_red_chunk_18() -> List<String> {
 }
 
 fn floor_expected_red_chunk_19() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
+}
+
+// FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
+// before: they were not failing rows that someone broke, they were rows the floor COULD NOT SEE.
+// Both files declared their assertions as plain `fn`, so floor discovery -- which keys on the
+// literal `test fn ` marker -- enrolled nothing from either. Marking them is what made these
+// failures observable at all, and unmarking them again would be the same silence wearing a
+// different justification, so they are enrolled here instead.
+//
+// The four bootstrap_footprint rows fail identically: `atom_identity_hash requires exactly one
+// string argument`. The cause is stated by the file itself, which DEMOTED them on 2026-08-19 by
+// removing their markers -- every bootstrap_footprint path hashes a closure embedding
+// rust_target_model().bundle, whose semantic-decl bundles store char CODE POINTS in
+// Atom.identity, and content_hash's atom fold routes that into an intrinsic that requires a
+// string. That is a substrate gap, not a defect in these rows, and the file names its own
+// repair trigger: the code-point encoding carries a string identity, or content_hash gains a
+// non-symbol atom arm.
+//
+// nominal_distinct_control_compiles_ok returns false: the CONTROL fixture -- the one whose call
+// site is type-correct -- does not compile through compile_ingest_staging today. gunbc#8505 held
+// this class back from promotion for exactly this reason ("35 parse-reaching claims declared as
+// residue"), so the red is a known frontier fact rather than news.
+//
+// WHAT IS HONEST TO SAY ABOUT THEM, since this roster's header asks: nobody is actively fixing
+// these five. What the enrolment buys over the demotion it replaces is the stale-quarantine arm
+// -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
+// naming itself. The file's prose trigger could not do that; this roster does it mechanically.
+fn floor_expected_red_chunk_20() -> List<String> {
+  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}
 }
 
 fn floor_expected_red_roster() -> List<String> {

@@ -8,7 +8,6 @@ import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 import gunbc.fleet_reach { srv3_reach_is_realizable }
-import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data fleet_shell_transport_authority_disposition: Disposition = SingleAuthority
 
@@ -126,21 +125,6 @@ fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportOb
   }
 }
 
-fn shell_transport_unobserved_count(hosts: List<HostIdentity>) -> Int {
-  filter(
-    hosts,
-    h =>
-      match fleet_shell_transport_observation(host: h) {
-        ShellTransportUnobserved { reason: _ } => true
-        ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-        ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      },
-  ).length()
-}
-
-fn fleet_shell_transport_unobserved_count() -> Int {
-  shell_transport_unobserved_count(hosts: fleet_subsumption_hosts)
-}
 
 fn srv3_network_reach_realizable() -> Bool {
   srv3_reach_is_realizable()

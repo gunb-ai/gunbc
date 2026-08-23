@@ -31,6 +31,7 @@ import extdeps.languages.json.emit {
 import extdeps.languages.json.parse { parse_json }
 
 import v2.std.node {
+  Cardinality,
   Node,
   Edge,
   EdgeLabel,
@@ -62,6 +63,8 @@ import gunbc.scm.object_store {
   CopySourceAbsent,
   CopyLocatorCollision,
   copy_object,
+  StoredEdge,
+  insert_from_structure,
 }
 import gunbc.scm.checkout {
   Commit,
@@ -512,4 +515,263 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
       serialize_json(v: v) == serialize_json(v: encode_image(store: full.store, root: full.identity))
     ImageEncodeRefused { cause: _ } => false
   }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE NODE IDENTITY PROTOCOL, ACROSS A PERMUTED WIRE ORDER.
+//
+// A decoded image supplies child order from a document nobody in this process authored, and
+// insert_from_structure hands that order to content_hash_of_children. Until content_hash_of_children
+// canonicalized its own input, a hand-edited image listing `beta` before `alpha` minted an ObjectId
+// under the fold of `beta, alpha`, while the SAME reconstructed node's ordinary content_hash folds
+// `alpha, beta` -- so find_object(H1) could answer a node whose content_hash is H2, which is not a
+// stale document or a lossy round trip but a break in the meaning of ObjectId = v2.std.node.Hash.
+//
+// The pair below is what makes the repair falsifiable, and it has to be a PAIR: canonicalizing
+// everything would satisfy the named claim while silently destroying positional structure, where
+// order IS the meaning. Revert the canonicalization in content_hash_of_children and the named claim
+// goes red; canonicalize positional children too and the positional claim goes red.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_identity_of(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+  match outcome {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+type ScmImageTwoAtoms { store: ObjectStore, first: ObjectId, second: ObjectId }
+
+fn scm_image_two_atoms() -> ScmImageTwoAtoms {
+  let a = scm_image_put(store: empty_store(), n: scm_image_atom(identity: ^A))
+  let b = scm_image_put(store: a.store, n: scm_image_atom(identity: ^B))
+  ScmImageTwoAtoms { store: b.store, first: a.identity, second: b.identity }
+}
+
+fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: ObjectId) -> ObjectId {
+  scm_image_identity_of(
+    outcome: insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
+    fallback: fallback
+  )
+}
+
+fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Named { name: name }, target: target }
+}
+
+fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Positional, target: target }
+}
+
+// NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
+// the assembled node derives -- asserting the two inserts merely agree with EACH OTHER would be
+// satisfied by any consistent wrong rule, including one that hashes wire order on both sides.
+test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let canonical = content_hash(n: scm_image_program())
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) && object_id_eq(left: forward, right: canonical)
+}
+
+// POSITIONAL children permuted: a DIFFERENT identity. Under a positional discipline the order is the
+// content, so a canonicalizer that sorted here would fuse `f(x, y)` with `f(y, x)`.
+test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.first),
+      scm_image_positional_stored(target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.second),
+      scm_image_positional_stored(target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) == false
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CLOSED MEMBER SET. A matched format tag means "I understand this exact schema", not "I
+// understand some subset of whatever this writer may have meant". A silently ignored member is a
+// fact the writer stated, the reader discarded, and the next re-encode deleted -- with every
+// operation reporting success. The controls matter as much as the refusals: member ORDER is still
+// irrelevant, and the members each variant legitimately carries must still load.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_kind_object(members: List<JsonKeyValue>) -> JsonKeyValue {
+  json_kv(key: "kind", value: json_object(members: members))
+}
+
+fn scm_image_atom_kind_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "kind", value: json_string(s: "type")),
+    json_kv(key: "connective", value: json_string(s: "atom")),
+    json_kv(key: "identity", value: json_string(s: "A")),
+  ]
+}
+
+fn scm_image_one_object_image(object_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> JsonValue {
+  json_object(
+    members: concat(
+      [
+        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+        json_kv(key: "objects", value: json_array(elements: [json_object(members: object_members)])),
+        json_kv(key: "root", value: json_string(s: "0")),
+      ],
+      extra
+    )
+  )
+}
+
+fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> List<JsonKeyValue> {
+  concat(
+    [
+      scm_image_kind_object(members: kind_members),
+      json_kv(key: "children", value: json_array(elements: [])),
+    ],
+    extra
+  )
+}
+
+fn scm_image_refused(loaded: ImageLoadOutcome) -> Bool {
+  match loaded {
+    ImageRefused { cause: _ } => true
+    ImageLoaded { store: _, root: _ } => false
+  }
+}
+
+test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
+        extra: [json_kv(key: "future_field", value: json_string(s: "x"))]
+      )
+    )
+  )
+}
+
+test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: scm_image_atom_kind_members(),
+          extra: [json_kv(key: "identity", value: json_string(s: "0"))]
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+// `identity` is REQUIRED on an atom and forbidden on every other connective, so this is the claim
+// that the member set is closed PER VARIANT rather than closed over the union of every variant's
+// members -- a union-shaped check would accept this document.
+test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+            json_kv(key: "identity", value: json_string(s: "A")),
+          ],
+          extra: []
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_image(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: concat(
+            scm_image_atom_kind_members(),
+            [json_kv(key: "behavior", value: json_string(s: "value"))]
+          ),
+          extra: []
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+// THE ORDER CONTROL. Closed member population is not positional parsing: the same members in a
+// different order must still load. Without this, a check that accidentally depended on member order
+// would satisfy every refusal claim above.
+test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_image(
+      v: json_object(
+        members: [
+          json_kv(key: "root", value: json_string(s: "0")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(key: "children", value: json_array(elements: [])),
+                    scm_image_kind_object(
+                      members: [
+                        json_kv(key: "identity", value: json_string(s: "A")),
+                        json_kv(key: "connective", value: json_string(s: "atom")),
+                        json_kv(key: "kind", value: json_string(s: "type")),
+                      ]
+                    ),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+        ]
+      )
+    ),
+    expected: scm_image_atom(identity: ^A),
+  )
+}
+
+// THE POSITIVE CONTROL FOR THE ATOM VARIANT: `identity` is not merely tolerated on an atom, it is
+// required, so the refusals above cannot be satisfied by a rule that rejects `identity` everywhere.
+test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_image(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
+        extra: []
+      )
+    ),
+    expected: scm_image_atom(identity: ^A),
+  )
 }

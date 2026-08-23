@@ -96,6 +96,18 @@ examples sit above mainstream while method-existence and return-conformance sit 
 
 ### The conversation's own specimens, placed on the ladder
 
+**READ EVERY EVIDENCE CELL BELOW THROUGH §11 ITEM 23 (added 2026-08-22).** Where a row's rung
+rests on a probe pair in the guarantee-probe corpus — the call label/surplus, method
+established surface, declared-conformance ground fragment, bare-none field admission,
+sole-constructor cross-module and v2 self-grounding frontier classes, and the six floor
+classes authored beside them — that probe is **AUTHORED, NOT EXECUTING**. The required floor
+discovers its carrier and declines it (`DeclinedLiveTree`), so 100 identities of guarantee
+evidence across five carriers run in no CI leg. The walls those rows describe LANDED and the
+measurements were taken; what does not happen is the re-taking. Until the decline arm is
+deleted, read each such rung as *established once, unguarded since* — the §4b
+meta-obligation-4 shape, stated here once rather than repeated in every cell it touches.
+
+
 | Class | Floor status | Today | Ceiling | The climb |
 |---|---|---|---|---|
 | Misspelled label binds positionally (§4) | **was BELOW FLOOR — silent wrong binding** | **R2 at the direct-call seam** (session/cool-badger-514): `CallArgumentNameUnknown` + `CallPositionalSurplus` blocking, mirroring the two classes `call_function_inner` refuses at runtime (underscore idiom included); probe pair pre `0 diagnostics` → post two located refusals; the census caught **28 live fossils in 5 fns** (8× `to_string(i:)` after the param renamed to `value`, `arm_body(arm:)`, `is_import_slot_node(p:)`, 17× `fold_list(init:)` vs declared `empty`, `…refusal_reason(path:)` vs `path_opt`) — every one a parameter rename the positional fallback had absorbed silently; +3 more found by grep in the wall's measured blind spot (callee sig unresolved → `sig == none` fallthrough, `dag_collect.dag`), fixed in the same change | R2 (bijection full: duplicate/missing/method-seam pending) | duplicate-label + missing-arg land interpreter-first (runtime doesn't refuse them today — walling compile stricter would diverge the other way); method-pipe seam with the method wall; sig-unresolved fallthrough closes with resolution coverage |
@@ -153,12 +165,14 @@ unless the row says otherwise, and `Unknown` is the honest default.
 | Call shape (labels/count) | **floor landed at the direct-call seam** (unknown label + surplus positional refuse, blocking; was: misspelled label binds positionally, silent) | R3 (exact bijection in normalized IR) | formal-driven walk; `ArityMismatch` is constructor-grain; `direct_call_shape_diags` runs exemption-free (labels have no representation gap) | `direct_call_shape_diags` beside `direct_call_arg_mismatch_diags` | remaining: duplicate/missing (interpreter-first), method seam, sig-unresolved fallthrough |
 | Return conformance | **UnknownUnmeasured** (compile admission proven; runtime disposition and silent paths unmeasured) | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
 | `data` annotation | **UnknownUnmeasured** (same basis) | R3 | same lane | #7481 | same lane |
-| Generic instantiation | **Below floor — silent** (measured 2026-08-01: `type Boxed<T> { inner: T }` constructed as `Boxed { inner: "not an int" }` at declared return `Boxed<Int>` compiles with zero diagnostics of any severity) | R2 | substitution unproven | one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path, source and result in the §10 eighth-pass ledger — **NOT ENROLLED**: no probe pair for this class exists in the tree, so nothing re-runs this measurement and nothing reds if the behaviour changes (§4b meta-obligation 4; codex review 46306). Enrollment is §11 item 10 | inhabitance at instantiation |
-| Field through generics | **Below floor — silent** (measured 2026-08-01: `fn get_field<T>(t: T) -> Int { t.no_such_field }` compiles with zero diagnostics — `field_of_type_var` fabricates rather than refusing or carrying a constraint) | R2 (pending-constraint discharge) | `field_of_type_var` minted | one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path, source and result in the §10 eighth-pass ledger — **NOT ENROLLED**: no probe pair for this class exists in the tree, so nothing re-runs this measurement and nothing reds if the behaviour changes (§4b meta-obligation 4; codex review 46306). Enrollment is §11 item 10 | constraint carried + unique discharge |
-| Closed-match exhaustiveness | **Path-split, measured 2026-08-01 — the class is not one rung.** Coproduct-typed scrutinee: **R2** (a missing arm on a declared closed variant refuses `NonExhaustiveMatch`, blocking, naming the absent variant). Type-variable scrutinee: **below floor — silent** (`fn pick<T>(t: T) -> Int { match t { Red => 1 } }` compiles with zero diagnostics — one arm, an unconstrained subject, and a variant belonging to an unrelated type). Class rung is the minimum, so **below floor** | R3 (full arm population at elimination) | the silent arm is `PatternDynamic { span: _ } => []`, **not** `PatternLookupBlocked => []` as this row previously said — `pattern_subject_from_node` reaches `PatternLookupBlocked` only when the scrutinee's inferred type `is_compiler_error`, i.e. where a diagnostic already exists, so that arm is not the silent one and its silence is **not** established by these probes | one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path, source and result in the §10 eighth-pass ledger — **NOT ENROLLED**: no probe pair for this class exists in the tree, so nothing re-runs this measurement and nothing reds if the behaviour changes (§4b meta-obligation 4; codex review 46306). Enrollment is §11 item 10 | `ExhaustivenessUnknown` refuses on the dynamic subject |
-| Record completeness | **R2 measured 2026-08-01** (a record literal omitting a declared required field refuses `MissingField`, blocking, naming the field and type — the class was carried as `Unknown — unmeasured` and the measurement raises it) | R3 | judgment is per-literal; construction-side and generic-instantiation completeness are separate and the latter measures **below floor** in the row above | one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path, source and result in the §10 eighth-pass ledger — **NOT ENROLLED**: no probe pair for this class exists in the tree, so nothing re-runs this measurement and nothing reds if the behaviour changes (§4b meta-obligation 4; codex review 46306). Enrollment is §11 item 10 | required-field construction at every construction form |
-| Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | tidy-deer-730 probe on gunbc#7484 + review 45347, 2026-07-31 | probe pair in the corpus; refusal in the list production (§11 item 6) |
-| A value that does not inhabit its declared type is accepted — **seam-split, enumeration UNFINISHED** (was filed as "Direct-call argument TYPE conformance, v2 corpus"; renamed 2026-08-22, see the trigger cell) | **Below floor — the judgment never runs.** Not a hole a bad value slipped through: `v1.compiler.04_infer` gates `arg_compat_diags` on `module_skips_direct_call_arg_check(module_name: scope.module_name)`, which returns true for every module whose name begins with `v2.`. The key is the CALLER's module, so the entire active v2 corpus — compiler stages, extdeps, std, witnesses — has the direct-call argument-type judgment switched off. Measured consequence, 2026-08-22: `v2.extdeps.languages.dag` `dag_int_literal_node_from_lexeme` / `dag_int_literal_node_from_magnitude` declared `occurrence_id: OccurrenceId` since gunbc#6558 while storing that parameter straight into `Node.occurrence_id`, declared `NodeOccurrenceId`. For two months 15 call sites passed `SyntheticOccurrence` (a NodeOccurrenceId, contradicting the declaration) and nothing complained; gunbc#8833 made one call site OBEY the declaration and nothing complained about that either. The error surfaced only as an interpreter `non-exhaustive pattern match on: OccurrenceId { value: 79 }` across 16 witnesses, reddening main. **The inversion worth naming: a declaration that lies is inert while every caller contradicts it in the same direction, and detonates on the first caller who takes it at its word.** So the at-risk population is not "callers who got it wrong" but callers who might get it right — a genuinely counterintuitive census. Note this is the TYPE judgment only; the SHAPE judgment (`direct_call_shape_diags`, labels/arity) is exemption-free and does fire | R2 (a declared parameter type is a decidable conformance check the seam already computes — `direct_call_arg_mismatch_diags` exists, is written, and is simply not called, so the distance to the next rung is an if-statement plus a triage, not an implementation) | **THIS ROW IS A CORRECTION TO DESIGN §4b, NOT A NEW OBSERVATION BESIDE IT — read them together or the first will look like it already settled this.** DESIGN §4b names this exact symbol and reports that it "was found (code read, not execution) to be scoped entirely to the direct-call argument-type judgment and does not reach `sole_constructor`'s construction check at either call site — a positive finding that retires this axis, not an absence of any exemption anywhere." That finding is correct and is not disputed here. The question it asked was whether the exemption LEAKS into `sole_constructor`; the question it never asked is what the exemption COSTS inside the judgment it is scoped to. "Scoped entirely to the direct-call argument-type judgment" reads as reassuring only until that judgment is measured, and it is the argument-type check for the entire active v2 corpus. **Confinement was measured and then treated as safety, and the axis that got retired was not the one that mattered.** Two facts about why the seam nonetheless reads as covered: the SHAPE judgment (`direct_call_shape_diags` — labels, arity, duplicate binding) is exemption-free and DOES fire over every module including the compiler's own sources, so half-live is more deceptive than dead — every casual check finds something working. And the arm is NOT unreasoned: `direct_call_shape_wall_note` states the TYPE judgment's false-positive classes are representation gaps (brand aliases, optionality's two forms, anonymous literals, expansion depth — the conformance wall's four measured classes), which is a real stated reason and is why this row asks for a measurement rather than a deletion. What is unmeasured is whether those classes still fire in v2 today and at what rate. The neighbouring compiler-module arm of this same exemption was deleted in place after being found never to have been in force; the `v2.` arm was left standing at that moment without separate justification of its own | This incident, measured end to end: CI run 32542017600 (main, 67437fcbe9) 16 FAIL with the raw-`OccurrenceId` match error; caller census of both functions read at call grain (17 sites: 15 `SyntheticOccurrence`, 1 `node.occurrence_id`, 1 internal pass-through, 1 raw `minted.id`); exemption mechanism read at `v1.compiler.04_infer` `module_skips_direct_call_arg_check` and its single call site gating `arg_compat_diags` on `scope.module_name`. **NOT ENROLLED**: no probe pair asserts this exemption's reach, so nothing reds if it changes | **THE TRIGGER THIS ROW SHIPPED WITH WAS INCOMPLETE AND IS CORRECTED HERE (2026-08-22, swift-badger-524 retracting their own ruling).** As merged in gunbc#8854 this cell named ONE closing condition — delete the `v2.` exemption — which is a NECESSARY condition presented as a sufficient one. The class is not "direct-call argument type conformance"; it is **a value that does not inhabit its declared type is accepted**, and it has at least TWO seams: **(1) direct-call arguments** — gated off for `v2.*` by `module_skips_direct_call_arg_check`, the mechanism this row measures; **(2) record-literal fields** — gated by NOTHING, below floor in ORDINARY NON-v2 MODULES, receipt gunbc#8865 (gentle-eagle-360). Its minimal pair, no compiler internals involved: `CppHolder { subject: CppWrapped { inner: cpp_inner() } }` accepted and correct, against `CppHolder { subject: cpp_inner() }` — a coproduct PAYLOAD inhabiting a field declared as its parent COPRODUCT — ACCEPTED BY TYPING and dying at runtime as `PatternMatchFailure`. A record literal is not the direct-call seam, so deleting the exemption would not close it. **THE ENUMERATION IS UNFINISHED: two is what has been measured, not the count.** Assume a third seam exists until someone enumerates them; note that this row's own originating incident (#8854) reached its victim through a record literal one hop downstream of the direct call, so the two seams are not even cleanly separable at a site. Per-seam triggers: seam (1) — turn the exemption off for `v2.` behind a measured diagnostic count, triage, then delete the arm, the disposition the compiler-module arm received; the measured prerequisite is ALIAS TRANSPARENCY, because proud-ant-819's report-only shadow on the 03_ingest closure found 115 `WouldDiagnose` relations at 78 sites of which 115 reduce to a transparent `type A = B` (92 via `type Hash = Fnv1a64Structural`, 23 via the `Node` phase carriers), residue ZERO — so on that closure the exemption is currently suppressing false positives, not defects. Seam (2) — its own wall at record-literal field conformance; nothing to turn off, it was never on. **Closing seam (1) MUST NOT be read as closing the class**, which is the specific failure this correction exists to prevent: a class that looks like it has one closing condition gets closed when that condition fires. Two blind spots neither instrument covers, named rather than left to be rediscovered: production itself SKIPS an anonymous record literal standing as an ACTUAL at a direct call, so its argument type is never judged (521 relations, 2.7%, `Unadjudicated` in proud-ant-819's shadow — upstream of the guard, so invisible to a flip-off arm too); and a function storing into a field from its own differently-named parameter is this class at yet another site, which a callee-name-keyed census cannot see. **THAT FIRST BLIND SPOT IS NOT SEAM (2), AND THE TWO WILL BE MERGED BY ANY READER WHO DOES NOT SEE THIS SENTENCE** (caught by proud-ant-819, who put the mirror-image clause in their own row): both descriptions begin "a record literal" and name DIFFERENT POSITIONS. The blind spot is a record literal at an ARGUMENT position whose type goes unjudged at the direct-call seam — seam (1)'s territory, and a population of 521 relations. Seam (2) / gunbc#8865 is a record literal's FIELD whose value does not inhabit the field's declared type — a different seam with a different mechanism and no measured population. Reading them as one would make the 521 look like evidence for gunbc#8865, or gunbc#8865's receipt look like it bounds the 521. Neither is true |
+| Generic instantiation | **Below floor — silent** (measured 2026-08-01: `type Boxed<T> { inner: T }` constructed as `Boxed { inner: "not an int" }` at declared return `Boxed<Int>` compiles with zero diagnostics of any severity) | R2 | substitution unproven | first measured by a one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path (source and result in the §10 eighth-pass ledger), and **AUTHORED AS A PROBE PAIR 2026-08-22 — AUTHORED, NOT EXECUTING, AND THE DISTINCTION IS THE WHOLE POINT** (see §11 item 28): the measurement is now written as `test.claim.guarantee_floor_class_probe_witness` `floor_generic_instantiation_is_still_silently_accepted`, against the registry row `gunbc.guarantee_probe_corpus` class `floor-generic-instantiation-inhabitance`, with `floor_generic_instantiation_monomorphic_control_refuses` (the same bad value in a NON-generic record refuses `TypeMismatch`, blocking, on this same harness and run — so the zero is the compiler's silence, not the probe failing to reach the judgment) and `floor_generic_instantiation_green_control_is_clean` as its probe-adequacy control. **It does not run in CI.** The witness declares `ReadsLiveTree` — truthfully, because `compile_dag_diagnostic_census` resolves its synthetic source against the live checkout — and the required floor DECLINES every `ReadsLiveTree` module before the fold sees it (`v2.workflow.required_floor` `RequiredFloorDisposition` `DeclinedLiveTree`), so the probe is discovered and never executed, exactly like the five guarantee carriers §11 item 28 counts. It is green by execution LOCALLY (`gunbc run --claim-run`, 2026-08-22, this session) and that is a strictly weaker fact. So this cell's rung is unchanged from the day before the probe was authored: it still rests on a measurement nothing re-runs. What the probe pair buys is that on the day the decline arm is deleted the measurement becomes standing evidence with no further authorship. Trigger: the `DeclinedLiveTree` deletion (§11 item 28), NOT this cell (§4b meta-obligation 4; the original gap was codex review 46306, §11 item 10) | inhabitance at instantiation |
+| Field through generics | **Below floor — silent** (measured 2026-08-01: `fn get_field<T>(t: T) -> Int { t.no_such_field }` compiles with zero diagnostics — `field_of_type_var` fabricates rather than refusing or carrying a constraint) | R2 (pending-constraint discharge) | `field_of_type_var` minted | first measured by a one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path (source and result in the §10 eighth-pass ledger), and **AUTHORED AS A PROBE PAIR 2026-08-22 — AUTHORED, NOT EXECUTING, AND THE DISTINCTION IS THE WHOLE POINT** (see §11 item 28): the measurement is now written as `test.claim.guarantee_floor_class_probe_witness` `floor_field_through_generics_is_still_silently_accepted`, against the registry row `gunbc.guarantee_probe_corpus` class `floor-field-through-generics`, with `floor_field_through_generics_declared_record_control_refuses` (the same field name on a DECLARED record refuses, blocking — under the class `InternalError`, pinned as observed and not as endorsed) and `floor_field_through_generics_green_control_is_clean` as its probe-adequacy control. **It does not run in CI.** The witness declares `ReadsLiveTree` — truthfully, because `compile_dag_diagnostic_census` resolves its synthetic source against the live checkout — and the required floor DECLINES every `ReadsLiveTree` module before the fold sees it (`v2.workflow.required_floor` `RequiredFloorDisposition` `DeclinedLiveTree`), so the probe is discovered and never executed, exactly like the five guarantee carriers §11 item 28 counts. It is green by execution LOCALLY (`gunbc run --claim-run`, 2026-08-22, this session) and that is a strictly weaker fact. So this cell's rung is unchanged from the day before the probe was authored: it still rests on a measurement nothing re-runs. What the probe pair buys is that on the day the decline arm is deleted the measurement becomes standing evidence with no further authorship. Trigger: the `DeclinedLiveTree` deletion (§11 item 28), NOT this cell (§4b meta-obligation 4; the original gap was codex review 46306, §11 item 10) | constraint carried + unique discharge |
+| Closed-match exhaustiveness | **Path-split, measured 2026-08-01 — the class is not one rung.** Coproduct-typed scrutinee: **R2** (a missing arm on a declared closed variant refuses `NonExhaustiveMatch`, blocking, naming the absent variant). Type-variable scrutinee: **below floor — silent** (`fn pick<T>(t: T) -> Int { match t { Red => 1 } }` compiles with zero diagnostics — one arm, an unconstrained subject, and a variant belonging to an unrelated type). Class rung is the minimum, so **below floor** | R3 (full arm population at elimination) | the silent arm is `PatternDynamic { span: _ } => []`, **not** `PatternLookupBlocked => []` as this row previously said — `pattern_subject_from_node` reaches `PatternLookupBlocked` only when the scrutinee's inferred type `is_compiler_error`, i.e. where a diagnostic already exists, so that arm is not the silent one and its silence is **not** established by these probes | first measured by a one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path (source and result in the §10 eighth-pass ledger), and **AUTHORED AS A PROBE PAIR 2026-08-22 — AUTHORED, NOT EXECUTING, AND THE DISTINCTION IS THE WHOLE POINT** (see §11 item 28): the measurement is now written as `test.claim.guarantee_floor_class_probe_witness` `floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent`, against the registry row `gunbc.guarantee_probe_corpus` class `floor-closed-match-exhaustiveness`, with the coproduct-scrutinee arm already enrolled at `test.claim.match_exhaustiveness_coproduct_witness` `w_missing_coproduct_arm_reports_one_non_exhaustive`, on the same harness and the same floor run — not re-authored here, because a second copy would be a second authority for one fact as its probe-adequacy control. **It does not run in CI.** The witness declares `ReadsLiveTree` — truthfully, because `compile_dag_diagnostic_census` resolves its synthetic source against the live checkout — and the required floor DECLINES every `ReadsLiveTree` module before the fold sees it (`v2.workflow.required_floor` `RequiredFloorDisposition` `DeclinedLiveTree`), so the probe is discovered and never executed, exactly like the five guarantee carriers §11 item 28 counts. It is green by execution LOCALLY (`gunbc run --claim-run`, 2026-08-22, this session) and that is a strictly weaker fact. So this cell's rung is unchanged from the day before the probe was authored: it still rests on a measurement nothing re-runs. What the probe pair buys is that on the day the decline arm is deleted the measurement becomes standing evidence with no further authorship. Trigger: the `DeclinedLiveTree` deletion (§11 item 28), NOT this cell (§4b meta-obligation 4; the original gap was codex review 46306, §11 item 10) | `ExhaustivenessUnknown` refuses on the dynamic subject |
+| Record completeness | **R2 measured 2026-08-01** (a record literal omitting a declared required field refuses `MissingField`, blocking, naming the field and type — the class was carried as `Unknown — unmeasured` and the measurement raises it) | R3 | judgment is per-literal; construction-side and generic-instantiation completeness are separate and the latter measures **below floor** in the row above | first measured by a one-off execution 2026-08-01 via `compile_dag_diagnostic_census` on the v1 CompileAccept path (source and result in the §10 eighth-pass ledger), and **AUTHORED AS A PROBE PAIR 2026-08-22 — AUTHORED, NOT EXECUTING, AND THE DISTINCTION IS THE WHOLE POINT** (see §11 item 28): the measurement is now written as `test.claim.guarantee_floor_class_probe_witness` `floor_record_completeness_missing_field_refuses_blocking`, against the registry row `gunbc.guarantee_probe_corpus` class `floor-record-field-completeness`, with `floor_record_completeness_green_control_is_clean` as its probe-adequacy control. **It does not run in CI.** The witness declares `ReadsLiveTree` — truthfully, because `compile_dag_diagnostic_census` resolves its synthetic source against the live checkout — and the required floor DECLINES every `ReadsLiveTree` module before the fold sees it (`v2.workflow.required_floor` `RequiredFloorDisposition` `DeclinedLiveTree`), so the probe is discovered and never executed, exactly like the five guarantee carriers §11 item 28 counts. It is green by execution LOCALLY (`gunbc run --claim-run`, 2026-08-22, this session) and that is a strictly weaker fact. So this cell's rung is unchanged from the day before the probe was authored: it still rests on a measurement nothing re-runs. What the probe pair buys is that on the day the decline arm is deleted the measurement becomes standing evidence with no further authorship. Trigger: the `DeclinedLiveTree` deletion (§11 item 28), NOT this cell (§4b meta-obligation 4; the original gap was codex review 46306, §11 item 10) | required-field construction at every construction form |
+| Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | First measured by tidy-deer-730's throwaway probe on gunbc#7484 + review 45347, 2026-07-31. **PROBE PAIR AUTHORED 2026-08-22, NOT EXECUTING** (§11 item 28 — the witness is declined by the floor's `DeclinedLiveTree` arm and runs only under a local `gunbc run --claim-run`): `test.claim.guarantee_floor_class_probe_witness` `floor_parse_list_separator_omission_is_still_silent` re-executes it on every required-floor run against `gunbc.guarantee_probe_corpus` class `floor-parse-list-separator`, with `floor_parse_list_separator_doubled_separator_control_refuses` (a DOUBLED separator in the same position refuses `ParseError`, blocking) and `floor_parse_list_separator_green_control_is_clean` as its probe-adequacy controls, all three green locally and none of them executing in CI — so the omission's silence is measured against a parser that demonstrably refuses malformed separators | the probe pair is now in the corpus and pins the hole; what remains is the refusal in the list production (§11 item 6), on which the enrolled probe flips RED and its row is rewritten as `ExpectBlockingRefusal` |
+| A value that does not inhabit its declared type is accepted — **seam-split, enumeration UNFINISHED** (was filed as "Direct-call argument TYPE conformance, v2 corpus"; renamed 2026-08-22, see the trigger cell) | **Below floor — the judgment never runs.** Not a hole a bad value slipped through: `v1.compiler.04_infer` gates `arg_compat_diags` on `module_skips_direct_call_arg_check(module_name: scope.module_name)`, which returns true for every module whose name begins with `v2.`. The key is the CALLER's module, so the entire active v2 corpus — compiler stages, extdeps, std, witnesses — has the direct-call argument-type judgment switched off. Measured consequence, 2026-08-22: `v2.extdeps.languages.dag` `dag_int_literal_node_from_lexeme` / `dag_int_literal_node_from_magnitude` declared `occurrence_id: OccurrenceId` since gunbc#6558 while storing that parameter straight into `Node.occurrence_id`, declared `NodeOccurrenceId`. For two months 15 call sites passed `SyntheticOccurrence` (a NodeOccurrenceId, contradicting the declaration) and nothing complained; gunbc#8833 made one call site OBEY the declaration and nothing complained about that either. The error surfaced only as an interpreter `non-exhaustive pattern match on: OccurrenceId { value: 79 }` across 16 witnesses, reddening main. **The inversion worth naming: a declaration that lies is inert while every caller contradicts it in the same direction, and detonates on the first caller who takes it at its word.** So the at-risk population is not "callers who got it wrong" but callers who might get it right — a genuinely counterintuitive census. Note this is the TYPE judgment only; the SHAPE judgment (`direct_call_shape_diags`, labels/arity) is exemption-free and does fire | R2 (a declared parameter type is a decidable conformance check the seam already computes — `direct_call_arg_mismatch_diags` exists, is written, and is simply not called, so the distance to the next rung is an if-statement plus a triage, not an implementation) | **THIS ROW IS A CORRECTION TO DESIGN §4b, NOT A NEW OBSERVATION BESIDE IT — read them together or the first will look like it already settled this.** DESIGN §4b names this exact symbol and reports that it "was found (code read, not execution) to be scoped entirely to the direct-call argument-type judgment and does not reach `sole_constructor`'s construction check at either call site — a positive finding that retires this axis, not an absence of any exemption anywhere." That finding is correct and is not disputed here. The question it asked was whether the exemption LEAKS into `sole_constructor`; the question it never asked is what the exemption COSTS inside the judgment it is scoped to. "Scoped entirely to the direct-call argument-type judgment" reads as reassuring only until that judgment is measured, and it is the argument-type check for the entire active v2 corpus. **Confinement was measured and then treated as safety, and the axis that got retired was not the one that mattered.** Two facts about why the seam nonetheless reads as covered: the SHAPE judgment (`direct_call_shape_diags` — labels, arity, duplicate binding) is exemption-free and DOES fire over every module including the compiler's own sources, so half-live is more deceptive than dead — every casual check finds something working. And the arm is NOT unreasoned: `direct_call_shape_wall_note` states the TYPE judgment's false-positive classes are representation gaps (brand aliases, optionality's two forms, anonymous literals, expansion depth — the conformance wall's four measured classes), which is a real stated reason and is why this row asks for a measurement rather than a deletion. What is unmeasured is whether those classes still fire in v2 today and at what rate. The neighbouring compiler-module arm of this same exemption was deleted in place after being found never to have been in force; the `v2.` arm was left standing at that moment without separate justification of its own | This incident, measured end to end: CI run 32542017600 (main, 67437fcbe9) 16 FAIL with the raw-`OccurrenceId` match error; caller census of both functions read at call grain (17 sites: 15 `SyntheticOccurrence`, 1 `node.occurrence_id`, 1 internal pass-through, 1 raw `minted.id`); exemption mechanism read at `v1.compiler.04_infer` `module_skips_direct_call_arg_check` and its single call site gating `arg_compat_diags` on `scope.module_name`. **NOT ENROLLED**: no probe pair asserts this exemption's reach, so nothing reds if it changes | **THE TRIGGER THIS ROW SHIPPED WITH WAS INCOMPLETE AND IS CORRECTED HERE (2026-08-22, swift-badger-524 retracting their own ruling).** As merged in gunbc#8854 this cell named ONE closing condition — delete the `v2.` exemption — which is a NECESSARY condition presented as a sufficient one. The class is not "direct-call argument type conformance"; it is **a value that does not inhabit its declared type is accepted**, and it has at least TWO seams: **(1) direct-call arguments** — gated off for `v2.*` by `module_skips_direct_call_arg_check`, the mechanism this row measures; **(2) record-literal fields** — gated by NOTHING, below floor in ORDINARY NON-v2 MODULES, receipt gunbc#8865 (gentle-eagle-360). Its minimal pair, no compiler internals involved: `CppHolder { subject: CppWrapped { inner: cpp_inner() } }` accepted and correct, against `CppHolder { subject: cpp_inner() }` — a coproduct PAYLOAD inhabiting a field declared as its parent COPRODUCT — ACCEPTED BY TYPING and dying at runtime as `PatternMatchFailure`. A record literal is not the direct-call seam, so deleting the exemption would not close it. **SEAM (2) NOW HAS A LIVE PRODUCTION SPECIMEN, WHICH RANKS IT DIFFERENTLY FROM A SYNTHETIC PAIR** (gentle-eagle-360, 2026-08-22, found while checking for a second content-identity authority before building on one): `v2.std.materialize` declares `MaterializedNode.hash` as `ContentHash` — the subject-generic union — and `materialize_fold_step` stores `content_hash(n)` into it, which returns `Fnv1a64Structural`, the PAYLOAD carried inside the union's `Fnv1a64` arm. Receipt, by execution against the module as it stands on main: taking the value materialize ACTUALLY STORED and asking the union's own family authority `content_hash_family` about it yields `PatternMatchFailure { value: "Fnv1a64Structural { digest: 7ac77ab0e29c6bd8 }" }`; the probe's fallback was a correctly wrapped `Fnv1a64(...)`, so an empty result or a well-formed value would have PASSED and only a stored value can produce that red. **The defect is LATENT and that is the instructive part**: peer lookup compares `e.hash == h`, raw payload against raw payload, which agrees with itself — so every current path is green and the error surfaces only when a materialize hash is routed through the union's own machinery (`content_hash_family`, or `compare_content_hash`, which exists precisely to refuse cross-family collapse). That is the same shape as this row's own originating incident: **a declaration that lies is inert while every consumer contradicts it in the same direction, and detonates on the first consumer that takes it at its word** — here the first cross-family artifact to reach the carrier. Disposition ruled ARM A, wrap the construction (`MaterializedNode { hash: Fnv1a64(h), ... }`), NOT narrow the declaration: narrowing would sever `MaterializedNode.hash` from `RealizationPlan.target`, and §2's Realization spans resolve-cost, sccache and OS provisioning on ONE content hash, so a structural-only key could never name a realization of a fetched artifact or a provisioned image (swift-badger-524 ruling, 2026-08-22; handed to silent-bear-842 with the receipt, unfixed here because it is that lane's module). **THE SEAM ITSELF IS THE FINDING, not this one site**: gunbc#7480 corrected the design document for asserting the wrong type at exactly this `Hash`/`ContentHash` boundary, and a production module now carries the mirror-image error — a boundary documentation has to keep re-explaining is a boundary that wants construction. ****THAT HAND-OFF IS SUPERSEDED AND THE SPECIMEN IS REPAIRED — corrected in place rather than left standing, because the sentence above says a live production defect is UNFIXED and awaiting another lane, which is the present-tense claim a reader would plan against (gunbc#8876, 2026-08-22).** The wrap landed in the wall's own change by operator ruling: a wall and the repair it forces must land together, since with the wall on and the wrap absent main is red, so only one PR can contain both. `v2.std.materialize` `materialize_fold_step` and `distinct_hashes` now build `Fnv1a64(content_hash(n))`, and the same construction was repaired at four further sites the wall refused for the identical reason — `v2.workflow.operand_flow`, `materialize_witness_test`, `materialization_provider_witness_test` and `heal_revalidation_witness_test`. The receipt above stays as the historical demonstration that the defect was real and reachable; it is no longer a description of the tree. THE ENUMERATION IS UNFINISHED: two is what has been measured, not the count.** Assume a third seam exists until someone enumerates them; note that this row's own originating incident (#8854) reached its victim through a record literal one hop downstream of the direct call, so the two seams are not even cleanly separable at a site. **SEAM (1) WAS EXECUTED TO A MEASURED, BLOCKED STOP ON 2026-08-22 — the arm is NOT deleted, and this paragraph is the §4b row for that state rather than a plan.** Rung: **below floor, unchanged** — the judgment still does not run for any `v2.*` caller. Ceiling: **R2** (a declared parameter type is a decidable conformance check the seam already computes). Next trigger, stated as §4b(2) requires and with its disposition: *a formal parameter declared as an applied generic carries its applied form through resolution rather than reaching the comparison seam as the bare constructor* — **DECLINED at the owning layer on 2026-08-22**, on the ground that a bounded compiler-floor packet whose completion condition has moved should close and hand its residue forward rather than extend into a type-system project. A declined trigger is a legitimate §4b state; **a blocked class with no row is how this exemption survived years in the first place**, which is the reason this row exists at all. Enrolled evidence, so the class stays countable while blocked: `direct_call_arg_type_v2_module_red_probe` (the discriminating RED, rostered in `v2.workflow.floor_expected_red` — it cannot pass while the arm stands and PASSES on a tree with the arm deleted, so it is a satisfiable assertion held open by a named cause), plus two controls that pass on main today (`direct_call_arg_type_ordinary_module_red_probe`, the paired nonzero the exemption never covered; and `direct_call_arg_type_v2_green_control_probe`). **What was measured before the stop, and how to read it:** deleting the arm produces **285+k** blocking diagnostics and **67+k** with gunbc#8873 merged, for some k ≥ 1 unmeasured — these are ROSTER-RESOLVED counts, not corpus counts, and `src/v2/extdeps/formatters/lean4_format.dag:184` is the proof: a live site, structurally identical to eight that refused, contributing zero to *both* arms and therefore invisible to their difference. **Zero genuine call-site defects were found in the residue** — every diagnostic examined was a deficit in the type judgment, so no call sites were edited, because 67 mechanical edits would have cemented three compiler deficits permanently. The per-mechanism split of that residue is deliberately NOT recorded here: it was published as 48/11/8, and the rule the 48 were attributed to was then found to admit nothing in this corpus, so the attribution was retracted before it was cited. Trigger for the count to be restated: the residue re-measured with its `why` column. **The counterexample that retracted it is worth carrying on its own, because it will bite anyone who reaches for a name-keyed alias relation:** `type Float = Float64` is declared in BOTH `dag/std/float.dag:18` and `src/v2/std/float.dag:33`, spelling the target identically — but `dag/std/float.dag:16` has `type Float64 = Real64` (a transparent alias) while `src/v2/std/float.dag:30` has `Float64` as a **record**. So the two declarations agree on a *spelling* and disagree on a *type*, and a unanimity rule keyed on the target's NAME admits them as the same concept. Requiring the target itself to be census-unique closes it — and once closed, that rule admits nothing in this corpus, which is what falsified the attribution above. Found by still-carp-717 while building the rule, before it shipped. **The original trigger text, kept because the sequence it specifies was followed and the record should show what was attempted:** seam (1) — turn the exemption off for `v2.` behind a measured diagnostic count, triage, then delete the arm, the disposition the compiler-module arm received; the measured prerequisite is ALIAS TRANSPARENCY, because proud-ant-819's report-only shadow on the 03_ingest closure found 115 `WouldDiagnose` relations at 78 sites of which 115 reduce to a transparent `type A = B` (92 via `type Hash = Fnv1a64Structural`, 23 via the `Node` phase carriers), residue ZERO — so on that closure the exemption is currently suppressing false positives, not defects. Seam (2) — its own wall at record-literal field conformance; nothing to turn off, it was never on. **Closing seam (1) MUST NOT be read as closing the class**, which is the specific failure this correction exists to prevent: a class that looks like it has one closing condition gets closed when that condition fires. Two blind spots neither instrument covers, named rather than left to be rediscovered: production itself SKIPS an anonymous record literal standing as an ACTUAL at a direct call, so its argument type is never judged (521 relations, 2.7%, `Unadjudicated` in proud-ant-819's shadow — upstream of the guard, so invisible to a flip-off arm too); and a function storing into a field from its own differently-named parameter is this class at yet another site, which a callee-name-keyed census cannot see. **THAT FIRST BLIND SPOT IS NOT SEAM (2), AND THE TWO WILL BE MERGED BY ANY READER WHO DOES NOT SEE THIS SENTENCE** (caught by proud-ant-819, who put the mirror-image clause in their own row): both descriptions begin "a record literal" and name DIFFERENT POSITIONS. The blind spot is a record literal at an ARGUMENT position whose type goes unjudged at the direct-call seam — seam (1)'s territory, and a population of 521 relations. Seam (2) / gunbc#8865 is a record literal's FIELD whose value does not inhabit the field's declared type — a different seam with a different mechanism and no measured population. Reading them as one would make the 521 look like evidence for gunbc#8865, or gunbc#8865's receipt look like it bounds the 521. Neither is true. **A CLAIM ABOUT THIS ROW'S EVIDENCE WAS MADE HERE AND IS RETRACTED, MEASURED WRONG (2026-08-22, the §11 item 28 lane, retracting itself).** The retracted claim was that these probes sit in the declined `ReadsLiveTree` carrier and therefore never execute, so the expected-red enrolment could only be `not_evaluated`. **It is false, and the measurement that refutes it is the run that was supposed to confirm it:** run `32586093086` reports `[expected-red-roster-join] roster=207 still_red=207 now_passes=0 not_evaluated=0` with `known_red_held=207`. The v2-module red EXECUTES and is held still-red exactly as its row intends. The error was reading an IMPORT as a location: `guarantee_probe_corpus_witness` imports the three probe ids for a roster assertion, and I took that for where the probes run; they run in `test.claim.direct_call_argument_type_witness`, a separate file. An import is evidence of visibility, never authority for where a name lives. **What survives is a different and sharper finding.** That file executes because it declares `SubstrateInputsOnly` while calling `compile_dag_diagnostic_census` — the same declaration `gunbc.compile_diagnostic_census`'s own live-tree note already adjudicated as a MIS-declaration when it found `transport_script_wall_compile_red_test` doing it (that census walks `build_module_path_index_from_witness_roots`, i.e. the live checkout). So the specimen population for that mis-declaration is now TWO, the second authored on 2026-08-22 after the first was adjudicated, and both are the only reason any census-compiling probe executes at all. Either these files' declaration is wrong or that authority's note is; they cannot both be right, and which one it is decides the size of §11 item 28's population. That is a question for the arm's owner, not a defect in this row's measurement, which stands. **SEAM (2) IS NOW CLOSED, AND CLOSING IT ENUMERATED TWO MORE — the count is FIVE measured, still not the total (gunbc#8876, 2026-08-22).** **OWNERSHIP, STATED PER SEAM BECAUSE THE CLASS NOW SPANS TWO LANES AND NEITHER CAN CLOSE IT ALONE:** seam (1) is the exemption-gated direct-call seam owned by the paragraph immediately preceding this one, whose next trigger is recorded there as DECLINED rather than pending; seams (2) through (5) belong to the field-inhabitance lane (snappy-tern-856). A lane that lands its last seam will be tempted to close this row. NEITHER MAY: 'my seams are done' is not 'the class is closed', and the row closes only when every seam does — including any seam not yet enumerated. The record-literal FIELD seam is walled: `v1.compiler.infer` `coproduct_payload_where_parent_required` refuses a value whose type is one of the declared coproduct's own variant payload types, consulting `transparent_alias_identity_agrees` over the `SymbolIndex` so an alias-mediated producer is caught too. Rung at that seam: **structurally guaranteed** — no `Accepted` program contains the state there. NOT structurally impossible, because the bad literal is still writable and the compiler refuses it; and NOT the class, which is why the two rows below exist. Evidence, enrolled permanently per §4b(4): `test.claim.coproduct_payload_soundness_witness_test` — the direct RED, the alias-mediated RED, and the positive control that stops a refuse-everything compiler from satisfying either. Turning the wall on WAS the census: EIGHT live sites, none previously known, all repaired in the same change — `ContentHash` from `Fnv1a64Structural` at `materialization_provider_witness_test`, `heal_revalidation_witness_test`, `materialize_witness_test`, `v2.std.materialize` and `v2.workflow.operand_flow`; `LexRules` from `LexRuleSet` at two `src/v2/test/claim/manual` fold tests. **SEAM (3), UNWALLED AND DECLARED, owner the field-inhabitance lane: the module-scope `data` initializer.** `data X: ContentHash = content_hash(...)` stores the payload into a `ContentHash`-declared row and is NOT refused, because a `data` initializer is not a record-literal field. Rung: **below floor**, exactly as seam (2) was. Unguarded: every module-scope `data` row in the corpus. Trigger: the same conformance judgment applied at the data-initializer seam, which needs no new relation — the declared type and the initializer's inferred type are both already in hand there. **SEAM (4), UNWALLED AND DECLARED, owner the field-inhabitance lane, AND IT IS RANKED FIRST OF THE TWO: the list element.** `v2.workflow.locality_affinity` built consumer identities as `list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))` — a raw payload into a `List<ContentHash>`. Rung: **below floor**, and it does not fail loudly. Measured: repairing the comparands while that producer stayed raw turned FOUR `locality_affinity` witnesses to `Bool(false)` with NOTHING refused at compile time — a wrong answer discovered later, not a diagnostic. That is what makes it rank above seam (3), and the ranking is fixed by a RULE rather than by judgment (operator ratification, 2026-08-22): seam (3) admits a wrong value a correctly-built peer can still catch by comparison — harmful, detectable, recoverable — while seam (4) admits a wrong value AND DISABLES THE COMPARISON THAT WOULD HAVE CAUGHT IT. That is a silent wrong answer, which DESIGN places OUTSIDE the guarantee ladder and forbids outright rather than ranking low, so the two are in different categories and no population argument reaches across the line: a larger set of loud failures does not outrank a smaller set of silent ones. The ranking is a priority order for collisions, NOT a serial queue — seam (3) needs no new relation and may land whenever it is ready. Unguarded: every list, map and collection element position whose element type is a coproduct. Trigger: element-position conformance against the container's declared element type. **SEAM (5), UNWALLED AND DECLARED, owner the field-inhabitance lane: the declared RETURN type.** `fn f(x: Node) -> ContentHash { content_hash(n: x) }` returns the payload where the parent coproduct is declared and is NOT refused. Rung: **below floor**. Measured 2026-08-22 on the gunbc#8876 merge commit, with a liveness control in the SAME compile that produced exactly one diagnostic (the record-literal RED), so the silence is a measurement and not an untested assumption. HOW IT WAS FOUND IS WORTH RECORDING, because it says something about the enumeration itself: it was found by a MIS-WRITTEN PROBE — the author intended an alias-mediated FIELD case and wrote a return position by mistake. Four of the five seams in this row were discovered by accident or by a downstream red rather than by anyone enumerating positions, which is the standing evidence for #8868's instruction to assume a further seam. Unguarded: every declared return type whose type is a coproduct. Trigger: `declared_type_conformance_diags` already runs at this seam and already holds both the declared and the inferred type, so the distance is a payload-membership arm on an existing judgment, not a new walk. **DO NOT READ SEAM (2)'s CLOSURE AS THE CLASS'S.** One seam of four measured is walled; a reader who sees only 'declared-field inhabitance wall landed' will conclude the class is closed, and the next lane would then build on a guarantee covering a quarter of it. Neither seam (3) nor seam (4) nor seam (5) is closed by gunbc#8876, which deliberately did not widen to chase them |
+| Direct-call argument TYPE conformance — **transparent-alias identity**, v2 corpus | **R2 built and approved for the alias-identity class (gunbc#8873 — OPEN, approved, mergeable as of 2026-08-22; NOT merged, and this row must not be read as landed until it is).** A precomputed transparent-alias identity relation, derived once at census build and consumed as a `String -> String` map lookup per comparison, admits two names that alias the same declaration and refuses everything else. It peels ONLY `type A = B` with zero params, no connective, no children, no properties and no type annotation, and a target with zero children/params/annotation and `return_cardinality == Required` — so brands, `sole_constructor` carriers, refinements, coproduct arms and applied generics are all excluded BY THE ADMISSION TEST rather than by a later filter. Cost bar was declared before implementation and measured after: four crossed A/B pairs, +2.0s on a 454s regen (+0.4%) against per-arm spreads of 29.9s and 40.9s — a measured null. **What it does NOT do is create substitutability: it makes an existing fact visible.** A pre-relation binary already accepts `CommitSha` at an `AttemptKey` formal and already refuses `IntKey` there | R2 for this class. R3 is not reachable at this seam and that is a property of the seam, not of the relation | **The residual population is a DIFFERENT class and the distinction is load-bearing.** Measured 2026-08-22 against the exemption-deleted corpus: 67 refusals, silent-badger-817's CI run 32562740527 at commit `d42bb3eb57c`. **Provenance caveat, stated because it changes what the 48 means:** that tree merged this relation at `9bfd5388c03`, TWO COMMITS behind head `c40ab2d8248`, and the intervening `b0f72158c80` ("Qualify alias targets at census-build time") is exactly the commit that decides the `CoreNode` group — those refusals turn on `Node` being ambiguous by BARE name. So the 67 is a measurement of an OLDER revision of this relation, not of a broken copy of it. Classification of those 67, derived from declarations and independent of any binary: 48 are this alias class; 8 are applied generics (row below); 11 are `Optional` against `String`/`Bool`/`Int` in `v2.extdeps.github.gha_fold_pilot_emit` and are NOT an alias class at all. **The 48-cleared half is verified on 5 specimens, not 48:** at head, with the exemption deleted in the mirror and `exempt=judged` on all 20352 ledger rows, the five comparisons that CI reports as errors in `00_compile.dag` (lines 319, 342, 408, 446, 497) are all present in the ledger and all read `Compatible`. The remaining 43 sit outside that entry's import closure and a whole-corpus re-run against head was in flight when this row landed — treat 48 as classified-and-partially-verified, never as measured. **Also NOT the alias class: the 11** — the diagnostic reads got `Primitive(String)`, so the optional marker is already gone upstream at pattern destructuring and no comparison-seam mechanism can reach them. That 11 was carried as alias residue by two independent sessions and by this lane's own framing; it is recorded here so it is not handed forward under a label that guarantees the next attempt fails. **Open question for whoever takes it, to be CHECKED rather than inherited from this row:** an optionality marker erased at destructuring means a value reaches a position whose declared type it does not inhabit, which is the same floor rule as the direct-call seam census (record-literal walled; data-initializer and list-element open). If Group C is a FIFTH seam of that class it belongs on that row and not on a new one — decide that before minting a class for it. **A second mechanism, `unanimity`, was designed, measured and ABANDONED as unsound, not deferred.** Its specimen and refutation are carried on the seam-split row above and are deliberately NOT restated here — one fact, one authority | gunbc#8873, 9 enrolled floor witnesses in `dag/test/claim/transparent_alias_identity_witness_test.dag` including the over-peel boundary (`IntHandle` at a `String` formal), a coproduct-projection climb, and a blast-radius pair whose Int-alias discriminator refuses. Shadow ledger re-run before the exemption was touched: 20527 rows, all 115 `WouldDiagnose` rows one mechanism. Receipt: `docs/probes/transparent_alias_identity_2026-08-22/README.md` — **FORWARD REFERENCE, NOT A PRESENT FACT:** that receipt lands with gunbc#8873, which is open at the time this row merges. Do not cite it as evidence until that PR is in | the `v2.` exemption arm cannot be deleted while the applied-generic class below still refuses 8 live sites; the exemption is NOT narrowed to those modules (a narrowing would be a shape test correlating with the distinction rather than naming it) |
+| Direct-call argument TYPE conformance — **applied-generic alias**, v2 corpus | **Below floor — 8 live false refusals, structurally unreachable from the comparison seam.** An alias whose right-hand side is a generic application (`type BlackConfigPatch = ConfigPatchRecord<BlackConfig>`) refuses at every call site passing it to the matching formal. Specimen, measured by execution 2026-08-22 on a fixture diffed byte-for-byte against the live `v2.std.patch` declaration, with the exemption deleted in the Rust MIRROR and `exempt=judged` on all 20352 ledger rows as the control: `formal_type = Primitive(ConfigPatchRecord)`, `actual_type = Node(BlackConfigPatch)`, `nominal=true container=false kernel=false`, `fname=ConfigPatchRecord aname=BlackConfigPatch`. Population: 9 declarations, all under `src/v2/extdeps/formatters/` (`black`, `clang_format`, `gofmt`, `google_java_format`, `ktfmt`, `lean4_format`, `prettier`, `rustfmt`, `swift_format`), of which 8 produced diagnostics in the CI arm — `lean4_format` is structurally identical and produced none in EITHER arm, so the population is 9 and the measured count is 8+k | R2, and it is decidable — the same equality already accepts the applied form when it is written directly at the formal | **THE FORMAL SIDE IS WHERE THE INFORMATION DIES, and that is the sentence that should stop the next attempt from this direction.** The formal is DECLARED `ConfigPatchRecord<Config>` and REACHES the comparison as the bare constructor, with the type argument already discarded. So the equality has one side that structurally cannot hold an argument, and the case split over any representative is EXHAUSTIVE: (a) representative = the applied form with every argument retained never equals the bare constructor, so it admits nothing and all 9 sites keep refusing; (b) representative = the bare constructor admits `ConfigPatchRecord<X>` at `ConfigPatchRecord<Y>` for any X and Y, which is exactly the over-peel that erases the distinction. There is no third representative, and widening the carrier does not help — a node-valued map fails identically, because the missing information is not on the relation's side of the map. **Not to be confused with gunbc#8879**, the withdrawn repair that widened transparency AT RESOLVE and was refused by CI in three classes at once (20 direct-call comparisons, 18 variant projections, 3 files of regen drift). What that established is that resolve is the wrong place for a transparency JUDGMENT; preserving an applied form is resolve DISCARDING LESS, which hands the same consumers MORE structure, and is a different claim that has not been measured | executed fixture + shadow ledger with a positive control (`black.dag` must refuse; a zero there is decidably wrong). **NOT ENROLLED**: no probe pair asserts this class, so nothing reds if it changes. Three false zeros were produced while measuring it — twice from patching the `.dag` authority while the binary is built from the emitted Rust mirror, once from a run that PANICKED and reported zero diagnostics — each caught only by a positive control or by another session's raw per-line export, never by an aggregate | **RESOLVE CARRIES APPLIED FORMS AT THE FORMAL POSITION.** Explicitly NOT scoped as of 2026-08-22 (operator-lane ruling, swift-badger-524): a bounded floor-recovery lane whose completion condition has moved is closed honestly rather than extended, and nothing in that ruling says the change is wrong. Until it lands, the `v2.` exemption stays whole and gunbc#8886 stays blocked |
 | Producer/consumer cardinality | **UnknownUnmeasured** (typed-rejection vs silent-degeneration split unmeasured) | R3 (seam unwritable) | forgeable carrier; no signature propagation (`sole_constructor` audit pending) | §4b | Stage-3 vertical slice |
 | Refinement predicate (`where`) enforcement at construction | **Writable-and-unverified, one row spanning both measured SOURCE-FORM paths (declared subject grain — reconstruction is NOT in this row's grain; see the scope note at the end of this cell).** Source→v1-interpretation and source→v1-Rust-emission were independently measured and found identical — zero predicate/refinement check on either, no scope split between them. `v1_interpreter` `cast_identity_result` (the `as`-cast identity path) checks only that the underlying kernel name matches; it carries no refinement/predicate concept at all. `05_emit_rust` `render_rust_alias_rhs_type` peels a refinement node to its base type before emission (`is_where_refinement_type` true branch) and discards the predicate list — a **deliberate written branch**, not incidental loss: `04_infer`'s `is_where_refinement_type`/`where_refinement_chain`/`peel_where_refinement_base` carry the predicate live through typecheck, so the data exists at the emit boundary and is thrown away there. Where safety exists today for a refined type (e.g. `PathSegment = NonEmptyStr where brand("PathSegment")`) it comes **entirely from hand-authored per-callsite guards**, not the carrier — `gunbc.merge_admission_subject` `walk_attempt_id` and `gunbc.fleet_known_hosts_anchor` `fleet_ssh_attempt_identity` (mirrored in `claim_executor.rs`) each call `path_segment_is_safe` before casting. This is DESIGN §5's named tell, validation standing where construction was available: the law is declared once (`path_segment_safety_note`) and re-stated as a check every author must remember to write, never tied to the carrier itself. One construction form already bypasses even that discipline: `FilePathParts { segments: [...] }` struct literals (`extdeps.rust.cargo` `cargo_target_source_path`/`rust_module_candidate_paths`, `extdeps.linux.proc_self_cgroup`) coerce raw strings to `PathSegment` with no predicate call at all. A targeted search for an *existing* production site where a refined-type construction actually feeds a predicate-violating value through to a consumer (not manufactured) found none: the two real branded-`PathSegment` callers both guard, and the one `FilePathParts` caller with non-literal input has zero production callers (test-fixture only). A below-floor ("silent wrongness, demonstrated") claim was raised on this evidence and explicitly withdrawn — the class is confirmed writable and the one candidate gap is confirmed currently unexercised, not confirmed violated. **SCOPE NOTE, AND IT IS LOAD-BEARING: that withdrawal is scoped to the two SOURCE-FORM paths this row measures, and it has since been overtaken on a third path that this row does not cover.** The reconstruction seam — `recorded_fixture` `value_from_fixture_json` on replay, and `map_response_to_value_json` on live REST — builds runtime records and scalars from external JSON without passing through a source record literal or cast, so neither `cast_identity_result` nor `render_rust_alias_rhs_type` is on it and neither measurement above reaches it. On THAT path below-floor is not a withdrawn hypothesis but an EXECUTED demonstration: a predicate-violating value was silently accepted and consumed, and on the live-REST arm with no tampering of any kind. **The grain of that demonstration, stated so this cell cannot be read as more than it is:** it was executed against a PURPOSE-BUILT probe service, not against a production caller. What is established is that the MECHANISM silently admits and consumes violating values on an untampered path; what is NOT established is that any production field has actually received one. The production population sitting on that path is measured only as a declaration count (output-block fields typed as a refined alias), and none of those was executed — so read it as mechanism-demonstrated, population-unmeasured, never as demonstrated-in-production. It is intended to be carried as its own row rather than folded into this one, per §4b's one-row-per-structurally-distinct-path rule. **FORWARD REFERENCE, NOT A PRESENT FACT:** that row is authored in a separate in-flight change (gunbc#8658, reconstruction doors, findings-only) and is NOT part of this document as of this cell's landing. If this row merges first, the reconstruction row is pending rather than present, and this sentence is a statement of intent — do not cite it as evidence that the reconstruction path is documented, and do not let the absence of that row be read as the path having been cleared. **Do not read this cell as the class verdict**: per §4b a class's rung is the MINIMUM across its in-scope paths, so if the enclosing class is taken as "refinement enforcement at construction" — reconstruction being a construction path — the governing rung is the reconstruction row's, not this one's. Citing this row's writable-and-unverified while that path stayed silent is exactly the inflation §4b names | R2-shaped on the Rust target (newtype + validating constructor closes construction-time) | Bounded by what the **target** can express, not by what `.dag` knows: `.dag`'s own infer stage already carries the predicate live through typecheck, so the ceiling here is a target-capability question — the bare-alias Rust realization used today has no ceiling above writable-and-unverified regardless of source-side modeling quality; nothing on either measured path ties the declared law to the carrier, so enforcement is 100% per-callsite discipline, which has a zero-frequency-until-violated failure mode (the `FilePathParts` gap is exactly this: zero frequency because it has no caller yet, not because it is guarded) | node://adhoc-897a90b6-a9c items 1–2, 2026-08-20 (merry-tern-237/fierce-ant-91): 219 `where`-declared types found in `.dag` (`grep -rn '^type .* where ' dag/`), 49 confirmed reaching Rust as bare aliases with zero predicate residue (spot-checked `std_types.rs`); emission mechanism confirmed by reading `05_emit_rust` `render_rust_alias_rhs_type` against `04_infer` `is_where_refinement_type`; interpreter path confirmed by reading `v1_interpreter` `cast_identity_result`/`eval_cast`; violation search executed against `PathSegment` construction sites corpus-wide, empty result | a Rust-target realization for refined types (newtype + validating constructor, or equivalent) that ties the declared predicate to the emitted carrier once, replacing per-callsite discipline; the `sole_constructor` completeness audit (in flight, separate lane) is the adjacent unforgeable-construction mechanism this would likely compose with |
 
@@ -1362,6 +1376,37 @@ enforces end to end.
    ladder-probe-corpus class/path identities, at which point the Evidence cells name the
    executing probe the way the parse-separator row already names `tidy-deer-730`'s.
 
+   **NOT DISCHARGED — HALF-DISCHARGED 2026-08-22, and the unfinished half is the half that mattered.** The AUTHORSHIP this item asks for is done, for FIVE classes rather than the four it names; the ENROLMENT is not, because the witness carrying it is declined by the floor before it runs (§11 item 28). Read the rest of this paragraph as a description of authored artifacts, never of executing ones. The
+   authorship landed as `dag/test/claim/guarantee_floor_class_probe_witness_test.dag` over five
+   registry classes in `gunbc.guarantee_probe_corpus` (`floor-generic-instantiation-inhabitance`,
+   `floor-field-through-generics`, `floor-closed-match-exhaustiveness`,
+   `floor-record-field-completeness`, `floor-parse-list-separator`) — this item's four plus the
+   parse-separator row whose evidence was a throwaway session probe. All five were the same shape:
+   a rung standing on a measurement nothing re-runs — and all five STILL ARE, because a declined
+   witness re-runs nothing either. **A SIXTH WAS AUTHORED IN THE SAME PASS AND WITHDRAWN BEFORE
+   MERGE**, and it is recorded because the withdrawal is the §3 move rather than a loss: the
+   `v2.`-module direct-call argument-type exemption was built here as
+   `floor-declared-conformance-v2-module-exemption` and deleted when gunbc#8902 landed
+   `direct-call-argument-type` on main first with three probes over the same seam. One concept,
+   one authority — that class is theirs, this lane carries no second name for it, and the §1c row
+   for the seam cites their rows (with the note that their probes sit in the same declined arm).
+   **What this does NOT claim.** Four of the five are
+   BELOW-FLOOR HOLES, and enrolling a hole raises nothing: the probes pin the defect so it cannot
+   change unnoticed, they do not close it. The rungs are unmoved by this change — what moves is
+   that they are now *observed* rather than *remembered*. To keep a hole's green from reading as a
+   guarantee the expectation vocabulary gained `ExpectSilentAcceptanceHole`, a variant that holds
+   on exactly the same observation as `ExpectZeroDiagnostics` and exists precisely because that
+   coincidence would otherwise make walls and defects indistinguishable in the registry; the
+   corpus can now be asked how many of its greens are holes
+   (`guarantee_probe_below_floor_hole_rows`). Each hole ships with a discriminating control that
+   refuses on the same harness in the same run, per the 2026-08-01 probe-adequacy mandate, so a
+   zero is never the harness failing to reach the judgment. **Still open beside this:** the enrolment itself, on §11 item 28's trigger; item 9
+   (the dark Rust suite) is untouched — this was authorship, not a move; the record-literal FIELD
+   seam of the inhabitance class (gunbc#8865) still has no probe; and every hole's next-rung
+   trigger is unchanged, with the probe flipping RED and its row being rewritten as
+   `ExpectBlockingRefusal` on the day its wall lands rather than being deleted (§4b
+   meta-obligation 4).
+
 **Rows 11–17 are one class, and the class is the finding.** They were opened separately
    over one night's auditing and read as four unrelated defects until the fourth arrived; what
    they share is not a subsystem but a *property*. Each is a diagnostic channel that **reports
@@ -2373,7 +2418,771 @@ enforces end to end.
    repaired before it, because a comparator widened on speculation is the same unproven
    machinery §4b(2) says to leave as a declared row instead.
 
+23. **An anonymous record literal at an actual position is judged by NOTHING at the direct-call
+   seam** (opened 2026-08-22, session `proud-ant-819`, measured on gunbc#8864).
 
+   INVALID STATE. A record literal written directly as an argument may disagree with its
+   formal's declared type, in any way, and no diagnostic is produced. `direct_call_arg_mismatch_diags`
+   returns the empty list for an `ExprRecordLit` actual before the compatibility predicate is
+   ever reached, so the argument's TYPE is never a checked fact at this seam for that
+   expression form.
+
+   HARM. The mismatch survives to emission and becomes a rustc error in the emitted target, or
+   — where the target's own realization happens to accept it — is not caught at all. It is the
+   ordinary argument-conformance floor (DESIGN §4b, "applications bind in exact bijection,
+   values inhabit declared types"), unenforced for one writable expression form.
+
+   DISTINGUISHING FACTS, and the reason this is filed HERE rather than against the exemption.
+   The skip is in what PRODUCTION judges, not in what `module_skips_direct_call_arg_check`
+   hides: it fires for exempt and non-exempt callers alike. Measured on two entries at ref
+   `90986d1946`, it covers **521 relations (2.7% of exempt relations) on the 03_ingest closure
+   and 520 on 00_compile**, plus 7 non-exempt relations in each — a population of comparable
+   size to the 115 candidates the exemption itself hides, every one of which turned out to be a
+   false positive.
+
+   WHY NO EXISTING INSTRUMENT SEES IT, which is what makes it a standing gap rather than a
+   backlog item. The shadow census
+   (`docs/probes/shadow_direct_call_arg_conformance_2026-08-22.md`) preserves the skip as
+   `RepresentationRelationUnadjudicated` rather than inventing a judgement, so it counts the
+   population but cannot judge it. A guard-removal arm cannot see it either, because the skip
+   is UPSTREAM of the guard being removed. **Both available instruments are blind to the same
+   rows, in the same place, for different reasons** — so the population's frequency is
+   observable and its defect rate is not.
+
+   RUNG FOUND AT. *Below the ladder* on the source→`.dag`-acceptance path for this expression
+   form: the wrong state is not mitigated, refused, or counted — it is silent. The neighbouring
+   forms (a named value, a call result, a literal) reach the predicate normally, so this is a
+   per-AST-form hole in an otherwise-real check, structurally the same shape as the
+   coproduct-variant hole in §11.1a rather than a missing check.
+
+   CEILING. *Structurally guaranteed* — decidable, and the authority already exists: the
+   formal's declared type is in hand at the seam and the literal's field set is known, so
+   inhabitance is the same judgement `direct_call_arg_type_mismatch` already performs for every
+   other actual. No grounding is missing; this is a *wall now* in §5's vocabulary, not a wall
+   after grounding.
+
+   NEXT-RUNG TRIGGER. Route the `ExprRecordLit` actual to the same predicate as every other
+   actual, or — if the skip encodes a real representation gap rather than an oversight — replace
+   the silent empty-list return with a typed, located, COUNTED diagnostic naming that gap, so the
+   deficit's frequency stops being zero by construction. Either move retires this row; the
+   present state, an untyped silent skip, retires nothing.
+
+   NOT CLAIMED. Whether any of the 1,041 measured relations is actually a defect is UNKNOWN and
+   deliberately not guessed: no instrument in the repository can currently answer it. The row
+   records a population and a blindness, not a defect count.
+
+   NOT THE SAME AS THE #8865 FINDING, and the two are easy to conflate because both say "record
+   literal". This row is about a record literal standing as an ACTUAL at a direct call, whose
+   ARGUMENT type is never judged. gunbc#8865 is about a coproduct payload inhabiting a FIELD
+   declared as its parent coproduct *inside* a record literal (`CppHolder { subject: cpp_inner() }`,
+   accepted by typing, `PatternMatchFailure` at runtime) — a construction seam, in ordinary
+   non-`v2` modules, which neither this row nor `module_skips_direct_call_arg_check` reaches.
+   Two seams have now been measured; the number of seams is NOT known to be two (gunbc#8868).
+
+24. **A type name declared in two modules resolves to whichever binding `lookup_binding_by_name`
+   returns, and the occurrence-identity arm that could have adjudicated it is dead in type
+   position across an entire compiler closure** (opened 2026-08-22, session proud-ant-819, found
+   while establishing the join key for cut A's transparency discriminator — recorded, not fixed,
+   because repairing it means editing global resolution and that was explicitly held out of the
+   cut).
+
+   INVALID STATE. `v1.compiler.04_env` `lookup_type_for` has two arms: an occurrence-identity arm
+   taken when `node.ident` is `Present`, and a name arm — `lookup_type_by_name` — taken when it
+   is `Absent`. Where a name is declared by two different modules, the name arm returns one of
+   them with no refusal, nothing recording that a choice was made, and no way for a consumer to
+   discover that a second declaration existed.
+
+   DISTINGUISHING FACTS, measured by execution over the `src/v2/compiler/03_ingest.dag` closure
+   with `lookup_type_for` instrumented at both arms: **370,118 observations, 370,118 on the NAME
+   arm, 0 on the IDENT arm**, across 2,690 distinct names, none observed under both arms. So the
+   identity arm is not merely rare in type position — it is dead there, and every type resolution
+   in that closure is name-keyed. Four names were observed colliding: `Byte` (105 observations),
+   `FilePath` (45), `NonNegativeInt` (18), `PositiveInt` (18). Eight names are declared twice by
+   source scan (`Byte`, `FilePath`, `FixedPointCheck`, `Float32`, `Float64`, `NonNegativeInt`,
+   `ObjectId`, `PositiveInt`); the other four are not reached by this closure. `PositiveInt` is
+   the sharpest specimen because its two declarations have *different shapes*, not merely
+   different homes: `dag/std/integer.dag` declares `type PositiveInt = Nat where gt_zero`, a
+   brand, and `src/v2/std/refinement.dag` declares `type PositiveInt { refined: Refined<Int> }`,
+   a record.
+
+   THE TENSION WITH DESIGN.md, stated here rather than left for a reader to collide with. §4b's
+   guarantee-recovery paragraph names, as one of three confirmed structural holes on the
+   source→`.dag`-acceptance path, "a census-AMBIGUOUS type name resolves by silent
+   last-import-wins instead of refusing", and records all three as having **0 live exposure today
+   by targeted grep**. This row measures four such names actually resolved, 186 times, in one
+   closure, by execution. THE TWO ARE NOT NECESSARILY IN CONTRADICTION AND THIS ROW DOES NOT
+   ASSERT THAT THEY ARE: a grep for ambiguous *imports* and an execution count of *names declared
+   twice and resolved by name* are different instruments over populations that may not coincide —
+   an ambiguous import is a source-level condition, a colliding declaration resolved by name is a
+   runtime one, and a name can be the second without ever being the first. What is owed is the
+   adjudication, and it is cheap because the execution side already exists: decide whether these
+   four are instances of the class DESIGN calls zero-exposure. If they are, that clause needs
+   updating and the class needs re-ranking. If they are not, the boundary between the two
+   populations needs stating in the clause itself.
+
+   RUNG FOUND AT: **below the floor** if a wrong declaration can be selected silently, because
+   DESIGN's own floor clause is *names resolve* and this resolves a name to one of two
+   declarations by construction order rather than by any modeled fact. Stated conditionally
+   because the selection's *correctness* per site is unmeasured here: what is measured is that
+   nothing adjudicates, not that a specific site got the wrong answer.
+
+   CEILING: **structurally impossible**. Ambiguity is decidable — the two declarations are both
+   in the module graph the compiler already walks — so a name resolving to more than one
+   declaration can be a typed, located refusal rather than a silent pick, and the invalid state
+   then has no spelling.
+
+   NEXT TRIGGER, in order: (1) adjudicate the DESIGN tension above, which is a population
+   comparison and not a code change; (2) a discriminating RED — a two-module fixture declaring
+   one name twice and calling across it, asserting a located refusal; (3) the refusal in
+   `lookup_type_by_name`. Step (1) blocks the others: re-ranking a class whose exposure two
+   instruments disagree about would set the priority off the wrong number.
+
+25. **Two structurally different named records interchange at the direct-call argument seam with
+   no diagnostic** (opened 2026-08-22, session proud-ant-819, found as a *failed negative control*
+   while building cut A's acceptance set — it was authored to prove the widened transparency test
+   had not erased compatibility checking, and it turned out to prove nothing because the seam was
+   already silent there).
+
+   INVALID STATE. `fn takes_other(o: Other) -> Int` called as `takes_other(o: x)` where
+   `x: AliasRec` and `type AliasRec = Rec`, with `Rec` and `Other` two records sharing no field
+   name, produces **zero diagnostics** — before and after cut A, so this is pre-existing and
+   untouched by it.
+
+   HARM, and why it reframes cut A's own result. This is DESIGN's floor clause *values inhabit
+   declared types* failing for the most ordinary case there is: two unrelated nominal records.
+   The seam was simultaneously refusing a record ALIAS against its own base — a refusal it owed
+   nobody — while accepting two unrelated records outright. Cut A removes a false refusal at a
+   seam that is failing to make true ones, and stating only the first half would make the seam
+   look stricter than it is.
+
+   DISTINGUISHING FACTS, and the paired nonzero is what makes the zero mean anything: measured
+   in the same before/after dispatch as cut A's acceptance set, on the same fixture file, so the
+   silence is not a scoping artifact — a genuine kernel-vs-record mismatch in the *same file*
+   (`String` passed where `Rec` is declared) refuses in both arms, located, with identical text.
+   So the seam is reached, is executing, and does judge; it simply does not discriminate record
+   against record. Without that control, "no diagnostic appears" would be equally consistent with
+   the seam not running at this position at all, and the row would be dismissable.
+
+   THE REFUSAL IS ALSO ASYMMETRIC, measured on one file across two binaries (main, and gunbc#8873
+   at `e78c61c888`): `String` passed at a `Rec` formal refuses on both, while an alias of `Rec`
+   passed at a `String` formal is SILENT on both. So the seam's kernel-vs-record judgment runs in
+   one direction only. Recorded inside this row rather than as a fourth row, because one
+   observation of a neighbouring asymmetry is a distinguishing fact about this class, not an
+   independent class.
+
+   FOUND TWICE, INDEPENDENTLY, WHICH IS THE ONE FORM OF EVIDENCE AN AUTHOR CANNOT PRODUCE ALONE.
+   Reproduced by session still-carp-717 from a different direction and under a different
+   hypothesis — they were chasing the empty-record explanation for an unrelated failure, not
+   looking for this — with a fixture sharing no text with the one above: `type RevA { a: String }`
+   and `type RevB { b: Int }`, no alias relation between them, `consume_a(r: b)` compiling clean,
+   identical on both binaries, and two empty records substituting for each other as well. Their
+   arm carries the same `String`-at-a-record-formal control and it refuses there too
+   (`expected 'Product(RevA)', got 'Primitive(String)'`). Two lanes, two hypotheses, two fixtures,
+   one result.
+
+   SCOPE, sharpened by that second reproduction beyond what the first established. (1) It
+   reproduces in an ordinary NON-EXEMPT module, so it does not sit behind
+   `module_skips_direct_call_arg_check` and cut B — deleting that exemption — would not touch it;
+   this is measured, not expected. (2) The two records differ in field NAMES *and* field TYPES and
+   stand in no alias relation, so this is not the transparent-alias class: neither the withdrawn
+   cut A repair nor gunbc#8873 addresses it, and neither should be credited with closing it.
+   Shape-wise it is the gunbc#8865 coproduct-payload class arriving at a different seam.
+
+   NOT THE SAME AS ROW 23, which now sits directly above it and concerns record-typed arguments
+   at the same seam — the two are one seam failing in two independent ways and must not be merged.
+   Row 23 is about an EXPRESSION FORM: an `ExprRecordLit` actual returns the empty diagnostic list
+   *before the compatibility predicate is reached at all*, so no type is compared. This row is
+   about the PREDICATE ITSELF: two named record types are compared and found compatible. Fixing
+   either leaves the other live — routing record literals into the predicate would hand them to a
+   comparison that does not discriminate record against record, and teaching the predicate to
+   discriminate would still leave literals bypassing it.
+
+   RUNG FOUND AT: **below the floor** on the source→`.dag`-acceptance path — accepted, silent,
+   no diagnostic. The source→interpretation path is UNMEASURED here and is a separate row when
+   someone measures it; a field access on the wrong record may well refuse at runtime, and that
+   would make this below-*ordinary-compiler*-baseline rather than silent wrongness, exactly as
+   row 21 distinguishes.
+
+   CEILING: **structurally guaranteed**. Two named records with different declarations are
+   distinguishable from modeled structure the compiler already has.
+
+   NEXT TRIGGER: measure the interpretation path first, which decides the rung and therefore the
+   ranking; then a discriminating RED at the seam.
+
+26. **A brand is unenforced at the direct-call argument seam in both directions, and a cross-brand
+   equality is not merely deferred but entirely unobserved** (opened 2026-08-22, session
+   proud-ant-819, established as cut A's discovery step: find any consumer that ENFORCES brands,
+   both outcomes being answers).
+
+   INVALID STATE, led by the sharpest specimen because it is the one with no observation at all:
+   given `type Branded = String where brand("Branded")`, the expression `b == s` for
+   `b: Branded, s: String` compiles with **no diagnostic of any kind** — not a refusal, not an
+   advisory, nothing. That is distinct from, and worse than, the seam's other arms: passing a bare
+   `String` into a `Branded` parameter, and a `Branded` into a `String` parameter, both compile
+   with no refusal but DO raise the deferred-predicate advisory
+   (`where-refinement unenforced: predicate 'Brand' … predicate deferred at compile time`). So the
+   class is two rungs, not one: observed-but-unenforced at the argument positions, and *absent*
+   at the equality.
+
+   HARM. This is DESIGN §4b's own warning — "richer type names are not safety; a brand, wrapper,
+   or `Validated<T>` is cosmetic until construction and acceptance enforce the distinction" —
+   instantiated with a receipt rather than left as a caution. A brand that neither refuses nor is
+   observed at `==` is a comment.
+
+   WHAT MUST NOT BE READ INTO THE ADVISORY. "Observed but unenforced" is not a licence. The
+   advisory records that a predicate was deferred; it does not record that the value satisfies it,
+   and nothing downstream consumes it as evidence. A reader who takes the advisory's existence as
+   partial enforcement has read a diagnostic, not a guarantee.
+
+   DISTINGUISHING FACTS AND COVERAGE BOUND. Measured PER SITE on an authored fixture
+   (`.cutA6/consumers.dag`, five advisory sites, identical before and after cut A), not as a
+   corpus population — so this row establishes the mechanism at the sites it names and makes no
+   claim about how many brand sites exist in the tree. The baseline is the planted fixture, not a
+   measurement of current main.
+
+   RUNG FOUND AT: *mitigatable* at the argument positions (the deferral is typed, located and
+   counted, so its frequency is observable) and **below the ladder** at the equality, where
+   nothing fires at all.
+
+   CEILING: **structurally guaranteed** for the nominal half — brand-ness is carried structurally
+   and the compiler can refuse a cross-brand interchange from modeled facts. The *predicate* half
+   is a separate, weaker question (a general `fn(T) -> Bool` refinement is the undecidable residue
+   §4b names) and this row does not claim it climbs.
+
+   NEXT TRIGGER: the equality arm first, because it is the one with no observation and therefore
+   no frequency — a class whose deficit rate is zero by construction never ranks for climbing
+   (§5's absorbing-fallback argument applied to a missing check rather than a widening one).
+
+27. **NEGATIVE RESULT: widening the resolve-seam alias peel breaks variant projection, and the
+   mechanism is unidentified after three refuted hypotheses** (opened 2026-08-22, session
+   proud-ant-819. This row exists because the change that caused it was WITHDRAWN — nothing in
+   `main` is broken by it — so it is recorded for the next person who reaches for the resolve seam,
+   not as an outstanding defect).
+
+   WHAT WAS ATTEMPTED. `v1.compiler.04_resolve` `is_transparent_primitive_alias_rhs` decides
+   transparency by asking whether the alias's base is a KERNEL type, which makes transparency a
+   property of the BASE rather than of the DECLARATION, so `type AliasRec = Rec` keeps a nominal
+   identity it never declared and the direct-call seam refuses the interchange. The attempted
+   repair replaced the kernel test with "the resolved structural node carries a non-empty authored
+   name". Six authored witnesses passed. CI over the corpus refused in three classes at once.
+
+   WHY IT IS THE WRONG SEAM, which is the transferable part. Resolve has THREE downstream
+   consumers and the attempt broke all three: the direct-call comparison (20 diagnostics,
+   `expected 'Product(Hash)', got 'Product(Fnv1a64Structural)'` — peeled on one side of the
+   comparison and not the other, and `type Hash = Fnv1a64Structural` is the alias behind 92 of the
+   115 relations the census was built on, so the repair turned its own headline population into a
+   NEW red); variant projection (18 diagnostics, below); and EMISSION (regen surface drift in
+   `extdeps_cargo_version.rs`, `extdeps_version_semver.rs`, `std_integer.rs`). A transparency
+   relation belongs at the COMPARISON, where leniency is meaningful — emission and variant
+   projection are not judgment surfaces and there is no coherent sense in which they should be
+   lenient. gunbc#8873 places it there and closes this defect: measured on one identical fixture,
+   `main` produces 5 diagnostics (4 alias false reds across record and coproduct kinds, both
+   directions, plus one genuine kernel-vs-record mismatch) and gunbc#8873 at `e78c61c888` produces
+   1 — the genuine one, same site, same text.
+
+   THE UNEXPLAINED CLASS. 18 diagnostics of the form `variant 'X' not found in type 'X'`, the two
+   names identical: `OllamaRuntime` (×2), `MtJadeRev1_0` (×6), `AcceptanceNodeReopensActiveFrontier`
+   (×6), `GoogleCloudInteractiveAuthenticationRequired` (×4).
+
+   REPRODUCTION, established by corpus subtraction rather than by an authored fixture:
+   `dag/gunbc/spark/serving_release.dag` compiled alone at module scope
+   (`--source-root dag --source-root src/v2 --entry <it>`) is rc=0 with 0 blocking diagnostics on
+   `main` and rc=1 with `variant 'OllamaRuntime' not found in type 'OllamaRuntime'` on the widened
+   binary. So the class is attributable to the change and reproduces WITHOUT whole-corpus context.
+   `dag/extdeps/ocp/mt_jade/subject.dag` does NOT reproduce at module scope in either arm, so that
+   instance needs a wider closure and the two are not the same reproduction.
+
+   THREE REFUTED HYPOTHESES, listed because knowing which explanations are dead is worth more to
+   the next reader than a fourth that merely sounds right. (1) *The base is an empty record.*
+   `type OllamaRuntime {}` and `type MtJadeRev1_0 {}` are empty records, and an empty record is
+   `NoConnective` with zero children — structurally indistinguishable from the childless leaf the
+   predicate keys on. REFUTED by its own fixture: an authored `type EmptyRec {}` /
+   `type AliasOfEmpty = EmptyRec` pair behaves exactly like a full-record pair (four mismatches
+   before, clean after) and produces no variant diagnostic in either arm. (2) *Asymmetric peeling
+   between the two call sites.* Consistent with class 1 but never measured, and it does not explain
+   a variant lookup failing. (3) *The kernel-versus-named axis is the discriminator.* The corpus
+   two-column pass agreed with it at 213 declarations with 0 counterexamples in either column —
+   and that agreement is exactly what made the change look safe, so the pass measured what the
+   predicate decides, not what its consumers do with the decision.
+
+   RUNG: not on the ladder — this is a property of a withdrawn change, not of `main`. Recorded as a
+   hazard for the seam.
+
+   NEXT TRIGGER, for anyone who reaches for the resolve peel: start from the module-scope
+   reproduction above, not from an authored fixture. Two independent authors wrote eleven
+   adversarial arms between them (six here, five in gunbc#8873) and ALL ELEVEN pass on the widened
+   binary, including a boundary control written specifically to catch over-peeling. The corpus was
+   the only instrument that detected any of this.
+
+28. **The guarantee-probe corpus is DISCOVERED AND DECLINED: five carriers, 100 identities, and
+   six §4b classes whose executing evidence does not execute** (opened 2026-08-22, this lane,
+   from a specimen established by session silent-badger-817 and relayed through
+   eager-crane-282 — recorded here rather than repaired, because the repair is a fleet-blocking
+   sequencing decision that is explicitly not this lane's to take).
+
+   INVALID STATE. `v2.workflow.required_floor` `RequiredFloorDisposition` carries a
+   `DeclinedLiveTree` arm: a witness file declaring
+   `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree` is DISCOVERED by the floor,
+   counted in `declined_live`, and never folded. The guarantee-recovery evidence base declares
+   exactly that, truthfully, and is therefore the worst-hit slice of the arm:
+
+   | carrier | identities | what cites it |
+   | --- | --- | --- |
+   | `test.claim.guarantee_probe_corpus_witness` | 50 | the six landed classes — bare-none field admission, call label/surplus, method established surface, declared-conformance ground fragment, sole-constructor cross-module, v2 self-grounding frontier |
+   | `test.claim.sole_constructor_completeness_audit_probe` | 26 | DESIGN §4b's `sole_constructor` completeness audit paragraph and this document's §10 2026-08-20 pass |
+   | `v2.test.claim.infer_self_grounding_wall_test` | 12 | the `v2-infer-eval` path's receipts |
+   | `test.claim.compile_diagnostic_census_witness` | 8 | the OBSERVATION SURFACE every probe above is read through |
+   | `test.claim.optional_cast_wall_witness` | 4 | the optional-cast wall |
+
+   HARM, and it is this document's own evidence base rather than a compiler behaviour. §4b
+   meta-obligation 4 requires a class's discriminating RED to REMAIN ENROLLED as the executing
+   proof that its rung stays real. A declined witness satisfies the letter of "a probe exists"
+   and none of the substance: if any of those six walls regressed tomorrow, nothing would red.
+   That is rung inflation applied to the guarantee-recovery ledger itself — worse than sitting
+   low, because an inflated class never ranks for climbing.
+
+   THE DECLARATIONS ARE HONEST AND MUST NOT BE RETYPED. The probes do read the live tree:
+   `compile_dag_diagnostic_census` resolves its synthetic source against
+   `build_module_path_index_from_witness_roots`, which walks the checkout, and the witnesses
+   additionally `filesystem_read` their harness sources to mint a harness revision.
+   Relabelling one `SubstrateInputsOnly` to make it execute would be a fabricated declaration —
+   the inverse defect, and worse than the one it fixes, because it makes a live-tree probe look
+   inert to every other consumer of that declaration (affected-set selection eligibility, which
+   is the fact `live_tree_disposition` actually owns).
+
+   THE DISCRIMINATING SPECIMEN, and it is why the arm is wrong rather than merely expensive.
+   `test.claim.match_exhaustiveness_coproduct_witness` calls the SAME
+   `compile_dag_diagnostic_census` builtin, declares `SubstrateInputsOnly`, and EXECUTES AND
+   PASSES on the floor today. Same host call, opposite declaration, opposite fate. Two things
+   follow, and the second matters more than the census: the inverse defect above is already live
+   in the corpus and is currently the ONLY reason any census-compiling probe runs at all; and
+   the decline is therefore a PREDICTION about capability, refuted by execution — a
+   census-compiling witness demonstrably can run under the hermetic floor, via the checkout-read
+   carve-out (`v1_interpreter` `hermetic_checkout_read_disposition_under`) that landed AFTER
+   `live_tree_disposition` was authored. `required_floor`'s own header says exactly this and
+   stages the arm for deletion at the root.
+
+   THE MIS-DECLARATION IS LOAD-BEARING, NOT INCIDENTAL — AND ITS RECURRENCE IS THE SECOND
+   FINDING. Two files declare `SubstrateInputsOnly` while calling `compile_dag_diagnostic_census`:
+   `test.claim.match_exhaustiveness_coproduct_witness` and, from 2026-08-22,
+   `test.claim.direct_call_argument_type_witness`. `gunbc.compile_diagnostic_census`'s own
+   live-tree note already adjudicated that exact pairing as a mis-declaration when it caught
+   `transport_script_wall_compile_red_test` doing it. Either both files are mis-declared or that
+   note is wrong; they cannot both be right. **First consequence: that pairing is currently the
+   only reason ANY census-compiling probe executes at all.** So if the note is right, correcting
+   the two declarations takes the executing population of this harness to ZERO rather than to
+   correct — the repair and the coverage point in opposite directions, which is precisely why the
+   arm deletion must precede the relabelling and not follow it. **Second consequence, and it is
+   about the mechanism rather than the files: the second specimen was authored AFTER the
+   adjudication that named the class.** Nothing refused it, nothing flagged it, and the author had
+   no reason to know — an adjudication that does not prevent its own recurrence is a note, not a
+   wall. So this sub-class sits at *mitigatable* on the evidence, and the existence of the
+   adjudicating note is not evidence that anything holds. Neither consequence is adjudicated here:
+   both belong to the arm's owner, and per the ownership finding below there is not one.
+
+   POPULATION, with its denominator and its unreconciled residue stated rather than smoothed.
+   Measured on main 2026-08-22: 129 non-long witness files declare `ReadsLiveTree`, carrying 850
+   identities by `grep -c '^test fn'`; the floor's own run 32553487573 reports
+   `declined_live=830`. The 20-identity (2.4%) gap is NOT reconciled — the candidate causes are
+   `modules_excluded=4` and the fact that this census matched long-home prefixes syntactically
+   rather than through `long_home_prefixes()`. Same order, not the same number, and it is
+   recorded in that form deliberately: an unreconciled 2.4% named as unreconciled is worth more
+   than a reconciled figure no reader can check.
+
+   RECEIPT, EXECUTED — THE DECLINE MEASURED AS A DELTA RATHER THAN PREDICTED. The PR that
+   authored this item added exactly 20 witness identities in one new `ReadsLiveTree` file and
+   changed nothing else the floor discovers. Main run `32553487573`: `offered=11812
+   routed=10439 declined_live=830`. This branch, run `32578661087`: `offered=11832 routed=10439
+   declined_live=850`. **+20 offered, +20 declined_live, routed UNCHANGED** — every one of the
+   new identities was discovered and declined, none executed, and the run is `success` with
+   `failed=0` because a declined witness cannot fail. That is the zero paired with its nonzero
+   control in the same run: the +20 discovered proves the instrument saw the file, the +0 routed
+   is the finding. A green required-ci is therefore NOT evidence that these probes pass; it is
+   consistent with their never having run, which is precisely the confusion this item exists to
+   end. Side effect worth recording because it bears on the population figure above: the floor's
+   `declined_live` moved by exactly the 20 this session counted with `grep -c '^test fn'`, so the
+   grep counts identities the way the floor does — the unreconciled 20 between 850 and 830 on main
+   is therefore NOT a counting-method difference, and the two candidate causes named above stand
+   with one of them (a differently-counted `test fn`) now unlikely.
+
+   THE RECEIPT IS PINNED TO THE HEAD THAT PRODUCED IT, AND THAT HEAD IS NO LONGER THIS BRANCH'S
+   TIP. Both runs above measured a witness file carrying 20 identities. Merging main afterwards
+   removed three of them — the `v2.`-module exemption probes, withdrawn because gunbc#8902 landed
+   the same seam first (§11 item 10's withdrawal paragraph) — so the file now carries 17 and the
+   next run's `declined_live` will read 17 above whatever main reports at that moment, not 20
+   above 830. The +20/+0 receipt is left stated as measured rather than rewritten to the new
+   number, because it is a record of an execution and not an estimate of the current tree; what
+   the merge changes is the arithmetic a reader should expect next, not what was observed.
+
+   RUNG. Outside the ladder rather than on it, like the regen-producer entry in DESIGN's CI
+   section: nothing about the compiler regressed, an OPERATION lost its route. The classes'
+   own rungs are unchanged in substance and were overstated in evidence; the §1c cells that
+   cite these probes now say authored-not-executing in line.
+
+   NEXT-RUNG TRIGGER — one deletion, and it is NOT this lane's. Delete the `DeclinedLiveTree`
+   arm at the root, as `required_floor`'s header already stages it. Its cost measurement is
+   already taken and cited there: run 32345970386 measured 626/783 passing under execution, so
+   roughly 157 identities would red and need triage or expected-red enrolment IN THE SAME
+   CHANGE. WHY IT IS SEQUENCED RATHER THAN DONE HERE (operator-lane ruling relayed by
+   eager-crane-282, 2026-08-22): twelve PRs sit at the merge floor green and approved, three of
+   them gating another lane's close; admitting ~830 identities would red the required floor for
+   every one of them and the triage would run while the fleet was blocked on it. Delete-first is
+   right when the fallout lands on the deleter, and here it lands on everyone else. **THAT
+   SEQUENCING IS A POINT-IN-TIME FLEET CONDITION, NOT A PROPERTY OF THE DELETION, AND IT EXPIRES
+   WITHOUT ANYONE EDITING THIS ROW.** The merge queue drains; when it has, the reason recorded
+   here is gone and nothing in this paragraph will say so. So read it as: on 2026-08-22 the
+   deletion was deferred because of the queue — never as "the deletion is deferred". A reader who
+   finds this row with the queue empty should treat the sequencing clause as discharged and the
+   deletion as ready, not go looking for whose permission is still outstanding. This sentence
+   exists because a hold released to a person leaves its written artifact standing, and an
+   artifact is indistinguishable from a live constraint to whoever reads it next. OWNERSHIP,
+   checked rather than inferred: the arm's staging text was authored by gunbc#8646
+   (`session/nimble-wolf-645`, merged 2026-08-20); that session no longer exists — a
+   `dashboard-message` to it returns `recipient session not found` — so the deletion is
+   UNOWNED as of 2026-08-22.
+
+
+29. **A symbol name in PROSE is unreachable by any lens by construction, so three real dependents
+   survived a deletion with nothing able to refuse them** (opened 2026-08-22, session proud-ant-819,
+   found by executing the cut B deletion of `v1.compiler.infer` `module_skips_direct_call_arg_check`.
+   **This row is narrower than its first draft, and the narrowing is recorded below because the
+   overstatement was mine.**)
+
+   **STATUS, so the tense is not misread: the deletion was EXECUTED AS A MEASUREMENT and has NOT
+   LANDED.** `module_skips_direct_call_arg_check` still exists on main. Cut B (PR #8924) is held by
+   decision on a declined precondition — see row 30 — so the five sites below still name a symbol that
+   is still there. What was measured is what *would* refuse, and the finding is about the census
+   mechanism, not about main's current state.
+
+   INVALID STATE. DESIGN §3's replacement-migration doctrine rests on a mechanism: *in a fail-closed
+   substrate the deletion IS the census — every real dependent refuses loudly.* A citation living in
+   PROSE — a `String` whose content is commentary, or a §4c source annotation — cannot participate in
+   that census, and not for want of a lens: **§4c states that no `Accepted` program can read an
+   annotation at all**, and a commentary `String` has no row type for a lens to enumerate. The
+   deletion completes; the citation stays; nothing anywhere can notice.
+
+   DISTINGUISHING FACTS, measured by executing the deletion. The symbol was removed from both
+   authorities; **zero** symbol references remain. Five live sites still name it, and they split
+   **two ways, not one**:
+
+   | site | carrier | can anything refuse it? |
+   |---|---|---|
+   | `gunbc.doc_graph_roots` | `HandAuthoredDocBind` → `DeclarationRef { decl_name: … }` | **YES** — the cited-symbol resolver enumerates these rows and answers `REFUSED DECLARATION-ABSENT` |
+   | `test.claim.doc_reachability_witness_test` | string comparison, but **joined to the bind** | **YES, indirectly** — reds when the bind is repointed |
+   | `gunbc.roadmap_authority` | headline / boundary prose | no |
+   | `gunbc.guarantee_probe_corpus` | §4c source annotation | no |
+   | `v2.compiler.02_parse` | §4c source annotation | no |
+
+   So the population is **three**, not five.
+
+   WHAT I GOT WRONG, kept because a corrected row is only trustworthy if the correction is visible.
+   The first draft of this row claimed all five were invisible, reasoning that *a name carried inside
+   a `String` is not reachable from the `Node` tree, so nothing can resolve it.* **That reasoning is
+   false**, and the `doc_graph_roots` row is the counterexample: `decl_name` IS a `String` field, and
+   the citation IS machine-checkable anyway, because the row's TYPE is known and enrolled — a lens
+   enumerates `HandAuthoredDocBind` rows and resolves the `(module_path, decl_name)` pair against the
+   namespace. A planted mutation (`…_MUTANT`) produces `REFUSED DECLARATION-ABSENT` and
+   `FAIL 1 authored reference(s) do not resolve`, verified on `session/quiet-lark-881-phase`. **The
+   discriminating axis is not String-versus-symbol; it is whether the citation sits in a TYPED ROW a
+   lens can enumerate, or in free text nothing can.** My axis was wrong and it happened to be wrong
+   about the one row that disproves the sweeping claim.
+
+   HARM. For the three prose sites: a reader is directed to a symbol that does not exist, and no
+   mechanism can ever tell them. This is §3's positional-citation decay class — the reason the
+   standing rule is *cite the symbol, not the position* — arriving through a carrier the rule does not
+   cover, because a symbol named in prose satisfies "cite the symbol" in appearance while being
+   exactly as unreachable as a `file:line`.
+
+   RUNG FOUND AT: *mitigatable*. The three sites are stale prose discoverable by grep; they mislead a
+   reader rather than passing a gate. Explicitly NOT below-floor — nothing green certifies them,
+   because nothing reads them at all.
+
+   CEILING: **outside the modeled guarantee**, and this is the honest answer rather than a low one.
+   §4c makes annotation content unreadable by any `Accepted` program *by construction*, which is a
+   property the repository chose deliberately; a lens that could refuse a stale name in an annotation
+   would be a lens reading annotations, which §4c forbids. So this class does not climb by building a
+   check. It climbs only by MOVING the citation into a typed carrier — at which point it becomes the
+   `doc_graph_roots` case, which already works.
+
+   NEXT TRIGGER: not a mechanism but a migration — any prose citation of a symbol that a typed carrier
+   could hold instead should move to one, exactly as §3's positional-citation rule says the cheap
+   construction move is to stop writing positions rather than to build a checker for them. The three
+   sites named above are the current bounded population.
+
+   ### DECLARED RUNG DROP (§4b(3)) — CONDITIONAL, and currently **DORMANT: NO DROP IS IN FORCE**
+
+   **Read the whole of this sub-section in the subjunctive.** It was written when cut B was expected
+   to land. Cut B (PR #8924) is **closed** — held by decision, see row 30 — so no deletion lands, no
+   citation goes stale, and **no rung drop is declared or pending.** There is no restoration trigger
+   outstanding and nothing here is waiting on gunbc#8800. The branch and the arms below are retained
+   so that whoever lands the deletion later inherits the analysis rather than re-deriving it; the
+   conditional is theirs to evaluate at *their* land time, not a live declaration made here.
+
+   *(Recorded because a §4b(3) drop that is described but not in force is inflation in the opposite
+   direction — it advertises a safety regression that does not exist and a trigger nobody owes.)*
+
+   The `doc_graph_roots` bind **refuses loudly** on this deletion — but only once the cited-symbol
+   resolver runs **as a required check**, which is gunbc#8800. **THAT HAS NOW MERGED**
+   (`4adfc5a76b`, "Enrol the cited-symbol census as a separately named required check"), and the
+   check is live: it ran and passed as a named gate on this row's own PR. So the sentence that
+   stood here — *until that merges, the refusal exists as a mode nothing invokes* — is superseded,
+   and the conditional below resolves to its **first** arm: were the deletion to land now, the bind
+   would refuse and **no drop would be declared at all**. That is a second, independent reason this
+   sub-section is dormant, and it is recorded rather than left because an unmerged-state claim about
+   a merged PR is premise contamination in the carrier whose subject is rung honesty.
+
+   - **IF gunbc#8800 HAS MERGED at land time:** no drop is declared. The bind refuses, its owning lane
+     (`session/quiet-lark-881-phase`) repoints it, and the joined witness reds with it. **Correct order
+     is this deletion FIRST, the repair SECOND** — pre-updating the citation would make the row false
+     in the other direction (naming a symbol that still exists) for as long as this PR takes.
+   - **IF gunbc#8800 HAS NOT MERGED:** this deletion lands with a declared bounded drop for that window
+     only. PREVIOUS RUNG mechanically preventable (the resolver would refuse). TEMPORARY RUNG
+     mitigatable (the stale citation is grep-discoverable, and the joined witness still passes because
+     its assertion is a string comparison). BOUNDED POPULATION one bind row plus its joined witness.
+     RESTORATION TRIGGER gunbc#8800 merging, after which the resolver refuses and the owning lane
+     repairs.
+   - **Check gunbc#8800's state at land time rather than assuming this evening's answer.**
+
+30. **The `v2.*` argument-type exemption's residue is TWO COMPILER SEAMS, both reproduced minimally,
+   and ZERO source-conformance defects** (opened 2026-08-22, session `proud-ant-819`, measured as
+   cut B; this row supplies the `why` column whose absence retracted the earlier 48/11/8 split in the
+   row above, for two of the three mechanisms).
+
+   Deleting `module_skips_direct_call_arg_check` makes the witness floor refuse on its prepared
+   subject with **19 distinct located diagnostics across 9 modules**. Not one of them is a call site
+   that should be edited.
+
+   **THE 19 IS A COUNT OVER A MOVING CORPUS, so it is bound to its runs rather than stated as a
+   standing fact.** Measured twice, on a branch carrying the deletion:
+
+   | base | floor subject | modules_resolved | diagnostics |
+   |---|---|---|---|
+   | `71d7da4e92` | `ac87f26533b2a89c` | 3867 | 19 |
+   | `abf7194e2b` (main absorbed) | `224767fa49c4a2c4` | 3874 | **the same 19** — set diffed identical, none new, none dropped |
+
+   Seven modules entered the subject between those runs and the diagnostic set did not move, which
+   is evidence that the population is structural rather than incidental to one tree. **It is not a
+   claim that the count is 19 today.** Main has advanced well past `abf7194e2b`; nobody has
+   re-measured since, and a stable value is precisely the one that stops being re-derived because
+   carrying it forward costs nothing and looks like continuity. Anyone citing the number should
+   re-take it against their own ref, or cite it as *19 at `224767fa49c4a2c4`*.
+
+   - **Seam A — a transparent alias whose RHS is a GENERIC INSTANTIATION is not peeled.** Population
+     8 sites, one per formatter module (`type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>` at a
+     `ConfigPatchRecord<Config>` formal). The §2-horizontal modelling is already correct: one shared
+     authority in `v2.std.patch`, instantiated eight times. **Reproduction, 12 lines, one red cell and
+     one green control:** `type Box<T>` / `type IntBox = Box<Int>` — `takes_box(b: b)` refuses for the
+     alias and accepts `Box<Int>` spelled directly. `expected 'Primitive(Box)', got 'Node(IntBox)'`:
+     the expected side has LOST ITS TYPE ARGUMENT and the got side is the alias UNRESOLVED, so neither
+     side was peeled. This is a gap in the transparent-alias relation landed by gunbc#8873, which
+     merged — a main-branch seam, not a review note.
+   - **Seam B — the `T?` cardinality is DROPPED when a variant's field type is read through an
+     IMPORT.** Population 11 sites, all `src/v2/extdeps/github/gha_fold_pilot_emit.dag`, passing
+     `String?` fields of an imported `RunStep` to `Optional<String>` formals. **Reproduction, 3
+     modules, one red cell and one green control**, and the defect needs BOTH variables at once:
+     same-module + `T?` CLEAN, same-module + `Optional<T>` CLEAN, imported + `Optional<T>` CLEAN,
+     imported + `T?` **RED**. So it is neither a sugar defect nor a match-binder defect — both were
+     cleared by the same-module cells, and clearing them is what located it.
+
+   Three readings were refuted before seam B was found, recorded so they are not re-derived: the `?`
+   sugar is not un-equated with `Optional<T>`; the match binder does not lose the wrapper; and these
+   sites are **not** an instance of the `T?`-as-kernel-cardinality class — under that reading the
+   same-module sugar cell would have had to refuse, and it did not. That last is evidence bearing on
+   another lane's class, gathered independently, and is offered as evidence rather than as a verdict
+   on it.
+
+   **Acceptance evidence, and why the clean arm is not vacuous.** Paired arms over the 42 top-level
+   `src/v2/compiler/*.dag` modules at `71d7da4e92`, arm identity carried per arm (predicate occurrence
+   count 0/0 AFTER vs 3/3 BASELINE; binary md5 `7e7da4bf` vs `fa070b6f`) show **no delta** — chunk 2 is
+   identical across both arms INCLUDING its `hard=26` and its one `emit_refused=1`, which is how those
+   26 are known to be pre-existing rather than caused by the deletion. A clean run from a judgment that
+   discriminates nothing is indistinguishable from a clean run from one that works, so the clean arm
+   carries no weight alone. What separates them is the RED CONTROL, flipped on those same two binaries:
+   two probe modules byte-identical below line 1, differing only in that one is named `v2.redcontrol`
+   and the other `redcontrol.user`, each passing a `String` to an `Int` and to a record formal —
+
+   | arm | module | rc | diagnostics |
+   |---|---|---|---|
+   | BASELINE | `v2.redcontrol` | 0 | **none** — silently admitted |
+   | BASELINE | `redcontrol.user` | 1 | 2 located type mismatches — positive control fires |
+   | AFTER | `v2.redcontrol` | 1 | 2 located type mismatches — now refuses |
+   | AFTER | `redcontrol.user` | 1 | 2 located type mismatches — unchanged |
+
+   One cell moved, and only the predicted one. The positive control is nonzero on BOTH arms, so the
+   planted mismatch is one the judgment covers and the `v2` cell's silence was the exemption rather
+   than an inert probe.
+
+   **Instrument note, because it cost three runs.** An earlier form of this control returned four
+   identical cells, which reads as "the exemption never mattered" and is false: two independent defects
+   (a missing required CLI flag, and a baseline revert naming a ref the remote does not carry) both
+   fail toward the same clean table. The fix is that a nonzero exit may not produce a cell at all —
+   the harness prints `UNMEASURED rc=N` with counters `n/a`, never `0`, because "no compile happened"
+   and "compiled, zero diagnostics" must not share a spelling. It caught the third defect on its first
+   run. `unmeasured=0` on every reported total is therefore part of the claim: no zero above is a
+   refusal wearing a zero.
+
+   **The reproductions, as bytes.** Carried here rather than in a separate probe
+   document, so there is one authority rather than two. Measured on `71d7da4e92`
+   plus the deletion, binary md5 `7e7da4bf5ef93fc24e2d8fd600e87a3b`. **These red
+   only on a tree carrying the deletion**; on stock main the modules are `v2.*`
+   and the exemption makes every cell silent, so reproducing there and reading the
+   silence as refutation is the trap to avoid.
+
+   Seam A — 12 lines, one red cell, one green control:
+
+   ```
+   module v2.probe.aliasgen
+   type Box<T>
+   fn takes_box<T>(b: Box<T>) -> Bool { true }
+   type IntBox = Box<Int>
+   fn c_alias_of_generic(b: IntBox) -> Bool { takes_box(b: b) }   // RED
+   fn c_direct_generic(b: Box<Int>)  -> Bool { takes_box(b: b) }  // GREEN control
+       type mismatch: expected 'Primitive(Box)', got 'Node(IntBox)'
+   ```
+
+   The expected side has **lost its type argument** and the got side is the
+   **alias unresolved** — neither was peeled.
+
+   Seam B — 3 modules, one red cell, one green control:
+
+   ```
+   module v2.probe.optdecl                       // the DECLARING module
+   import v2.std.optional { Optional }
+   type S2 = A2 { fs: String?, fl: Optional<String> } | B2 { z: Int }
+
+   module v2.probe.xsugar                        // RED
+   import v2.probe.optdecl { S2, A2, B2 }
+   import v2.std.optional { Optional }
+   fn takes_opt_s(o: Optional<String>) -> Bool { true }
+   fn c_cross_sugar(s: S2) -> Bool {
+     match s { A2 { fs: x, fl: y } => takes_opt_s(o: x)  B2 { z: _ } => true }
+   }
+       type mismatch: expected 'Coproduct(Optional)', got 'Primitive(String)'
+
+   module v2.probe.xlong                         // GREEN control
+   ... identical but passes `y`, the long-form field.  rc=0, zero mismatches.
+   ```
+
+   **These are prose and therefore cannot go red.** When either seam closes,
+   nothing here will notice that the reproduction now passes. The right home is
+   the probe corpus that already carries a sibling —
+   `gunbc.guarantee_probe_corpus` `direct_call_arg_type_v2_module_red_probe`,
+   consumed by `dag/test/claim/direct_call_argument_type_witness_test.dag`.
+
+   **THAT HOME DOES NOT CURRENTLY EXECUTE, and row 28 above — landed while this row
+   was in review — is the receipt.** `test.claim.guarantee_probe_corpus_witness` is
+   one of the five DECLINED carriers: discovered by the floor, counted in
+   `declined_live`, never folded. And the consumer named just above,
+   `test.claim.direct_call_argument_type_witness`, is row 28's *second specimen* of
+   the mis-declaration class — it declares `SubstrateInputsOnly` while calling
+   `compile_dag_diagnostic_census`, and per that row the pairing is currently the
+   only reason any census-compiling probe runs at all.
+
+   **This does not change the disposition; it converts it from a judgement into a
+   measured one.** Enrolling these reproductions there today would place them in a
+   carrier that is either declined (never folded) or executing only by virtue of a
+   mis-declaration slated for correction — in both cases a row asserting that it
+   reaches its subject and answers, when it does not. That is precisely the hazard
+   `v2.workflow.floor_expected_red`'s header names and precisely what its 101 shed
+   rows were. **So the residue is unchanged in substance and firmer in ground: the
+   reproductions stay prose here, and enrolment waits on the arm's owner — which,
+   per row 28's ownership finding, does not currently exist.**
+   *(An earlier revision of this row said that probe was rostered in
+   `v2.workflow.floor_expected_red`. It is not — that file carries zero references
+   to it. The claim was inherited from a neighbouring row and repeated without
+   being resolved, which is the §3 positional-citation failure in its symbolic
+   form: a cited relation neither carrier asserts.)*
+
+   They were **not** enrolled by this row's author, deliberately, and
+   `v2.workflow.floor_expected_red`'s own header states the rule that makes this
+   more than caution: **enrolling an identity asserts that it reaches its subject
+   and answers.** That roster shed 101 rows on 2026-08-20 which had never reached
+   their subject at all, and records why it is the more dangerous mistake — *a
+   genuine red is loud when someone finally looks at it, while a never-executed
+   row looks identical to progress.* These reproductions are exactly that hazard:
+   under a `v2.*` name they are **silent**, because the exemption they demonstrate
+   is the thing suppressing them; under a non-`v2` name they refuse against the
+   corpus immediately. Neither is an enrollable state today. So enrolment is a
+   change to that carrier, not a file drop, and it belongs to whoever owns the
+   seam. **Enrolment is the residue this row leaves behind.**
+
+   **That last claim was measured, not assumed, and the measurement is a finding
+   in its own right that widens seam A well beyond cut B.** One shape, two module
+   names, run against a MAIN binary with the exemption LIVE (occurrence count 3/3,
+   binary md5 `64c35161bf74c4637087eda19bef3d02`):
+
+   | module | judged? | result |
+   |---|---|---|
+   | `v2.gatecheck.aliasgen` | exempt | rc=0, **0 mismatches** |
+   | `gatecheck.user.aliasgen` | judged | rc=1, `expected 'Primitive(BoxB)', got 'Node(IntBoxB)'` |
+
+   **So seam A is a live defect on main TODAY, for ordinary non-`v2` source, with
+   no deletion involved.** Any module outside `v2.*` that declares
+   `type Alias = Generic<Arg>` and passes it at a `Generic<T>` formal is falsely
+   refused right now. The `v2.*` exemption is the only reason the corpus does not
+   show it — the exemption is *masking* seam A, not merely coexisting with it.
+
+   **This is recorded as a CORRECTED PREMISE, not a reversal, and the decline
+   STANDS.** The repair of seam A was declined at the owning layer (`deep-ant-102`)
+   partly on the ground that the residue was *surfaced by deleting the exemption*,
+   which placed seam A inside cut B's blast radius. **That reading was theirs and
+   they have WITHDRAWN it** on the measurement above: the exemption masks seam A
+   rather than coexisting with it, so cut B removes the mask and does not create
+   the population.
+
+   **The surviving ground is now the only ground, and it never depended on who
+   surfaced the population:** the fix is a resolve-layer change carrying applied
+   forms at the formal position, and row 163's exhaustive case split shows no
+   comparison-seam representative exists — either it retains arguments and admits
+   nothing, or it is the bare constructor and erases the distinction between
+   `ConfigPatchRecord<X>` and `ConfigPatchRecord<Y>`. It is a real, uncosted
+   type-system change. *A design outlives its refuted justification only if
+   someone restates it on true grounds* — leaving a decline standing on a premise
+   known to be false is the same defect as a stale hold, because nothing announces
+   it and the next reader inherits the dead reason as live.
+
+   **What changed in substance, which is not nothing: the affected population is
+   no longer the 9 formatter declarations.** It is every non-`v2` author writing
+   `type Alias = Generic<Arg>` passed at a `Generic<T>` formal. **Strictly larger
+   class, unchanged ceiling.**
+
+   **The size of that class is UNKNOWN, and the earlier phrasing here — *nothing in
+   the repository counts them* — was an absence claim this row never established.**
+   No census has been run (deliberately; see the reopening conditions below), and
+   no exhaustive search was made for an existing counter, so the supported
+   statement is *no count is known to this row*, not *no count exists*. Those reach
+   the same disposition by different routes and only one of them was measured.
+
+   One crude datapoint, stated with its limits inside the same sentence so it
+   cannot be quoted as a population: a tree-wide grep for the DECLARATION SHAPE
+   `^type X = Y<` over `dag/` and `src/` returns **185 declarations, which is an
+   upper bound on candidate DECLARATIONS and emphatically not the affected site
+   count** — it does not test whether each is passed at a `Generic<T>` formal, does
+   not exclude `v2.*` (where the exemption still suppresses the judgment), and was
+   produced by one grep rather than by the census. **It does not meet reopening
+   condition (2)**, which asks for a deliberately dispatched census returning a
+   count. Stated so the DISTANCE is legible and not merely disclaimed — a bounded
+   number invites the inference *the census is an afternoon*, which is the second
+   way this figure misleads and is not covered by the population guard above: the
+   census additionally requires the two joins this grep does not perform — resolve
+   each declared alias to its USE SITES and decide, per site, whether the argument
+   lands at a `Generic<T>` formal; and exclude `v2.*`, where the exemption
+   suppresses the judgment so no site there is observable at all. Neither join is
+   a grep, and it is those two, not the enumeration, that the reserved work is.
+
+   REOPENING CONDITIONS for the declined repair, current as of the re-ruling:
+   (1) someone costs the resolve change on its merits as a type-system change; or
+   (2) a **deliberately dispatched** non-`v2` census returns a count. Explicitly
+   NOT a reopening condition: a third reproduction, or a further demonstration
+   that the class is real — that is established twice over. The census in (2) has
+   deliberately not been run from this row; "not bounded" is not a count, and an
+   unbidden corpus census over a shape is the scope creep the decline exists to
+   prevent.
+
+   **Disposition: the deletion REVEALS these seams and the refusal is CORRECT.** Neither is a rung drop
+   caused by this change, and neither is repairable in `extdeps` — coercing the 19 sites would be
+   editing correct source to satisfy a compiler that cannot read it, which is worse than papering over
+   a modelling error. Restoration trigger for each: the owning seam closing.
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
