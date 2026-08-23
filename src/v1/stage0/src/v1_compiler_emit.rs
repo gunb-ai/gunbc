@@ -43,12 +43,14 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_sigs::func_sig_for_derivation;
+use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
+pub use crate::v1_compiler_infer_sigs::{DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
@@ -644,11 +646,16 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    func_sig_if_resolved(lookup_func_sig(
+    match (*func_sig_for_derivation(lookup_func_sig(
         scope.func_env.clone(),
         scope.type_env.clone(),
         name.clone(),
-    ))
+    )))
+    .clone()
+    {
+        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => Some(sig.clone()),
+        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+    }
 }
 
 pub fn typed_named_arg_matches(
