@@ -2966,25 +2966,28 @@ pub fn expected_type_head_exposure(
     scope: Rc<InferScope>,
 ) -> Rc<TypeHeadExposure> {
     {
-        let identity = type_reference_identity(
-            formal.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        );
-        match v1_rt::map_get(
-            &scope
-                .type_env
-                .clone()
-                .symbol_index
-                .clone()
-                .type_head_exposures
-                .clone(),
-            identity.clone(),
-        ) {
-            Some(exposure) => exposure.clone(),
-            None => exposure_view_for_node(
-                formal.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            ),
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let direct = exposure_view_for_node(formal.clone(), source_indices.clone());
+        match (*direct.clone()).clone() {
+            TypeHeadExposure::ExposedTypeHead { view: _, .. } => direct.clone(),
+            TypeHeadExposure::CyclicTypeHead { path: _, .. } => direct.clone(),
+            TypeHeadExposure::MalformedApplicationHead { cause: _, .. } => direct.clone(),
+            _ => {
+                let identity = type_reference_identity(formal.clone(), source_indices.clone());
+                match v1_rt::map_get(
+                    &scope
+                        .type_env
+                        .clone()
+                        .symbol_index
+                        .clone()
+                        .type_head_exposures
+                        .clone(),
+                    identity.clone(),
+                ) {
+                    Some(exposure) => exposure.clone(),
+                    None => direct.clone(),
+                }
+            }
         }
     }
 }
@@ -3025,17 +3028,17 @@ pub fn literal_introduction_type_mismatch(
                 } else {
                     match (*expected_type_head_exposure(formal.clone(), scope.clone())).clone() {
                         TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                            if matches!(view.as_ref(), TypeHeadView::KernelScalarHead { .. }) =>
                         {
-                            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                            let TypeHeadView::KernelScalarHead {
+                                type_identity: _, ..
+                            } = view.as_ref()
+                            else {
                                 unreachable!()
                             };
-                            true
+                            false
                         }
-                        TypeHeadExposure::StuckTypeHead { cause: _, .. } => true,
-                        TypeHeadExposure::CyclicTypeHead { path: _, .. } => true,
-                        TypeHeadExposure::MalformedApplicationHead { cause: _, .. } => true,
-                        _ => false,
+                        _ => true,
                     }
                 }
             }

@@ -1954,10 +1954,19 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 }
 
 fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExposure {
-  let identity = type_reference_identity(n: formal, source_indices: scope.type_env.source_indices)
-  match map_get(scope.type_env.symbol_index.type_head_exposures, identity) {
-    Present { value: exposure } => exposure
-    Absent => exposure_view_for_node(n: formal, source_indices: scope.type_env.source_indices)
+  let source_indices = scope.type_env.source_indices
+  let direct = exposure_view_for_node(n: formal, source_indices: source_indices)
+  match direct {
+    ExposedTypeHead { view: _ } => direct
+    CyclicTypeHead { path: _ } => direct
+    MalformedApplicationHead { cause: _ } => direct
+    _ => {
+      let identity = type_reference_identity(n: formal, source_indices: source_indices)
+      match map_get(scope.type_env.symbol_index.type_head_exposures, identity) {
+        Present { value: exposure } => exposure
+        Absent => direct
+      }
+    }
   }
 }
 
@@ -1975,11 +1984,8 @@ fn literal_introduction_type_mismatch(formal: Node, actual_expr: Node, scope: In
       if admits_integer_numeral(type_identity: expected_identity) { false }
       else {
         match expected_type_head_exposure(formal: formal, scope: scope) {
-          ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _, parameter_relations: _ } } => true
-          StuckTypeHead { cause: _ } => true
-          CyclicTypeHead { path: _ } => true
-          MalformedApplicationHead { cause: _ } => true
-          _ => false
+          ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => false
+          _ => true
         }
       }
     ExprLiteral { value: _ } => exposure_is_application(exposure: expected_type_head_exposure(formal: formal, scope: scope))
