@@ -41,9 +41,7 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{
-    build_params_scope, call_arg_label_matches_param, extend_scope,
-};
+pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_label, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
@@ -660,29 +658,13 @@ pub fn lookup_func_sig_in_scope(
     ))
 }
 
-pub fn typed_named_arg_matches_note() -> String {
+pub fn order_typed_call_args_label_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_arg_label_matches_param, so this projection consumes that authority rather than comparing exact declaration spelling independently: a declaration-side unused parameter `_args` carries caller label `args`. A bare anonymous `_` stays positional because it has no unique caller-visible identity with which to reorder an argument. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
+            "Emission translates source named arguments into target positional arguments. The accepted caller-label relation is v1.compiler.infer call_param_caller_label, the canonical projection consumed by call_arg_label_matches_param, so emission does not compare exact declaration spelling independently: a declaration-side unused parameter `_args` carries caller label `args`. A bare anonymous `_` has no caller-visible identity and stays positional. Both argument and parameter indexes use that canonical label, preserving linear construction and lookup rather than scanning either population per member. This closes the seven retained v2.compiler.eval E0308 call-order blocks on board 907f19c2cc7; the preregistered treatment and controls are docs/probes/underscore_named_call_order_treatment_2026-08-23.md.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn typed_named_arg_matches(
-    arg: Rc<Node>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let n = arg_name_at(arg.clone(), source_indices.clone());
-        if (n.clone() == None) {
-            false
-        } else {
-            ((name.clone() != "_".to_string())
-                && call_arg_label_matches_param(name.clone(), n.clone().unwrap()))
-        }
-    }
 }
 
 pub fn order_typed_call_args(
@@ -708,6 +690,35 @@ pub fn order_typed_call_args(
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
                 None => args.clone(),
                 Some(sig) => {
+                    let arg_map = args.iter().cloned().fold(
+                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                        |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
+                            let n = arg_name_at(
+                                arg.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
+                            if (n.clone() != None) {
+                                v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
+                            } else {
+                                acc.clone()
+                            }
+                        },
+                    );
+                    let param_label_set = sig.params.clone().iter().cloned().fold(
+                        v1_rt::rc_empty_map::<String, bool>(),
+                        |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
+                            let caller_label = call_param_caller_label(param_node_name_at(
+                                param.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ));
+                            match caller_label.clone() {
+                                Some(label) => {
+                                    v1_rt::rc_map_insert(acc.clone(), label.clone(), true)
+                                }
+                                None => acc.clone(),
+                            }
+                        },
+                    );
                     let ordered = Rc::new({
                         let mut __result = Vec::new();
                         for param in sig.params.clone().iter().cloned() {
@@ -717,23 +728,13 @@ pub fn order_typed_call_args(
                                         param.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
-                                    match Rc::new({
-                                        let mut __result = Vec::new();
-                                        for arg in args.iter().cloned() {
-                                            if typed_named_arg_matches(
-                                                arg.clone(),
-                                                param_name.clone(),
-                                                scope.type_env.clone().source_indices.clone(),
-                                            ) {
-                                                __result.push(arg);
+                                    match call_param_caller_label(param_name.clone()) {
+                                        Some(label) => {
+                                            match v1_rt::map_get(&arg_map, label.clone()) {
+                                                Some(arg) => Rc::new(vec![arg.clone()]),
+                                                None => Rc::new(vec![]),
                                             }
                                         }
-                                        __result
-                                    })
-                                    .first()
-                                    .cloned()
-                                    {
-                                        Some(arg) => Rc::new(vec![arg.clone()]),
                                         None => Rc::new(vec![]),
                                     }
                                 })
@@ -754,23 +755,8 @@ pub fn order_typed_call_args(
                                 if (n.clone() == None) {
                                     true
                                 } else {
-                                    ({
-                                        let mut __found = false;
-                                        for param in sig.params.clone().iter().cloned() {
-                                            if typed_named_arg_matches(
-                                                arg.clone(),
-                                                param_node_name_at(
-                                                    param.clone(),
-                                                    scope.type_env.clone().source_indices.clone(),
-                                                ),
-                                                scope.type_env.clone().source_indices.clone(),
-                                            ) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    } == false)
+                                    (emit_map_has(param_label_set.clone(), n.clone().unwrap())
+                                        == false)
                                 }
                             } {
                                 __result.push(arg);

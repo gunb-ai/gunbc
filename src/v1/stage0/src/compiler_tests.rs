@@ -522,12 +522,25 @@ mod compiler_tests {
                 // it, so the compile seam must too) all stay silent.
                 let green = compile_one(
                     "green.dag",
-                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn direct_order(a: Int, b: Int) -> Int { b }\nfn underscore_order(_a: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn direct_order_control() -> Int { direct_order(b: 23, a: 11) }\nfn underscore_order_witness() -> Int { underscore_order(b: 23, a: 11) }\n",
                 );
                 assert!(
                     green.diagnostics.is_empty(),
                     "correct call shapes must compile with NO diagnostic of any severity, got: {:?}",
                     green.diagnostics
+                );
+                let emitted = green.files.iter()
+                    .find(|f| f.path.ends_with("green.rs"))
+                    .expect("green fixture must emit its Rust module");
+                assert!(
+                    emitted.content.contains("direct_order(11, 23)"),
+                    "control: ordinary named arguments must follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_order(11, 23)"),
+                    "named arguments accepted through the declaration-side underscore idiom must follow that same declaration order, got: {}",
+                    emitted.content
                 );
             })
             .expect("failed to spawn thread")

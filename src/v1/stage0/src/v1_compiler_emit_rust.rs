@@ -66,8 +66,7 @@ pub use crate::v1_compiler_emit::{
     is_tco_identity_passthrough, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    tco_reassign_core, transport_binding_refusal_fact, typed_named_arg_matches,
-    unwrap_single_field_product,
+    tco_reassign_core, transport_binding_refusal_fact, unwrap_single_field_product,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
