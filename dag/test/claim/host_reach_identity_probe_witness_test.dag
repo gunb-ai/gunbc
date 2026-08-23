@@ -1,5 +1,6 @@
 module test.claim.host_reach_identity_probe_witness
 
+import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.placement_supply { HostIdentity }
