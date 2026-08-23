@@ -64,6 +64,7 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.compilers.lexing { ModeledLexRules }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -127,7 +128,7 @@ fn add_body_fold_target_model_minus_catalog() -> TargetModel {
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_minus()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
@@ -141,7 +142,7 @@ fn add_body_fold_target_model_missing_operator_catalog() -> TargetModel {
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_empty()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),

@@ -7,7 +7,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import extdeps.github.actions_runner {
   ActionsRunnerRelease,
   ActionsRunnerBinaryArtifact,
@@ -167,12 +167,6 @@ fn runner_slot_add_step_index(step: RunnerSlotAddStep) -> Int {
 
 fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
-}
-
-fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
-  let idx = slot.slot_index
-  let two = if idx < 10 { join(["0", to_string(idx)], "") } else { to_string(idx) }
-  join([slot.host as String, "-", two], "")
 }
 
 fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
