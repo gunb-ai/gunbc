@@ -468,8 +468,37 @@ fn floor_expected_red_chunk_20() -> List<String> {
   Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } }
 }
 
+// THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red
+// rather than discovered red. They are compiler control fixtures: each hands the v1 compile path a
+// program the host refuses at evaluation and asserts that the refusal happens at COMPILE. All three
+// return false today, measured by execution at head 907f19c2cc.
+//
+// WHY THEY WERE AUTHORED. Required-floor run 32633501354 reported known_red_runtime_errored=164 --
+// programs the compiler accepted and the interpreter could not evaluate -- and that counter is the
+// class's only observer. It falls to zero as the 164 witnesses are repaired, taking the evidence
+// with it, so the class needed evidence that does not live in the specimens. Eleven of the 164 are
+// this family: a host primitive's argument list is not checked at compile in any direction.
+//
+// WHY THEY BELONG IN A ROSTER WHOSE HEADER SAYS A ROW BELONGS HERE ONLY WHILE SOMEONE IS FIXING IT.
+// Nobody is fixing this one today, and the enrolment is still the honest home rather than a
+// demotion: the roster's stale-quarantine arm is exactly what these rows need, because the day the
+// argument contract is checked at compile they PASS and red the build naming themselves. That arm
+// is the whole point of authoring them as reds instead of as assertions of today's behaviour, which
+// would have been a change detector pointing the wrong way.
+//
+// THE FILE DECLARES ReadsLiveTree and is therefore DeclinedLiveTree today, so these three are
+// enrolled and not yet planned. That is stated rather than worked around: the declaration is honest
+// (compile_dag_rust_emit_check walks the live tree) and the decline arm's deletion is in flight
+// (gunbc#8977, gunbc#8982). Until it lands they are held here so that admission does not red main.
+//
+// The partition of the 164 and the measurements behind this family are
+// docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
+fn floor_expected_red_chunk_21() -> List<String> {
+  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 fn floor_expected_red_roster() -> List<String> {
