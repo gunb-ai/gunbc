@@ -493,8 +493,18 @@ fn floor_expected_red_chunk_14() -> List<String> {
 // WHY IT IS ENROLLED RATHER THAN FIXED HERE: the gap was discovered as a live wrong argument in
 // dag/gunbc/heal_revalidation.dag (List<Fnv1a64Structural> into required_gates: List<ContentHash>),
 // and the relation's SILENCE was the only evidence of it. DESIGN 4b(4) puts the evidence in a
-// probe and the repair in production, not the reverse, so the production site is repaired in this
-// same change and the evidence moved here where anyone can reproduce it.
+// probe and the repair in production, not the reverse, so the evidence lives here where anyone
+// can reproduce it.
+//
+// THE PRODUCTION SITE WAS REPAIRED TWICE AND ONLY THE SECOND WAY WAS RIGHT. Lifting the argument
+// through as_content_hash_structural DOUBLE-WRAPPED a value that was already the union -- the
+// witness passes Fnv1a64(content_hash_atom(...)) and check_coverage_admits takes ContentHash, so
+// heal_revalidation's own two parameters were the ONLY things in the chain declaring the family
+// member. Lifting made the comparison Fnv1a64(Fnv1a64(x)) against Fnv1a64(x) and reddened
+// heal_revalidation_witness only_exact_healed_head_complete_coverage_admits, a witness that had
+// been green. The chain is now ContentHash end to end and the lifts are gone. Reading the CALLEE
+// is half the discriminator; the CALLER is the other half, and a declaration sandwiched between
+// two that agree with each other is the one that is wrong.
 //
 // NEXT-RUNG TRIGGER: declared_type_inhabitance descending into a list's element type at a
 // direct-call argument. When it lands this row goes green and the roster's self-emptying arm

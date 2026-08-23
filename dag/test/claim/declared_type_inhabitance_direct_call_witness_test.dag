@@ -96,21 +96,30 @@ test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
 // discriminating RED as enrolled evidence. So the evidence lives here, where it is reproducible
 // on demand, and the live wrong argument in an admission path is repaired.
 //
-// RED, AND CURRENTLY FAILING -- ENROLLED. A plain record at a coproduct element type inside a
-// list at a direct-call argument. The relation judges this exact pair at the argument itself
-// (the control below), and does not descend into the list, so this must refuse and does not.
-data record_element_in_list_arg_source: String = "module probe_inhabit_dc_list_elem\nimport std.types { Int, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\ntype Rec { v: Int }\nfn takes_list(xs: List<Cop>) -> Int { 1 }\nfn probe() -> Int { takes_list(xs: [Rec { v: 1 }]) }\n"
+// RED, AND CURRENTLY FAILING -- ENROLLED. A kernel String at a coproduct element type inside a
+// list at a direct-call argument.
+//
+// THE PRODUCED VALUE IS A KERNEL STRING BECAUSE THE FIRST VERSION OF THIS PAIR USED A RECORD
+// LITERAL AND ITS CONTROL WENT RED, which is the only reason the mis-design was caught rather
+// than enrolled. kernel_value_declared_type_mismatch judges only a KERNEL produced value --
+// is_kernel_type(actual_name) gates its whole body -- so a record literal at a coproduct is not
+// judged AT ANY POSITION, list or not. The old pair therefore measured "records are never
+// judged" and would have been enrolled as evidence about lists. A String is judged at this
+// position by execution (measured: a String at a closed coproduct REFUSES), so the list is now
+// the only difference between the two arms.
+data record_element_in_list_arg_source: String = "module probe_inhabit_dc_list_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_list(xs: List<Cop>) -> Int { 1 }\nfn probe() -> Int { takes_list(xs: [\"forty\"]) }\n"
 
 test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() -> Bool {
   violation_count(source: record_element_in_list_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
-// THE CONTROL THAT MAKES THAT RED READABLE, and it is the one that separates "the relation
-// cannot judge this pair" from "the relation cannot see inside a list". SAME two types, SAME
-// direct-call argument position, the record passed DIRECTLY rather than wrapped in a list. If
-// this refuses and the arm above does not, the list is the whole difference. If this also
-// admits, the probe proves nothing about lists and the arm above is measuring the wrong thing.
-data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_bare_elem\nimport std.types { Int, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\ntype Rec { v: Int }\nfn takes_one(x: Cop) -> Int { 1 }\nfn probe() -> Int { takes_one(x: Rec { v: 1 }) }\n"
+// THE CONTROL THAT MAKES THAT RED READABLE, and it separates "the relation cannot judge this
+// pair" from "the relation cannot see inside a list". SAME two types, SAME direct-call argument
+// position, the String passed DIRECTLY rather than wrapped in a list. If this refuses and the
+// arm above does not, the list is the whole difference. If this also admits, the probe proves
+// nothing about lists and the arm above is measuring the wrong thing -- which is exactly what
+// happened to this pair's first version, so this arm is not a formality.
+data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_bare_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_one(x: Cop) -> Int { 1 }\nfn probe() -> Int { takes_one(x: \"forty\") }\n"
 
 test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
   violation_count(source: record_directly_at_coproduct_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
