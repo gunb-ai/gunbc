@@ -6698,11 +6698,20 @@ pub fn compile_entry_emission(
     }
 
     crate::v1_rt::resolution_silent_pick_enable();
-    let closure = match load_sources_for_entry_with_pool_index(
-        source_roots,
-        entry_path,
-        primary_precedence,
-    ) {
+    // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
+    // module index, and calling `load_sources_for_entry_with_pool_index` and then building
+    // a second index for the census parsed ~3,800 modules twice per invocation (review
+    // 55167). Building it here and handing the SAME index to both also removes the
+    // possibility that the closure and the census are computed against different
+    // populations, which is a correctness property and not only a cost one.
+    let index: Rc<MultiEntryIndex> = if primary_precedence {
+        Rc::new(build_multi_entry_index_primary_precedence(source_roots))
+    } else {
+        // Strict routes through the process-shared index, so a second `--entry` compile in
+        // one process is a cache hit rather than a rebuild.
+        process_shared_index(source_roots)
+    };
+    let closure = match load_sources_for_entry_with_pool(&index, entry_path) {
         Ok(closure) => closure,
         Err(e) => {
             let _ = crate::v1_rt::resolution_silent_pick_disable();
@@ -6724,14 +6733,14 @@ pub fn compile_entry_emission(
     // membership is keyed on MODULE PATH rather than file path because the closure loader
     // and the index normalize paths differently -- a file-path compare would fail to
     // exclude closure modules and double-load them into the census.
-    let index = if primary_precedence {
-        build_module_index_primary_precedence(source_roots)
-    } else {
-        build_module_index(source_roots)
-    };
     let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .source_files
         .iter()
-        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
+        .filter(
+            |(module_path, _): &(&String, &Rc<v1_compiler_compile::SourceFile>)| {
+                !closure_modules.contains(*module_path)
+            },
+        )
         .map(|(_, source)| source.clone())
         .collect();
     census_only.sort_by(|a, b| a.path.cmp(&b.path));
@@ -6906,6 +6915,28 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
         )),
     }
     failures
+}
+
+/// Import-edge closure ONLY — no reference-derived or bare-reference extension.
+/// Host twin for witnesses proving a module's cross-module bindings come from
+/// declared `import` edges, not pool membership or bare-reference coincidence
+/// (Class B controls per DESIGN import-strip witness-discovery cascade).
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_live_paths(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if !index.module_graph_facts.declares_repo_path(&entry_rel) {
+        return Err(format!(
+            "declared_import_closure_live_paths: entry '{entry_rel}' has no provenance in the module-graph facts pool (fail-closed)"
+        ));
+    }
+    Ok(import_closure_live_paths_with_facts(
+        &entry_rel,
+        &index.module_graph_facts,
+    ))
 }
 
 /// Whether `module_path` is indexed under primary-precedence `pool_roots`.
