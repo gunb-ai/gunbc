@@ -8974,36 +8974,36 @@ fn nominal_parameter_relations(arguments: List<Node>) -> List<TypeParameterRelat
 
 fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   let identity = node_declaration_identity(n: n, source_indices: source_indices)
-  if identity == "::" {
-    StuckTypeHead { cause: "declaration identity unavailable" }
-  } else if n.connective == Arrow {
-    ExposedTypeHead { view: CallableHead { type_identity: identity } }
-  } else if n.type_annotation != none || (n.properties |> count) > 0 {
-    OpaqueTypeHead { type_identity: identity }
-  } else if n.connective == Disj {
-    ExposedTypeHead { view: CoproductHead { type_identity: identity } }
-  } else if n.connective == Conj {
-    ExposedTypeHead { view: ProductHead { type_identity: identity } }
-  } else if (n.children |> count) > 0 {
-    let constructor_name = authored_name_at(source_indices: source_indices, node: n)
-    if constructor_name == "" {
-      MalformedApplicationHead { cause: "application has no constructor identity" }
-    } else {
-      ExposedTypeHead {
-        view: ApplicationHead {
-          constructor_identity: type_declaration_identity_key(
-            decl_file: node_declaration_file(n: n), declared_name: constructor_name),
-          argument_identities: n.children |> map(ch => type_reference_identity(n: child_type_node(ch: ch), source_indices: source_indices)),
-          parameter_relations: nominal_parameter_relations(arguments: n.children)
+  match identity == "::" {
+    true => StuckTypeHead { cause: "declaration identity unavailable" }
+    false => match n.type_annotation != none || (n.properties |> count) > 0 {
+      true => OpaqueTypeHead { type_identity: identity }
+      false => match n.connective {
+        Arrow => ExposedTypeHead { view: CallableHead { type_identity: identity } }
+        Disj => ExposedTypeHead { view: CoproductHead { type_identity: identity } }
+        Conj => ExposedTypeHead { view: ProductHead { type_identity: identity } }
+        NoConnective => match (n.children |> count) > 0 {
+          true =>
+            let constructor_name = authored_name_at(source_indices: source_indices, node: n)
+            match constructor_name == "" {
+              true => MalformedApplicationHead { cause: "application has no constructor identity" }
+              false => ExposedTypeHead {
+                view: ApplicationHead {
+                  constructor_identity: type_declaration_identity_key(
+                    decl_file: node_declaration_file(n: n), declared_name: constructor_name),
+                  argument_identities: n.children |> map(ch => type_reference_identity(n: child_type_node(ch: ch), source_indices: source_indices)),
+                  parameter_relations: nominal_parameter_relations(arguments: n.children)
+                }
+              }
+            }
+          false =>
+            let name = authored_name_at(source_indices: source_indices, node: n)
+            match is_kernel_type(name: name) {
+              true => ExposedTypeHead { view: KernelScalarHead { type_identity: identity } }
+              false => OpaqueTypeHead { type_identity: identity }
+            }
         }
       }
-    }
-  } else {
-    let name = authored_name_at(source_indices: source_indices, node: n)
-    if is_kernel_type(name: name) {
-      ExposedTypeHead { view: KernelScalarHead { type_identity: identity } }
-    } else {
-      OpaqueTypeHead { type_identity: identity }
     }
   }
 }
@@ -9020,8 +9020,10 @@ fn type_head_exposure_census(module_nodes: List<Node>, source_indices: Map<Strin
   fold(module_nodes, init: empty_map(), f: (acc, module_node) =>
     fold(module_items(n: module_node), init: acc, f: (by_identity, item) =>
       let identity = node_declaration_identity(n: item, source_indices: source_indices)
-      if identity == "::" { by_identity }
-      else { map_insert(by_identity, identity, declaration_head_exposure(item: item, source_indices: source_indices)) }
+      match identity == "::" {
+        true => by_identity
+        false => map_insert(by_identity, identity, declaration_head_exposure(item: item, source_indices: source_indices))
+      }
     )
   )
 }
