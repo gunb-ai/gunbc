@@ -28,7 +28,8 @@ import gunbc.runner_slot_provision {
 }
 import gunbc.membership_reconcile { membership_added_count }
 import gunbc.fleet_host_budget { declared_runner_count_for }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 import extdeps.exec.command { shell_command_render }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
@@ -55,17 +56,36 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
     && (string_contains(s: rendered, pattern: "CTRL_RUNNER_SLOT") == false)
 }
 
-test fn witness_srv3_deploy_row_names_six_slots() -> Bool {
-  list_length(items: runner_instance_names(deploy: srv3_runner_host_deploy)) == 6
-    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).first(), pattern: "srv3-01")
-    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 5).first(), pattern: "srv3-06")
+// THIS ROW ASSERTED SIX AND SIX IS NO LONGER SRV3'S WIDTH. The 2026-08-23 CPU-axis change
+// (gunbc.runner_slot_allocation host_cpu_admitted_width) moved the committed width to 21 and made
+// runner_host_deploy runner_count DERIVE from it, so a literal six here asserted a fleet that had
+// stopped existing one commit earlier. It is re-derived rather than re-typed to 21, because a
+// second literal would only postpone the same failure to the next width change.
+//
+// THE LENGTH CONJUNCT IS NOT WHAT THIS PROVES, AND SAYING SO MATTERS. runner_count is now
+// gunbc_runner_slots_per_host verbatim, so length == width holds by construction and would stay
+// green against any enumerator that produced the right COUNT of wrong names -- it is carried as the
+// bound the index rows are read against, not as the check.
+//
+// WHAT IS ACTUALLY CHECKED IS THE NAMING, AND WIDTH 21 REACHES A CASE SIX NEVER DID. The suffix is
+// zero-padded below ten and bare at and above it (gunbc.build_cache_instance runner_slot_index_suffix),
+// a boundary no six-wide host could cross. So the rows below assert 09 and 10 either side of it and
+// the top name spelled independently from the width, rather than a hardcoded "srv3-06".
+test fn witness_srv3_deploy_row_names_every_committed_slot() -> Bool {
+  let width = gunbc_runner_slots_per_host(host: operator_host_srv3)
+  let names = runner_instance_names(deploy: srv3_runner_host_deploy)
+  list_length(items: names) == width
+    && names.first() == "srv3-01"
+    && names.skip(n: 8).first() == "srv3-09"
+    && names.skip(n: 9).first() == "srv3-10"
+    && names.skip(n: width - 1).first() == join(["srv3-", to_string(width)], "")
 }
 
 // The reconcile fixtures plant their OWN five-slot deploy row rather than
 // reading the live fleet, so the expected counts below are exact literals
 // authored beside a known input — not a restatement of whatever width the
 // fleet happens to declare. srv3's real width is asserted separately, by
-// witness_srv3_deploy_row_names_six_slots.
+// witness_srv3_deploy_row_names_every_committed_slot.
 fn fixture_five_slot_deploy() -> RunnerHostDeploy {
   RunnerHostDeploy {
     host_label: "wfix",
@@ -134,7 +154,21 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   }
 }
 
-test fn witness_srv4_runner_count_six_materialization_target() -> Bool {
-  srv4_runner_host_deploy.runner_count == 6
-    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy)) == 6
+// SRV4'S ROW IS THE JOIN, AND AFTER #8976 IT IS A JOIN AGAINST ITSELF. It asserted the literal six
+// twice -- once on runner_count and once on the name list -- and both sides now derive from
+// gunbc_runner_slots_per_host, so restating the width here can only ever agree with itself
+// (DESIGN 5: measure() == measure() is a change detector, not a check).
+//
+// SO IT ASSERTS THE PROPERTY THE DERIVATION DOES NOT GIVE FOR FREE: that srv4's materialization
+// target is the width its OWN host was admitted to carry, not srv3's. Both hosts commit 21 today
+// for the same reason -- 128 cores at 6 per slot -- so a deploy row that read the fleet through the
+// wrong host identity would be invisible to any equality between them. The srv2 conjunct is what
+// makes that discriminating: srv2 is memory-bound at 5 and is the one host whose width differs, so
+// a per-host read and a fleet-uniform one disagree there and nowhere else.
+test fn witness_srv4_runner_count_is_its_own_hosts_committed_width() -> Bool {
+  srv4_runner_host_deploy.runner_count == gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy))
+         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && gunbc_runner_slots_per_host(host: operator_host_srv2)
+         != gunbc_runner_slots_per_host(host: operator_host_srv4)
 }

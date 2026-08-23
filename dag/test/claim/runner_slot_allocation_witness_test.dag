@@ -241,12 +241,26 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // index above the GitHub ceiling answered "fabric" -- measured, srv1-06 and srv3-99 both did, though
 // srv1 is five wide and neither is a member of anything. Membership now precedes purpose and those
 // identities are refused with the width they were measured against.
+//
+// THE LITERALS 6 AND 7 WERE THE OUT-OF-POPULATION INDICES OF A FLEET THAT ENDED ON 2026-08-23. The
+// CPU-axis change took srv1 and srv3 to a committed width of 21, so srv1-06 and srv3-07 are now
+// ordinary GitHub members and this row was asserting that two live slots did not exist. Each
+// boundary index is therefore taken as that host's own width + 1 -- the first identity past the
+// commitment -- so the row keeps asking the question it was named for rather than asking it about
+// whichever number was true once.
+//
+// 99 STAYS A LITERAL AND STAYS FOR A REASON. width + 1 is the boundary case and 99 is the far case;
+// an off-by-one in the membership bound would pass the far one alone, and a bound that had stopped
+// reading the width at all would pass the near one alone. srv3-06 is retained as the positive
+// control, unchanged: it is a committed member at any width the fleet has carried.
 test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
-  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+  let srv1_width = gunbc_runner_slots_per_host(host: operator_host_srv1)
+  let srv3_width = gunbc_runner_slots_per_host(host: operator_host_srv3)
+  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_width + 1))
     && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
-    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 7))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_width + 1))
     && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_width + 1))
 }
 
 // THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
@@ -268,16 +282,27 @@ test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv2, slot_index: 5))
 }
 
-// THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. Fabric slots are taken from the TOP of the
-// index range, so srv3-01..05 -- the five registered runners that exist today -- are all still
-// GitHub slots and none is renamed or deregistered to pay for the canary. Taking the fabric slot
-// from the bottom would have renumbered every live runner on the host, and this row goes red if
-// anyone reverses that direction.
+// THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. srv3-01..05 -- the five registered runners
+// that exist today -- are all still GitHub slots and none is renamed or deregistered to pay for the
+// canary. Taking the fabric slot from the bottom would have renumbered every live runner on the
+// host, and this row goes red if anyone reverses that direction.
+//
+// THE COUNT CONJUNCT IS GONE AND ITS REMOVAL IS NOT A LOSS OF COVERAGE. It read
+// host_github_slot_count(srv3) == 5, which the 2026-08-23 CPU-axis change made false at 20, and the
+// obvious repair -- width minus the fabric count -- is exactly how host_github_slot_count is
+// DEFINED, so it would have compared the function to its own body. The partition arithmetic it was
+// reaching for is already asserted across all four hosts by
+// slot_purposes_partition_every_host_committed_width above; restating it here would be a second
+// authority for one fact (DESIGN 3) wearing a check's clothes.
+//
+// AN EARLIER REVISION OF THIS NOTE SAID FABRIC SLOTS ARE TAKEN FROM THE TOP OF THE INDEX RANGE.
+// That was true when srv3 was six wide and srv3-06 was its top index; at width 21 srv3-06 sits in
+// the middle, and the carve did not move -- which is the property
+// the_fabric_member_is_an_authored_identity_not_a_top_index_rule exists to hold.
 test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
   !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 1))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 2))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
-    && host_github_slot_count(host: operator_host_srv3) == 5
 }

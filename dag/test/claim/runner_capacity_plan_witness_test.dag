@@ -13,7 +13,7 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation { committed_slot_identities, gunbc_runner_slots_per_host }
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
@@ -54,19 +54,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THIS REPLACES A WITNESS THAT ASSERTED TWO ADDITIONS PER HOST AT REQUESTED 7, AND THE OLD
 // ASSERTION WAS WRONG IN A WAY ITS GREEN CONCEALED. It required slots 06 AND 07 on hosts whose
-// committed width is 6, so it demanded a SEVENTH slot on a six-wide host -- an artifact of the
-// 14GiB era, when the managed hosts admitted 7. The 2026-08-17 16GiB ruling moved them to 6 and
-// this witness was never re-derived, so CI was affirming a false statement about the fleet.
+// committed width was then 6, so it demanded a SEVENTH slot on a six-wide host -- an artifact of
+// the 14GiB era, when the managed hosts admitted 7. The 2026-08-17 16GiB ruling moved them to 6 and
+// this witness was never re-derived, so CI was affirming a false statement about the fleet. It
+// happened AGAIN on 2026-08-23 when the CPU axis moved the managed hosts to 21, and the recurrence
+// is recorded on the row below: a literal boundary index is the class, not the incident.
 //
-// SEVEN IS NOW REFUSED RATHER THAN QUIETLY UNFULFILLED. The admission ceiling derives from the
-// committed width instead of restating it as a literal 7, so a request no host has been admitted
-// to carry stops at the wall with a typed cause rather than being admitted and then producing
-// nothing. Both hosts plan zero actions and both carry a WidthRefused admission -- the difference
-// from the old behaviour is that the refusal is now VISIBLE in the plan.
+// A REQUEST ABOVE THE CEILING IS REFUSED RATHER THAN QUIETLY UNFULFILLED. The admission ceiling
+// derives from the committed width instead of restating it as a literal, so a request no host has
+// been admitted to carry stops at the wall with a typed cause rather than being admitted and then
+// producing nothing. Both hosts plan zero actions and both carry a WidthRefused admission -- the
+// difference from the old behaviour is that the refusal is now VISIBLE in the plan.
+//
+// AND THE LITERAL SEVEN THAT USED TO STAND HERE IS THE SAME DEFECT THIS ROW'S OWN HEADER DESCRIBES,
+// COMMITTED A SECOND TIME. It was written when the managed hosts committed six, so seven was the
+// first index past the ceiling; the 2026-08-23 CPU-axis change moved them to 21 and seven became an
+// ordinary ADMITTED width, so the row stopped exercising a refusal at all and went red on the
+// additions the planner correctly produced. Requesting committed + 1 asks the question the name
+// promises at whatever width the fleet carries, which is what a derived ceiling was for.
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
+    srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
     roster: organization_runner_roster_evidence()
   )
   match plan {
@@ -77,8 +86,11 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
   }
 }
 
-// AT THE COMMITTED WIDTH THE TWO HOSTS DISAGREE, AND THAT IS THE PURPOSE MODEL SHOWING THROUGH.
-// Both are six wide and both requests are admitted. srv4 has no fabric slot, so its GitHub
+// AT ONE ADMITTED WIDTH THE TWO HOSTS DISAGREE, AND THAT IS THE PURPOSE MODEL SHOWING THROUGH.
+// Six is no longer either host's committed width -- both commit 21 since the 2026-08-23 CPU axis --
+// but it is still a width both are admitted to carry, and it is a stated fixture here: the expected
+// identities below are authored against the pinned roster at a named width, which is a controlled
+// input rather than a restatement of whatever the fleet currently commits. srv4 has no fabric slot, so its GitHub
 // population is all 6 and one addition is planned: slot 06. srv3 carries the one compute-fabric
 // slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
 // slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
@@ -109,7 +121,7 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 // decoding the observation is what made it harmful -- a real roster has holes and a count cannot see
 // them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
 // its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
-test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
+test fn at_a_stated_admitted_width_additions_follow_purpose_not_count() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
@@ -177,9 +189,10 @@ test fn the_additions_run_is_general_across_transitions() -> Bool {
 }
 
 // THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
-// count-and-dense-prefix form could not express. srv3 commits 6 with srv3-06 carved out, so its
-// desired GitHub identities are exactly {01..05} -- five members out of a six-wide host, with the
-// gap at the top today. srv4 has no carve and desires all six. If a fabric member ever lands
+// count-and-dense-prefix form could not express. Asked for six slots on srv3, whose srv3-06 is
+// carved out, the desired GitHub identities are exactly {01..05} -- five members against a request
+// for six. srv4 has no carve and desires all six. The carve sits mid-range now rather than at the
+// top: srv3 commits 21 since the 2026-08-23 CPU axis, so srv3-06 is an interior index. If a fabric member ever lands
 // mid-range this row is what refuses to enumerate through it.
 test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
   desired_github_identities(host: operator_host_srv3, requested_width: 6).length() == 5
@@ -188,7 +201,9 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
     && desired_github_identities(host: operator_host_srv1, requested_width: 5).length() == 5
 }
 
-// THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. srv4 at 5-to-6 is the
+// THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. Both hosts commit 21 today, so
+// the 5-to-6 span below is a stated fixture transition and not a claim about either width.
+// srv4 at 5-to-6 is the
 // measurement that FLIPPED: before this change it planned zero additions because the enumerator
 // could not spell a width of six, and it plans one now. It goes red again the moment a planner
 // stops being able to express a transition.
@@ -201,7 +216,7 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // let this class survive four days on a declared provisioning target. It is only a check when read
 // against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
 // that discriminates.
-test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
+test fn the_same_widening_differs_by_purpose_across_two_hosts() -> Bool {
   addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 5)).length() == 1
     && addition_actions(host: operator_host_srv3, requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
 }
@@ -238,6 +253,15 @@ fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }
 }
 
+// THE OVER-PROVISIONED INDEX IS DERIVED BECAUSE IT IS NOT A NUMBER, IT IS A BOUNDARY. The row below
+// used srv1-06, which was outside srv1's population while srv1 committed five and is an ordinary
+// member now that the CPU axis puts it at 21 -- so the arm it was enrolled to reach became
+// unreachable and the conjunct simply reported a reconciled population. Naming the boundary instead
+// of a number keeps it reaching that arm at any width.
+fn srv1_first_index_past_the_committed_width() -> Nat {
+  gunbc_runner_slots_per_host(host: operator_host_srv1) + 1
+}
+
 // A GitHub RUNNER SITTING IN THE FABRIC'S SLOT MUST NOT READ AS CONVERGED, AND THE THIRD ROW IS THE
 // ONE THAT MATTERS. The first two are the unequal-count cases an Int-shaped reconciler could already
 // catch. The third is the case it could not: observed GitHub {1,2,3,4,6} against expected
@@ -247,9 +271,9 @@ fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
 // revision of reconcile_slot_population took an observed_width Int while its own annotation claimed
 // it compared populations.
 //
-// THE srv1 ROWS ARE THE CONTROL AND WITHOUT THEM THIS PROVES NOTHING. srv1 has no fabric slot, so
-// its full committed population is a reconciled observation and must NOT refuse; an identity beyond
-// its width must. A verdict that refused every non-empty roster would satisfy the srv3 rows by
+// THE srv1 ROWS ARE THE CONTROL AND WITHOUT THEM THIS PROVES NOTHING. srv1 has no fabric slot, so a
+// population drawn entirely from its committed members is a reconciled observation and must NOT
+// refuse; an identity beyond its width must. A verdict that refused every non-empty roster would satisfy the srv3 rows by
 // being broken everywhere.
 // THE SUBJECT IS BOUND: AN IDENTITY ADMISSIBLE FOR ANOTHER HOST CANNOT ANSWER FOR THIS ONE. The
 // host parameter was declared and never read, so this accepted srv4-01 when asked about srv3 --
@@ -288,7 +312,7 @@ test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() 
     ))
     && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
-      observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
+      observed: [srv1_slot(i: 1), srv1_slot(i: srv1_first_index_past_the_committed_width())],
     ))
 }
 
@@ -308,11 +332,13 @@ fn width_refuses(value: String) -> Bool {
 
 // THE COMMITTED WIDTH MUST BE SPELLABLE AT THE ENTRY POINT THAT ACTUATES IT, and before this change
 // it was not: parse_positive_width recognized "7", "5" and "0" and nothing else, so gunbc.apply
-// could not request the six that srv3 and srv4 are committed to. Every repair in this module was
-// unreachable from the only caller that drives it.
+// could not request the six that srv3 and srv4 were committed to at the time. Every repair in this
+// module was unreachable from the only caller that drives it.
 //
 // "6" IS THE ROW THAT WOULD HAVE BEEN RED. The others are here so that a future bucket cannot pass:
-// a parser that enumerated {5,6,7} would satisfy the six alone. Zero and negatives refuse because
+// a parser that enumerated {5,6,7} would satisfy the six alone. The two-digit row stopped being
+// hypothetical on 2026-08-23: the committed width is 21 now, so a parser that only ever read a
+// single character would refuse the width the fleet actually carries. Zero and negatives refuse because
 // the function is named for a POSITIVE width and its caller reports "must be a positive integer" --
 // an accepted zero made that message false at the layer that printed it.
 test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
