@@ -19,6 +19,7 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
+import extdeps.tools.stat { stat_owner_user_name_command }
 import std.algebra { Empty }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
 import extdeps.shell.exec {
