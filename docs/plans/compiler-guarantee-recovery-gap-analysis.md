@@ -3187,7 +3187,8 @@ enforces end to end.
 
 31. **A function name's meaning depends on the CONSUMER'S TRANSITIVE IMPORT CLOSURE, so adding
    one import edge anywhere can silently re-typecheck any file that reaches the ambiguity.
-   Population: 46 files, of which 3 have fired.** Measured 2026-08-22 by `quick-newt-661` while
+   Population: 46 files, of which 2 files carrying 3 call sites have fired.** Measured 2026-08-22
+   by `quick-newt-661` while
    sealing `ArgvCommand`.
 
    **THIS ROW WAS FIRST FILED WITH THE WRONG MECHANISM AND IS CORRECTED IN PLACE.** The initial
@@ -3228,10 +3229,23 @@ enforces end to end.
    Two different populations. The corpus set genuinely did not gain `v2.std.collection`; each
    failing module's closure did.
 
-   **THE POPULATION IS 46, NOT 3.** Forty-six files corpus-wide contain the literal `match map_get(`. Only three errored — the three whose closures now reach
-   `v2.std.collection`. **The other 43 are one import edge away from the identical failure**, each
-   waiting on whichever future PR happens to connect them. Repairing the three fixes one breakage
-   and leaves the class fully live.
+   **THE POPULATION IS 46 FILES, AND THE FIRED SET IS 2 OF THEM.** Forty-six files corpus-wide
+   contain the literal `match map_get(`. Two errored — the two in the table above, whose closures
+   now reach `v2.std.collection` — and between them they carry 3 call sites. **The other 44 files
+   are one import edge away from the identical failure**, each waiting on whichever future PR
+   happens to connect them. Repairing those 3 call sites fixes one breakage and leaves the class
+   fully live.
+
+   **THE FILES/SITES CONFLATION IS CORRECTED IN PLACE (review 55199, `codex/gpt-5.6-sol`).** An
+   earlier revision of this row said "46 files, of which 3 have fired" and "the other 43", taking
+   a CALL-SITE count as a FILE count in a sentence whose denominator is files — and, four
+   paragraphs down, compared "THREE" against "FORTY-SIX" across the same two units. The measured
+   facts never changed: 6 diagnostics = 3 call sites x 2 variants, distributed 2 sites in
+   `object_store` and 1 in `floor_preparation`, so 2 files fired and 44 did not. Recorded rather
+   than silently rewritten because this document is planning authority, and a census that reports
+   one unit's count under another unit's label is the state-space conflation this same document
+   catalogues elsewhere — arriving here as arithmetic that cannot be reconciled by a reader who
+   tries.
 
    ARITHMETIC CLOSES: 6 `collection.dag:82` diagnostics = 3 call sites × 2 variants
    (`Present`, `Absent`); `object_store` has 2 sites, `floor_preparation` 1. Nothing unaccounted for.
@@ -3297,10 +3311,10 @@ enforces end to end.
    whose presence in the consumer's closure is the unstable fact — so switching to it would keep
    the dependency this row is about and merely change which name it hangs on. gunbc#8944 uses the
    `Map` primitive method `X.lookup(key)` instead, which has 35 existing consumers and requires no
-   module to enter any closure at all. Correct independently of this row; it repairs THREE of
-   FORTY-SIX.
+   module to enter any closure at all. Correct independently of this row; it repairs 3 call sites
+   in 2 files, out of a 46-file population.
 
-   NOT CLAIMED: that any of the 43 is currently mis-resolved. They are not — they resolve to the
+   NOT CLAIMED: that any of the 44 unfired files is currently mis-resolved. They are not — they resolve to the
    builtin today and typecheck. The claim is that their meaning is contingent on an import graph
    nobody is watching.
 
