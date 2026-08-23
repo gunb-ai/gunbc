@@ -2492,6 +2492,30 @@ fn direct_call_structured_application_mismatch_diags(
   )
 }
 
+fn direct_call_argument_inhabitance_diags(
+  plan: List<CallFormalApplication>,
+  scope: InferScope
+) -> List<ErrorNode> {
+  flat_map(
+    plan,
+    app =>
+      match app.matched_arg {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionDirectCallArgument,
+              declared: app.formal_subst,
+              produced: resolved_type(n: actual_expr),
+              span: actual_expr.span
+            },
+            scope: scope
+          )
+        Absent => []
+      }
+  )
+}
+
 fn container_element_nominal_brand_mismatch(
   formal: Node,
   actual: Node,
@@ -4053,6 +4077,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           plan: call_application_plan,
           scope: scope
         )
+        let inhabitance_arg_diags = direct_call_argument_inhabitance_diags(
+          plan: call_application_plan,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -4061,7 +4089,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, structured_arg_diags)))
+          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, inhabitance_arg_diags))))
         }
       } else {
         let first_arg_type = match typed_args |> first {
