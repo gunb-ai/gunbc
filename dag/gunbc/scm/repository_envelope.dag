@@ -1,6 +1,6 @@
 module gunbc.scm.repository_envelope
 
-// THE REPOSITORY ENVELOPE: the layer that gunbc.scm.commit_closure_json_v1 deliberately is not.
+// THE REPOSITORY ENVELOPE: the layer that gunbc.scm.commit_closure_json_v2 deliberately is not.
 //
 // image.dag holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
 // and each one is a reason this module exists rather than a field bolted onto that one:
@@ -44,7 +44,7 @@ import extdeps.languages.json.parse {
 
 import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, object_id_eq }
 import gunbc.scm.commit_closure { uncontained_targets }
-import gunbc.scm.commit_closure_json_v1 {
+import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocMemberMissing,
   ClosureDocMemberDuplicated,

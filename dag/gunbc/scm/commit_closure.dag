@@ -106,6 +106,35 @@ import gunbc.scm.object_store {
 // THE REVIEW TELL, stated so it can be checked against a later diff: if a consumer of this module
 // grows a check that the encoder used to perform, the wall was MOVED rather than kept, and this
 // paragraph is the thing that was violated.
+// THE RUNG THIS ACTUALLY OCCUPIES, AND IT IS LOWER THAN TWO REVIEWERS READ IT AS.
+//
+// `sole_constructor` stops a caller writing the RECORD LITERAL. It does not stop a caller calling
+// the public mint below, because .dag has no module privacy -- so the token is unforgeable in shape
+// and freely OBTAINABLE in practice. Worse, it is not bound to any subject:
+//
+//   admit closure A  ->  token T
+//   encode closure B with T  ->  ACCEPTED
+//
+// The encoder checks that a token is PRESENT, never that it is ABOUT the closure being encoded. That
+// is authority substitution in the exact form this repository has already named: a true admission
+// about one subject answering for another because no relation binds them. The existing mutation
+// (delete the check) proves the check is READ; it proves nothing about what the token is about.
+//
+// So the honest rung is MITIGATABLE, not structural: an accidental partial write is caught, a
+// mis-attributed one is not. This paragraph exists because the reported rung must equal the rung
+// executed evidence establishes, and review 54944 read the wall as "structural" -- which is the
+// inflation section 4b calls worse than sitting low, since an inflated class never ranks for
+// climbing.
+//
+// NEXT-RUNG TRIGGER, and it is a shape change rather than a check: the admitted carrier binds the
+// closure and its unresolved population together --
+//
+//   AdmittedPartialCommitClosure sole_constructor { closure, unresolved, reason }
+//
+// minted by a function that DERIVES `unresolved` from the closure it is given, with the encoder
+// taking the admitted carrier instead of a closure plus a free-floating token. Then "a token for A
+// used on B" has no spelling at all. Discriminator the repair owes: an admission produced for A,
+// attempted against B, refuses or cannot be constructed.
 type PartialClosureAdmission sole_constructor {
   reason: PartialClosureReason
 }

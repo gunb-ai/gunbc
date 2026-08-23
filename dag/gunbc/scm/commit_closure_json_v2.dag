@@ -1,4 +1,4 @@
-module gunbc.scm.commit_closure_json_v1
+module gunbc.scm.commit_closure_json_v2
 
 import std.types { Bool, Int, List, String, list_length }
 

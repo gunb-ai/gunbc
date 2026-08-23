@@ -34,7 +34,7 @@ import gunbc.scm.object_store {
 import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue }
 import extdeps.languages.json.parse { parse_json }
-import gunbc.scm.commit_closure_json_v1 {
+import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
   ClosureDocTargetNotOneArm,
