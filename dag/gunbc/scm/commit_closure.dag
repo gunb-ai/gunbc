@@ -197,20 +197,45 @@ fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
 // it carries many commits over one population, so there is no single root and the roots it does
 // have are checked separately against the commit list. Folding the root into this would have forced
 // the repository to invent one.
+// UNCONTAINED TARGETS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the same idiom this stack applies
+// in commit_closure_json_v2 encode_step and in repository_envelope's commit fold. It is restated at
+// the third site because the first two were not enough: this module documented the rule and then
+// reintroduced the shape it forbids, which is the §6 point exactly -- fixing a cost shape where a
+// review names it is not the same as not having the defect, and the sweep has to cover every
+// accumulator a change introduces.
+//
+// BOTH LEVELS WERE QUADRATIC, and the inner one is why the per-record helper takes the caller's
+// accumulator instead of returning a fresh list. Building a list per record and joining it at the
+// top copies the whole accumulator once per RECORD; prepending each child onto the single threaded
+// accumulator copies nothing at either level, and one linear reverse at the top restores authored
+// order exactly.
+//
+// THE REVERSE IS LOAD-BEARING, AND THAT SENTENCE COST A MEASUREMENT RATHER THAN AN ASSERTION. An
+// earlier revision of this comment claimed order was already observed and named two existing claims
+// as the evidence. It was false: names_exactly is a MEMBERSHIP fold and every closure fixture
+// asserted exactly ONE missing identity, and a one-element list reversed is itself. Dropping the
+// reverse was measured to leave every claim in the file green. The claim that holds it up is
+// two_uncontained_children_are_named_in_order, written for this and verified both ways -- with the
+// reverse exit=0, without it exit=1.
+//
+// The realized n is not the argument. A delta encoder folds this over the whole store, and DESIGN §6
+// rejects "n is small here" as a non-time-stable fact: reuse is what changes n.
 fn uncontained_targets(store: ObjectStore) -> List<ObjectId> {
-  fold(
-    store_records_in_dependency_order(store: store),
-    init: [],
-    f: fn(acc, record) { concat(acc, uncontained_in_record(store: store, record: record)) }
+  reverse(
+    fold(
+      store_records_in_dependency_order(store: store),
+      init: [],
+      f: fn(acc, record) { uncontained_in_record(store: store, acc: acc, record: record) }
+    )
   )
 }
 
-fn uncontained_in_record(store: ObjectStore, record: ObjectRecord) -> List<ObjectId> {
+fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: ObjectRecord) -> List<ObjectId> {
   fold(
     record.children,
-    init: [],
-    f: fn(acc, child) {
-      if store_contains(store: store, identity: child.target) { acc } else { concat(acc, [child.target]) }
+    init: acc,
+    f: fn(inner, child) {
+      if store_contains(store: store, identity: child.target) { inner } else { concat([child.target], inner) }
     }
   )
 }
