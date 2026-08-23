@@ -1,0 +1,29 @@
+module test.claim.qualified_pattern_head_witness_test
+
+data qualified_pattern_head_note: String = "A QUALIFIED PATTERN HEAD MUST BIND WHAT THE BARE SPELLING BINDS. Two spellings of one pattern name the same declaration, so they must bind the same node; only the authored string differs. MECHANISM: lookup_variant_in_type forks on whether the head contains a dot. The bare branch answers from the SCRUTINEE, which carries the instantiation. The dotted branch answered from the SYMBOL INDEX, which returns the coproduct's DECLARATION -- uninstantiated -- so the payload bound to the declaration's type PARAMETER instead of the scrutinee's type ARGUMENT, and every field read off the bound value reported no such field on type 'T'. MEASURED, minimal, both arms in one fixture: one generic coproduct, one concrete record, and two probe functions differing only in the spelling of the head. A NON-GENERIC coproduct cannot discriminate this at all -- declaration and instantiation coincide there -- which is why the fixture is generic. THE FIX PRESERVES ADMISSION: the index lookup still runs first and still decides whether the head names a variant of this coproduct at all, so a head naming some other coproduct's variant misses exactly as before. What changes is only where the bound NODE comes from once admission succeeds -- the scrutinee when it carries that variant, the declaration otherwise, which is the pre-existing answer for a scrutinee that does not. ZERO-DRIFT: the added lookup runs only inside the dotted branch, so no bare pattern reaches it, and the fallback arm reproduces the previous answer byte-for-byte. WHY MAIN IS GREEN WITHOUT THIS: the v1 seed closure matches almost exclusively on bare heads, so an ordinary regen exercises the bare branch only -- which is exactly why this witness authors the qualified arm rather than relying on the corpus to contain one. The population that reaches this path grows with the namespace work, where every pattern head is qualified by construction. dissolve-on: never -- permanent regression control for the spelling-identity law in pattern position."
+
+fn w_qualified_pattern_head_binds_the_instantiation() -> Bool {
+  compile_dag_rust_emit_check(
+    "module qualpat_qual_probe_mod\n\nimport test.fixture.qualpat_provider \{ QualpatResult, QualpatPayload \}\n\nfn qualpat_qual_read(r: test.fixture.qualpat_provider.QualpatResult<test.fixture.qualpat_provider.QualpatPayload>) -> String \{\n  match r \{\n    test.fixture.qualpat_provider.QualpatOk \{ value: v \} => v.root\n    test.fixture.qualpat_provider.QualpatErr \{ code: _ \} => \"\"\n  \}\n\}\n",
+    "src/qualpat_qual_probe_mod.rs",
+    ["fn qualpat_qual_read", ".root"],
+    []
+  )
+}
+
+fn w_bare_pattern_head_is_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module qualpat_bare_probe_mod\n\nimport test.fixture.qualpat_provider \{ QualpatResult, QualpatPayload, QualpatOk, QualpatErr \}\n\nfn qualpat_bare_read(r: QualpatResult<QualpatPayload>) -> String \{\n  match r \{\n    QualpatOk \{ value: v \} => v.root\n    QualpatErr \{ code: _ \} => \"\"\n  \}\n\}\n",
+    "src/qualpat_bare_probe_mod.rs",
+    ["fn qualpat_bare_read", ".root"],
+    []
+  )
+}
+
+test fn qualified_pattern_head_binds_the_instantiation() -> Bool {
+  w_qualified_pattern_head_binds_the_instantiation()
+}
+
+test fn bare_pattern_head_is_unchanged() -> Bool {
+  w_bare_pattern_head_is_unchanged()
+}
