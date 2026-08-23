@@ -8,7 +8,6 @@ module test.claim.scm_repository_envelope_witness
 // identity, re-derived from structure on load -- so the round-trip claims assert on the derived
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { Bool, Int, List, String }
 
 import extdeps.languages.json.emit {
@@ -597,90 +596,4 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
       )
     )
   ) == "unexpected_member"
-}
-
-// DIRECT DRIVER. The required floor discovers `test fn` on its own and does not call this, so it is
-// not the enrolment path -- it exists because the floor is currently refusing before subject
-// preparation for a reason this branch does not own, and a change to this module would otherwise be
-// typechecked and never executed. `gunbc run --function` cannot drive a Bool-returning `test fn`,
-// so a ProcessExit entry point is the only direct route.
-//
-// It carries no assertions of its own: every claim below is the authority, and this only sequences
-// them and maps the first failure to an exit code. Delete it once the floor executes these
-// identities again, at which point it is a second invocation path with no consumer.
-//
-// ITS OWN COVERAGE IS THE RISK, AND THE INVARIANT IS AN IDENTITY SET, NOT A COUNT. A hand-sequenced
-// driver that omits a claim turns "driver green" into a subset run that reads as a full pass -- the
-// nothing-ran versus nothing-failed trap, inside the tool built to avoid it.
-//
-// An earlier revision of this comment recorded the invariant as declared == dispatched, and that is
-// the weaker check it sounds like. Cardinality cannot distinguish
-//
-//     declared   A B C D
-//     dispatched A B C C
-//
-// where both are four and D never runs. Demonstrated on a sibling witness by duplicating one
-// dispatch and dropping another: the count check reported declared=6 dispatched=6 and PASSED, while
-// an_honest_collision_is_its_own_standing_and_never_supersedes never executed.
-//
-// The invariant is therefore exact SET EQUALITY of declared `test fn` names against dispatched
-// reason strings, plus uniqueness in both populations. Measured here: 24 identities, sets equal, no
-// duplicates; and the check is falsified by the planted case above rather than assumed to work.
-//
-// That check is run by hand, not by a gate, and the rung is stated rather than dressed up:
-// MITIGATABLE. A committed gate was deliberately not built, because durable enforcement machinery
-// for an artifact with a scheduled deletion is scaffold protecting scaffold. The real dissolution is
-// the floor executing these identities, which removes the driver and the invariant together.
-fn envelope_witness_main() -> ProcessExit {
-  if !scm_env_an_empty_repository_round_trips() {
-    ExitFailure { code: 1, reason: "scm_env_an_empty_repository_round_trips" }
-  } else   if !scm_env_an_empty_repository_has_no_phantom_commit() {
-    ExitFailure { code: 1, reason: "scm_env_an_empty_repository_has_no_phantom_commit" }
-  } else   if !scm_env_the_commit_counter_distinguishes_a_populated_repository() {
-    ExitFailure { code: 1, reason: "scm_env_the_commit_counter_distinguishes_a_populated_repository" }
-  } else   if !scm_env_commit_identities_survive_reconstruction() {
-    ExitFailure { code: 1, reason: "scm_env_commit_identities_survive_reconstruction" }
-  } else   if !scm_env_the_root_signature_distinguishes_order() {
-    ExitFailure { code: 1, reason: "scm_env_the_root_signature_distinguishes_order" }
-  } else   if !scm_env_two_commits_share_one_object_population() {
-    ExitFailure { code: 1, reason: "scm_env_two_commits_share_one_object_population" }
-  } else   if !scm_env_the_encoded_counter_distinguishes_a_smaller_repository() {
-    ExitFailure { code: 1, reason: "scm_env_the_encoded_counter_distinguishes_a_smaller_repository" }
-  } else   if !scm_env_an_unrecognized_format_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_an_unrecognized_format_refuses" }
-  } else   if !scm_env_an_unrecognized_identity_rule_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_an_unrecognized_identity_rule_refuses" }
-  } else   if !scm_env_a_dangling_checked_out_reference_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_a_dangling_checked_out_reference_refuses" }
-  } else   if !scm_env_a_dangling_commit_root_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_a_dangling_commit_root_refuses" }
-  } else   if !scm_env_an_absent_checkout_is_valid_not_a_refusal() {
-    ExitFailure { code: 1, reason: "scm_env_an_absent_checkout_is_valid_not_a_refusal" }
-  } else   if !scm_env_survives_serialization_to_text_and_back() {
-    ExitFailure { code: 1, reason: "scm_env_survives_serialization_to_text_and_back" }
-  } else   if !scm_env_re_encoding_is_stable() {
-    ExitFailure { code: 1, reason: "scm_env_re_encoding_is_stable" }
-  } else   if !scm_env_the_byte_comparison_distinguishes_a_message_change() {
-    ExitFailure { code: 1, reason: "scm_env_the_byte_comparison_distinguishes_a_message_change" }
-  } else   if !scm_env_a_checkout_naming_a_non_commit_object_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_a_checkout_naming_a_non_commit_object_refuses" }
-  } else   if !scm_env_a_valid_commit_reference_checks_out() {
-    ExitFailure { code: 1, reason: "scm_env_a_valid_commit_reference_checks_out" }
-  } else   if !scm_env_an_uncontained_target_refuses_to_encode_and_names_it() {
-    ExitFailure { code: 1, reason: "scm_env_an_uncontained_target_refuses_to_encode_and_names_it" }
-  } else if !scm_env_a_commit_root_absent_from_the_store_refuses_to_encode() {
-    ExitFailure { code: 1, reason: "scm_env_a_commit_root_absent_from_the_store_refuses_to_encode" }
-  } else   if !scm_env_a_checkout_naming_a_non_commit_refuses_to_encode() {
-    ExitFailure { code: 1, reason: "scm_env_a_checkout_naming_a_non_commit_refuses_to_encode" }
-  } else   if !scm_env_a_complete_repository_encodes() {
-    ExitFailure { code: 1, reason: "scm_env_a_complete_repository_encodes" }
-  } else   if !scm_env_an_unknown_envelope_member_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_an_unknown_envelope_member_refuses" }
-  } else   if !scm_env_the_unmodified_wire_still_loads() {
-    ExitFailure { code: 1, reason: "scm_env_the_unmodified_wire_still_loads" }
-  } else   if !scm_env_an_unknown_commit_member_refuses() {
-    ExitFailure { code: 1, reason: "scm_env_an_unknown_commit_member_refuses" }
-  } else {
-    ExitSuccess
-  }
 }

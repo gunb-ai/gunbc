@@ -13,7 +13,6 @@ module test.claim.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 import std.types { Bool, Int, List, list_length }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
@@ -315,37 +314,6 @@ fn reason_is_transfer(r: PartialClosureReason) -> Bool {
   }
 }
 
-fn commit_closure_witness_main() -> ProcessExit {
-  if !a_complete_closure_names_nothing_missing() {
-    ExitFailure { code: 1, reason: "a_complete_closure_names_nothing_missing" }
-  } else if !a_grafted_root_names_exactly_the_child_it_lacks() {
-    ExitFailure { code: 1, reason: "a_grafted_root_names_exactly_the_child_it_lacks" }
-  } else if !a_closure_missing_its_own_root_names_the_root() {
-    ExitFailure { code: 1, reason: "a_closure_missing_its_own_root_names_the_root" }
-  } else if !an_admission_carries_the_decision_that_produced_it() {
-    ExitFailure { code: 1, reason: "an_admission_carries_the_decision_that_produced_it" }
-  } else if !a_partial_closure_encodes_only_with_an_admission() {
-    ExitFailure { code: 1, reason: "a_partial_closure_encodes_only_with_an_admission" }
-  } else if !an_uncontained_object_survives_the_wire_and_is_still_named() {
-    ExitFailure { code: 1, reason: "an_uncontained_object_survives_the_wire_and_is_still_named" }
-  } else if !a_target_must_carry_exactly_one_arm() {
-    ExitFailure { code: 1, reason: "a_target_must_carry_exactly_one_arm" }
-  } else if !a_target_carrying_one_arm_still_decodes() {
-    ExitFailure { code: 1, reason: "a_target_carrying_one_arm_still_decodes" }
-  } else if !a_duplicated_at_is_refused_against_at() {
-    ExitFailure { code: 1, reason: "a_duplicated_at_is_refused_against_at" }
-  } else if !a_non_string_at_is_refused_against_at() {
-    ExitFailure { code: 1, reason: "a_non_string_at_is_refused_against_at" }
-  } else if !two_uncontained_children_are_named_in_order() {
-    ExitFailure { code: 1, reason: "two_uncontained_children_are_named_in_order" }
-  } else if !an_admission_names_the_objects_it_admits_as_missing() {
-    ExitFailure { code: 1, reason: "an_admission_names_the_objects_it_admits_as_missing" }
-  } else if !the_mint_refuses_a_complete_closure() {
-    ExitFailure { code: 1, reason: "the_mint_refuses_a_complete_closure" }
-  } else {
-    ExitSuccess
-  }
-}
 
 // ------------------------------------------------------------------------------------------------
 // THE WIRE HALF OF THE ACCEPTANCE TEST.
