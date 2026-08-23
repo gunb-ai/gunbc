@@ -1,0 +1,79 @@
+module test.claim.declared_type_inhabitance_direct_call_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SUBSTRATE-ONLY BY DELIBERATE CHOICE, AND THE SIBLING FILE EXPLAINS WHY IN ITS OWN VOICE.
+// test.claim.direct_call_argument_type_witness records that an assertion authored in a
+// ReadsLiveTree module is "enrolled and inert -- the specification-without-execution state
+// DESIGN 5 names, wearing the costume of a populated probe corpus", because a ReadsLiveTree
+// witness is discovered, counted in declined_live, and never folded. These arms are the
+// regression control for a discrimination that must not decay, so they are authored where the
+// floor actually folds them.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE PAIR THIS FILE EXISTS FOR. std.nat and v2.std.nat both declare a type spelled Nat and they
+// are NOT the same concept: std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively
+// as a kernel integer, while v2.std.nat.Nat is the Peano coproduct Zero | Succ { prev: Nat }.
+// v1.compiler.coercion numeric_realization_identity_note names this exact pair as the hazard a
+// bare-name rule gets wrong.
+//
+// declared_type_inhabitance admits a kernel numeric at the FIRST by consulting
+// decl_file_realizes_natively, which is keyed on the resolved DECLARING MODULE. If that
+// discrimination ever decays to a spelling comparison, the RED arm below admits and goes green,
+// which is the whole point of enrolling it: DESIGN 4b(4) keeps the evidence after a climb
+// precisely so the higher rung stays real.
+
+// RED -- a kernel integer at the PEANO Nat. 5 is not Zero and not Succ, and no realization row
+// covers src/v2/std/nat.dag, so this must refuse. It is the arm that fails if identity ever
+// collapses to the spelling "Nat".
+data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport v2.std.nat { Nat }\nfn takes_peano(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
+
+test fn w_kernel_numeric_at_the_peano_nat_is_refused() -> Bool {
+  violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// GREEN -- the same literal at the NATIVE Nat. Structurally this is a kernel value at an
+// algebraic record and reads identically to the arm above; only the declaring module differs.
+// It must be admitted, and admitted SILENTLY: the class is decidable, so there is no residue to
+// count and nothing here asserts one.
+data native_nat_arg_source: String = "module probe_inhabit_native\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: 40) }\n"
+
+test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
+  violation_count(source: native_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE ADMISSION IS A CONJUNCTION, NOT A CARVE-OUT FOR THE TYPE. The declared side realizing
+// natively is only half of it; the produced value must ALSO be a kernel numeric. A String at the
+// same natively-realized position stays refused. Without this arm, an implementation that
+// admitted ANYTHING at a natively-realized declared type would pass the green arm above.
+data string_at_native_nat_source: String = "module probe_inhabit_native_str\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: \"forty\") }\n"
+
+test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool {
+  violation_count(source: string_at_native_nat_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// REACHABILITY, ON A DIFFERENT CLASS THAN THE WALL'S. An undefined name at the same argument
+// position must be refused by SOMETHING, or the two accepting arms above cannot distinguish "the
+// position is judged and the value was admitted" from "the position is never reached". An
+// unresolved value name is refused through inference_error, which constructs
+// InternalError { message } -- measured, not assumed.
+data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: nosuchname_zzz_dc) }\n"
+
+test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
+  violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
+}

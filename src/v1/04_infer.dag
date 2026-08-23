@@ -91,6 +91,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
+import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -2171,6 +2172,9 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if declared_realizes_as_kernel_numeric(
+      declared: declared, produced: produced, source_indices: source_indices) {
+    Inhabits
   } else if kernel_value_declared_type_mismatch(
       formal: declared, actual: produced,
       type_env: scope.type_env, source_indices: source_indices) {
@@ -2184,6 +2188,48 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 
 // The obligation carries its own position, so ONE emitter locates every refusal. A per-position
 // diagnostic function would be the N-representation problem moved one layer down.
+// WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
+// CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
+// `type Nat = CommutativeSemiring<Magnitude>` and std.integer declares
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is an algebraic
+// STRUCTURE while their values are authored as kernel integer literals. Read structurally that
+// is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
+// direct-call seam, every one correct code.
+//
+// The corpus does not leave this to convention. v1.compiler.coercion
+// numeric_realization_declaring_modules records that exactly these declaring modules realize
+// natively, and decl_file_realizes_natively answers it. So the class was never undecidable, it
+// was UNCONSULTED -- which is why nothing here is counted: a residue would record a deficit
+// that does not exist.
+//
+// THREE PROPERTIES THIS RELIES ON, none of them incidental:
+//   IDENTITY, NOT SPELLING. The authority is keyed on the resolved declaring module.
+//   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
+//   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
+//   admits the wrong one. The enrolled RED for that pair is the regression control.
+//   FAIL-CLOSED ON UNKNOWN IDENTITY. decl_file_realizes_natively answers false for the empty
+//   string, and the empty string is what an unestablished identity yields. No fallback is
+//   added here, so a site that cannot establish identity keeps refusing.
+//   A CONJUNCTION, NOT A CARVE-OUT. The produced value must ALSO be a kernel numeric, so a
+//   String literal at a Nat-declared position stays refused.
+//
+// SOURCE-LEVEL, NOT EMISSION. decl_file_realizes_natively takes only decl_file; the neighbouring
+// lookup_checkpoint takes a RenderTarget and would have made an emission fact answer a
+// source-level question, which is why it is deliberately not the surface used here.
+fn declared_realizes_as_kernel_numeric(
+  declared: Node,
+  produced: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
+  if produced_is_kernel_numeric == false {
+    false
+  } else {
+    decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   match declared_type_inhabitance(obligation: obligation, scope: scope) {
     Inhabits => []
