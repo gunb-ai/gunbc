@@ -1440,6 +1440,18 @@ fn is_bare_transport(t: Node) -> Bool {
 // bounded by the parser, not by this predicate -- which is the honest statement of what moved:
 // the absorbing arm is gone, the fabricated default that keeps it unoccupied is the open next
 // step and belongs to the parser, not here.
+//
+// AND THE FABRICATED DEFAULT IS LOAD-BEARING IN THE OTHER DIRECTION TOO, which is sharper than
+// "unoccupied arm" and is recorded here so the next reader does not discover it mid-cut
+// (crisp-crane-201 via deep-ant-102, 2026-08-23). Kind is discriminated by MARKER-FIELD PRESENCE:
+// rest is "carries base_url", and the parser's substituted empty string literal IS that marker.
+// Making base_url refuse when absent therefore does not merely tighten a value -- it deletes the
+// rest tag, and every rest transport in the corpus reclassifies as LOCAL. So the parser repair is
+// not a parser repair alone: whoever makes the marker refusable owes an explicit kind tag in the
+// same change. It is deliberately NOT taken here -- this cut binds meaning, it does not move the
+// discrimination -- and it is the reason no arm of bind_operation_transport requires a base_url
+// value: a binding that demanded one would move the classifier while its oracle watched only the
+// emitted bytes, which report THAT output moved and never that the CLASSIFIER moved.
 fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
   if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
   else if is_shell_transport(t: t) { Present { value: ShellTransport } }
