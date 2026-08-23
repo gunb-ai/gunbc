@@ -1,7 +1,7 @@
 module test.claim.fabric_terminal_contract_witness
 
 import std.types { NonEmptyStr, String, Bool, Int }
-import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
+import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
 import std.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
@@ -221,7 +221,7 @@ data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
-  billing_quantum_seconds: 0,
+  billing_quantum: second(count: 0),
   evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
@@ -234,7 +234,7 @@ data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
-  billing_quantum_seconds: 0,
+  billing_quantum: second(count: 0),
   evidence: QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",

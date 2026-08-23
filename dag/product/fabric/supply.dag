@@ -98,7 +98,7 @@ type SupplierOffer<P> {
   quantity_bound: Int
   ready_at: Timestamp
   quote: OfferQuote
-  billing_quantum_seconds: Nat
+  billing_quantum: Second
   evidence: OfferEvidence
 }
 
@@ -292,13 +292,20 @@ fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
   }
 }
 
+// The quantum arrives as a Second rather than a bare Nat for the same reason
+// GrantDuration does, two declarations up: this file already models every other
+// duration it carries as Second, so a *_seconds: Nat field here was the one place
+// the magnitude's name lived in the field name instead of in its type. Both are
+// unwrapped to counts on the next two lines because what follows is integer
+// ceiling arithmetic over unit counts, and a count scaled by measure_scale_fraction_ceil
+// is a dimensionless multiplier, not a duration.
 fn offer_quoted_total_for_grant(
   quote: OfferQuote,
   duration: GrantDuration,
-  quantum_seconds: Nat,
+  quantum: Second,
 ) -> MoneyAmountMicro {
   let seconds = second_count(s: grant_duration_seconds(d: duration))
-  let billed = billed_seconds(seconds: seconds, quantum_seconds: quantum_seconds)
+  let billed = billed_seconds(seconds: seconds, quantum_seconds: second_count(s: quantum))
   match quote {
     QuotedFlatPerGrant(r) => r.amount
     QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
@@ -361,7 +368,7 @@ fn offer_affordability_for<P>(
   if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
-    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum_seconds: offer.billing_quantum_seconds)
+    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum: offer.billing_quantum)
     if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
       QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
     } else {

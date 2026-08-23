@@ -2,7 +2,7 @@ module product.supplier.ubicloud
 
 import std.types { NonEmptyStr, List, Int, Timestamp }
 import std.nat { Nat }
-import std.measure { MoneyRate, ByteSize, HardwareThreadCount }
+import std.measure { MoneyRate, ByteSize, HardwareThreadCount, Second, second }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
@@ -41,7 +41,7 @@ fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
 }
 
 // Sixty seconds, from the vendor's published per-minute billing. Not a default.
-data ubicloud_billing_quantum_seconds: Nat = 60
+data ubicloud_billing_quantum: Second = second(count: 60)
 
 // WHAT THE FABRIC'S SHAPE CANNOT SAY.
 //
@@ -139,7 +139,7 @@ fn bind_ubicloud_offer<P>(
             quantity_bound: placement_concurrency_bound,
             ready_at: ready_at,
             quote: ubicloud_quote(row: row),
-            billing_quantum_seconds: ubicloud_billing_quantum_seconds,
+            billing_quantum: ubicloud_billing_quantum,
             evidence: QuotedSupply {
               quoted_at: quoted_at,
               valid_until: valid_until,
