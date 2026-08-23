@@ -274,6 +274,14 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
     && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
+// THE --set-path CONJUNCT IS RELOCATED HERE, from
+// twin_and_production_configure_disjoint_tailscale_endpoints, which used to render this same
+// script a SECOND time to make that one claim. Production serves the ROOT mount, so its apply must
+// carry no --set-path. This row already holds the script the claim is about, so asserting it here
+// costs nothing measurable and lets that row stop rendering live scripts entirely.
+//
+// Its receipt is a planted defect rather than a reading: giving the production apply a --set-path
+// flag turns THIS row false while witness_retract_script_owned_only stays true.
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
@@ -287,10 +295,6 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
     && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    // RELOCATED from twin_and_production_configure_disjoint_tailscale_endpoints, which used to
-    // render this same script a second time to make this one claim. Production serves the ROOT
-    // mount, so its apply must carry no --set-path; this row already holds the script the claim is
-    // about, so asserting it here costs nothing and lets that row stop rendering live scripts.
     && !string_contains(s: sh, pattern: "--set-path")
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
