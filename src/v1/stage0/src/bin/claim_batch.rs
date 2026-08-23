@@ -574,6 +574,36 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
+    // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
+    // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
+    // required floor it was charged in full to whichever claim resolved an entry first.
+    //
+    // PLACED BEFORE `install_output_policy`, AND THAT ORDERING IS THE WHOLE POINT — MEASURED.
+    // With the warm sitting after it (the first placement tried here) the phase line reported
+    // `already_warm=true cpu_ms=0`: `install_output_policy` resolves `dag/gunbc/output_policy.dag`
+    // through `resolve_entry_graph_shared` -> `process_shared_index` and had already built the
+    // index, so this harness had an ACCIDENTAL first toucher of its own — a 30.8s span billed to
+    // an output-policy read, owned by nothing and bounded by nothing. That is why claim_batch
+    // never reproduced the floor's 57s witness row: not because the cost was absent, but because
+    // a non-claim happened to pay it. Warming here makes the payer explicit and the same in both
+    // harnesses, which is what lets the order-reversal control mean anything at all.
+    let edge_index_warm =
+        v1_compiler::cli_run::warm_bare_reference_edge_index(&process_shared_index(&source_roots))
+            .map_err(|e| {
+                eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
+                ExitCode::from(1)
+            })?;
+    eprintln!(
+        "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} source_files={} bare_eligible={} already_warm={}",
+        edge_index_warm.cpu_ms,
+        edge_index_warm.wall_ms,
+        edge_index_warm.rss_growth_bytes,
+        edge_index_warm.source_files,
+        edge_index_warm.bare_eligible,
+        edge_index_warm.already_warm,
+    );
+
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
     v1_compiler::cli_run::install_output_policy(&source_roots);
     // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,

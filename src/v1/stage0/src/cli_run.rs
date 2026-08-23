@@ -7325,6 +7325,66 @@ fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdge
     Ok(built)
 }
 
+/// ONE observation of ONE shared preparation build — the unit whose cost is being
+/// attributed. Reported per phase, never prorated across the claims that consume the
+/// artifact: a per-row fraction would change whenever the roster changes, making a
+/// row's admissibility depend on how many unrelated consumers happen to be enrolled.
+pub struct SharedBuildObservation {
+    pub cpu_ms: u64,
+    pub wall_ms: u64,
+    pub rss_growth_bytes: u64,
+    pub source_files: usize,
+    pub bare_eligible: usize,
+    /// Provenance only. The first claim to touch a shared artifact is where the build
+    /// was TRIGGERED; it is not what OWNS the cost. After this warm nothing is
+    /// triggered by a claim at all, which is the point.
+    pub already_warm: bool,
+}
+
+/// Build the bare-reference edge index (and, through it, the per-root tree bare census)
+/// for `index` NOW, so that the one-time cost is paid by the caller that prepares the
+/// subject rather than by whichever claim happens to reach it first.
+///
+/// WHY THIS EXISTS, and why it is the third warm in this file rather than an optimization:
+/// `both_closure_edge_index` is memoized per `MultiEntryIndex` and `tree_bare_census_for_root`
+/// per (index, root), so the work is already done exactly once per process — the trace
+/// (`GUNBC_EDGE_INDEX_CENSUS_TRACE=1`) reports two misses on two roots against ONE index
+/// address, with `edge_index_construction { builds: 1 }`. Memoization is therefore correct
+/// and complete, and the defect is not duplication: it is ATTRIBUTION. The first claim to
+/// resolve an entry paid the whole ~28s build inside its own per-claim timer and was
+/// refused against a 5000ms per-claim safety limit that answers a different question, while
+/// its sibling — reaching the identical computation milliseconds later — ran free.
+/// Quarantining the payer only hands the bill to the next claim in evaluation order; the
+/// module-path-index and shared-index warms directly above are the same repair, and the
+/// three modules quarantined down that chain are the receipt for why relocation is not one.
+///
+/// This does NOT make the build cheaper and does not claim to. It moves the charge to the
+/// unit that incurs it, where it is bounded by its own limits (`FloorPreparationRefused`)
+/// instead of by a per-claim ceiling that was never about shared setup.
+pub fn warm_bare_reference_edge_index(
+    index: &MultiEntryIndex,
+) -> Result<SharedBuildObservation, String> {
+    let already_warm = index.both_closure_edges.borrow().is_some();
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let edges = both_closure_edge_index(index)?;
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(SharedBuildObservation {
+        cpu_ms,
+        wall_ms,
+        rss_growth_bytes,
+        source_files: index.source_files.len(),
+        bare_eligible: edges.bare_scan_eligible.len(),
+        already_warm,
+    })
+}
+
 /// Extend the closure with the modules the tree census resolves each source's
 /// BARE references to (namespace Rule-1 direction: deps derived from names, not
 /// import statements — the import-stripped corpus has no import edges to follow,
@@ -41450,6 +41510,63 @@ pub fn run_required_floor(
         shared_index_warm_started.elapsed().as_millis(),
         warmed_shared_index_modules
     );
+    // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
+    //
+    // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
+    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
+    // misses over two source roots against ONE index address, `edge_index_construction {
+    // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
+    // to whichever claim resolved an entry first:
+    // `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+    // at 57193ms CPU against a 5000ms per-claim limit, while its sibling reaching the identical
+    // computation milliseconds later measured 5ms.
+    //
+    // WHAT THIS DOES NOT DO: it does not make the build cheaper, and nothing here claims the run
+    // gets faster. The same work happens once either way; what changes is WHO IS CHARGED.
+    // Quarantining a first toucher would only hand the bill to the next claim in evaluation
+    // order — three modules were quarantined down exactly that chain before the pattern was read
+    // correctly (docs/plans/witness-cost-first-touch-attribution.md).
+    //
+    // PRODUCTION PRECEDES ADJUDICATION, and the placement is deliberate in both directions. The
+    // build happens HERE, as early as any consumer could reach it and ahead of the published-mock
+    // projection and the output-policy install, so no earlier phase can become an accidental
+    // first toucher (measured in `claim_batch`, where exactly that happened: the warm placed after
+    // `install_output_policy` reported `already_warm=true cpu_ms=0` while a 30.8s span sat billed
+    // to an output-policy read). The REFUSAL is adjudicated further down, at the first point where
+    // `hermetic` exists to read the three `.dag` limits — so every reported outcome carries the
+    // observation it was computed against, and a refusal with no observation has no spelling.
+    //
+    // NO PRORATION. The cost is never divided across the claims that consume the artifact: a
+    // per-row fraction would change whenever the roster changes, making a row's admissibility
+    // depend on how many unrelated consumers happen to be enrolled.
+    //
+    // Both index identities the floor's own resolves can reach. `canonical_shared_index_roots`
+    // normalizes the two spellings, so when the roots coincide the second call is a memo hit and
+    // reports `already_warm=true` — which is PROVENANCE (where the build was triggered), never
+    // ownership (what is charged for it).
+    let mut edge_index_warms: Vec<(&'static str, SharedBuildObservation)> = Vec::new();
+    edge_index_warms.push((
+        "source-roots",
+        warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
+    ));
+    edge_index_warms.push((
+        "witness-layer-roots",
+        warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
+    ));
+    for (which, warm) in &edge_index_warms {
+        eprintln!(
+            "[floor-phase] phase=bare-reference-edge-index-warm state=completed roots={which} \
+             cpu_ms={} wall_ms={} rss_growth_bytes={} source_files={} bare_eligible={} \
+             already_warm={}",
+            warm.cpu_ms,
+            warm.wall_ms,
+            warm.rss_growth_bytes,
+            warm.source_files,
+            warm.bare_eligible,
+            warm.already_warm,
+        );
+    }
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -41569,6 +41686,53 @@ pub fn run_required_floor(
         None,
         published.clone(),
     );
+    // THE SAFETY WALL MOVES WITH THE COST. Leaving the shared build outside the claim timer while
+    // reporting it as merely informational would be accounting laundering — no row blocks, the
+    // real cost still occurs, and nothing owns the refusal. So the shared unit gets its OWN
+    // limits, from `v2.workflow.required_floor`, and its own blocking outcome. They are NOT the
+    // per-claim 5000ms: that number answers a claim-level question, and a shared whole-corpus
+    // build is a different unit whose limits are derived from the resources they protect (the CI
+    // job budget and the host memory cap), never from what the build was measured to cost.
+    //
+    // THE NUMBERS HAVE ONE AUTHORITY (the `.dag` constants); the three-axis COMPARISON below is a
+    // hand-written mirror of `floor_preparation_outcome`, which is *mitigatable* and carries its
+    // own dissolution obligation (`floor_preparation_host_mirror_dissolve_on`).
+    let preparation_cpu_limit_ms =
+        floor_required_int(&hermetic, "required_floor_preparation_cpu_safety_limit_ms")?;
+    let preparation_wall_limit_ms =
+        floor_required_int(&hermetic, "required_floor_preparation_wall_safety_limit_ms")?;
+    let preparation_rss_growth_limit_bytes = floor_required_int(
+        &hermetic,
+        "required_floor_preparation_rss_growth_limit_bytes",
+    )?;
+    // Any ONE axis crossing stops the line: three independent bounds on one unit, never tiers.
+    // There is no warn arm — a shared build that "ran long but was allowed to continue" is an
+    // observation with no remedy attached, which is exactly what the deleted per-claim warn tier
+    // cost this module once. And because this returns before the claim loop, a refused
+    // preparation produces NO per-witness sheet at all: a roster of zero-cost rows beside a
+    // refused preparation would read as measured and passing while nothing had run them.
+    for (which, warm) in &edge_index_warms {
+        if warm.cpu_ms > preparation_cpu_limit_ms
+            || warm.wall_ms > preparation_wall_limit_ms
+            || warm.rss_growth_bytes > preparation_rss_growth_limit_bytes
+        {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=FloorPreparationRefused \
+                 phase=BareReferenceEdgeIndexBuild roots={which} observed_cpu_ms={} \
+                 observed_wall_ms={} observed_rss_growth_bytes={} cpu_limit_ms={} \
+                 wall_limit_ms={} rss_growth_limit_bytes={} — the shared bare-reference edge \
+                 index build exceeded its own preparation limits (v2.workflow.required_floor); \
+                 no claim executed, so every claim in this run is NotExecuted rather than \
+                 zero-cost",
+                warm.cpu_ms,
+                warm.wall_ms,
+                warm.rss_growth_bytes,
+                preparation_cpu_limit_ms,
+                preparation_wall_limit_ms,
+                preparation_rss_growth_limit_bytes,
+            ));
+        }
+    }
     // The output policy is installed FROM the prepared subject. Resolving
     // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
     // five channel decisions out of a world this function had already built.
