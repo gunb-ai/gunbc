@@ -81,10 +81,37 @@ test fn w_declared_coproduct_member_is_accepted() -> Bool {
 // from "the position is never reached at all", which the accepting arms above cannot
 // distinguish on their own. It is asserted on a DIFFERENT class than the wall's, deliberately:
 // keying it on DeclaredTypeNotInhabited would make it a second copy of arm one.
+//
+// THE ASSERTION MUST BE POSITIVE, AND AN EARLIER REVISION OF IT WAS NOT. This arm shipped
+// asserting DeclaredTypeNotInhabited == 0 -- the wall's OWN class, at zero -- while the prose
+// above claimed it keyed on a different one. That assertion is satisfied identically by "the
+// position is judged and our wall correctly stayed silent" and by "the position is never
+// reached by anything", which is precisely the distinction the arm exists to make, so it read
+// as coverage while carrying none. It is DESIGN's reachability-read-as-occupancy failure
+// turned on a control: a zero is only readable beside a nonzero. Corrected to demand the
+// refusal it was named for (review 54993).
+//
+// WHY InternalError IS THE CLASS: an unresolved value name is refused by v1.compiler.04_infer
+// through inference_error, which constructs InternalError { message } -- measured, not assumed
+// ("undefined variable 'nosuchname_zzz_probe'" against this exact source). It is coarser than
+// the shape deserves, and that coarseness is why the paired green arm below is not optional:
+// alone, a positive InternalError count could be produced by any unrelated defect in the
+// probe. The pair is what makes the undefined NAME the thing being measured.
 data undefined_name_source: String = "module probe_inhabit_reach\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [nosuchname_zzz_probe] }\n"
 
+// The same source with the name DEFINED and nothing else changed. It is the discriminator for
+// the arm above: if this also reported InternalError, the positive count there would be an
+// artifact of the probe rather than evidence about the name.
+data defined_name_source: String = "module probe_inhabit_reach_ok\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk() -> Rel { SameRev }\nfn probe() -> List<Rel> { [mk()] }\n"
+
 test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
-  violation_count(source: undefined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
+  violation_count(source: undefined_name_source, wanted: "InternalError") > 0
+    && violation_count(source: undefined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+test fn w_reachability_control_discriminates_on_the_name() -> Bool {
+  violation_count(source: defined_name_source, wanted: "InternalError") == 0
+    && violation_count(source: defined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
 // UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. An optional carrier at the
