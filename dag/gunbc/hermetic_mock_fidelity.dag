@@ -100,10 +100,30 @@ type HermeticMockRow {
   fabricates: List<FabricatedFact>
   rung: GuaranteeRung
   ceiling: GuaranteeRung
-  next_trigger: String
 }
 
-data hermetic_mock_fidelity_trigger: String = "a check over ingested operation declarations refuses a mock_response arm that does not vary with the operation's declared input; this roster then derives from that check and deletes"
+// THE TRIGGER IS A PROPERTY OF THE FACT, NOT OF THE ROW, and moving it here is what makes an
+// untracked row UNWRITABLE rather than merely checked (DESIGN section 5: construction over
+// validation). A per-row `next_trigger: String` was authorable as `""`, so it needed a predicate
+// to catch that; derived per fact by a total function, a fabricating row cannot lack a trigger,
+// and the check that guarded the old field was deleted with it rather than left standing green
+// forever. The only authorable red left is a fabricating row naming NO fact, which is a
+// different defect and keeps its own check below.
+//
+// TWO OF THE THREE SHARE A TRIGGER AND THE THIRD CANNOT, which is the whole reason this is a
+// match rather than one string. An exit status and a captured stream are things a faithful mock
+// COULD serve: they are functions of the input the operation already declares. Reachability is
+// not. No mock can honestly answer "was 203.0.113.1 reachable" — the only truthful moves are to
+// consult the transport, which the hermetic floor forbids by construction, or to refuse. So a
+// remedy that made the arm vary with its input would close the first two and leave the third
+// exactly where it is, while looking like a fix.
+fn fabricated_fact_next_trigger(f: FabricatedFact) -> String {
+  match f {
+    ExitStatus => "a mock_response whose value varies with the operation's declared input, so the arm reports the status the script would produce rather than a constant"
+    CapturedOutput => "the same input-varying mock_response, extended to the declared output streams; an empty stdout is a fabricated observation exactly as a zero exit code is"
+    TransportReachability => "REFUSAL, not a better mock: hermetic execution of an operation whose subject is whether a remote endpoint answered must return HermeticEffectGround.NoMockResponse and reach the route-gap roster, because consulting the transport is forbidden here and any answer without consulting it is invented"
+  }
+}
 
 fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
   [
@@ -112,24 +132,21 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
       discrimination: UnconditionalArm {},
       fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
       rung: OutsideTheLadder {},
-      ceiling: StructurallyGuaranteed {},
-      next_trigger: hermetic_mock_fidelity_trigger
+      ceiling: StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.RunArgv",
       discrimination: UnconditionalArm {},
       fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
       rung: OutsideTheLadder {},
-      ceiling: StructurallyGuaranteed {},
-      next_trigger: hermetic_mock_fidelity_trigger
+      ceiling: StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.Check",
       discrimination: UnconditionalArm {},
       fabricates: [ExitStatus {}, TransportReachability {}],
       rung: OutsideTheLadder {},
-      ceiling: StructurallyGuaranteed {},
-      next_trigger: hermetic_mock_fidelity_trigger
+      ceiling: StructurallyGuaranteed {}
     }
   ]
 }
@@ -142,19 +159,12 @@ fn mock_arm_is_fabricating(d: MockArmDiscrimination) -> Bool {
   }
 }
 
-// A FABRICATING ROW MUST CARRY A TRIGGER. DESIGN section 4b(2) forbids an untracked stall: a
-// class below its ceiling names what would let it climb, or it is not being tracked at all. The
-// RED here is authorable -- a row with an empty trigger -- so this is a check that can fail
-// rather than a decoration.
-fn hermetic_mock_row_is_tracked(r: HermeticMockRow) -> Bool {
-  !mock_arm_is_fabricating(d: r.discrimination) || !(r.next_trigger == "")
-}
-
-// A FABRICATING ROW MUST NAME WHAT IT INVENTS. Separate from the trigger check above rather
-// than folded into it, because the two failures have different repairs: a row with no trigger is
-// untracked work, a row with no named fact is an unread diagnosis. `UnconditionalArm` with an
-// empty list would say "this operation lies" and nothing about where, which is precisely the
-// reading that made this class look like ten exit-1 witnesses.
+// A FABRICATING ROW MUST NAME WHAT IT INVENTS -- the one check the construction above cannot
+// make unnecessary. Deriving the trigger per fact made an untracked row unwritable; it did not
+// make an UNDIAGNOSED one unwritable, because `fabricates: []` is still authorable and still
+// says "this operation lies" while saying nothing about where. That is the reading that made
+// this class look like ten exit-1 witnesses, and with the triggers now hanging off the facts it
+// is also the reading that would silently drop the reachability remedy.
 fn hermetic_mock_row_names_what_it_fabricates(r: HermeticMockRow) -> Bool {
   !mock_arm_is_fabricating(d: r.discrimination) || fold_list(
     xs: r.fabricates,
@@ -171,13 +181,6 @@ fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
   )
 }
 
-fn hermetic_mock_fidelity_all_tracked() -> Bool {
-  fold_list(
-    xs: hermetic_mock_fidelity_rows(),
-    empty: true,
-    cons: fn(acc, r) { acc && hermetic_mock_row_is_tracked(r: r) }
-  )
-}
 
 fn hermetic_mock_fabricating_count() -> Int {
   fold_list(

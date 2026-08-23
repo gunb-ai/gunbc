@@ -7,52 +7,25 @@ import gunbc.hermetic_mock_fidelity {
   UnconditionalArm,
   InputDiscriminating,
   ExitStatus,
+  CapturedOutput,
+  TransportReachability,
+  fabricated_fact_next_trigger,
   hermetic_mock_fidelity_all_diagnosed,
-  hermetic_mock_fidelity_all_tracked,
-  hermetic_mock_row_is_tracked,
   hermetic_mock_row_names_what_it_fabricates
 }
 
-// THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_tracked` over the live roster is the
-// positive control; on its own it would be satisfied by an empty roster and by a roster with no
-// fabricating rows, so it carries no information about the check. The two rows below are the
-// discriminating half: an UNTRACKED fabricating row must be rejected, and a non-fabricating row
-// with no trigger must be accepted -- which is what establishes that the predicate reads the
-// discrimination and the trigger together rather than either alone.
-
-fn untracked_fabricating_row() -> HermeticMockRow {
-  HermeticMockRow {
-    operation: "probe.Untracked.Run",
-    discrimination: UnconditionalArm {},
-    fabricates: [ExitStatus {}],
-    rung: OutsideTheLadder {},
-    ceiling: StructurallyGuaranteed {},
-    next_trigger: ""
-  }
-}
-
-fn honest_row_needs_no_trigger() -> HermeticMockRow {
-  HermeticMockRow {
-    operation: "probe.Honest.Run",
-    discrimination: InputDiscriminating {},
-    fabricates: [],
-    rung: StructurallyGuaranteed {},
-    ceiling: StructurallyGuaranteed {},
-    next_trigger: ""
-  }
-}
-
-test fn hermetic_mock_live_roster_is_tracked() -> Bool {
-  hermetic_mock_fidelity_all_tracked()
-}
-
-test fn hermetic_mock_untracked_fabricating_row_is_rejected() -> Bool {
-  !hermetic_mock_row_is_tracked(r: untracked_fabricating_row())
-}
-
-test fn hermetic_mock_honest_row_needs_no_trigger() -> Bool {
-  hermetic_mock_row_is_tracked(r: honest_row_needs_no_trigger())
-}
+// THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_diagnosed` over the live roster is
+// the positive control; on its own it would be satisfied by an empty roster and by a roster with
+// no fabricating rows, so it carries no information about the check. The two rows below are the
+// discriminating half: a fabricating row naming NO fact must be rejected, and a non-fabricating
+// row with an empty list must be accepted -- which is what establishes that the predicate reads
+// the discrimination and the fact list together rather than either alone.
+//
+// THERE IS NO "row carries a trigger" WITNESS HERE, and its absence is deliberate. The trigger
+// is derived per fact by a total function, so a row without one has no spelling; a check for it
+// would be permanently green by construction and would be cited as coverage while carrying no
+// information (DESIGN section 4b). What replaced it is the third row below, which asserts the
+// derivation is not degenerate.
 
 fn undiagnosed_fabricating_row() -> HermeticMockRow {
   HermeticMockRow {
@@ -60,8 +33,17 @@ fn undiagnosed_fabricating_row() -> HermeticMockRow {
     discrimination: UnconditionalArm {},
     fabricates: [],
     rung: OutsideTheLadder {},
-    ceiling: StructurallyGuaranteed {},
-    next_trigger: "a trigger exists; what it fabricates does not"
+    ceiling: StructurallyGuaranteed {}
+  }
+}
+
+fn honest_row_names_nothing() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Honest.Run",
+    discrimination: InputDiscriminating {},
+    fabricates: [],
+    rung: StructurallyGuaranteed {},
+    ceiling: StructurallyGuaranteed {}
   }
 }
 
@@ -69,14 +51,20 @@ test fn hermetic_mock_live_roster_is_diagnosed() -> Bool {
   hermetic_mock_fidelity_all_diagnosed()
 }
 
-// THE SECOND PAIR, and it discriminates against the FIRST check as well as for this one: this
-// row is TRACKED (it carries a trigger) and still undiagnosed, so a green here would mean the
-// two predicates had collapsed into one.
 test fn hermetic_mock_undiagnosed_fabricating_row_is_rejected() -> Bool {
-  hermetic_mock_row_is_tracked(r: undiagnosed_fabricating_row())
-    && !hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
+  !hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
 }
 
 test fn hermetic_mock_honest_row_needs_no_fabrication_list() -> Bool {
-  hermetic_mock_row_names_what_it_fabricates(r: honest_row_needs_no_trigger())
+  hermetic_mock_row_names_what_it_fabricates(r: honest_row_names_nothing())
+}
+
+// THE REACHABILITY REMEDY IS NOT THE OTHER TWO, asserted rather than left in a comment because
+// this is the distinction the whole census turned on: a mock that varied with its declared input
+// would close ExitStatus and CapturedOutput and leave TransportReachability standing. If the
+// three ever collapse to one string, that remedy has been quietly folded into the others and
+// this row reds.
+test fn hermetic_mock_reachability_trigger_is_distinct() -> Bool {
+  !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: ExitStatus {}))
+    && !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: CapturedOutput {}))
 }
