@@ -929,8 +929,210 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
   result
 }
 
+// ---------------------------------------------------------------------------
+// THE DE-FORK: the operation's MEANING is bound once, target-neutrally, and
+// every target consumes the binding instead of re-deriving it.
+//
+// WHAT THIS IS NOT. #8954 collapsed four hand-copies of the transport precedence
+// into one `classify_transport` authority and made the local arm positive. That
+// moved the DISPATCH. It did not move the FORK: its file arm still calls
+// `emit_file_call(op_name, transport, op_node, source_indices)`, so the Rust
+// backend still decides for itself which filesystem action this is, which input
+// is the path, whether a payload exists and how the declared output is built.
+//
+// #8929 built that renderer, and built it carefully -- it refuses per operation
+// on the facts it lacks rather than fabricating, which is what #8858's three
+// deleted renderers did not do. The remaining defect is not its quality; it is
+// its POSITION. Semantic rediscovery inside a target backend is the N x M shape:
+// the day Go or Python needs a file transport, verb/path/payload/channel
+// derivation is copied a second time and the two copies begin agreeing by
+// coincidence. That is how the file transport decayed the first time.
+//
+// So per-target RENDERING stays -- Rust, Python and Go have different syntax --
+// and per-target DECIDING ends here.
+//
+// A CLOSED TOTAL FUNCTION, NOT A HANDLER ROSTER. Nothing declares an independent
+// handler, so an open registration surface would be a growth surface with no
+// consumer (DESIGN section 6).
+//
+// PRECEDENCE IS NOT RE-DERIVED HERE. This calls #8954's `classify_transport`
+// rather than testing rest/shell/file/local again. A second precedence authority
+// that agreed with the first would be the fork this change exists to remove --
+// agreement is not single authority, it is the state in which a fork stays
+// invisible until it diverges.
+
+// The declared file action, as a CLOSED coproduct rather than a verb string.
+// Distinct from `std.effects.EffectShape`, which distinguishes broad effects and
+// may one day be one FIELD of this, but carries no path substitution, payload
+// mapping, result construction or owner-only creation: reusing it as the whole
+// answer would be a carrier claiming more than its constructors entail.
+type FileVerb
+  = FileRead
+  | FileWrite
+  | FileWriteOwnerOnly
+  | FileDelete
+  | FileList
+
+// The declared output projection at the grain the file realization produces.
+//
+// THIS BEING A COPRODUCT RATHER THAN A STRING IS A GUARANTEE CLIMB, not a
+// spelling change, and it is the arm that cannot be faked. #8929 passes the
+// channel KEY to the renderer as a String, so the renderer needs a final arm for
+// a key that reached it without a modeled channel -- a `compile_error!` floor
+// that is correct, unreachable while the wall stands, and necessary only because
+// a String cannot say which keys are modeled. Resolving the key to this
+// coproduct AT THE BINDING leaves that arm with no inhabitant to write it for:
+// the wall/renderer disagreement it guards against becomes unwritable rather
+// than merely caught, and the floor DISSOLVES rather than being kept in step
+// (DESIGN section 5 -- construction over validation; section 4b(4) -- a climb
+// deletes the lower-rung machinery it obsoletes).
+//
+// It is also why this cut cannot be satisfied by routing the old call through a
+// new dispatcher: if `emit_file_call` could still see a raw transport node, this
+// coproduct would have nowhere to come from.
+type FileResultChannel
+  = FileChanSuccess
+  | FileChanByteCount
+  | FileChanPath
+  | FileChanError
+  | FileChanContent
+
+type FileResultField {
+  channel: FileResultChannel
+  optional: Bool
+}
+
+// Why a binding refused. The file arm carries #8929's `FileEmissionRefusal`
+// UNCHANGED and adds no second opinion about file facts; the other arm is the one
+// cause that is not about files at all.
+type TransportBindingRefusal
+  = FileBindingRefused { refusal: FileEmissionRefusal }
+  | TransportMatchesNoRosterMember
+
+type BoundOperation
+  = RestBound { transport: Node }
+  | ShellBound { transport: Node }
+  | LocalBound
+  | FileBound {
+      verb: FileVerb
+      path_template: Node
+      result_fields: List<FileResultField>
+    }
+  | BindingRefused { cause: TransportBindingRefusal }
+
+fn transport_binding_refusal_fact(cause: TransportBindingRefusal) -> String {
+  match cause {
+    FileBindingRefused { refusal: r } => file_emission_refusal_fact(refusal: r)
+    TransportMatchesNoRosterMember =>
+      "the transport matches no member of the closed transport roster (rest, shell, file, local)"
+  }
+}
+
+// The single authority for which declared output keys the file realization can
+// answer. `is_modeled_file_output_channel` is derived from it.
+fn file_result_channel_of_key(key: String) -> FileResultChannel? {
+  if key == "write_success" || key == "success" { Present { value: FileChanSuccess } }
+  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileChanByteCount } }
+  else if key == "path" { Present { value: FileChanPath } }
+  else if key == "error" { Present { value: FileChanError } }
+  else if key == "content" { Present { value: FileChanContent } }
+  else { none }
+}
+
+// Resolves the verb from BOTH declaration facts, because neither alone
+// determines the operation. `Write` and `Read` both carry a file transport with
+// no explicit verb, so the transport does not decide; Read/Write/List/Delete are
+// common spellings, so the name does not decide either. Absent an explicit verb
+// the content-input convention decides -- which is exactly what the working
+// interpreter realization (v1_interpreter dispatch_file) does, so that rule now
+// has ONE authority read by both realizations rather than two agreeing by
+// coincidence.
+//
+// Keyed on the DECLARATION, deliberately not on the five `Filesystem` operation
+// names: enumerating one extdeps module's operations inside the compiler would
+// put a fact extdeps owns into the compiler (section 3).
+//
+// Total by construction over the admitted set: `file_emission_verb_refusal` has
+// already rejected any verb that is not delete, list or write_owner_only, so the
+// final arm is the floor beneath that wall rather than a second opinion.
+fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileVerb {
+  match file_transport_declared_verb(t: t, source_indices: source_indices) {
+    Present { value: v } =>
+      if v == file_transport_verb_delete { FileDelete }
+      else if v == file_transport_verb_list { FileList }
+      else { FileWriteOwnerOnly }
+    Absent =>
+      if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { FileWrite }
+      else { FileRead }
+  }
+}
+
+fn bind_file_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> FileResultField? {
+  match file_result_channel_of_key(key: file_output_channel_of_field(ch: ch, source_indices: source_indices)) {
+    Present { value: c } => Present { value: FileResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
+    Absent => none
+  }
+}
+
+// Builds the binding for a file operation `file_binding_refusal` has admitted.
+// Reads the declared fields WITHOUT unwrapping a single-field product: the `from`
+// key lives on the FIELD, and unwrapping collapses a one-field product to the
+// field's own type and loses it, which would answer a declared
+// `success: Bool from "write_success"` with the content channel.
+fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
+  match file_binding_refusal(op_node: op_node, t: t, source_indices: source_indices) {
+    Present { value: r } => BindingRefused { cause: FileBindingRefused { refusal: r } }
+    Absent =>
+      match transport_base_path(t: t, source_indices: source_indices) {
+        Absent => BindingRefused { cause: FileBindingRefused { refusal: FilePathNotStaticallyRenderable } }
+        Present { value: path_tpl } => {
+          let declared = file_output_channel_fields(op_node: op_node)
+          let fields = declared |> flat_map(ch =>
+            match bind_file_result_field(ch: ch, source_indices: source_indices) {
+              Present { value: f } => [f]
+              Absent => []
+            })
+          let bound_count = fields |> count
+          let declared_count = declared |> count
+          if bound_count != declared_count {
+            BindingRefused { cause: FileBindingRefused { refusal: FileOutputShapeNotModeled } }
+          } else {
+            FileBound {
+              verb: bind_file_verb(t: t, op_node: op_node, source_indices: source_indices),
+              path_template: path_tpl,
+              result_fields: fields
+            }
+          }
+        }
+      }
+  }
+}
+
+// The single binding point, over #8954's closed roster.
+//
+// TARGET-NEUTRAL BY CONSTRUCTION: it takes no RenderTarget, so it cannot consult
+// one. Whether a given target can RENDER the result is a separate fact, applied
+// by the wall and by the dispatchers.
+fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: RestTransport } => RestBound { transport: t }
+    Present { value: ShellTransport } => ShellBound { transport: t }
+    Present { value: FileTransport } => bind_file_operation(t: t, op_node: op_node, source_indices: source_indices)
+    Present { value: LocalTransport } => LocalBound
+    Absent => BindingRefused { cause: TransportMatchesNoRosterMember }
+  }
+}
+
+// Target selection, and ONLY target selection -- the Go/Python twin of the Rust
+// `emit_transport_call`. Both consume a BoundOperation decided once; neither
+// classifies a transport, and neither asks what the operation means.
+//
+// Go and Python have no file renderer. That is a BACKEND CAPABILITY GAP and it
+// refuses as one, through the same counted TransportEmissionNotModeled the wall
+// mints -- deliberately not a fallback to the renderers #8858 deleted, and
+// deliberately not silence.
 fn emit_unified_transport_dispatch(
-  transport: Node,
+  bound: BoundOperation,
   op_name: String,
   source_indices: Map<String, NewlineIndex>,
   depth: Int,
@@ -939,18 +1141,22 @@ fn emit_unified_transport_dispatch(
   render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
   render_local: fn(String, Int) -> String
 ) -> String {
-  match classify_transport(t: transport, source_indices: source_indices) {
-    Present { value: RestTransport } => render_rest(op_name, transport, depth, source_indices)
-    Present { value: ShellTransport } => render_shell(op_name, transport, depth, source_indices)
-    Present { value: FileTransport } => emit_unmodeled_file_transport_refusal(op_name: op_name, target: target)
-    Present { value: LocalTransport } => render_local(op_name, depth)
-    Absent => emit_error_expr(
-      message: concat("transport for operation '", op_name,
-        "' matches no member of the closed transport roster (rest, shell, file, local)"),
-      target: target)
+  match bound {
+    RestBound { transport: t } => render_rest(op_name, t, depth, source_indices)
+    ShellBound { transport: t } => render_shell(op_name, t, depth, source_indices)
+    LocalBound => render_local(op_name, depth)
+    FileBound { verb: _, path_template: __pt, result_fields: __rf } =>
+      emit_unmodeled_file_transport_refusal(op_name: op_name, target: target)
+    BindingRefused { cause: cz } =>
+      emit_error_expr(
+        message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_fact(cause: cz)),
+        target: target)
   }
 }
 
+// Binds BEFORE the operation node is narrowed into a name and a depth. This is
+// the frame that still holds the declaration; one line lower it is gone, and that
+// loss is what every target then had to guess its way back out of.
 fn emit_unified_operation_method(
   service_name: String,
   fallback_transport: Node,
@@ -958,7 +1164,7 @@ fn emit_unified_operation_method(
   target: RenderTarget,
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
-  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(BoundOperation, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let si = env.source_indices
@@ -977,7 +1183,8 @@ fn emit_unified_operation_method(
     _ => emit_ident(name: op_text, target: target)
   }
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: fallback_transport)
-  let body = render_transport_body(eff_transport, op_text, si, method_depth + 1)
+  let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: si)
+  let body = render_transport_body(bound, op_text, si, method_depth + 1)
   let sig = concat(spec.items.async_prefix, spec.items.func_keyword, " ", receiver_str, method_name,
     "(", all_params, ")", ret_str)
   if spec.block_syntax.significant_whitespace {
@@ -995,7 +1202,7 @@ fn emit_unified_service_def(
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
   render_service_fields: fn(String, Node, List<Node>, Map<String, NewlineIndex>) -> String,
-  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(BoundOperation, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
@@ -1901,9 +2108,14 @@ fn file_operation_has_content_input(op_node: Node, source_indices: Map<String, N
 // The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
 // Emission and interpretation are one decision procedure run in two directions (DESIGN §4), so
 // this list is the emitted side of that map and diverging from it is a behavioral fork.
+// DERIVED from the channel resolver rather than listing the same keys a second
+// time: the set a key is ADMITTED from and the set it is RESOLVED into cannot
+// drift, because there is only one of them (DESIGN section 3).
 fn is_modeled_file_output_channel(key: String) -> Bool {
-  key == "write_success" || key == "success" || key == "bytes_written" || key == "bytes"
-    || key == "byte_count" || key == "path" || key == "error" || key == "content"
+  match file_result_channel_of_key(key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // The output FIELDS the emitted realization must answer for, read off the operation's declared
@@ -1957,31 +2169,54 @@ fn file_emission_verb_refusal(op_node: Node, verb: String?, source_indices: Map<
 // ONE predicate, consumed by both the wall (which mints the diagnostic) and the Rust renderer
 // (which refuses to emit anything the wall would have refused). Absent means every fact the
 // emitted realization needs is present in the declaration.
-fn file_emission_refusal(op_node: Node, t: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> FileEmissionRefusal? {
+// Which targets have a file realization handler. Rust does; Go, Python and the
+// Dag re-serializer do not, and refuse as the backend-capability gap they are
+// rather than falling back to the renderers #8858 deleted.
+fn target_renders_file_transport(target: RenderTarget) -> Bool {
   match target {
-    Rust => {
-      if !file_transport_path_is_renderable(t: t, source_indices: source_indices) {
-        Present { value: FilePathNotStaticallyRenderable }
-      } else {
-        let verb = file_transport_declared_verb(t: t, source_indices: source_indices)
-        let verb_refusal = file_emission_verb_refusal(op_node: op_node, verb: verb, source_indices: source_indices)
-        match verb_refusal {
-          Present { value: r } => Present { value: r }
-          Absent =>
-            if !is_product_type(n: resolved_type(n: op_node)) {
-              Present { value: FileOutputShapeNotModeled }
-            } else {
-              let unmodeled = file_operation_output_channels(op_node: op_node, source_indices: source_indices)
-                |> filter(k => !is_modeled_file_output_channel(key: k))
-              match unmodeled |> first {
-                Present { value: k } => Present { value: FileOutputKeyNotModeled { key: k } }
-                Absent => none
-              }
-            }
+    Rust   => true
+    Python => false
+    Go     => false
+    Dag    => false
+  }
+}
+
+// The TARGET-NEUTRAL half: can this operation's declaration be bound at all?
+// Split out of `file_emission_refusal` by the de-fork, because binding is a fact
+// about the DECLARATION and must not be able to consult a render target. Absent
+// means every fact the realization needs is present in the declaration.
+fn file_binding_refusal(op_node: Node, t: Node, source_indices: Map<String, NewlineIndex>) -> FileEmissionRefusal? {
+  if !file_transport_path_is_renderable(t: t, source_indices: source_indices) {
+    Present { value: FilePathNotStaticallyRenderable }
+  } else {
+    let verb = file_transport_declared_verb(t: t, source_indices: source_indices)
+    match file_emission_verb_refusal(op_node: op_node, verb: verb, source_indices: source_indices) {
+      Present { value: r } => Present { value: r }
+      Absent =>
+        if !is_product_type(n: resolved_type(n: op_node)) {
+          Present { value: FileOutputShapeNotModeled }
+        } else {
+          match file_operation_output_channels(op_node: op_node, source_indices: source_indices)
+            |> filter(k => !is_modeled_file_output_channel(key: k))
+            |> first {
+            Present { value: k } => Present { value: FileOutputKeyNotModeled { key: k } }
+            Absent => none
+          }
         }
-      }
     }
-    _ => Present { value: FileTargetNotModeled { target_name: render_target_name(target: target) } }
+  }
+}
+
+// ONE predicate, consumed by the wall (which mints the diagnostic) and by the
+// binding (which refuses to produce a FileBound the wall would have refused).
+// The target gate is applied FIRST and separately, so "this target has no
+// handler" and "this declaration cannot be bound" stay two distinct answers
+// rather than one conflated arm.
+fn file_emission_refusal(op_node: Node, t: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> FileEmissionRefusal? {
+  if !target_renders_file_transport(target: target) {
+    Present { value: FileTargetNotModeled { target_name: render_target_name(target: target) } }
+  } else {
+    file_binding_refusal(op_node: op_node, t: t, source_indices: source_indices)
   }
 }
 
