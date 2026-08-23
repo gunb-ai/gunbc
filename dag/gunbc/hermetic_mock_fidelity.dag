@@ -33,6 +33,29 @@ import v2.std.algebra { fold_list }
 // observe this: it is two lines of a required run, and the pair is what makes it a finding
 // rather than a reading of the declaration.
 //
+// THE ARM FABRICATES THREE FACTS, NOT ONE, and this is the part a reading of the exit status
+// alone misses. The mock supplies every output field, so each field is a separate fabrication
+// with its own discriminating row -- and the third one reds in the OPPOSITE direction from the
+// other two, which is why "the exit-1 witnesses" is the wrong description of the population:
+//   exit status           test.claim.host_effect_apply_witness
+//                           .witness_shell_on_host_failure_fails_closed
+//                         script "exit 1" asserts NOT converged; the arm answers success.
+//   captured output       test.claim.deploy_access_privilege_witness
+//                           .witness_privileged_fixture_surfaces_stdout
+//                         a SUCCEEDING script asserts its stdout carries a marker; the arm's
+//                         stdout is "", so this row reds on a script the arm gets RIGHT.
+//   transport reachability test.claim.host_effect_apply_witness
+//                           .witness_ssh_shell_unreachable_fails_closed
+//                         script "true" over SshShell to 203.0.113.1 -- TEST-NET-3, reserved
+//                         unroutable -- asserts NOT converged. The arm answers success without
+//                         the transport being consulted at all.
+//
+// THE POPULATION AT THAT RUN, 10 of the 36 held reds, stated as a dated receipt rather than as a
+// live count (the drain lanes move it): host_effect_apply_witness 4, srv3_host_effect_apply_witness
+// 3, host_effect_plan_real_execution 2, deploy_access_privilege_witness 1. Every one was read at
+// source and every one asserts on a fact in the three-way list above; none is a separate defect
+// wearing the same symptom.
+//
 // THE RUNG. Below the floor, so `OutsideTheLadder` rather than `Mitigatable`: nothing refuses,
 // nothing counts, nothing is logged, and the fabricated value is indistinguishable from a real
 // one at every consumer. The attainable ceiling is `StructurallyGuaranteed` and the class is
@@ -62,9 +85,19 @@ type MockArmDiscrimination
   | InputDiscriminating
   | NoMockArm
 
+// WHICH FACT THE ARM INVENTS, closed because a mock can only fabricate what the operation's own
+// output block declares. Typed rather than left in the header above, because the three are not
+// one symptom: they red in different directions, they have different consumers, and a remedy
+// that discriminated only on exit status would leave the other two standing.
+type FabricatedFact
+  = ExitStatus
+  | CapturedOutput
+  | TransportReachability
+
 type HermeticMockRow {
   operation: String
   discrimination: MockArmDiscrimination
+  fabricates: List<FabricatedFact>
   rung: GuaranteeRung
   ceiling: GuaranteeRung
   next_trigger: String
@@ -77,6 +110,7 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
     HermeticMockRow {
       operation: "shell.Exec.Run",
       discrimination: UnconditionalArm {},
+      fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
       rung: OutsideTheLadder {},
       ceiling: StructurallyGuaranteed {},
       next_trigger: hermetic_mock_fidelity_trigger
@@ -84,6 +118,7 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
     HermeticMockRow {
       operation: "shell.Exec.RunArgv",
       discrimination: UnconditionalArm {},
+      fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
       rung: OutsideTheLadder {},
       ceiling: StructurallyGuaranteed {},
       next_trigger: hermetic_mock_fidelity_trigger
@@ -91,6 +126,7 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
     HermeticMockRow {
       operation: "shell.Exec.Check",
       discrimination: UnconditionalArm {},
+      fabricates: [ExitStatus {}, TransportReachability {}],
       rung: OutsideTheLadder {},
       ceiling: StructurallyGuaranteed {},
       next_trigger: hermetic_mock_fidelity_trigger
@@ -112,6 +148,27 @@ fn mock_arm_is_fabricating(d: MockArmDiscrimination) -> Bool {
 // rather than a decoration.
 fn hermetic_mock_row_is_tracked(r: HermeticMockRow) -> Bool {
   !mock_arm_is_fabricating(d: r.discrimination) || !(r.next_trigger == "")
+}
+
+// A FABRICATING ROW MUST NAME WHAT IT INVENTS. Separate from the trigger check above rather
+// than folded into it, because the two failures have different repairs: a row with no trigger is
+// untracked work, a row with no named fact is an unread diagnosis. `UnconditionalArm` with an
+// empty list would say "this operation lies" and nothing about where, which is precisely the
+// reading that made this class look like ten exit-1 witnesses.
+fn hermetic_mock_row_names_what_it_fabricates(r: HermeticMockRow) -> Bool {
+  !mock_arm_is_fabricating(d: r.discrimination) || fold_list(
+    xs: r.fabricates,
+    empty: false,
+    cons: fn(acc, f) { true }
+  )
+}
+
+fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
+  fold_list(
+    xs: hermetic_mock_fidelity_rows(),
+    empty: true,
+    cons: fn(acc, r) { acc && hermetic_mock_row_names_what_it_fabricates(r: r) }
+  )
 }
 
 fn hermetic_mock_fidelity_all_tracked() -> Bool {

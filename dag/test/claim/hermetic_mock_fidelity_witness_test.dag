@@ -6,8 +6,11 @@ import gunbc.hermetic_mock_fidelity {
   HermeticMockRow,
   UnconditionalArm,
   InputDiscriminating,
+  ExitStatus,
+  hermetic_mock_fidelity_all_diagnosed,
   hermetic_mock_fidelity_all_tracked,
-  hermetic_mock_row_is_tracked
+  hermetic_mock_row_is_tracked,
+  hermetic_mock_row_names_what_it_fabricates
 }
 
 // THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_tracked` over the live roster is the
@@ -21,6 +24,7 @@ fn untracked_fabricating_row() -> HermeticMockRow {
   HermeticMockRow {
     operation: "probe.Untracked.Run",
     discrimination: UnconditionalArm {},
+    fabricates: [ExitStatus {}],
     rung: OutsideTheLadder {},
     ceiling: StructurallyGuaranteed {},
     next_trigger: ""
@@ -31,6 +35,7 @@ fn honest_row_needs_no_trigger() -> HermeticMockRow {
   HermeticMockRow {
     operation: "probe.Honest.Run",
     discrimination: InputDiscriminating {},
+    fabricates: [],
     rung: StructurallyGuaranteed {},
     ceiling: StructurallyGuaranteed {},
     next_trigger: ""
@@ -47,4 +52,31 @@ test fn hermetic_mock_untracked_fabricating_row_is_rejected() -> Bool {
 
 test fn hermetic_mock_honest_row_needs_no_trigger() -> Bool {
   hermetic_mock_row_is_tracked(r: honest_row_needs_no_trigger())
+}
+
+fn undiagnosed_fabricating_row() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Undiagnosed.Run",
+    discrimination: UnconditionalArm {},
+    fabricates: [],
+    rung: OutsideTheLadder {},
+    ceiling: StructurallyGuaranteed {},
+    next_trigger: "a trigger exists; what it fabricates does not"
+  }
+}
+
+test fn hermetic_mock_live_roster_is_diagnosed() -> Bool {
+  hermetic_mock_fidelity_all_diagnosed()
+}
+
+// THE SECOND PAIR, and it discriminates against the FIRST check as well as for this one: this
+// row is TRACKED (it carries a trigger) and still undiagnosed, so a green here would mean the
+// two predicates had collapsed into one.
+test fn hermetic_mock_undiagnosed_fabricating_row_is_rejected() -> Bool {
+  hermetic_mock_row_is_tracked(r: undiagnosed_fabricating_row())
+    && !hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
+}
+
+test fn hermetic_mock_honest_row_needs_no_fabrication_list() -> Bool {
+  hermetic_mock_row_names_what_it_fabricates(r: honest_row_needs_no_trigger())
 }
