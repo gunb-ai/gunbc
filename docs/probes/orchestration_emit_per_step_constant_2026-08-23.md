@@ -5,6 +5,10 @@ refuted by measurement**. What is actually there is a per-step constant of rough
 in the grammar emit pass — a large coefficient on a linear term, which is a different kind of fact
 with a different owner, and explicitly **not** something DESIGN §6's always-fix rule reaches.
 
+And that constant turns out **not** to be the dominant term for most of the family that provoked the
+measurement: a per-witness fixed cost of about 2.2 seconds, which this probe did not measure, is
+larger for twelve of the sixteen rows. Both figures are below.
+
 This row exists because the refuted hypothesis is the more useful half. It read correctly from the
 source, it had a byte-safe fix already drafted, and merging that fix would have been indistinguishable
 from a real repair afterwards.
@@ -73,9 +77,32 @@ Run alone locally it **passes**, at **cpu=5489ms wall=5504ms**. The 5008ms in th
 **interrupt point, not the row's cost** — the deadline preempted the verdict, exactly as that
 diagnostic says. So the row is ~10% over the fail-stop, not the ~0.2% the interrupt figure suggests.
 
-At ~2ms/step its four emitted scripts are roughly 2750 rendered lines, about 690 per script. Its
-sixteen siblings in that family appear in the same run's `[over-cost]` list at 2830-4109ms, emitting
-two scripts each. **The family's cost is arithmetic over what it emits, not waste.**
+### The family's cost decomposes, and the emit term is not the larger one
+
+The sixteen siblings appear in the same run's `[over-cost]` list at 2830-4109ms. They do **not**
+emit a uniform number of scripts -- counted per witness, twelve emit one, three emit two, one emits
+three, and the refused row emits four. Regressing the seventeen observed costs on that count:
+
+**~2235ms fixed per witness + ~773ms per emitted script.**
+
+| scripts | rows | observed | predicted |
+|---|---|---|---|
+| 1 | 12 | 2830-3178ms | 3008ms |
+| 2 | 3 | 3841-3979ms | 3781ms |
+| 3 | 1 | 4109ms | 4555ms |
+| 4 | 1 | 5504ms | 5328ms |
+
+The ~773ms marginal is consistent with the probe's ~2ms/step over roughly 400 emitted lines per
+script, so the emit constant explains the **slope**.
+
+It does not explain the **intercept**, and the intercept is the larger term for twelve of the
+sixteen. About 2.2 seconds is spent before the first script is emitted, and this probe did not
+measure what that is -- it is per-claim preparation, outside `orch_emit_pipeline` entirely.
+**Naming it as unmeasured rather than folding it into the per-step figure is the point:** a reader
+who takes 5504ms and divides by ~2ms/step concludes the four scripts are ~2750 rendered lines,
+about 3.4x the ~800 the slope actually accounts for. An earlier revision of this row did exactly
+that division. The fixed term is the bigger target for most of this family, and it has neither a
+measurement nor an owner.
 
 ## Why this is not a §6 always-fix
 
@@ -111,8 +138,8 @@ is linear, ≈4 is quadratic; one throwaway probe module doubling n costs minute
 
 **The witness was not split.** `twin_and_production_configure_disjoint_tailscale_endpoints` asserts
 six facts — three about apply, three about retract — and splitting it in two would put each half at
-about two scripts and under the fail-stop, with no assertion weakened and no coverage lost. It is
-available and it is refused: it would zero this row's failure frequency while leaving the sixteen
+two scripts, which the regression above puts at ~3781ms, comfortably under the fail-stop, with no
+assertion weakened and no coverage lost. It is available and it is refused: it would zero this row's failure frequency while leaving the sixteen
 siblings at roughly 8x the 500ms **wall** migration threshold
 (`gunbc.witness_row_cost` — note the threshold's axis is wall and the fail-stop's is thread CPU;
 they are different clocks and comparing them directly is the mismatch that carrier warns about).
