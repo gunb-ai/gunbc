@@ -41,6 +41,18 @@ data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
 data readlink_program: NonEmptyStr = "readlink"
+data ls_program: NonEmptyStr = "ls"
+
+// -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
+// ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
+// stdout is a terminal and emits one-per-line when it is a pipe, so a caller that does not pass -1
+// is depending on where its output happens to go. It does NOT recurse and does NOT include dotfiles
+// -- that is -a, a different question with a different answer -- so this enumerates exactly the
+// non-hidden entries DIRECTLY under `path`. A caller needing hidden entries or a recursive walk
+// needs its own builder and its own name, not a flags parameter here.
+fn ls_one_per_line_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program, arguments: ["-1", path])
+}
 
 fn cat_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program, arguments: [path])
