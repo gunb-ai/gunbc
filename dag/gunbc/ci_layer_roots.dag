@@ -51,6 +51,12 @@ data witness_layer_roots: List<String> = ["dag", "src/v2"]
 // actually escaped. Widening this list is a row; it is a cost decision, not a Rust edit.
 data required_v2_emission_entries: List<String> = ["dag/std/abi.dag"]
 
+// ENROLMENT AUTHORITY: this phase is required in --required-ci on an operator ruling
+// relayed through the requesting session on 2026-08-23, at a measured +135s. The row
+// below is a DISSOLUTION condition -- how the gate ends -- and is not, and may not be
+// read as, the admission that created it; those are two different questions and only the
+// second is an operator's to grant (DESIGN, scaffold-admission doctrine).
+//
 // The standalone emission gate is NOT the terminal construction and must not become a
 // permanent fourth implementation of one transaction. It exists because the authentic
 // self-host product receipt is not yet required on every admitted candidate; when that

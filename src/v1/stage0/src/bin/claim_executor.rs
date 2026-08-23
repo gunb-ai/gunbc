@@ -10055,14 +10055,25 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    // ── V2 EMISSION, ITS OWN ENTRY POINT AND DELIBERATELY NOT ENROLLED ──────────
+    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
     //
-    // NOT added to `--required-ci`. Changing what every PR must pass is an operator
-    // decision, not an author's; the capability lands here with its evidence executing
-    // and the enrolment question goes up with its measured cost attached (135s over the
-    // configured entry, against the floor's ~30-40 minutes). Landing it enrolled would
-    // have been the author granting himself the very admission DESIGN §5 says is
-    // external to the diff.
+    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
+    // mode below), on an operator ruling relayed through the requesting session
+    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
+    // flags are not an opt-in alternative to that phase and must not be read as one:
+    // they exist because running the emission alone, or running only its red/green
+    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
+    // keeps its own bin beside its required phase.
+    //
+    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
+    // enrolment, which is the premise contamination DESIGN warns about rather than a
+    // stale comment: a reader grepping here would conclude the phase is opt-in when it
+    // is required. It is rewritten rather than annotated, because two accounts of one
+    // fact is what produced the contradiction.
+    //
+    // Both flags run the SAME producer the required phase runs
+    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
+    // different facts.
     if required_v2_emission_selftest_mode {
         let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
         for failure in &failures {
