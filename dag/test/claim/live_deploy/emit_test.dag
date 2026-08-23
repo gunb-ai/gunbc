@@ -701,6 +701,18 @@ test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
     && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
+test fn probe_ab_minus_two_positives_all_lets_kept() -> Bool {
+  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  !string_contains(s: live_apply, pattern: "--set-path")
+    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
 test fn probe_ab_twin_disjoint_minus_two_live_positives() -> Bool {
   let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })

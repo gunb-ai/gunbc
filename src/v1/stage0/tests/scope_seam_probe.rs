@@ -53,6 +53,13 @@ fn probe() {
                 // disjointness conjuncts are untouched: their absence once shipped a
                 // production-destroying apply.
                 "probe_ab_twin_disjoint_minus_two_live_positives",
+                // LET-EAGERNESS ARM: same two conjuncts removed, but ALL FOUR let bindings
+                // kept (unused lets are legal — specimen: diff_window_cross_seam_witness_test
+                // `let tampered`, bound and never read, in a file main's prepare resolves).
+                // If this matches the UNMODIFIED row, the interpreter renders eagerly at the
+                // let and no conjunct-level surgery can help. If it matches the arm above,
+                // evaluation is lazy and the render really was dropped.
+                "probe_ab_minus_two_positives_all_lets_kept",
             ] {
                 let q = format!("{emit_entry}.{f}");
                 let t0 = std::time::Instant::now();
