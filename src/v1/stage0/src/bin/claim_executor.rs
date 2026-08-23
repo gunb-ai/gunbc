@@ -10246,7 +10246,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The three phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -10298,7 +10298,66 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
+        // the requesting session, after the 2026-08-23 break reached main and stayed for
+        // hours with every required phase green: the required run parses src/v1 .dag,
+        // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
+        // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
+        //
+        // ORDERED AHEAD OF THE FLOOR, and the ordering is a report-order fact only: the
+        // phases stay independent and every one runs even after an earlier failure, so
+        // this does not stop the floor starting on an unemittable tree. Making it an early
+        // PREREQUISITE (an exit before the floor) is a scheduling decision that belongs to
+        // the operator with the number attached, and it would change this mode's
+        // stopped-line audit design, so it is not taken here.
+        //
+        // The subject is the SAME PRODUCER the cargo board runs
+        // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
+        // a green here and an emitting board are one fact rather than two.
+        eprintln!("required-ci: phase v2-emission (one entry, the board's producer)");
+        match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                if not_completed > 0 {
+                    phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                phase_failures.push(format!("v2-emission roster: {e}"));
+            }
+        }
+        ran.push("v2-emission");
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10341,47 +10400,54 @@ fn run() -> Result<ExitCode, ExitCode> {
             source_roots.clone()
         };
         return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
-            Ok(outcomes) => {
-                let mut refused = 0usize;
-                for outcome in &outcomes {
-                    // Every field is printed whether or not this entry refused: a stopped
-                    // line is analysed before it restarts, and the counts are what the
-                    // analysis reads.
-                    eprintln!(
-                        "required-v2-emission: entry={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
-                        outcome.entry,
-                        outcome.closure_modules,
-                        outcome.census_modules,
-                        outcome.files_emitted,
-                        outcome.blocking_diagnostics,
-                        outcome.advisory_diagnostics,
-                        outcome.wall_ms,
-                    );
-                    if let Some(refusal) = &outcome.refusal {
-                        refused += 1;
-                        eprintln!("required-v2-emission: REFUSED {refusal}");
-                    } else if outcome.files_emitted == 0 {
-                        refused += 1;
-                        eprintln!(
-                            "required-v2-emission: REFUSED {} emitted no files and produced no refusal — the emitter reached neither outcome",
-                            outcome.entry
-                        );
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    // ONE SELF-DESCRIBING LINE. The disposition is ON the line, so a run
+                    // that never reached the compiler cannot be read as a clean emission
+                    // of nothing by anything that reads one line at a time.
+                    eprintln!("{}", run.measurement_line("required-v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
                     }
                 }
                 eprintln!(
-                    "required-v2-emission: entries={} refused={}",
-                    outcomes.len(),
-                    refused
+                    "required-v2-emission: entries={} not_completed={}",
+                    runs.len(),
+                    not_completed
                 );
-                if refused == 0 {
+                if not_completed == 0 {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))
                 }
             }
-            // Not reaching the subject is reported as itself, never as a broken emitter.
+            // The roster itself being unreadable is reported as itself: no entry ran, so
+            // there is no per-entry disposition to render.
             Err(e) => {
-                eprintln!("required-v2-emission: could not reach its subject: {e}");
+                eprintln!(
+                    "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
                 Err(ExitCode::from(1))
             }
         };

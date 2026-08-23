@@ -51,6 +51,15 @@ data witness_layer_roots: List<String> = ["dag", "src/v2"]
 // actually escaped. Widening this list is a row; it is a cost decision, not a Rust edit.
 data required_v2_emission_entries: List<String> = ["dag/std/abi.dag"]
 
+// The standalone emission gate is NOT the terminal construction and must not become a
+// permanent fourth implementation of one transaction. It exists because the authentic
+// self-host product receipt is not yet required on every admitted candidate; when that
+// receipt IS required and carries this exact emission boundary — the same producer,
+// stopping before cargo — the standalone gate dissolves into it and this row, its host
+// reader and its phase delete together. Without that trigger, emission preflight,
+// self-host probe, product receipt and cargo census become four answers to one question.
+data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolution(description: "the authentic self-host product receipt is required on every admitted candidate and carries this emission boundary (same producer, stopping before cargo); then the standalone --required-v2-emission phase, required_v2_emission_entries and their host reader delete together")
+
 data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WallClock: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock. The arm is named in std.measure ClockBasis, which is the single clock-basis authority; this sentence said WitnessCostWallEval until 2026-08-05, naming a second carrier that std.realization_schedule declared for one day and that witness_cost_clock_note records the dissolution of. The advice the sentence gives is exactly what the surviving carrier now enforces rather than advises: witness_row_cost_verdict answers BasisClockMismatch instead of comparing across clocks."
 
 data frontier_probe_witness_measure_receipt_read_failure: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
