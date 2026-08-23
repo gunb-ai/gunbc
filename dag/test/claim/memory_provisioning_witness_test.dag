@@ -34,6 +34,7 @@ import extdeps.memory.types {
   bit_width,
   dram_generation_ddr4,
   dram_generation_ddr5,
+  MonolithicDie,
 }
 import gunbc.runner_shape_census {
   NoShapesForProviderArchitecture,
@@ -123,6 +124,7 @@ fn rdimm(part: NonEmptyStr, capacity: Nat) -> DramModuleCatalogRow {
     data_rate_mts: 3200,
     ecc: true,
     buffering: Registered,
+    die_stacking: MonolithicDie,
     chip_width: bit_width(count: 4),
     rank_count: 2,
   }
@@ -145,6 +147,7 @@ fn rdimm_32g_ddr5() -> DramModuleCatalogRow {
     data_rate_mts: 4800,
     ecc: true,
     buffering: Registered,
+    die_stacking: MonolithicDie,
     chip_width: bit_width(count: 4),
     rank_count: 2,
   }

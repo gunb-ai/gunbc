@@ -16,7 +16,7 @@ import extdeps.github.ci_runner {
 }
 import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -57,15 +57,26 @@ type RegistrationSlotDecoding
 // than an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
 // the answer RegistrationNamesNoCommittedSlot, which is a fact about the fleet rather than about text.
 //
-// DECLARED FORK, FOUND WHILE WRITING THIS AND NOT FIXED HERE: three functions independently build a
-// runner instance name -- runner_lifecycle runner_slot_instance_name, runner_host_deploy
-// runner_instance_name, and runner_incarnation's inline join over slot_suffix. This decoder grounds on
-// the first, so it agrees with it by construction and agrees with the other two only by coincidence.
-// This is a PRECONDITION for the real roster producer rather than a separate tidy-up. While the roster
-// is the pinned 2026-08-06 fixture the fork is harmless, because that fixture's names were authored to
-// match; the day a live producer lands, a registration created by a different builder decodes as naming
-// no committed slot, which under-counts, which is precisely the narrow this decoder exists to close --
-// one layer inside the fix. So the fork must be consolidated before or with that producer, not after.
+// THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
+// NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
+// (runner_lifecycle, runner_host_deploy, runner_incarnation, and host_registration_name_for_slot
+// just below, which reached it through a shared bucketed helper). Three derived the pad
+// arithmetically; runner_incarnation's slot_suffix ENUMERATED indices 1 through 8 with an else arm
+// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00 from
+// the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced the
+// same string and two slots would contend for one GitHub registration.
+//
+// All of them now route through gunbc.build_cache_instance runner_slot_index_suffix, which is the
+// identity's own module and therefore the rule's layer. Derived, total over Nat, no fall-through to
+// reach. My census of this fork said three sites twice -- to a reviewer and in a PR body -- and it
+// was five; the two I missed were the ones that reached the rule INDIRECTLY, which is the same
+// shape as every other undercount in this lane: I grepped for the thing I was looking for rather
+// than enumerating the declarations.
+//
+// ONE INDEPENDENT IMPLEMENTATION SURVIVES DELIBERATELY, in host_converge_slice1_witness_test, which
+// builds its own expected name inline. That is not a missed site: a witness that computes its
+// expectation by calling the production function proves only that the function equals itself. Its
+// pad is an independent oracle and consolidating it would convert a check into a tautology.
 fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
   fold(
     fleet_hosts(),
@@ -243,7 +254,7 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
 
 
 fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
-  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
+  join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
