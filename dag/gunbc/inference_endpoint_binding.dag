@@ -92,14 +92,6 @@ fn endpoint_host_join_wire(j: EndpointHostJoin) -> String {
   }
 }
 
-// The endpoint surface this fleet's harnesses dial today. A second backend is a second declaration
-// beside this one, never a widened enum above.
-data ollama_native_wire_surface: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.ollama.api",
-  decl_name: "OllamaEndpoint",
-  field: WholeDeclaration
-}
-
 // WHAT WAS REMOVED HERE, AND WHY IT IS NOT PARKED SOMEWHERE.
 //
 // InferenceWireProtocol, TurnPrecondition<T>, WireSubsetExercised, CodingTurnReceipt and
@@ -130,3 +122,11 @@ data ollama_native_wire_surface: DeclarationRef = DeclarationRef {
 // fabrication into an undetectable one. A wrong value that matches nothing is a finding; a wrong
 // value that matches something is a lie. If a turn receipt returns, its version comes from an
 // executable that ran.
+
+// The endpoint surface this fleet's harnesses dial today. A second backend is a second declaration
+// beside this one, never a widened enum above.
+data ollama_native_wire_surface: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ollama.api",
+  decl_name: "OllamaEndpoint",
+  field: WholeDeclaration
+}
