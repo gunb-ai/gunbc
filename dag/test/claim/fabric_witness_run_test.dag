@@ -54,9 +54,10 @@ fn t_offer_with_quantum(
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
     executor: "gunbc",
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) } },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: unstated_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
+    isolation: current_runner_slot_profile(),
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
     quote: quote,
