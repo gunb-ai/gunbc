@@ -15016,7 +15016,27 @@ fn render_witness_claim_result_text(
     ))
 }
 
-/// The `src/v1` `.dag` parse sweep, as a callable phase rather than a separate binary.
+/// THE ROOTS THE PARSE SWEEP WALKS — one authority for the standalone bin and for the
+/// composed `--required-ci` phase, so the cheapest local check and the required run cannot
+/// disagree about what they cover.
+///
+/// WHY IT IS NOT `src/v1` ALONE ANY MORE. The sweep was authored for the seed and swept
+/// `src/v1` only, while the two roots that actually carry authored `.dag` — `dag` and
+/// `src/v2`, 3831 files against the seed's 56 — were reached by nothing cheaper than the
+/// required floor. Parse-grain defects there (the §4c annotation-grain refusals above all)
+/// were therefore invisible locally and surfaced as a floor REFUSAL DURING STRICT
+/// PREPARATION, where no witness executes at all, so one misplaced `//` reported as the whole
+/// corpus saying nothing. Three lanes hit that in one night.
+///
+/// WHAT THIS IS NOT. Widening the sweep is not widening the FLOOR's source roots, which
+/// `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
+/// stated blocker is NAME RESOLUTION: `src/v1` and `src/v2` collide on twelve last segments,
+/// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
+/// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
+/// module of one root is ever visible to another and that objection cannot reach it.
+pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
+
+/// The `.dag` parse sweep, as a callable phase rather than a separate binary.
 ///
 /// WHY IT MOVED HERE. It was a `main()` in `bin/v1_src_dag_parse.rs`, reached only by its own
 /// GitHub Actions step. That made the ORDER of the CI checks a fact about a YAML file: a step
@@ -15026,69 +15046,82 @@ fn render_witness_claim_result_text(
 /// remains as a thin caller, because running the parse sweep alone is a real local action.
 ///
 /// RECURSIVE, and the non-recursive predecessor is why the walk looks like this: `read_dir`
-/// on `src/v1` sees the top-level modules and nothing below them, so a walk that finds no
+/// on a root sees the top-level modules and nothing below them, so a walk that finds no
 /// files in a directory it never opened is indistinguishable from a clean one.
 ///
 /// Returns the count of parse-clean files, or every error found — never a partial success.
-pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
+pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Vec<String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    let v1_dir = workspace.join("src/v1");
+    // AN EMPTY ROSTER REFUSES, for the same reason an empty walk does below: a sweep with
+    // nothing to sweep reports clean while covering nothing.
+    if roots.is_empty() {
+        return Err(vec!["parse sweep called with no roots".to_string()]);
+    }
     let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
-    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
-    while let Some(dir) = stack.pop() {
-        let read_dir = match std::fs::read_dir(&dir) {
-            Ok(d) => d,
-            Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
-        };
-        // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
-        // which silently DISCARDS an entry that cannot be read, so an unreadable directory
-        // entry made the walk quietly smaller and a walk that never saw a file is
-        // indistinguishable from a file that parsed. The error is propagated instead.
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(e) => return Err(vec![format!("read_dir entry in {}: {e}", dir.display())]),
+    // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
+    // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
+    for root in roots {
+        let root_dir = workspace.join(root);
+        let before = dag_paths.len();
+        let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
+        while let Some(dir) = stack.pop() {
+            let read_dir = match std::fs::read_dir(&dir) {
+                Ok(d) => d,
+                Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
             };
-            let path = entry.path();
-            if path.is_dir() {
-                // `target/` under a nested Cargo.toml is build output, never authored source.
-                if path.file_name().map(|n| n == "target").unwrap_or(false) {
-                    continue;
+            // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
+            // which silently DISCARDS an entry that cannot be read, so an unreadable directory
+            // entry made the walk quietly smaller and a walk that never saw a file is
+            // indistinguishable from a file that parsed. The error is propagated instead.
+            for entry in read_dir {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        return Err(vec![format!("read_dir entry in {}: {e}", dir.display())])
+                    }
+                };
+                let path = entry.path();
+                if path.is_dir() {
+                    // `target/` under a nested Cargo.toml is build output, never authored source.
+                    if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                        continue;
+                    }
+                    // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
+                    // the parser's own tests -- a fixture that fails to parse is the fixture doing
+                    // its job, not a defect. The existing corpus discovery in `compiler_tests`
+                    // excludes them on the same grounds.
+                    //
+                    // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
+                    // consolidation's first local run reported `fact_cardinality_split_brace.dag:
+                    // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
+                    // file is a headerless fragment under `tests/fixtures/` and it is on main,
+                    // where the parse step is green -- so the "finding" was the extraction having
+                    // silently widened its own subject, not a defect in the tree.
+                    if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                        && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                    {
+                        continue;
+                    }
+                    stack.push(path);
+                } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                    dag_paths.push(path);
                 }
-                // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
-                // the parser's own tests -- a fixture that fails to parse is the fixture doing
-                // its job, not a defect. The existing corpus discovery in `compiler_tests`
-                // excludes them on the same grounds.
-                //
-                // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
-                // consolidation's first local run reported `fact_cardinality_split_brace.dag:
-                // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
-                // file is a headerless fragment under `tests/fixtures/` and it is on main,
-                // where the parse step is green -- so the "finding" was the extraction having
-                // silently widened its own subject, not a defect in the tree.
-                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
-                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
-                {
-                    continue;
-                }
-                stack.push(path);
-            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
-                dag_paths.push(path);
             }
+        }
+
+        // AN EMPTY WALK REFUSES, PER ROOT. Zero files found is not zero errors — it is the
+        // walk failing to reach its subject, and reporting it as clean is the
+        // empty-observation narrow.
+        if dag_paths.len() == before {
+            return Err(vec![format!(
+                "no .dag files found under {} — check the workspace root",
+                root_dir.display()
+            )]);
         }
     }
     dag_paths.sort();
-
-    // AN EMPTY WALK REFUSES. Zero files found is not zero errors — it is the walk failing to
-    // reach its subject, and reporting it as clean is the empty-observation narrow.
-    if dag_paths.is_empty() {
-        return Err(vec![format!(
-            "no .dag files found under {} — check the workspace root",
-            v1_dir.display()
-        )]);
-    }
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
@@ -15111,21 +15144,41 @@ pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
                         return;
                     }
                 };
-                let result = crate::v1_compiler_parse::parse(
-                    crate::v1_compiler_tokenize::tokenize(
+                // ONE FILE THROUGH THE FRONTEND'S OWN CENSUS-FILL PARSE, not `parse` alone.
+                //
+                // WHY NOT `tokenize` + `parse`, which is what this walk used to call. Source
+                // annotation GRAIN (DESIGN §4c) is not decided by the parser: `tokenize`
+                // routes `//` blocks into the annotation channel as unbound captures, and
+                // whether a capture attaches to a module item is decided later, by
+                // `admit_source_annotations`. So `parse` returned `error: None` for a file
+                // carrying an in-body or trailing annotation — MEASURED, by planting one in
+                // `dag/std/algebra.dag` and one in `src/v2/std/node.dag` and watching the old
+                // walk report both trees parse-clean. The floor's strict preparation refused
+                // the same files, during PREPARATION, where no witness runs at all.
+                //
+                // `parse_census_fill_sources` is the frontend's own per-source form: it
+                // tokenizes, parses in an occurrence scope, and admits annotations, returning
+                // the parse diagnostics and the annotation refusals in one population. Called
+                // with a single source, so files stay independent and nothing resolves across
+                // them.
+                let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
+                    vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string_lossy().to_string(),
                         content,
-                        path.to_string_lossy().to_string(),
-                    ),
-                    std::rc::Rc::new(im::HashMap::new()),
-                );
-                if let Some(ref err) = result.error {
-                    errors.lock().expect("parse error lock").push(format!(
-                        "parse error in {}: {}",
-                        path.file_name().unwrap_or_default().to_string_lossy(),
-                        crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
-                    ));
-                } else {
+                    })]
+                    .into(),
+                ));
+                if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    let mut lock = errors.lock().expect("parse error lock");
+                    for d in fill.diagnostics.iter() {
+                        lock.push(format!(
+                            "{}: {}",
+                            path.display(),
+                            crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
+                        ));
+                    }
                 }
             });
         }
