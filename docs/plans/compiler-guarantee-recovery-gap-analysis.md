@@ -3256,6 +3256,20 @@ enforces end to end.
    name-resolution path, and refuse an unresolved one with a typed, located diagnostic. Until
    then every `transport shell` argv is an unchecked string channel wearing expression syntax.
 
+   WHERE THAT RESOLUTION MUST HAPPEN, and this clause exists because the trigger above is
+   ambiguous between two designs whose safety differs (ratified 2026-08-23). The transport cut must
+   CONSUME AN ALREADY-RESOLVED EXACT CALLABLE IDENTITY carried on the node from source resolution
+   — `transport argv expression → ordinary source resolution → exact lookup result → type
+   judgment → resolved expression retained on the node → transport lowering consumes it`. It must
+   NOT reconstruct callable meaning from the emit environment. The reason is measured rather than
+   stylistic: `source_visible_names` is resolve-time only and emit reads an empty map, so the
+   callable wall (gunbc#8952) declares its own rung as refusing on the source→resolve path and
+   SILENT on emit, treating the empty map as `VisibilityUnobservable` — a compatibility fallback,
+   not an authored-binding verdict. A transport cut that re-ran lookup at emit grain would
+   therefore inherit that silent rung at the exact position this row exists to make safe, and
+   would do so while appearing to reuse a repaired authority. Reusing an authority means consuming
+   its RESULT, not re-executing it at a seam where its inputs have vanished.
+
    BLAST RADIUS, and it is why this blocks a live program rather than sitting in a queue: it puts
    roughly 15 of 46 bare-`env` sites out of scope for citation-based dissolution, covering
    `extdeps/{shell,python,gunbc,rust/cargo_build,tools/npm}` and `cli_services`. Those sites are
