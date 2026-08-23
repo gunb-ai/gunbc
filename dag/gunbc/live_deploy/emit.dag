@@ -815,14 +815,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     SystemdUnit => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
-        deploy_raw(command: rm_force_command(paths: [art.path as String])),
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
     BeltTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: rm_force_command(paths: [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
@@ -832,7 +832,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     FleetConvergeTimerUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: rm_force_command(paths: [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
           deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ])),
@@ -842,7 +842,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     DeployedTreeRemoteUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
-        deploy_raw(command: rm_force_command(paths: [art.path as String])),
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
@@ -853,10 +853,10 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
     ]
     ServeBinary => [
-      deploy_raw(command: rm_force_command(paths: [art.path as String])),
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
     GunbcSourceTree => [
-      deploy_raw(command: rm_force_command(paths: [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
         tree_sync_unit_path(names: spec.names) as String,
         spec.names.tree_sync_env_path as String,
       ])),
