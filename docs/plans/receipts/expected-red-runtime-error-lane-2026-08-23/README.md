@@ -221,3 +221,32 @@ on `atom_identity_hash`, one `produced_decl_support` on the `render` shadowing, 
 Batching is safe here in the specific sense the floor makes it safe: every row still executes,
 `failed=0` is asserted over the whole corpus, and a repair that breaks a sibling witness shows up
 as a FAILURE naming it rather than as a silent pass. The batch is checked by the fold, not by me.
+
+## Why the import is the right fix, independent of the roster
+
+"It made the red go away" would be a weak justification for seventy imports, and it is not the
+justification. A module that DECLARES the names it uses answers the same way regardless of which
+subject resolves it. A name pulled ambiently through the tree census makes the module's answer a
+property of its ENVIRONMENT — which is exactly why the per-entry loader and the floor's prepared
+subject can disagree about it, and why the same witness passes under one and throws under the
+other. The import removes that environment-dependence; it does not paper over it.
+
+So this is a DESIGN section 3 single-authority improvement that would be worth making if the
+expected-red roster did not exist, and it survives the roster's deletion. The roster is what made
+the defect visible and countable, not what the repair is for.
+
+## Rounds, each pinned to the run that measured it
+
+| round | head | required-floor run | runtime-errored | now passing | roster |
+|---|---|---|---|---|---|
+| baseline | `907f19c2cc` (prior receipt) / `faf6583461a` (re-derived) | `32633501354` | 164 -> 143 live | — | 203 |
+| 1 | `05993e0` | `32660721426` | 135 | 8 | 195 |
+| 2 | `42d0a8502` | `32664512304` | 111 | 24 | 171 |
+| 3 | `cd3a9c70b` | pending | pending | pending | pending |
+
+The round count is itself a measurement: because the floor reports only the FIRST unresolved name,
+a repair advances a row as often as it closes one, so rounds converging is evidence the frontier
+depth is bounded and rounds NOT converging would be a finding about the resolution difference
+rather than about the roster. Three `runtime_axis` rows have now advanced through three distinct
+names (`symbolic_cost_of_node`/`chain_is_simulated` -> `cost_is_lowerable` -> `type_decls_anti_unify`),
+which is the deepest chain observed in this lane.
