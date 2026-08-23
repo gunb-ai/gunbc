@@ -93,35 +93,37 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
 // nothing here ranks it above or below a declaration, because any ranking answers the question
 // silently and the ranking is not the defect -- answering at all is.
 //
-// ALGEBRA METHOD TEMPLATE NAMES ARE NOT COLLECTED, preserving the census precedence law stated
-// below: `filter`/`any`/`contains` and their siblings belong to the known-method bridge in the
-// ExprCall arm, so admitting them here would make every module that declares one refuse its own
-// callers over a collision the bridge already resolves by receiver.
+// THE ADMISSION TEST IS THE REGISTRY, AND NOTHING ELSE. An earlier revision of this function
+// also excluded `algebra_method_template_name(name)`, reasoning that receiver-dispatched names
+// (`filter`, `any`, `contains`) belong to the known-method ExprCall arm and would make every
+// module declaring a collection-shaped name a collision. MEASURED, that guard was redundant for
+// the names it named and fatal for the ones it did not: of the ~50 algebra template names only
+// 19 carry a `builtin_function_registry` row, and `filter`/`any`/`contains`/`fold`/`map` are not
+// among them -- `infer_builtin_call_type` already answers Absent for those, so they were never
+// candidates and the guard changed nothing about them. What it DID exclude was the 19 names that
+// do have a free-call surface, `map_get` first among them -- the exact name gap-analysis row 30
+// is about. The wall could not fire for its own specimen, and the witness that should have shown
+// that returned `false` in a way indistinguishable from a broken fixture.
 //
-// The candidate carries a sig built from the registry's RETURN TYPE with an empty parameter
-// list, which is all the registry holds. That sig is never handed to a consumer -- see
-// `decide_callable_candidates` on why a lone builtin answers Unresolved -- it exists so the
-// candidate is one type with one shape rather than a special case threaded past the decision.
+// A registry row is precisely "a bare call to this name types against a primitive", which IS the
+// admission question. The method surface is a different seam with a different dispatch and needs
+// no exclusion here, because a name without a registry row produces no candidate anyway.
 fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
-  if algebra_method_template_name(name: name) {
-    []
-  } else {
-    match infer_builtin_call_type(name: name) {
-      Present { value: builtin_return } =>
-        [CallableCandidate {
-          identity: BuiltinCallable { primitive_name: name },
-          sig: ResolvedFuncSig {
-            name: name,
-            params: [],
-            inferred: builtin_return,
-            is_async: false,
-            output_provenance: [],
-            variant_provenance: empty_map()
-          },
-          is_builtin: true
-        }]
-      Absent => []
-    }
+  match infer_builtin_call_type(name: name) {
+    Present { value: builtin_return } =>
+      [CallableCandidate {
+        identity: BuiltinCallable { primitive_name: name },
+        sig: ResolvedFuncSig {
+          name: name,
+          params: [],
+          inferred: builtin_return,
+          is_async: false,
+          output_provenance: [],
+          variant_provenance: empty_map()
+        },
+        is_builtin: true
+      }]
+    Absent => []
   }
 }
 
