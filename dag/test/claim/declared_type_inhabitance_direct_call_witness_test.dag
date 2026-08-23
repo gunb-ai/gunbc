@@ -96,8 +96,21 @@ test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
 // discriminating RED as enrolled evidence. So the evidence lives here, where it is reproducible
 // on demand, and the live wrong argument in an admission path is repaired.
 //
-// RED, AND CURRENTLY FAILING -- ENROLLED. A kernel String at a coproduct element type inside a
-// list at a direct-call argument.
+// GREEN, AND THE CLAIM IT WAS BUILT TO DOCUMENT IS WITHDRAWN. A kernel String at a coproduct
+// element type inside a list at a direct-call argument IS REFUSED. Measured, run 32667623528.
+//
+// THIS PAIR WAS AUTHORED TO DOCUMENT A GAP THAT DOES NOT EXIST. The relation descends into a
+// list literal's elements at this position and always did; it is kept as a permanent regression
+// control over that fact rather than deleted, per DESIGN 4b(4) -- evidence stays enrolled as
+// evidence once a wall is shown real.
+//
+// WHY IT LOOKED LIKE A GAP, and the distinction is the whole correction: the site that started
+// this was dag/gunbc/heal_revalidation.dag passing a List<Fnv1a64Structural> VARIABLE into a
+// List<ContentHash> parameter. That is list-typed-value compatibility, and the relation answers
+// Undecidable for a generic carrier BY DESIGN. This probe instead passes a list LITERAL with a
+// wrong element, which is a different judgment and one the relation makes. I inferred the second
+// from the silence on the first. THE LIST-TYPED-VALUE CASE REMAINS UNMEASURED and no arm here
+// claims anything about it.
 //
 // THE PRODUCED VALUE IS A KERNEL STRING BECAUSE THE FIRST VERSION OF THIS PAIR USED A RECORD
 // LITERAL AND ITS CONTROL WENT RED, which is the only reason the mis-design was caught rather

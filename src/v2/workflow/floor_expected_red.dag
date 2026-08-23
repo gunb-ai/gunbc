@@ -509,17 +509,15 @@ fn floor_expected_red_chunk_14() -> List<String> {
 // NEXT-RUNG TRIGGER: declared_type_inhabitance descending into a list's element type at a
 // direct-call argument. When it lands this row goes green and the roster's self-emptying arm
 // names it for removal, at which point it becomes a permanent regression control.
-// DELIBERATELY EMPTY. THE ROW THAT BELONGS HERE IS NOT ENROLLED YET, ON PURPOSE.
-// w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused was enrolled here while its
-// paired control was RED, and the control's red proved the pair was measuring the wrong thing
-// entirely -- a record literal is never judged at any position, so the list was doing no work.
-// Both arms were rebuilt on a kernel String. THE REBUILT PAIR HAS NOT EXECUTED.
+// DELIBERATELY EMPTY, AND PERMANENTLY SO -- THE ROW THAT WAS HERE ASSERTED A GAP THAT DOES NOT
+// EXIST. w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused was enrolled while
+// its paired control was RED; the control's red proved the pair measured "records are never
+// judged" rather than anything about lists. Rebuilt on a kernel String and left UNENROLLED so a
+// red would show loudly, it PASSES (run 32667623528, failed=0). The relation descends into a
+// list literal's elements at a direct-call argument and always did.
 //
-// An enrolment asserts a KNOWN, REAL gap. A CONTROL THAT REDS AND AN ARM THAT REDS ARE
-// INDISTINGUISHABLE AS EVIDENCE, so enrolling before the control is green would re-file a claim
-// that is currently believed rather than measured -- the exact state that put two unverified reds
-// on this roster earlier. Until the run shows the control GREEN and the arm RED, the arm fails
-// loudly as an ordinary failure, which is the honest reading of an unproven claim.
+// The arm stays in the witness file as a permanent regression control over that fact. Nothing is
+// enrolled here because there is nothing red to enrol.
 fn floor_expected_red_chunk_15() -> List<String> {
   Empty {}
 }
