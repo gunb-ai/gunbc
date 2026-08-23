@@ -1,9 +1,0 @@
-module fx.owner
-
-import std.types { Int }
-
-data shared_value: Int = 111
-
-fn owner_reads_its_own() -> Int {
-  shared_value
-}

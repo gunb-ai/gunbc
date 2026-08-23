@@ -1,8 +1,0 @@
-module fx.puller
-
-import std.types { Int }
-import fx.stranger { stranger_reads_its_own }
-
-fn pull_stranger_into_closure() -> Int {
-  stranger_reads_its_own()
-}
