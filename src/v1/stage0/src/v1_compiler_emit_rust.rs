@@ -79,7 +79,7 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, call_args_by_name, declared_return_type_node,
     expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
-    record_lit_alias_struct_expansion, resolved_type_name,
+    resolved_type_name,
 };
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
@@ -31482,24 +31482,6 @@ pub fn value_inferred_type_is_rc_wrapped(
     }
 }
 
-pub fn data_def_initializer_shape_type_node(
-    type_node: Rc<Node>,
-    type_name: String,
-    scope: Rc<InferScope>,
-) -> Rc<Node> {
-    if has_nested_records_node(
-        type_node.clone(),
-        scope.type_env.clone().source_indices.clone(),
-    ) {
-        type_node.clone()
-    } else {
-        match record_lit_alias_struct_expansion(type_name.clone(), scope.clone()) {
-            Some(expansion) => expansion.resolved.clone(),
-            None => type_node.clone(),
-        }
-    }
-}
-
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
@@ -31654,11 +31636,7 @@ pub fn emit_data_def_body(
             }
         } else {
             if (has_nested_records_node(
-                data_def_initializer_shape_type_node(
-                    type_node.clone(),
-                    type_name.clone(),
-                    scope.clone(),
-                ),
+                type_node.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ) && !data_value_has_cross_refs(value.clone()))
             {
@@ -31767,11 +31745,6 @@ pub fn emit_data_def_body(
                         }
                     } else {
                         {
-                            let dbg_conj = if is_product_type(type_node.clone()) {
-                                "y".to_string()
-                            } else {
-                                "n".to_string()
-                            };
                             let val_str = emit_typed_expr(
                                 value.clone(),
                                 registry.clone(),

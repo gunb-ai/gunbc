@@ -39,3 +39,17 @@ fn aliasrec_entry() -> Bool {
 fn build_alias_in_body() -> WrapKeyAlias {
   WrapKeyAlias { concern: Key { lens: true } }
 }
+
+type Flag
+  = Up
+  | Down
+
+type FlagKey {
+  lens: Flag
+}
+
+type FlagWrapAlias = Wrap<FlagKey>
+
+data via_alias_crossref: FlagWrapAlias = {
+  concern: FlagKey { lens: Up }
+}
