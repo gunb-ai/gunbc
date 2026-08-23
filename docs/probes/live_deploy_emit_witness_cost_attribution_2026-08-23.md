@@ -130,10 +130,15 @@ The root is the per-word cost of the grammar-directed backward emit
 `v2.extdeps.languages.bash_command_fold` leaf path around it), which is
 `src/v2` compiler surface — a load-bearing file under DESIGN §4/§7, not this module's to
 improvise against under a witness-cost brief. Nothing inside
-`gunbc.live_deploy.emit` or `test.claim.live_deploy.emit` reduces the command count
-without deleting coverage, and the two most expensive rows are inherently comparative
-(a twin-vs-production disjointness claim needs both scripts by construction, so it cannot
-be split into cheaper claims).
+`gunbc.live_deploy.emit` reduces the command count without deleting coverage.
+
+**AN EARLIER REVISION OF THIS SECTION ALSO SAID THE TWO DEAREST ROWS ARE "INHERENTLY
+COMPARATIVE — a twin-vs-production disjointness claim needs both scripts by construction,
+so it cannot be split into cheaper claims". THAT IS FALSE**, and it was caught by two
+readers independently reading the conjuncts rather than the claim's name. §8 is the
+correction and the repair; the sentence is called out rather than quietly edited because
+its failure mode is specific — a "by construction" that is really a goal will stop the next
+person from looking.
 
 **Next-rung trigger for this class:** per-word emit cost in the bash fold serializer. Until
 it moves, the live_deploy.emit population's headroom is a function of fleet runner-slot
@@ -190,3 +195,47 @@ the corpus pays — not this module's sixteen rows.
 or spells a production is a correctness change; the discriminating receipt is BYTE-IDENTICAL
 emitted output over a discriminating corpus, with the speedup as a secondary measurement. A
 cost repair that changes output is a correctness change wearing a performance PR's clothes.
+
+## 8. The split: no conjunct ever compared two emitted scripts
+
+`twin_and_production_configure_disjoint_tailscale_endpoints` built FOUR scripts in one
+claim — production apply, twin apply, production retract, twin retract — and crossed at
+5009–5015ms. It was the most reliable crosser in this population, appearing in every run of
+this family, which is what one expects of whichever row sits highest.
+
+Read the seven conjuncts rather than the name and each is over **exactly one** script.
+Disjointness is asserted by **pattern negation against a command spelling derived from the
+other SPEC** — `tailscale_enable_command(endpoint: …)`, an argv join costing nothing — never
+against the other spec's emitted script. So regrouping by script is lossless against the
+witness as written.
+
+Four rows, one script each, all seven conjuncts preserved verbatim. Measured as an A/B in a
+single `claim_batch` run, so the before and after share a resolve and a memo state:
+
+```
+BEFORE  tmp control, the original four-script claim   PASS   5653ms
+AFTER   production_apply_serves_its_own_endpoint_…    PASS   3231ms
+        twin_apply_serves_its_own_endpoint_…          PASS   3344ms
+        production_retract_offs_its_own_endpoint      PASS   1190ms
+        twin_retract_offs_its_own_endpoint_…          PASS   1204ms
+```
+
+**Worst row 5653ms → 3344ms, −41%**, and the before-control PASSES — which is the half that
+matters: the split preserves the verdict, it does not manufacture one. Every new row lands
+where this module's ordinary rows already sit, and a red now locates which script and which
+direction instead of which of seven conjuncts.
+
+**THIS IS A LOCAL UNBLOCK, NOT THE REPAIR.** Fifteen rows remain at 70–96% of the same
+limit. The regrouping moves the row that crossed and leaves the population where it was; the
+cost is systemic and §6's trigger is unchanged. The next fleet runner-slot width increase
+lengthens the emitted script again and the next-highest row crosses. Anyone reading this as
+"the live_deploy.emit cost problem is fixed" has read it wrong.
+
+**AND IT MAKES ONE STRENGTHENING HARDER, DECLARED HERE RATHER THAN DISCOVERED LATER.** The
+claim is LITERAL — it negates a spelling. The strictly stronger form is RELATIONAL: assert
+the two emitted endpoint values differ *from each other*, which catches a drift that keeps
+both spellings absent from each other's script while still colliding. That form genuinely
+needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the
+line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on
+anyone's appetite. The "by construction" in the retracted sentence was this goal, mistaken
+for a description of the row in tree.
