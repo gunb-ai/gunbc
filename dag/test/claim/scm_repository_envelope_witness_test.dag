@@ -609,12 +609,23 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
 // them and maps the first failure to an exit code. Delete it once the floor executes these
 // identities again, at which point it is a second invocation path with no consumer.
 //
-// ITS OWN COVERAGE IS THE RISK, AND IT IS ENFORCED WEAKLY ON PURPOSE. A hand-sequenced driver that
-// omits a claim turns "driver green" into a subset run that reads as a full pass -- the nothing-ran
-// versus nothing-failed trap, inside the tool built to avoid it. The invariant is that every `test
-// fn` this file declares appears exactly once here; measured at the time of writing, declared=24
-// dispatched=24, and the check goes red when a claim is added without an entry (verified by planting
-// one: declared=7 dispatched=6 on a sibling witness).
+// ITS OWN COVERAGE IS THE RISK, AND THE INVARIANT IS AN IDENTITY SET, NOT A COUNT. A hand-sequenced
+// driver that omits a claim turns "driver green" into a subset run that reads as a full pass -- the
+// nothing-ran versus nothing-failed trap, inside the tool built to avoid it.
+//
+// An earlier revision of this comment recorded the invariant as declared == dispatched, and that is
+// the weaker check it sounds like. Cardinality cannot distinguish
+//
+//     declared   A B C D
+//     dispatched A B C C
+//
+// where both are four and D never runs. Demonstrated on a sibling witness by duplicating one
+// dispatch and dropping another: the count check reported declared=6 dispatched=6 and PASSED, while
+// an_honest_collision_is_its_own_standing_and_never_supersedes never executed.
+//
+// The invariant is therefore exact SET EQUALITY of declared `test fn` names against dispatched
+// reason strings, plus uniqueness in both populations. Measured here: 24 identities, sets equal, no
+// duplicates; and the check is falsified by the planted case above rather than assumed to work.
 //
 // That check is run by hand, not by a gate, and the rung is stated rather than dressed up:
 // MITIGATABLE. A committed gate was deliberately not built, because durable enforcement machinery
