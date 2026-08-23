@@ -12602,7 +12602,8 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let name = authored_name_at(source_indices.clone(), n.clone());
+        let authored = authored_name_at(source_indices.clone(), n.clone());
+        let name = qualified_last_segment(authored.clone());
         if v1_rt::set_contains(&shared_types, name.clone()) {
             break false;
         } else {
@@ -25743,7 +25744,10 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone() != "".to_string())
-                        && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                        && v1_rt::set_contains(
+                            &shared_types,
+                            qualified_last_segment(rc_name.clone()),
+                        ))
                     {
                         rust_shared_wrap_ctor(raw.clone())
                     } else {

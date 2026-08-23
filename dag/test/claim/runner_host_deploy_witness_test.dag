@@ -66,7 +66,7 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
   string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
     && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
     && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
-    && string_contains(s: c, pattern: "'sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
+    && string_contains(s: c, pattern: "'/usr/bin/sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
 }
 
 test fn srv4_runner_app_from_secret_manager() -> Bool {

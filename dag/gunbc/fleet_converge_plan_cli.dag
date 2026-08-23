@@ -8,6 +8,12 @@ import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner_slot_provision {
@@ -51,6 +57,10 @@ import gunbc.spark.serving_execution_schedule {
 
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
+// The apply script is written by this CLI and then executed, so its mode is a decision this module
+// makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
+data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
+
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
 
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
@@ -69,7 +79,7 @@ func observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["hostname", "-s"] },
+    command: hostname_short_read_command(),
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } =>
@@ -104,7 +114,7 @@ func observe_timer_members_wet() -> List<TimerRetirementMember>
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
     process_outcome_admitted(outcome: run_shell_command_capture(
-      command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
+      command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
       transport: LocalExec,
     ))
   )
@@ -168,7 +178,7 @@ func fleet_converge_plan_wet() -> ProcessExit
             rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
           )
           let mkdir = run_shell_commands(
-            commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
+            commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
             transport: LocalExec,
           )
           match mkdir {
@@ -210,9 +220,9 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand { argv: [chmod_path_resolved_program as String, "0755", fleet_converge_plan_apply_shell_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
+                    chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
+                    cat_command(path: fleet_converge_plan_body_path),
+                    cat_command(path: fleet_converge_plan_content_hash_path),
                   ],
                   transport: LocalExec,
                 )
@@ -314,17 +324,13 @@ func fleet_converge_apply_wet() -> ProcessExit
               } else {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand {
-                      argv: [
-                        "bash",
-                        "-c",
-                        fleet_converge_locked_apply_script(
-                          prior_generation: prior_generation,
-                          planned_generation: planned_generation,
-                          apply_shell_path: fleet_converge_plan_apply_shell_path,
-                        ),
-                      ],
-                    },
+                    bash_program_command(
+                      script: fleet_converge_locked_apply_script(
+                        prior_generation: prior_generation,
+                        planned_generation: planned_generation,
+                        apply_shell_path: fleet_converge_plan_apply_shell_path,
+                      ),
+                    ),
                   ],
                   transport: LocalExec,
                 )
