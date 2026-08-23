@@ -39,6 +39,21 @@ summary above byte/count-identically, including all seven `apply` sites.
 
 Both trials were reverted.
 
+Once the temporal root was observed, the two nulls became confirming evidence: both
+attempts operated after the ordering had already denied the field lambdas their
+expected types. A downstream key correction cannot help a binding consulted too late,
+and a post-descent retry does not establish the evidence before the original descent.
+
+A final bounded ordering trial pre-scanned only the record actual's non-lambda fields,
+intending to bind `R` from `empty: LexMatchThunk` before the callable fields were
+inferred. Its required discriminator was the lambda expectation itself, not the rustc
+board. A worktree-built compiler still reported `expected_name=` and
+`expected_params=0` for every outer algebra lambda. Thus the formal is less available
+at that pre-descent seam than the later `subst=[R]` trace suggests: declaration-field
+lookup there does not expose `empty: R` as bindable evidence. The ordering trial and
+its instrumentation were reverted rather than widened into another compiler-wide
+generic-inference theory.
+
 ## Located pipeline map
 
 One observation-only compiler build printed the direct-call substitution, every
