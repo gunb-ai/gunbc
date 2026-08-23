@@ -3,6 +3,7 @@ module test.claim.primitive_projection_authority_witness_test
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_identity {
   BuiltinRegistry,
+  DeclarationPrimitiveUndisposed,
   DeclarationProjectsNoPrimitive,
   DeclarationProjectsPrimitive,
   DerivedFromAuthority,
@@ -11,7 +12,7 @@ import std.primitive_identity {
   HostRealizedSeam,
   InterpreterDispatch,
   ModeledProjection,
-  NoRuntimeRowOnAnySurface,
+  RuntimeRowAbsentFromEnumeratedSurfaces,
   PrimitiveSurfaceAuthority,
   PrimitiveSurfaceRow,
   RuntimeRowOnEmitHandlerOnly,
@@ -54,6 +55,7 @@ test fn w_host_realized_seam_answers_with_its_fidelity() -> Bool {
     declaration: projection_declaration(module_path: "v2.std.decl_index", decl_name: "decl_facts")
   ) {
     DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
         HostRealizedSeam => true
@@ -68,6 +70,7 @@ test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
     declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length")
   ) {
     DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
         HostRealizedSeam => false
@@ -82,6 +85,7 @@ test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
     declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get")
   ) {
     DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
         HostRealizedSeam => false
@@ -91,7 +95,14 @@ test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
   }
 }
 
-test fn w_query_is_total_over_an_unclassified_declaration() -> Bool {
+// THE DISCRIMINATING PAIR FOR THE ABSENCE SPLIT. Both declarations lack a projection row, so a
+// carrier that collapsed absence into one arm answers identically for both and one of these two
+// witnesses reds. `list_at_optional` is carried by NO primitive-bearing surface, so no builtin
+// co-candidate can exist and the classified answer is correct. `to_upper` IS carried by the
+// census (an algebra template) with no projection row declared, so the honest answer is that
+// nobody has classified it -- top-as-ignorance, which a consumer must not route to its refusing
+// arm.
+test fn w_a_declaration_on_no_surface_answers_classified_no_primitive() -> Bool {
   match primitive_projection_for_declaration(
     declaration: projection_declaration(
       module_path: "v2.std.collection",
@@ -99,8 +110,26 @@ test fn w_query_is_total_over_an_unclassified_declaration() -> Bool {
     )
   ) {
     DeclarationProjectsNoPrimitive => true
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
   }
+}
+
+test fn w_a_declaration_on_a_surface_with_no_projection_row_answers_undisposed() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: sym } => (sym as String) == "to_upper"
+    DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+  }
+}
+
+test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
+  !declaration_and_primitive_are_one_authority(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper"),
+    primitive: primitive_length,
+  )
 }
 
 test fn w_divergent_projection_is_not_one_authority() -> Bool {
@@ -230,7 +259,7 @@ fn planted_registry_row(authority: PrimitiveSurfaceAuthority, sym: String) -> Pr
 test fn w_planted_registry_only_symbol_has_no_runtime_row() -> Bool {
   let planted = [planted_registry_row(authority: BuiltinRegistry, sym: "planted_registry_only")]
   match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_registry_only") {
-    NoRuntimeRowOnAnySurface => true
+    RuntimeRowAbsentFromEnumeratedSurfaces => true
     RuntimeRowOnEmitHandlerOnly => false
     RuntimeRowOnInterpreterDispatch => false
   }
@@ -242,7 +271,7 @@ test fn w_planted_symbol_with_an_interpreter_row_has_a_runtime_row() -> Bool {
     planted_registry_row(authority: InterpreterDispatch, sym: "planted_with_runtime"),
   ]
   match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_with_runtime") {
-    NoRuntimeRowOnAnySurface => false
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
     RuntimeRowOnEmitHandlerOnly => false
     RuntimeRowOnInterpreterDispatch => true
   }
@@ -254,7 +283,7 @@ test fn w_planted_symbol_with_only_an_emit_row_is_named_as_such() -> Bool {
     planted_registry_row(authority: EmitHandler, sym: "planted_emit_only"),
   ]
   match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_emit_only") {
-    NoRuntimeRowOnAnySurface => false
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
     RuntimeRowOnEmitHandlerOnly => true
     RuntimeRowOnInterpreterDispatch => false
   }
@@ -264,6 +293,6 @@ test fn w_live_census_answers_runtime_coverage_for_a_named_symbol() -> Bool {
   match primitive_runtime_coverage(authored_symbol: "map_keys") {
     RuntimeRowOnInterpreterDispatch => true
     RuntimeRowOnEmitHandlerOnly => false
-    NoRuntimeRowOnAnySurface => false
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
   }
 }

@@ -781,6 +781,7 @@ type PrimitiveProjectionAnswer
       fidelity: ProjectionFidelity
     }
   | DeclarationProjectsNoPrimitive
+  | DeclarationPrimitiveUndisposed { authored_symbol: NonEmptyStr }
 
 type PrimitiveJoinProjectionViolation
   = ProjectionNamesUnknownPrimitive {
@@ -914,21 +915,45 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
   ]
 }
 
-data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer, and a declaration nobody has classified answers DeclarationProjectsNoPrimitive rather than failing to answer. Absence and divergence are therefore different states at the consumer, which is the distinction a boolean suppress flag could not carry."
+data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
 
-fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
+AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
+
+The discrimination is DERIVED, not declared: it asks whether the five-surface census carries the declaration's name, so it stays right as the disposition population grows without anyone maintaining a second list."
+
+fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
+  primitive_surface_census_derived()
+    |> any(fn(row) { (row.authored_symbol as String) == authored_symbol })
+}
+
+fn primitive_projection_row_for_declaration(
+  declaration: DeclarationRef
+) -> PrimitiveProjection? {
   primitive_projection_roster()
-    |> fold(init: DeclarationProjectsNoPrimitive, f: fn(acc, row) {
+    |> fold(init: none, f: fn(acc, row) {
       match acc {
-        DeclarationProjectsPrimitive { identity: _, fidelity: _ } => acc
-        DeclarationProjectsNoPrimitive =>
+        Present { value: _ } => acc
+        Absent =>
           if declaration_ref_eq(a: row.declaration, b: declaration) {
-            DeclarationProjectsPrimitive { identity: row.primitive, fidelity: row.fidelity }
+            Present { value: row }
           } else {
             acc
           }
       }
     })
+}
+
+fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
+  match primitive_projection_row_for_declaration(declaration: declaration) {
+    Present { value: row } =>
+      DeclarationProjectsPrimitive { identity: row.primitive, fidelity: row.fidelity }
+    Absent =>
+      if primitive_surface_carries_symbol(authored_symbol: declaration.decl_name as String) {
+        DeclarationPrimitiveUndisposed { authored_symbol: declaration.decl_name }
+      } else {
+        DeclarationProjectsNoPrimitive
+      }
+  }
 }
 
 fn projection_fidelity_is_one_authority(fidelity: ProjectionFidelity) -> Bool {
@@ -945,6 +970,7 @@ fn declaration_and_primitive_are_one_authority(
 ) -> Bool {
   match primitive_projection_for_declaration(declaration: declaration) {
     DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: id, fidelity: fidelity } =>
       primitive_identity_eq(left: id, right: primitive)
         && projection_fidelity_is_one_authority(fidelity: fidelity)
@@ -1089,12 +1115,14 @@ fn primitive_disposed_surface_symbol_count() -> Int {
 
 data primitive_runtime_coverage_note: String = "The projection query asks, of a DECLARATION, which primitive it projects. This asks the opposite and the two catch different defects. A primitive registered on the typecheck surface with NO row on any runtime-bearing surface typechecks clean at every call site and answers NoSuchFunction when one is actually evaluated -- the class gunbc#8952 found in emit_map_has by probing, where every one of its 21 live call sites happened to reach a same-named declaration through its own import closure so nobody noticed. The projection direction is blind to it BY CONSTRUCTION, because the defect is a primitive with no declaration rather than a declaration with a divergent primitive.
 
-WHAT THIS ANSWERS AND WHAT IT DOES NOT. It reports a CENSUS FACT: no InterpreterDispatch row and no EmitHandler row on the derived five-surface census joins this authored symbol. It does NOT adjudicate that no runtime exists -- a dispatch site the interpreter roster does not enumerate would be invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1_interpreter_primitive_surface records for itself. Read the answer as the denominator saying nothing joins, not as the interpreter saying nothing runs."
+WHAT THIS ANSWERS AND WHAT IT DOES NOT, AND IT IS THE SAME NAMED CLASS AS THE PROJECTION QUERY'S ABSENCE SPLIT, ONE LAYER DOWN. RuntimeRowAbsentFromEnumeratedSurfaces is top-as-answer about the DENOMINATOR -- nothing on the runtime-bearing surfaces of the derived census joins this symbol. It is NOT top-as-answer about the INTERPRETER -- 'no runtime exists' is a different and stronger claim this carrier cannot make, because a dispatch site the interpreter roster does not enumerate is invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1_interpreter_primitive_surface records for itself. So the answer is a CANDIDATE SET, never a defect count: a consumer that reads it as the latter has performed the same conflation primitive_projection_query_note refuses in the projection direction.
+
+THE ARM IS NAMED FOR WHAT IT MEASURES, WHICH IS WHY IT IS NOT CALLED NoRuntimeRow. absence-of-OBSERVATION and observation-of-ABSENCE are two states with opposite repairs -- the first is closed by enumerating a dispatch site on the roster, the second by supplying a runtime -- and a name that spells the first while reading as the second hands every consumer the conflation for free. RuntimeRowAbsentFromEnumeratedSurfaces says the rosters do not enumerate this; it does not say nothing runs it. to_int and with are exactly the symbols where that distinction decides whether someone files a defect against a live method-dispatch path. Carried as a TYPE rather than a caveat deliberately: a caveat is read later as hedging and dropped, a variant has to be named to compile."
 
 type PrimitiveSurfaceRuntimeCoverage
   = RuntimeRowOnInterpreterDispatch
   | RuntimeRowOnEmitHandlerOnly
-  | NoRuntimeRowOnAnySurface
+  | RuntimeRowAbsentFromEnumeratedSurfaces
 
 fn surface_rows_carry_symbol_on(
   rows: List<PrimitiveSurfaceRow>,
@@ -1123,7 +1151,7 @@ fn primitive_runtime_coverage_in(
   ) {
     RuntimeRowOnEmitHandlerOnly
   } else {
-    NoRuntimeRowOnAnySurface
+    RuntimeRowAbsentFromEnumeratedSurfaces
   }
 }
 
@@ -1134,29 +1162,29 @@ fn primitive_runtime_coverage(authored_symbol: String) -> PrimitiveSurfaceRuntim
   )
 }
 
-fn primitive_runtime_coverage_is_absent(coverage: PrimitiveSurfaceRuntimeCoverage) -> Bool {
+fn primitive_runtime_coverage_is_unenumerated(coverage: PrimitiveSurfaceRuntimeCoverage) -> Bool {
   match coverage {
     RuntimeRowOnInterpreterDispatch => false
     RuntimeRowOnEmitHandlerOnly => false
-    NoRuntimeRowOnAnySurface => true
+    RuntimeRowAbsentFromEnumeratedSurfaces => true
   }
 }
 
-fn registry_symbols_without_runtime_row_in(rows: List<PrimitiveSurfaceRow>) -> List<String> {
+fn registry_symbols_with_no_enumerated_runtime_row_in(rows: List<PrimitiveSurfaceRow>) -> List<String> {
   rows
     |> filter(fn(row) { row.authority == BuiltinRegistry })
     |> map(row => row.authored_symbol as String)
     |> filter(fn(sym) {
-      primitive_runtime_coverage_is_absent(
+      primitive_runtime_coverage_is_unenumerated(
         coverage: primitive_runtime_coverage_in(rows: rows, authored_symbol: sym)
       )
     })
 }
 
-fn registry_symbols_without_runtime_row() -> List<String> {
-  registry_symbols_without_runtime_row_in(rows: primitive_surface_census_derived())
+fn registry_symbols_with_no_enumerated_runtime_row() -> List<String> {
+  registry_symbols_with_no_enumerated_runtime_row_in(rows: primitive_surface_census_derived())
 }
 
-fn registry_symbols_without_runtime_row_count() -> Int {
-  count(registry_symbols_without_runtime_row())
+fn registry_symbols_with_no_enumerated_runtime_row_count() -> Int {
+  count(registry_symbols_with_no_enumerated_runtime_row())
 }
