@@ -239,3 +239,50 @@ needs both scripts in one claim, so adopting it re-fuses two of these rows and r
 line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on
 anyone's appetite. The "by construction" in the retracted sentence was this goal, mistaken
 for a description of the row in tree.
+
+## 9. Four more crossers, and the correction that produced them
+
+§8 ended by saying one row was over the line and fifteen under it. **That was a
+single-run reading, and it contradicts §1's own rule** — a run is a sample, the union is the
+population. Applied to the crossers rather than to the population, the union across today's
+runs from six lanes is **five distinct identities**, not one:
+
+```
+twin_and_production_configure_disjoint_tailscale_endpoints   main, stern-koi, sunny-otter, calm-eagle, witty-carp
+twin_belt_timer_actuates_its_own_tree_not_productions        calm-eagle >=5007, stern-koi >=5010
+twin_apply_creates_its_own_binary_parent_directory           calm-eagle >=5003, witty-carp
+emitted_twin_scripts_touch_none_of_productions_effects       stern-koi >=5003, witty-carp
+witness_scripts_stay_within_ci_runner_grants                 sunny-otter >=5001
+```
+
+All four remaining crossers have the same shape as the first, and the census confirms it:
+each built **two** scripts, and no conjunct in any of them read two emitted scripts. Split
+the same way, A/B in one `claim_batch` run, all before-controls kept and passing:
+
+```
+BEFORE (control)                                     AFTER
+tmp_ctl_belt_timer        PASS 4234ms   ->  twin_belt_unit_carries_the_twins_spawn_root…      PASS 3334ms
+                                            production_belt_unit_carries_productions_spawn…  PASS 3322ms
+tmp_ctl_binary_parent     PASS 4237ms   ->  production_apply_creates_productions_binary…     PASS 3335ms
+                                            twin_apply_creates_its_own_binary_parent…        PASS 3404ms
+tmp_ctl_twin_effects      PASS 4268ms   ->  production_apply_carries_its_own_handler…        PASS 3358ms
+                                            emitted_twin_apply_touches_none_of_productions…  PASS 3362ms
+tmp_ctl_runner_grants     PASS 4003ms   ->  apply_script_and_tree_sync_unit_stay_within…     PASS 3238ms
+                                            retract_script_stays_within_ci_runner_grants     PASS 1247ms
+```
+
+The gain per row is smaller than §8's −41% (~−21%) for a structural reason worth stating:
+these built two scripts, not four, and one apply script dominates either way.
+
+**WHAT IS AND IS NOT ESTABLISHED.** Every identity observed to cross is now split, and a
+census over the module confirms **no test fn emits more than one apply script**
+(`retract_is_not_emitted_without_an_observed_scoped_removal` builds three RETRACTS, two of
+which are refusal poisons that return before emission, and its own note argues the three
+arms must be pinned apart in one claim — it has never crossed).
+
+So the honest claim is: **the population's MAXIMUM now equals its median.** Every row costs
+one apply emission, ~3.3s local and ~3.5s in CI — about 70% of the limit. That is not
+"crossing is impossible"; it is "no row is structurally dearer than the rest any more", so a
+future crossing would be host noise against the whole population rather than a predictable
+tail. Anyone reading this as a guarantee has read it wrong, and the systemic cost — §3's
+~6,714 evals per emitted word, §6's ranking question — is untouched.
