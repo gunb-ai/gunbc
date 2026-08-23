@@ -1,0 +1,313 @@
+module gunbc.fleet_capacity_control
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import product.placement_supply { HostIdentity }
+import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider, provider_kind_label }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+// THE OPERATOR'S CONTROL OVER ACTIVE FLEET CAPACITY, ON TWO AXES THAT ARE NOT THE SAME FACT.
+//
+// Turning a MACHINE down and cutting off a PROVIDER are different questions with different blast
+// radii, and fusing them into one "enabled" flag would make the smaller action unavailable: an
+// operator who wants Codex off everywhere would have to take hosts down to get it, and an operator
+// draining srv3 would have to reason about which runtimes that implicitly removes. They are
+// therefore two withdrawal rosters over two subject types, joined only where capacity is actually
+// consumed.
+//
+// WHY THIS IS A WITHDRAWAL ROSTER AND NOT AN ENABLEMENT ROSTER. The rows here name what is CUT OFF,
+// so the default for an unlisted subject is active. The inverse -- listing what is enabled -- makes
+// the roster load-bearing for ordinary operation, so a host absent through an authoring slip goes
+// dark rather than staying up, and a new host must be added in two places before it can ever be
+// used. Withdrawal fails toward capacity remaining available, which is the recoverable direction:
+// too much capacity is a cost, too little is an outage.
+data fleet_capacity_control_note: String = "Operator withdrawal rosters for fleet capacity on two axes: whole hosts and provider runtimes. Consumed at the dispatch inventory seam so a withdrawn provider makes no offer. Absent from a roster means active."
+
+// A WITHDRAWAL CARRIES ITS REASON BECAUSE THE ROSTER OUTLIVES THE SITUATION THAT CAUSED IT.
+//
+// The three causes are not decoration: they have different restoration conditions and different
+// answers to "may an automated process put this back". Maintenance ends when the work does and is
+// the operator's to reverse. A capacity cut is a deliberate standing spend decision. A fault
+// withdrawal is a response to observed misbehaviour and must NOT be auto-restored by anything that
+// merely notices the host answering again -- an intermittently failing host answers between
+// failures, and a restorer keyed on reachability would flap it back into service repeatedly.
+type CapacityWithdrawalCause
+  = WithdrawnForMaintenance { detail: NonEmptyStr }
+  | WithdrawnToReduceSpend { detail: NonEmptyStr }
+  | WithdrawnForObservedFault { detail: NonEmptyStr }
+
+fn withdrawal_cause_label(cause: CapacityWithdrawalCause) -> String {
+  match cause {
+    WithdrawnForMaintenance { detail: _ } => "maintenance"
+    WithdrawnToReduceSpend { detail: _ } => "spend"
+    WithdrawnForObservedFault { detail: _ } => "fault"
+  }
+}
+
+fn withdrawal_cause_detail(cause: CapacityWithdrawalCause) -> NonEmptyStr {
+  match cause {
+    WithdrawnForMaintenance { detail: d } => d
+    WithdrawnToReduceSpend { detail: d } => d
+    WithdrawnForObservedFault { detail: d } => d
+  }
+}
+
+// A FAULT WITHDRAWAL IS THE ONE AN AUTOMATED RESTORER MUST NOT TOUCH, AND THAT IS DECIDED HERE
+// RATHER THAN AT EACH RESTORER. Left to callers, this becomes a rule some of them remember.
+fn withdrawal_admits_automatic_restore(cause: CapacityWithdrawalCause) -> Bool {
+  match cause {
+    WithdrawnForMaintenance { detail: _ } => true
+    WithdrawnToReduceSpend { detail: _ } => false
+    WithdrawnForObservedFault { detail: _ } => false
+  }
+}
+
+type HostCapacityWithdrawal {
+  host: HostIdentity
+  cause: CapacityWithdrawalCause
+}
+
+type ProviderCapacityWithdrawal {
+  provider: ProviderKind
+  cause: CapacityWithdrawalCause
+}
+
+// THE LIVE ROSTERS. Empty means the whole fleet and every runtime are active, which is the state
+// this repository is in as of authoring -- these are the operator's control surface, and an empty
+// control surface is the correct resting position rather than an unfinished one.
+data withdrawn_hosts: List<HostCapacityWithdrawal> = []
+
+data withdrawn_providers: List<ProviderCapacityWithdrawal> = []
+
+// THE DECISION TAKES ITS ROSTERS AS ARGUMENTS AND THE GLOBAL READERS ARE THIN WRAPPERS, BECAUSE
+// THE LIVE ROSTERS ARE EMPTY AND MUST STAY THAT WAY.
+//
+// A decision that reads the module-scope rosters directly can only ever be exercised in the state
+// those rosters happen to be in -- today, empty -- so every refusal arm below would be unreachable
+// by any fixture, and the witnesses could assert nothing but the admitted path. That is the
+// decoration DESIGN names: a check whose RED cannot be produced is permanently green and worse
+// than absent, because it is cited as coverage. Parameterizing makes the refusals authorable by a
+// fixture without withdrawing anything on the live fleet, which is the distinction between
+// unwritable-in-the-corpus and unwritable-as-a-fixture.
+fn host_withdrawal_in(
+  rows: List<HostCapacityWithdrawal>,
+  host: HostIdentity,
+) -> HostCapacityWithdrawal? {
+  filter(rows, row => row.host == host).first()
+}
+
+fn provider_withdrawal_in(
+  rows: List<ProviderCapacityWithdrawal>,
+  provider: ProviderKind,
+) -> ProviderCapacityWithdrawal? {
+  filter(rows, row => row.provider == provider).first()
+}
+
+fn host_withdrawal_for(host: HostIdentity) -> HostCapacityWithdrawal? {
+  host_withdrawal_in(rows: withdrawn_hosts, host: host)
+}
+
+fn provider_withdrawal_for(provider: ProviderKind) -> ProviderCapacityWithdrawal? {
+  provider_withdrawal_in(rows: withdrawn_providers, provider: provider)
+}
+
+fn host_is_withdrawn(host: HostIdentity) -> Bool {
+  match host_withdrawal_for(host: host) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn provider_is_withdrawn(provider: ProviderKind) -> Bool {
+  match provider_withdrawal_for(provider: provider) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// WHETHER A GIVEN RUNTIME MAY RUN ON A GIVEN HOST IS ONE QUESTION WITH THREE ANSWERS, NOT A BOOL.
+//
+// This is the load-bearing shape in the module and the reason the axes stay separate all the way to
+// the consumer. A caller that receives only "no" cannot tell a withdrawn HOST from a withdrawn
+// RUNTIME, and those have opposite remedies: one is fixed by restoring a machine, the other by
+// restoring a provider everywhere. Collapsing them would also make a fully-withdrawn host's
+// inventory indistinguishable from a host with nothing installed -- the empty-observation narrow
+// DESIGN section 5 names, where could-not-offer is rendered as the verdict nothing-is-available.
+type CapacityAdmission
+  = CapacityAdmitted
+  | CapacityRefusedHostWithdrawn { host: HostIdentity, cause: CapacityWithdrawalCause }
+  | CapacityRefusedProviderWithdrawn { provider: ProviderKind, cause: CapacityWithdrawalCause }
+
+// THE HOST AXIS IS CHECKED FIRST, AND THE ORDER IS A REAL DECISION RATHER THAN AN ARBITRARY ONE.
+//
+// When both are withdrawn the host is the dominant fact: nothing runs there regardless of runtime,
+// so reporting the provider would name a cause whose repair changes nothing about this host. The
+// same precedence is why the two refusals are distinct arms -- an operator reading "provider
+// withdrawn" about a host that is down would restore the provider and see no capacity return.
+fn capacity_admission_in(
+  host_rows: List<HostCapacityWithdrawal>,
+  provider_rows: List<ProviderCapacityWithdrawal>,
+  host: HostIdentity,
+  provider: ProviderKind,
+) -> CapacityAdmission {
+  match host_withdrawal_in(rows: host_rows, host: host) {
+    Present { value: h } => CapacityRefusedHostWithdrawn { host: host, cause: h.cause }
+    Absent =>
+      match provider_withdrawal_in(rows: provider_rows, provider: provider) {
+        Present { value: p } =>
+          CapacityRefusedProviderWithdrawn { provider: provider, cause: p.cause }
+        Absent => CapacityAdmitted
+      }
+  }
+}
+
+fn capacity_admission(host: HostIdentity, provider: ProviderKind) -> CapacityAdmission {
+  capacity_admission_in(
+    host_rows: withdrawn_hosts,
+    provider_rows: withdrawn_providers,
+    host: host,
+    provider: provider,
+  )
+}
+
+fn capacity_admission_admits(admission: CapacityAdmission) -> Bool {
+  match admission {
+    CapacityAdmitted => true
+    CapacityRefusedHostWithdrawn { host: _, cause: _ } => false
+    CapacityRefusedProviderWithdrawn { provider: _, cause: _ } => false
+  }
+}
+
+// THE OPERATOR-FACING LINE FOR ONE REFUSAL, WHICH IS WHAT THE WORKSPACE PANEL RENDERS.
+//
+// It names the SUBJECT that was withdrawn rather than the pair, because that is the thing the
+// operator would act on. A line that said only "srv3/Codex unavailable" would leave the reader to
+// work out which of the two to restore, which is precisely the distinction the coproduct above
+// exists to preserve.
+fn capacity_admission_line(admission: CapacityAdmission) -> String {
+  match admission {
+    CapacityAdmitted => "active"
+    CapacityRefusedHostWithdrawn { host: h, cause: c } =>
+      join(["host ", h as String, " withdrawn (", withdrawal_cause_label(cause: c), "): ",
+            withdrawal_cause_detail(cause: c) as String], "")
+    CapacityRefusedProviderWithdrawn { provider: p, cause: c } =>
+      join(["provider ", provider_kind_label(kind: p), " withdrawn (",
+            withdrawal_cause_label(cause: c), "): ",
+            withdrawal_cause_detail(cause: c) as String], "")
+  }
+}
+
+// THE FLEET THIS CONTROL SPANS. Four hosts, taken from the fleet identity authority rather than
+// respelled, so a host added there is a host this control can reach without an edit here.
+fn capacity_controlled_hosts() -> List<HostIdentity> {
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+}
+
+fn capacity_controlled_providers() -> List<ProviderKind> {
+  [ClaudeCliProvider, CodexCliProvider, CursorCliProvider]
+}
+
+fn active_host_count() -> Int {
+  capacity_controlled_hosts() |> filter(h => !host_is_withdrawn(host: h)) |> count
+}
+
+fn active_provider_count() -> Int {
+  capacity_controlled_providers() |> filter(p => !provider_is_withdrawn(provider: p)) |> count
+}
+
+// ============================================================================================
+// THE OPERATOR CONTROL SURFACE. This is what the workspace panel actuates, and its shape is a
+// ruling rather than a preference (operator, 2026-08-23).
+//
+// "CUT OFF A PROVIDER" NAMES TWO DIFFERENT ACTIONS AND THE CONTROL MUST SAY WHICH. Cutting a
+// RUNTIME stops Claude everywhere; cutting an ACCOUNT BINDING stops one credential while the
+// runtime keeps serving other accounts. They have different blast radii, and the conflation is
+// silent in the worst direction: an operator who means "cut this Claude account" and gets Claude
+// cut entirely discovers it as missing capacity rather than as a refusal, because both readings
+// are perfectly well-formed requests and nothing downstream can tell them apart.
+//
+// So both controls exist from the first version even though only the runtime axis is wired. The
+// account axis REFUSES with a typed cause rather than being absent -- an absent control reads as
+// "not applicable here", which is the not-applicable-versus-malformed conflation this corpus has
+// now found three times in three stages. A refusal says the axis is real and this build cannot
+// serve it yet, which is the true statement.
+//
+// THE ACCOUNT AXIS IS NOT HYPOTHETICAL. Accounts on this fleet are being managed by hand at
+// exactly this granularity today -- a credentials update performing an active-slot swap restarted
+// a live container on 2026-08-22 -- so this is an axis someone is already operating WITHOUT a
+// control, not a second reading invented for symmetry.
+// ============================================================================================
+
+type CapacityControlRequest
+  = CutHost { host: HostIdentity, cause: CapacityWithdrawalCause }
+  | CutProviderRuntime { provider: ProviderKind, cause: CapacityWithdrawalCause }
+  | CutProviderAccountBinding {
+      provider: ProviderKind,
+      account: NonEmptyStr,
+      cause: CapacityWithdrawalCause,
+    }
+  | RestoreHost { host: HostIdentity }
+  | RestoreProviderRuntime { provider: ProviderKind }
+
+// A CONTROL THAT CANNOT BE SERVED REFUSES BY NAMING ITS OWN NEXT STEP, NOT BY REPORTING FAILURE.
+//
+// ControlUnbound is not an error state -- the request is well-formed and the operator is right to
+// want it. It is a declared boundary of what this build actuates, carrying the axis it would need
+// to bind, so the refusal is actionable rather than merely negative (DESIGN section 4b(2): a class
+// below its ceiling names its next-rung trigger).
+type CapacityControlOutcome
+  = ControlApplied { effect: String }
+  | ControlUnbound { axis: NonEmptyStr, trigger: NonEmptyStr }
+  | ControlRejected { reason: NonEmptyStr }
+
+data capacity_control_account_axis: NonEmptyStr = "provider account binding" as NonEmptyStr
+
+data capacity_control_account_axis_trigger: NonEmptyStr = "dispatch_selection AdmittedAccountBinding must become a withdrawable subject: the account binding is resolved inside provider selection rather than offered alongside it, so there is no offer to remove and the runtime-axis mechanism does not reach it" as NonEmptyStr
+
+fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOutcome {
+  match request {
+    CutHost { host: h, cause: c } =>
+      ControlApplied {
+        effect: join(["host ", h as String, " withdrawn (",
+                      withdrawal_cause_label(cause: c), ")"], ""),
+      }
+    CutProviderRuntime { provider: p, cause: c } =>
+      ControlApplied {
+        effect: join(["provider runtime ", provider_kind_label(kind: p), " withdrawn (",
+                      withdrawal_cause_label(cause: c), ")"], ""),
+      }
+    CutProviderAccountBinding { provider: _, account: _, cause: _ } =>
+      ControlUnbound {
+        axis: capacity_control_account_axis,
+        trigger: capacity_control_account_axis_trigger,
+      }
+    RestoreHost { host: h } =>
+      ControlApplied { effect: join(["host ", h as String, " restored"], "") }
+    RestoreProviderRuntime { provider: p } =>
+      ControlApplied {
+        effect: join(["provider runtime ", provider_kind_label(kind: p), " restored"], ""),
+      }
+  }
+}
+
+fn capacity_control_is_actuated(outcome: CapacityControlOutcome) -> Bool {
+  match outcome {
+    ControlApplied { effect: _ } => true
+    ControlUnbound { axis: _, trigger: _ } => false
+    ControlRejected { reason: _ } => false
+  }
+}
+
+// THE TWO NON-ACTUATING OUTCOMES ARE DISTINCT AND A CONSUMER MUST BE ABLE TO TELL THEM APART.
+// Unbound means this build cannot serve a legitimate request; Rejected means the request itself
+// was refused. Collapsing them to "did not apply" would tell an operator to rephrase a request
+// that was never the problem.
+fn capacity_control_outcome_line(outcome: CapacityControlOutcome) -> String {
+  match outcome {
+    ControlApplied { effect: e } => e
+    ControlUnbound { axis: a, trigger: t } =>
+      join(["not wired on this build -- axis: ", a as String, "; needs: ", t as String], "")
+    ControlRejected { reason: r } => join(["rejected: ", r as String], "")
+  }
+}
