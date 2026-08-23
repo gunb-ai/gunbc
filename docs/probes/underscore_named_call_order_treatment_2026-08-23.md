@@ -45,3 +45,24 @@ Before observing a candidate board, the registered result is:
 - the control and treatment emit the same positional order;
 - any successor diagnostic refutes that prediction and is reported as a conversion, not silently
   counted as removal.
+
+## Observed paired receipt
+
+The prediction was tested in one remote dispatch with the annotation-only #9027 correction in
+both arms. Because that correction conflicted with the older board tree, both arms took the same
+resolved file from #9027; it is therefore common setup rather than a treatment difference. The
+before arm was `183e5972999` plus that correction. The after arm was PR #9026 at `e2317ed0838`
+(including its regenerated stage0 mirrors) plus the identical correction.
+
+| observation | before | after |
+|---|---:|---:|
+| coded rustc errors | 324 | 317 |
+| E0308 | 128 | 121 |
+| scoped `v2.compiler.eval` call-order identities | 7 | 0 |
+| three preregistered control identities (location-reference count) | 5 | 5 |
+| E0061 | 17 | 17 |
+
+The prediction held exactly: all seven scoped E0308 blocks vanished, none converted, and no
+control moved. The paired board total is 324 rather than the authorized retained board's 316
+because the common #9027 file resolution changes that composite subject; no count is compared
+across those subjects. Only the within-pair delta is claimed here.
