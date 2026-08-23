@@ -311,3 +311,39 @@ timing measurement here would catch it. Grepped all five old identities across `
 `src/v2`, `.github` and `tools`, excluding the live_deploy module itself: **no references**.
 Only the historical measurement TSVs in `docs/plans/measurements/` name them, and those are
 dated receipts of past runs, correctly frozen.
+
+## 10. The CI receipt, and where the before-controls went
+
+Floor run `32638804487` on this branch's head `ddddd4d9bb`, conclusion SUCCESS:
+
+```
+planned=10679 executed=10679 terminal=10679 passed=10378
+known_red_held=36  failed=0  stale_quarantine=0
+interrupted_before_verdict=0  completed_over_cost_requirement=0  host_tool_unresolved=0
+```
+
+**Zero interruptions**, on a run that would have carried between one and four this morning,
+on a host nobody chose. All seven gating populations empty.
+
+**WHAT THIS DOES AND DOES NOT ESTABLISH.** It does not make the property deterministic —
+one green run against a population at ~70% of the limit is exactly the over-read §1 warns
+about. What it establishes is that the whole family cleared on a real CI host under real
+scheduling for the first time, which is *consistent with* max-equals-median rather than with
+luck. The distinction is the same one this receipt has been making throughout: a run is a
+sample.
+
+**THE BEFORE-CONTROLS ARE NOT IN THE PUSHED TREE, AND THAT IS DELIBERATE.** `planned` moved
+10672 → 10679, exactly **+7**, which the five splits account for precisely: the four-script
+row 1 → 4 is +3, and four two-script rows at 1 → 2 each is +4. Anyone doing that arithmetic
+will ask where the controls went, so: **they were measurement scaffolding, they passed, and
+they were removed before push.** §8 and §9 describe them as "kept and passing", which meant
+kept *within the A/B run* — they were never intended to land.
+
+That is the correct disposition rather than an omission, and the distinction is §4b(4)'s. A
+control that must stay enrolled is a **discriminating RED** — evidence that a wall is still
+real, which would flip to a permanent regression control rather than retire. These were
+neither: each was a verbatim copy of the pre-split claim, asserting exactly what the split
+rows now assert, and its whole job was to show in one run that the regrouping preserves the
+verdict. Once it has answered, keeping it would re-introduce the very cost the split removed
+— the dearest row in the module, duplicated, asserting nothing new. It dissolves at the
+moment it has answered.
