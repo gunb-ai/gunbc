@@ -53,6 +53,12 @@ import extdeps.cpu_attachment.ilm4926 {
   SocketBodyStanding,
   standing_is_established,
   ocp_mt_jade_specification_authority,
+  azifa072_drawing_authority,
+  lga4926_footprint_may_release,
+}
+import extdeps.cpu_attachment.lotes_azifa072 {
+  azifa072_footprint_may_emit,
+  land_pattern_gap_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -111,32 +117,42 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
 
 // THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
 // match on each field rather than a Bool predicate over the coproduct.
-// THE SOCKET BODY IS UNIDENTIFIED ON BOTH OF ITS AXES, and the land pattern with it. These are
-// read through the socket-body constituent rather than off a flat record, which is the point of
-// the restructure: there is no top-level vendor_identity to answer for the whole assembly.
-test fn w_the_socket_body_is_unidentified_on_every_axis() -> Bool {
+// THE SOCKET BODY IS NOW IDENTIFIED ON EVERY AXIS, AND THE DESIGNATOR IS STILL NOT EXPANDED.
+// This witness inverted on 2026-08-23 when Lotes supplied AZIFA072-P001CCS. It is kept rather
+// than deleted because the pairing is the whole content: three axes flipped and the fourth did
+// not, and a reader who assumes a part number closes the referent question needs to see exactly
+// that combination assert. A part number resolves what to order; it does not tell you what the
+// letters I-L-M stand for, and no cited document still does.
+test fn w_the_socket_body_is_identified_while_the_designator_stays_unexpanded() -> Bool {
   let a = ilm4926_attachment_standing
-  !standing_is_established(s: a.socket_body.vendor_identity)
-    && !standing_is_established(s: a.socket_body.orderable_part_number)
-    && !standing_is_established(s: attachment_board_land_pattern(a: a))
-    && !attachment_socket_body_is_identified(a: a)
+  standing_is_established(s: a.socket_body.vendor_identity)
+    && standing_is_established(s: a.socket_body.orderable_part_number)
+    && standing_is_established(s: attachment_board_land_pattern(a: a))
+    && attachment_socket_body_is_identified(a: a)
     && !designation_referent_is_resolved(referent: ilm4926_referent)
 }
 
-// THE RETENTION ASSEMBLY RESOLVES; THE SOCKET BODY DOES NOT. Lotes is a publisher of record for
-// its own catalogue, so AZIF0222 establishes both retention axes. This witness is the pair to
-// that: establishing them must leave every socket-body axis exactly where it was, because the
-// socket body is a different item and it is the one that carries the pads.
-test fn w_the_retention_assembly_resolves_without_touching_the_land_pattern() -> Bool {
+// TWO CONSTITUENTS, TWO AUTHORITIES, AND THE WITNESS IS THAT THEY STAYED SEPARATE. The retention
+// assembly is cited to the Lotes catalogue page; the socket body is cited to the Lotes customer
+// drawing. Both are Lotes, and that is exactly why this asserts the authorities are DIFFERENT
+// declarations: one vendor supplying two parts is still two subjects, and the failure this
+// guards is a later edit collapsing them onto one citation because the vendor name matches.
+test fn w_the_two_constituents_resolve_to_their_own_separate_authorities() -> Bool {
   let a = ilm4926_attachment_standing
   (match a.retention_assembly.orderable_part_number {
     DesignationFactEstablished { value: _, authority: auth } => auth == lotes_azif0222_product_authority
     DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
   })
+    && (match a.socket_body.orderable_part_number {
+      DesignationFactEstablished { value: _, authority: auth } => auth == azifa072_drawing_authority
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    })
+    && (match attachment_board_land_pattern(a: a) {
+      DesignationFactEstablished { value: _, authority: auth } => auth == azifa072_drawing_authority
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    })
     && standing_is_established(s: a.retention_assembly.vendor_identity)
-    && !standing_is_established(s: attachment_board_land_pattern(a: a))
-    && !standing_is_established(s: a.socket_body.vendor_identity)
-    && !standing_is_established(s: a.socket_body.orderable_part_number)
+    && lotes_azif0222_product_authority != azifa072_drawing_authority
 }
 
 // MOUNTING HARDWARE IS ITS OWN CONSTITUENT AND IS NOT COVERED BY THE RETENTION PART. Whether the
@@ -145,14 +161,26 @@ test fn w_the_retention_assembly_resolves_without_touching_the_land_pattern() ->
 test fn w_mounting_hardware_is_separately_unresolved() -> Bool {
   let a = ilm4926_attachment_standing
   !standing_is_established(s: a.mounting_hardware.orderable_part_number)
-    && attachment_unresolved_constituent_count(a: a) == 2
+    && attachment_unresolved_constituent_count(a: a) == 1
 }
 
-// NO FOOTPRINT MAY EMIT. The gate is conjunctive on socket-body identity AND land pattern, so
-// resolving the retention assembly cannot open it -- which is the failure this whole module exists
-// to prevent: a released pad array for a part nobody has named.
-test fn w_no_footprint_may_emit_while_the_socket_body_is_unnamed() -> Bool {
-  !attachment_footprint_may_emit(a: ilm4926_attachment_standing)
+// ESTABLISHED IS NOT COMPLETE, AND THIS WITNESS IS THE PAIR THAT SAYS SO. The standing-level
+// gate now OPENS -- the socket body is identified and its land pattern established, so a
+// predicate over the standing has nothing left to refuse. The release gate still REFUSES,
+// because three geometry gaps stand in the socket-body module. Both halves are asserted
+// together because either alone is misleading: the first read alone says ship it, the second
+// read alone hides that the citations actually landed.
+//
+// This is the specimen for the failure caught on the run that introduced it: the standing gate
+// flipped to true the moment the last citation arrived, while the stencil aperture was unread
+// and the Pin 1 corner unlocated. Establishment is a property of a fact's grounding;
+// releasability is a property of a deliverable's completeness. A gate reading only the first
+// permits as soon as the paperwork is done.
+test fn w_the_standing_gate_opens_while_the_release_gate_still_refuses() -> Bool {
+  attachment_footprint_may_emit(a: ilm4926_attachment_standing)
+    && !lga4926_footprint_may_release()
+    && !azifa072_footprint_may_emit()
+    && land_pattern_gap_count() == 3
 }
 
 // RED control: the emit gate is reachable. A predicate that can only answer false would prove
