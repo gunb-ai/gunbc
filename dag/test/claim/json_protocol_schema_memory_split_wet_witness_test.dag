@@ -26,13 +26,13 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
-fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
   materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
   materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
