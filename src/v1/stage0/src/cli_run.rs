@@ -3079,11 +3079,84 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
 /// (`compile_clean_unlisted_import_use_enforcement` in `gunbc.compile_clean_diagnostic_policy`).
 /// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
+/// The policy entry's OWN import closure, as an explicit source set.
+///
+/// Why this exists rather than a whole-tree resolve: reading one nullary `Bool` used to cost a
+/// full resolve+typecheck over `default_source_roots()` — the whole tree — which is both
+/// enormously oversized (the policy module has three imports) and, more seriously, a function
+/// answering a question about the CALLER's world by consulting a DIFFERENT one. Measured, same
+/// probe, only the caller's roots varied: 216ms when the caller's roots happened to match the
+/// whole-tree key, 44886ms when they did not and the resolve paid a cold whole-tree load
+/// (`docs/probes/qualified_name_resolution_cost_2026-08-23.md`).
+///
+/// FAIL-CLOSED BY CONSTRUCTION (DESIGN §5): every arm that cannot produce the exact closure
+/// REFUSES with a typed, located message naming the module and the file. It must never fall back
+/// to the whole tree — that arm would restore today's cost, zero the deficit's frequency by
+/// construction, and make the widening unrankable ever after. Note the contrast with
+/// `resolve_virtual_source_with_imports`, whose BFS silently SKIPS an import it cannot resolve;
+/// a silent skip here would narrow the policy closure and answer from a graph missing the very
+/// module the answer depends on.
+fn compile_clean_policy_entry_closure_sources(
+    roots: &[String],
+    entry_rel: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let ws = process_workspace_root();
+    let module_index = build_module_path_index(roots);
+    let read = |rel: &str| -> Result<String, String> {
+        let abs = ws.join(rel);
+        std::fs::read_to_string(&abs).map_err(|e| {
+            format!(
+                "compile_clean_diagnostic_policy closure: cannot read `{}` ({e})",
+                abs.display()
+            )
+        })
+    };
+
+    let entry_content = read(entry_rel)?;
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut queue: Vec<String> = vec![entry_content.clone()];
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(rel_path) = module_index.get(&module_path) else {
+                return Err(format!(
+                    "compile_clean_diagnostic_policy closure: import `{module_path}` \
+                     (reached from `{entry_rel}`) names no module in the source roots"
+                ));
+            };
+            // `entry_rel` may be absolute (an entry argument typically is) while the module
+            // index stores workspace-relative keys, so compare canonically — a string compare
+            // would miss and admit the entry twice under two spellings.
+            if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
+                continue;
+            }
+            let file_content = read(rel_path)?;
+            seen.insert(
+                rel_path.clone(),
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel_path.clone(),
+                    content: file_content.clone(),
+                }),
+            );
+            queue.push(file_content);
+        }
+    }
+
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_rel.to_string(),
+        content: entry_content,
+    }));
+    Ok(sources)
+}
+
 pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
     let roots = default_source_roots();
     let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+    let sources = compile_clean_policy_entry_closure_sources(&roots, &entry)?;
+    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     match v1_interpreter::run_in_context_with_args(
