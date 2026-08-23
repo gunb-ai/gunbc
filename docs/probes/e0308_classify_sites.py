@@ -19,7 +19,7 @@ INLINE = re.compile(r"expected (?:type parameter |struct |enum |reference |unit 
 NOTE_EXP = re.compile(r"=\s*note:\s*expected (\w+(?: \w+)?) `(.+?)`\s*$")
 NOTE_FOUND = re.compile(r"^\s*found (\w+(?: \w+)?) `(.+?)`\s*$")
 
-def read_blocks(path):
+def read_blocks(path, codes=("E0308",)):
     lines = [ANSI.sub("", l.rstrip("\n")) for l in open(path, encoding="utf-8", errors="replace")]
     blocks, cur = [], None
     for i, l in enumerate(lines):
@@ -33,7 +33,7 @@ def read_blocks(path):
                 blocks.append(cur); cur = None; continue
             cur["lines"].append(l)
     if cur: blocks.append(cur)
-    return [b for b in blocks if b["code"] == "E0308"]
+    return blocks if codes is None else [b for b in blocks if b["code"] in codes]
 
 def block_sites(b):
     """Expand one block into canonical mismatch sites."""
@@ -369,10 +369,13 @@ def main(path, out):
                      ["file", "line", "col", "expected", "found", "delta", "root", "reason",
                       "carrier_flags", "callee", "callee_kind", "msg"]) + "\n")
     print("raw E0308 blocks: %d" % len(blocks))
-    print("canonical sites : %d" % len(sites))
+    print("mismatch projections: %d" % len(sites))
     hist = collections.Counter(s["root"] for s in sites)
+    # Counts only. This classifier sees one error code in one overlapping M=1 closure at one
+    # revision. A percentage would mistake this code-local projection for a closed mechanism
+    # population and make it look comparable with another code, closure, or revision.
     for r, n in hist.most_common():
-        print("  %-12s %4d  %5.1f%%" % (r, n, 100.0 * n / len(sites)))
+        print("  %-12s %4d" % (r, n))
     flagged = collections.Counter(s["carrier_flags"] for s in sites if s.get("carrier_flags"))
     if flagged:
         print("\nCarrier flags (evidence beside the root, not a category):")
@@ -385,4 +388,5 @@ def main(path, out):
             print("  %s:%s:%s  %s | %s  [%s] callee=%s" %
                   (s["file"], s["line"], s["col"], s["expected"], s["found"], s["delta"], s["callee"]))
 
-main(sys.argv[1], sys.argv[2])
+if __name__ == "__main__":
+    main(sys.argv[1], sys.argv[2])
