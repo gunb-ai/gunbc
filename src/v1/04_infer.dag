@@ -12,7 +12,7 @@ import v1.compiler.type_head_exposure {
   TypeParameterRelation, NominalParameterRelation,
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, CyclicTypeHead, MalformedApplicationHead,
-  type_declaration_identity_key, admits_integer_numeral
+  type_declaration_identity_key
 }
 import v1.std.core {
   Node, InternTable,
@@ -1980,15 +1980,7 @@ fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
 fn literal_introduction_type_mismatch(formal: Node, actual_expr: Node, scope: InferScope) -> Bool {
   let expected_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
   match actual_expr.expr_data {
-    ExprLiteral { value: LitInt { value: _ } } =>
-      let expected_identity = type_reference_identity(n: formal, source_indices: scope.type_env.source_indices)
-      if is_kernel_type(name: expected_name) || admits_integer_numeral(type_identity: expected_identity) { false }
-      else {
-        match expected_type_head_exposure(formal: formal, scope: scope) {
-          ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => false
-          _ => true
-        }
-      }
+    ExprLiteral { value: LitInt { value: _ } } => false
     ExprLiteral { value: _ } =>
       if is_kernel_type(name: expected_name) { false }
       else { exposure_is_application(exposure: expected_type_head_exposure(formal: formal, scope: scope)) }

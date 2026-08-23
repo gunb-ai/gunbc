@@ -52,15 +52,10 @@ pub enum TypeHeadExposure {
     MalformedApplicationHead { cause: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct IntegerNumeralIntroductionRow {
-    pub type_identity: String,
-}
-
 pub fn type_head_exposure_model_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Type-head exposure is a bounded, declaration-identity-keyed compiler judgment. It exposes only through TransparentAlias, stops at opaque/abstract/refinement/brand/sole-constructor boundaries, and preserves an application as its outer constructor plus arguments under relations owned by that constructor. Stuck is strategy-not-applicable (including lookup Absent); MalformedApplication is an invalid input. Consumers must never collapse those arms or map either one to compatible. Integer numeral introduction is separate from coercion and target realization: zero/one/add fields on CommutativeSemiring are deliberately NOT read as an OfNat capability, because that would fabricate syntax permission for every semiring from coincidental structure.".to_string()
+            "Type-head exposure is a bounded, declaration-identity-keyed compiler judgment. It exposes only through TransparentAlias, stops at opaque/abstract/refinement/brand/sole-constructor boundaries, and preserves an application as its outer constructor plus arguments under relations owned by that constructor. Stuck is strategy-not-applicable (including lookup Absent); MalformedApplication is an invalid input. Consumers must never collapse those arms or map either one to compatible.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -71,42 +66,6 @@ pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -
         v1_rt::concat(decl_file.clone(), "::".to_string()),
         declared_name.clone(),
     )
-}
-
-pub fn integer_numeral_introduction_rows() -> Rc<Vec<Rc<IntegerNumeralIntroductionRow>>> {
-    Rc::new(vec![
-        Rc::new(IntegerNumeralIntroductionRow {
-            type_identity: type_declaration_identity_key(
-                "<kernel:Int>".to_string(),
-                "Int".to_string(),
-            ),
-        }),
-        Rc::new(IntegerNumeralIntroductionRow {
-            type_identity: type_declaration_identity_key(
-                "dag/std/nat.dag".to_string(),
-                "Nat".to_string(),
-            ),
-        }),
-        Rc::new(IntegerNumeralIntroductionRow {
-            type_identity: type_declaration_identity_key(
-                "dag/std/integer.dag".to_string(),
-                "Int".to_string(),
-            ),
-        }),
-    ])
-}
-
-pub fn admits_integer_numeral(type_identity: String) -> bool {
-    {
-        let mut __found = false;
-        for row in integer_numeral_introduction_rows().iter().cloned() {
-            if (row.type_identity.clone() == type_identity.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

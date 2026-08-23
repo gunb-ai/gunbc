@@ -61,9 +61,7 @@ data applied_formal_string_red_source: String = "module probe_applied_formal_str
 data applied_formal_list_green_source: String = "module probe_applied_formal_list_green\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: [1, 2]) }\n"
 data applied_formal_concat_green_source: String = "module probe_applied_formal_concat_green\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: concat([1], [2])) }\n"
 data applied_formal_wrong_element_red_source: String = "module probe_applied_formal_wrong_element_red\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: [\"not an int\"]) }\n"
-data nat_introduction_control_source: String = "module probe_nat_introduction_control\nimport std.nat { Nat }\nfn consume(n: Nat) -> Int { 0 }\nfn f() -> Int { consume(n: 40) }\n"
 data nat_string_red_source: String = "module probe_nat_string_red\nimport std.nat { Nat }\nfn consume(n: Nat) -> Int { 0 }\nfn f() -> Int { consume(n: \"forty\") }\n"
-data peano_nat_numeral_red_source: String = "module probe_peano_nat_numeral_red\nimport v2.std.nat { Nat }\nfn consume(n: Nat) -> Int { 0 }\nfn f() -> Int { consume(n: 40) }\n"
 
 fn observed_blocking_count(census: CompileDiagnosticCensus) -> Int? {
   match census {
@@ -147,14 +145,6 @@ test fn list_introduction_recursively_refuses_wrong_element() -> Bool {
   source_has_blocking_type_mismatch(source: applied_formal_wrong_element_red_source)
 }
 
-test fn nat_declared_identity_accepts_integer_numeral() -> Bool {
-  source_has_zero_blocking_diagnostics(source: nat_introduction_control_source)
-}
-
 test fn nat_declared_identity_refuses_string_literal() -> Bool {
   source_has_blocking_type_mismatch(source: nat_string_red_source)
-}
-
-test fn peano_nat_without_introduction_row_refuses_numeral() -> Bool {
-  source_has_blocking_type_mismatch(source: peano_nat_numeral_red_source)
 }

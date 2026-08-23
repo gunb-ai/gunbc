@@ -151,6 +151,7 @@ pub use crate::v1_compiler_infer_types::{
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
+pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     CyclicTypeHead, ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
 };
@@ -158,9 +159,6 @@ use crate::v1_compiler_type_head_exposure::TypeHeadView::{
     ApplicationHead, CallableHead, CoproductHead, KernelScalarHead, ProductHead,
 };
 use crate::v1_compiler_type_head_exposure::TypeParameterRelation::NominalParameterRelation;
-pub use crate::v1_compiler_type_head_exposure::{
-    admits_integer_numeral, type_declaration_identity_key,
-};
 pub use crate::v1_compiler_type_head_exposure::{
     TypeHeadExposure, TypeHeadView, TypeParameterRelation,
 };
@@ -3023,36 +3021,7 @@ pub fn literal_introduction_type_mismatch(
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
                 };
-                {
-                    let expected_identity = type_reference_identity(
-                        formal.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    if (is_kernel_type(expected_name.clone())
-                        || admits_integer_numeral(expected_identity.clone()))
-                    {
-                        false
-                    } else {
-                        match (*expected_type_head_exposure(formal.clone(), scope.clone())).clone()
-                        {
-                            TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                                if matches!(
-                                    view.as_ref(),
-                                    TypeHeadView::KernelScalarHead { .. }
-                                ) =>
-                            {
-                                let TypeHeadView::KernelScalarHead {
-                                    type_identity: _, ..
-                                } = view.as_ref()
-                                else {
-                                    unreachable!()
-                                };
-                                false
-                            }
-                            _ => true,
-                        }
-                    }
-                }
+                false
             }
             ExprData::ExprLiteral { value: _, .. } => {
                 if is_kernel_type(expected_name.clone()) {
