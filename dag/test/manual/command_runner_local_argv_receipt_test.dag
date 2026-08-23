@@ -1,7 +1,9 @@
 module test.manual.command_runner_local_argv_receipt
 
 import std.types { Bool, String }
-import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.gnu_coreutils { printf_command, true_command }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
@@ -35,7 +37,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 test fn spaced_operand_survives_as_one_argument() -> Bool {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
-      command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+      command: printf_command(format: "%s|", values: ["a b"]),
       transport: LocalExec,
     )
   ) == "a b|"
@@ -47,7 +49,7 @@ test fn spaced_operand_survives_as_one_argument() -> Bool {
 test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
-      command: ArgvCommand { argv: ["printf", "%s|", "a b"] },
+      command: printf_command(format: "%s|", values: ["a b"]),
       transport: LocalExec,
     )
   ) != "a|b|"
@@ -58,7 +60,7 @@ test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
 test fn plain_operand_round_trips() -> Bool {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
-      command: ArgvCommand { argv: ["printf", "%s|", "plain"] },
+      command: printf_command(format: "%s|", values: ["plain"]),
       transport: LocalExec,
     )
   ) == "plain|"
@@ -82,7 +84,7 @@ test fn plain_operand_round_trips() -> Bool {
 
 test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["sh", "-c", "exit 3"] },
+    command: posix_sh_program_command(script: "exit 3"),
     transport: LocalExec,
   ) {
     ProcessRefused { exit_code: _, stderr: _ } => true
@@ -93,7 +95,7 @@ test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
 
 test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["true"] },
+    command: true_command(),
     transport: LocalExec,
   ) {
     ProcessOutputAbsent => true
@@ -106,7 +108,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 // collapsing into one variant.
 test fn zero_exit_with_output_is_present() -> Bool {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["printf", "%s", "value"] },
+    command: printf_command(format: "%s", values: ["value"]),
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } => t == "value"
@@ -115,18 +117,65 @@ test fn zero_exit_with_output_is_present() -> Bool {
   }
 }
 
-// Empty argv refuses rather than defaulting -- a command with no words names no program to
-// execute. This exercises the HeadAbsent arm inside command_over_transport's caller directly
-// (never reaching a process at all), which nonzero_exit_printing_nothing_is_refused_not_absent
-// above does not: that test's argv is nonempty and its ProcessRefused comes from a real exit
-// code, not from the empty-argv guard.
-test fn empty_argv_refuses() -> Bool {
-  match run_shell_command_capture(
-    command: ArgvCommand { argv: [] },
-    transport: LocalExec,
-  ) {
-    ProcessRefused { exit_code: _, stderr: _ } => true
-    ProcessOutputAbsent => false
-    ProcessOutputPresent { text: _ } => false
-  }
-}
+// EMPTY ARGV NO LONGER HAS A TEST BECAUSE IT NO LONGER HAS A STATE, and this paragraph stands where
+// the test did rather than the test being quietly dropped.
+//
+// `empty_argv_refuses` asserted that run_shell_command_capture refuses ArgvCommand { argv: [] } with
+// the empty-argv guard, never reaching a process. That guard is gone, and so is the value that
+// reached it: extdeps.exec.command ArgvCommand now carries `program: NonEmptyStr` beside its
+// arguments, so a command naming no program cannot be written -- not by a caller, not by this file,
+// which could not construct one even if the sole_constructor seal admitted it.
+//
+// THE EVIDENCE RULE THIS FOLLOWS, since DESIGN section 4b(4) says a climb deletes the production
+// machinery and KEEPS the discriminating evidence: what is kept is the evidence that can still be
+// expressed. An expecting-red probe becomes a permanent regression control when its wall lands -- but
+// that presumes the probe remains WRITABLE once the wall exists. Here the wall's whole content is
+// that the probe's input is unconstructible, so there is no test to flip: re-admitting the empty
+// value in order to keep testing its refusal would reopen exactly the state the climb closed. The
+// enrolled evidence for this class is now the type declaration itself, which every caller of every
+// builder compiles against.
+//
+// THE CLIMB IS MEASURED, NOT ASSUMED, AND THE MEASUREMENT IS THE PART WORTH KEEPING. `program` is
+// NonEmptyStr, which std.types declares as `String where non_empty` -- a REFINEMENT, not a mint -- so
+// the climb is real only if that predicate is enforced at CONSTRUCTION. A type name is not safety
+// (DESIGN section 4b: a brand or Validated<T> is cosmetic until construction enforces the
+// distinction). Run against a freshly built gunbc on 2026-08-22, one discriminating pair, same file
+// and same mechanism with only the literal changed:
+//
+//   data probe: NonEmptyStr = ""       -> REFUSED at the declaration:
+//                                         type mismatch: expected 'Product(NonEmptyStr)',
+//                                         got 'Primitive(String)'
+//   data probe: NonEmptyStr = "mkdir"  -> ACCEPTED; the module resolved and its function
+//                                         evaluated to a word count
+//
+// `"" as NonEmptyStr` at a call site refuses the same way, so neither construction route admits an
+// empty program. THE BOUNDARY, per section 4b's rule that a rung is per PATH: this measures
+// source -> .dag acceptance. It says nothing about the Rust emission path, where a mirror's own
+// constructor is a separate question this lane did not open.
+//
+// NOT ENROLLED AS A WITNESS, and the reason is a real limitation rather than a choice: the only
+// in-corpus vehicle for asserting a REFUSAL is compile_dag_diagnostic_census over a virtual module,
+// which reads the live tree -- and a ReadsLiveTree file is declined by the floor before the fold, so
+// enrolling it would add an inert witness, which is worse than none. The measurement above is
+// recorded here with its command and its output so the next author can reproduce it in one dispatch.
+//
+// RUNG, STATED AS FOUR FACTS RATHER THAN ONE CLAIM, because collapsing them is how a climb gets
+// reported as finished while its evidence has no route (operator ruling relayed 2026-08-22):
+//
+//   1. The empty argv has no representation in the carrier -- there is no zero-word ArgvCommand to
+//      construct, so the two refusal arms this file's deleted test exercised are unreachable.
+//   2. The refinement that fact rests on is EVIDENCED BY A RECORDED EXECUTION: the pair above, ""
+//      refused and "mkdir" accepted, same file, one literal changed.
+//   3. That pair is NOT required-floor enrolled, and cannot be today (see the paragraph above).
+//   4. The Rust emission path is UNMEASURED. Nothing here says what an emitted mirror's own
+//      constructor admits, which is the same gap DESIGN records for extdeps.uri UriValidatedScalar.
+//
+// So the honest reading is EVIDENCED BUT NOT FLOOR-ENROLLED on the source path, and unmeasured on
+// the emission path -- not a completed climb. Under the strict section 4b rule this repository
+// applies, a completed climb retains EXECUTING evidence, and this one has a receipt rather than an
+// enrolled control. The arms stay deleted because fact 1 holds regardless of enrolment; what the
+// enrolment gap withholds is the CLAIM, not the deletion.
+//
+// And this is a claim about this ONE class, not about argv construction generally: hand-spelled
+// FLAGS remain writable inside a builder's own module, which is the point of homing each builder
+// beside its cited authority rather than the seal's guarantee.

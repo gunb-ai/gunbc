@@ -10225,9 +10225,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
@@ -11659,11 +11668,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_live={} \
-         — every discovered site is exactly one of these",
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         declined_live={} — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
+        outcome.declined_fixture_member,
         outcome.declined_live_tree
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
@@ -11695,7 +11705,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
-         known_red_host_effect_refused={} over_cost_line_diagnostic={}",
+         known_red_host_effect_refused={} known_red_runtime_errored={} \
+         known_red_observation_unreadable={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.receipt_identities,
@@ -11714,6 +11725,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_passed_over_budget,
         outcome.known_red_host_tool_unresolved_held,
         outcome.known_red_host_effect_refused,
+        outcome.known_red_runtime_errored.len(),
+        outcome.known_red_observation_unreadable.len(),
         outcome.over_cost_line_diagnostic
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
@@ -11766,6 +11779,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
+    for errored in &outcome.known_red_runtime_errored {
+        eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
+    }
+    for unreadable in &outcome.known_red_observation_unreadable {
+        eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
@@ -11779,7 +11798,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 /// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.)
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
+/// again. Making them block reds lanes with no connection to the defect, which needs an
+/// approved design and a shadow phase rather than an author's judgement — and the honest
+/// reporting half does not have to wait for that decision.)
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.stale_quarantine.is_empty()

@@ -4,11 +4,11 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { shell_command_render }
 import gunbc.repo_local_git_config {
   RepoLocalGitConfigBinding,
   desired_repo_local_git_config_bindings,
-  reconcile_install_argv,
+  reconcile_install_command,
 }
 
 data githooks_repo_local_git_config_emit_note: String = "Self-healing carrier for repository-local Git integration bindings (generated-file conflict policy charter, lane 2, review 46518 / crisp-bat-830). Generated pre-commit and pre-push hooks run idempotent local binding installs derived from reconcile_install_argv — the same cited argv shapes the actuator uses — on every hook invocation once core.hooksPath is set. The one-time manual seed remains only core.hooksPath itself (DESIGN Building & checks); these hooks then converge merge.generated-artifact.driver and re-assert hooksPath. Clones that never set hooksPath degrade to vanilla git text-merge for generated-artifact paths (safe degradation: drift gate still guards at CI); the merge-driver binding is not self-healed until hooks run."
@@ -29,7 +29,7 @@ data githooks_repo_local_git_config_emit_quoting_note: String = "THE EMITTED LIN
 fn emit_install_binding_line(binding: RepoLocalGitConfigBinding) -> String {
   concat(
     concat("# repo-local git config: ", binding.key),
-    concat("\n", concat(shell_command_render(command: ArgvCommand { argv: reconcile_install_argv(binding: binding) }), "\n"))
+    concat("\n", concat(shell_command_render(command: reconcile_install_command(binding: binding)), "\n"))
   )
 }
 

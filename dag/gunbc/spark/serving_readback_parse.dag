@@ -1,6 +1,6 @@
 module gunbc.spark.serving_readback_parse
 
-import std.types { String, Int, NonEmptyStr }
+import std.types { String, Int, NonEmptyStr, List }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonMemberLookup,
@@ -430,4 +430,122 @@ fn spark_serving_first_readback_refusal(
           }
       },
   )
+}
+
+// ── /api/ps residency readback ───────────────────────────────────────────────────────────────────
+//
+// AN EMPTY RESIDENT SET IS NOT "ON CPU". Ollama unloads a model after keep_alive, so an idle host
+// legitimately reports zero resident models -- which says where nothing is, not where anything ran.
+// The three outcomes below are kept apart for exactly the reason the health captures are: collapsing
+// "not resident" into "resident outside VRAM" would fabricate a placement claim from an absence, and
+// a fabricated placement is worse than a fabricated silence because it is actionable.
+//
+// The VRAM figure is carried as the number's LEXEME rather than decoded to an Int. The only question
+// asked of it is whether it is zero, decoding would invent a conversion nobody needs, and the lexeme
+// is what upstream actually sent.
+fn spark_serving_ps_model_name(entry: JsonValue) -> String? {
+  spark_serving_json_member_string(lookup: json_object_unique_member(v: entry, key: "name"))
+}
+
+fn spark_serving_ps_entry_vram_lexeme(entry: JsonValue) -> String? {
+  match json_object_unique_member(v: entry, key: "size_vram") {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: l } => Present { value: l as String }
+        JsonString { value: _ } => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// The search is a FOLD, matching spark_serving_tags_model_search rather than hand-rolling a
+// recursion beside it -- and the fold gives duplicate detection for free. Two entries naming the
+// same model is not a case to pick a winner from: it is a response we cannot read, so it refuses.
+type SparkServingPsVramFold
+  = SparkServingPsVramFoldEmpty
+  | SparkServingPsVramFoldOne { lexeme: String }
+  | SparkServingPsVramFoldMany { count: Int }
+  | SparkServingPsVramFoldUndecodable
+
+fn spark_serving_ps_vram_fold_step(
+  state: SparkServingPsVramFold,
+  element: JsonValue,
+  model: String,
+) -> SparkServingPsVramFold {
+  match spark_serving_ps_model_name(entry: element) {
+    Absent => state
+    Present { value: n } =>
+      if n == model {
+        match spark_serving_ps_entry_vram_lexeme(entry: element) {
+          Absent => SparkServingPsVramFoldUndecodable
+          Present { value: lex } =>
+            match state {
+              SparkServingPsVramFoldEmpty => SparkServingPsVramFoldOne { lexeme: lex }
+              SparkServingPsVramFoldOne { lexeme: _ } => SparkServingPsVramFoldMany { count: 2 }
+              SparkServingPsVramFoldMany { count: c } => SparkServingPsVramFoldMany { count: c + 1 }
+              SparkServingPsVramFoldUndecodable => SparkServingPsVramFoldUndecodable
+            }
+        }
+      } else {
+        state
+      }
+  }
+}
+
+fn spark_serving_ps_find_vram(entries: List<JsonValue>, model: String) -> SparkServingReadbackField {
+  let folded = fold(
+    entries,
+    init: SparkServingPsVramFoldEmpty,
+    f: (state, el) => spark_serving_ps_vram_fold_step(state: state, element: el, model: model),
+  )
+  match folded {
+    SparkServingPsVramFoldEmpty => SparkServingReadbackAbsent
+    SparkServingPsVramFoldOne { lexeme: lex } => SparkServingReadbackPresent { value: lex }
+    SparkServingPsVramFoldMany { count: n } =>
+      SparkServingReadbackRefused {
+        cause: join([
+          "ollama /api/ps lists ", to_string(n), " resident entries for the served model",
+        ], "") as NonEmptyStr,
+      }
+    SparkServingPsVramFoldUndecodable =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/ps entry for the served model carries no decodable size_vram number" as NonEmptyStr,
+      }
+  }
+}
+
+fn spark_serving_parse_ps_vram_for_model(stdout: String, model: String) -> SparkServingReadbackField {
+  match parse_json(s: stdout) {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/ps body is not parseable JSON" as NonEmptyStr,
+      }
+    Present { value: doc } =>
+      match json_object_unique_member(v: doc, key: "models") {
+        JsonMemberFound { value: v } =>
+          match v {
+            JsonArray { elements: entries } =>
+              spark_serving_ps_find_vram(entries: entries, model: model)
+            JsonString { value: _ } => SparkServingReadbackRefused { cause: "ollama /api/ps models member is not an array" as NonEmptyStr }
+            JsonNumber { lexeme: _ } => SparkServingReadbackRefused { cause: "ollama /api/ps models member is not an array" as NonEmptyStr }
+            JsonNull => SparkServingReadbackRefused { cause: "ollama /api/ps models member is not an array" as NonEmptyStr }
+            JsonBool { value: _ } => SparkServingReadbackRefused { cause: "ollama /api/ps models member is not an array" as NonEmptyStr }
+            JsonObject { members: _ } => SparkServingReadbackRefused { cause: "ollama /api/ps models member is not an array" as NonEmptyStr }
+          }
+        JsonMemberAbsent =>
+          SparkServingReadbackRefused {
+            cause: "ollama /api/ps response carries no models member, so residency was not stated" as NonEmptyStr,
+          }
+        JsonMemberDuplicated { count: _ } =>
+          SparkServingReadbackRefused { cause: "ollama /api/ps models member is duplicated" as NonEmptyStr }
+        JsonMemberNotAnObject =>
+          SparkServingReadbackRefused { cause: "ollama /api/ps body is not a JSON object" as NonEmptyStr }
+      }
+  }
 }
