@@ -1413,6 +1413,16 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
 
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 
+// Transport KIND is discriminated by which marker property is present, not by a stored tag, and
+// that has a consequence which is easy to undo by accident: `rest_transport_node` ALWAYS writes a
+// `base_url` property, filled from the empty-string literal `parse_rest_fields` substitutes when
+// `url:` is omitted -- and omitting it is the NORM, since the base normally comes from the service
+// `config`. So that fabricated "" is load-bearing structure holding the discrimination up, not a
+// lazy default: remove it and every rest transport in the corpus reclassifies as `local`. The same
+// holds for `config`'s `endpoint`, where `config { }` is legal. This is also why
+// `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
+// marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
+// and `parse_file_fields` refuses it (gunbc#8949).
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
