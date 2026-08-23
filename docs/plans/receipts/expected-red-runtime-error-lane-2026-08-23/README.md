@@ -129,3 +129,38 @@ Each of these is a distinct defect with its own root, and none of them is repair
   correct; the enrolment is the wrong carrier for it.
 - `R6`/`R5`/`R3` (15) — bare coproduct variants and cross-test-module `test data` in import-less
   files; same loader eligibility question as `R1`, not a separate mechanism.
+
+## Round 2: the BARE-file discriminator, run as an experiment rather than a rollout
+
+The 120 BARE rows cannot be diagnosed outside the floor. Two things are now measured and both
+point away from the loader:
+
+- the per-entry witness loader RESOLVES the R1 shape. Executed at main head on a release binary
+  built from that tree, `gunbc run --claim-run` on
+  `test.claim.ci_deploy_target_host_witness.witness_deploy_job_not_on_ubicloud_runner` — a row the
+  floor reports as `no such function: gunbc_ci_deploy_srv1_stage` — **PASSES**, and
+  `GUNBC_BARE_PULL_TRACE=1` prints
+  `[bare-pull] dag/test/claim/ci_deploy_target_host_witness_test.dag -> 'gunbc_ci_deploy_srv1_stage' -> gunbc.ci_spec`.
+  So the closure resolves the name and pulls the module.
+- the floor's subject already holds every module. `assemble_prepared_subject` takes EVERY module
+  under the source roots minus a small exclusion list, so "the module was not loaded" cannot be
+  the floor's cause either.
+- and no CLI reproduces the floor's subject: a whole-tree `gunbc run` REFUSES
+  (`--entry <file.dag> is required … refused rather than approximated`).
+
+So the floor is the only instrument, and the honest way to use it is one bounded experiment
+rather than a 120-file rollout. Three import-LESS files are given their explicit imports here,
+chosen to vary the thing in question — the density of OTHER ambient names in the file, which is
+what moving the file across the bare-scan gate puts at risk:
+
+| file | rows | names imported | other ambient names at risk |
+|---|---|---|---|
+| `dag/test/claim/ci_deploy_target_host_witness_test.dag` | 2 | 1 | several |
+| `dag/test/claim/design_argument_witness_test.dag` | 9 | 3 | few |
+| `dag/test/claim/emit_host_gate_witness_test.dag` | 6 | 6 | several |
+
+Both outcomes are informative and neither is a rollout decision on its own. If the 17 rows flip to
+PASS and nothing else in those three files regresses, the per-site import works for BARE files too
+and the remaining question is only unit-of-work. If any of them REGRESSES a currently-passing
+witness in the same file, that is the bare-scan gate biting, measured, and per-site repair is
+excluded for the other 117 by evidence rather than by argument.
