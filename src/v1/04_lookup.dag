@@ -185,6 +185,22 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 //
 // The asymmetry is deliberate: the builtin is RETAINED only when a declared candidate positively
 // says the two are different authorities.
+//
+// THE Undisposed ARM IS A CONSUMER-SIDE POLICY CHOICE, NOT A FACT ABOUT THE PRIMITIVE, and it is
+// written down here rather than left implicit because an unexplained arm reads as an oversight.
+// This seam decides nothing about the taxonomy -- it never inspects a PrimitiveIdentity, compares
+// an authored symbol, or supplements a projection row; it consumes a total answer and maps it onto
+// one local question. What it DOES decide is which way THIS consumer fails under ignorance, and it
+// fails toward today's behaviour. That direction is not a preference: a wall whose strictness rises
+// with how much census work remains undone is not strict, it is broken, and it would refuse the
+// 196 undisposed symbols corpus-wide on the strength of nobody having gotten to them yet.
+//
+// WHICH IS ALSO WHY THE ANSWER HAS THREE ARMS RATHER THAN A BOOLEAN, and the argument is about
+// where a decision LIVES rather than what the states mean. A collapsed suppress-flag would make
+// exactly this choice -- but invisibly, at the producer, for every consumer at once, and no second
+// consumer with a different failure direction could dissent from it or even see that a choice had
+// been made. Three arms force each consumer to choose in the open and own its own failure
+// direction. This one chooses suppress, in public, for the reason above.
 fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
   match candidate.identity {
     BuiltinCallable { primitive_name: _ } => false
