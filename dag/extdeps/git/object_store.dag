@@ -1316,7 +1316,7 @@ fn git_repository_pointer_check_step(
           }
         }
       } else {
-        match map_get(stored, pointer.target) {
+        match stored.lookup(pointer.target) {
           Present { value } =>
             let observed = store_object_kind(object: value.object)
             match pointer.expected {
@@ -1336,7 +1336,7 @@ fn git_repository_pointer_check_step(
                 }
             }
           Absent =>
-            match map_get(unavailable, pointer.target) {
+            match unavailable.lookup(pointer.target) {
               Present { value } =>
                 git_unavailable_object_fold(
                   unavailable: value,
