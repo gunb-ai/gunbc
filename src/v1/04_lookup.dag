@@ -175,6 +175,12 @@ fn callable_lookup_over_candidates(
   }
 }
 
+// THE ImportScoped ARM OF `lookup_func_sig` BELOW IS THE LEGACY RESOLVER, kept byte-for-byte
+// until the compatibility bankruptcy step deletes the policy fork (namespace-unique-on-chain
+// operational plan, step 11). It is not the production path -- the host bracket defaults to
+// namespace-only -- and widening the candidate set under it would change the very answers
+// that arm exists to reproduce.
+
 fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
     FuncSigUnresolved
@@ -182,11 +188,6 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
     if name_resolution_policy_is_namespace_only() {
       callable_lookup_over_candidates(func_env: func_env, type_env: type_env, name: name)
     } else {
-      // ImportScoped is the legacy resolver, kept byte-for-byte until the compatibility
-      // bankruptcy step deletes the policy fork (namespace-unique-on-chain operational plan,
-      // step 11). It is not the production path -- the host bracket defaults to namespace-only
-      // -- and widening the candidate set under it would change the very answers that arm
-      // exists to reproduce.
       match lookup_resolved_sig(env: func_env, name: name) {
         FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }

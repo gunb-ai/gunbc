@@ -3441,6 +3441,13 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
   }
 }
 
+// ONE ARM OF `infer_expr_body` BELOW IS UNREACHABLE AND SPELLED ANYWAY: at the ExprCall
+// signature lookup, the enclosing match refuses FuncSigAmbiguous before that body runs, so
+// the collapse cannot happen there -- but the arm is written out instead of wildcarded so
+// that a new FuncSigLookup arm is a compile error at this seam rather than a silent Absent,
+// which is exactly how the deleted `func_sig_if_resolved` came to erase the ambiguity in
+// the first place.
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -3688,11 +3695,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let sig = match call_sig_lookup {
         FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
         FuncSigUnresolved => Absent
-        // UNREACHABLE, AND SPELLED ANYWAY. The enclosing match refuses FuncSigAmbiguous before
-        // this body runs, so the collapse cannot happen here -- but the arm is written out
-        // instead of wildcarded so that a new FuncSigLookup arm is a compile error at this seam
-        // rather than a silent Absent, which is exactly how the deleted func_sig_if_resolved
-        // came to erase the ambiguity in the first place.
         FuncSigAmbiguous { candidates: _ } => Absent
       }
       let sig_params = match sig {
