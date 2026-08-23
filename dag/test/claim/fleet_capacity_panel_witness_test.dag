@@ -1,7 +1,7 @@
 module test.claim.fleet_capacity_panel_witness_test
 
 import std.types { Bool, String, List }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import extdeps.languages.html { EmitOk, EmitRejected, HtmlEmitResult, try_serialize_html_source }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_page { roadmap_daily_workspace_page }
 import gunbc.fleet_capacity_panel {
@@ -18,14 +18,45 @@ import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 
-fn empty_workspace_html() -> String {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page(
+fn workspace_emission() -> HtmlEmitResult {
+  try_serialize_html_source(node: roadmap_daily_workspace_page(
     doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
     merged: [],
-  )) {
+  ))
+}
+
+// A REFUSED SERIALIZATION MUST NOT ANSWER AS AN EMPTY PAGE (review 55040, DESIGN §5).
+//
+// This arm returned "" on EmitRejected, which is the absorbing fallback in the direction that
+// costs the most here: every !string_contains assertion in this file is SATISFIED by the empty
+// string, so a total serialization failure would have rendered the negative rows green and left
+// the positive rows unable to distinguish "the panel is missing" from "nothing serialized at all".
+// Two states with opposite remedies, one answer.
+//
+// The rejected arm now carries the reason, so a positive assertion fails on it and the text names
+// what happened rather than vanishing. The reason is prefixed with a marker no assertion in this
+// file searches for, so it cannot accidentally satisfy one either.
+fn empty_workspace_html() -> String {
+  match workspace_emission() {
     EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+    EmitRejected { reason: r } => join(["EMISSION-REFUSED: ", r as String], "")
   }
+}
+
+fn workspace_emission_is_ok() -> Bool {
+  match workspace_emission() {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// THE REFUSAL IS ITS OWN RED, NOT A CONDITION ATTACHED TO OTHER ROWS.
+//
+// Without this, a serialization refusal is only ever observed indirectly, through whichever
+// assertion happens to notice the page is not what it expected. This makes it a finding in its own
+// right with its own name, so the ledger says "emission refused" rather than "the panel is absent".
+test fn the_workspace_actually_serializes() -> Bool {
+  workspace_emission_is_ok()
 }
 
 // THE PANEL REACHES THE RENDERED PAGE, WHICH IS THE ONLY SURFACE THE OPERATOR SEES.
@@ -50,6 +81,7 @@ test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool {
 // cannot carry it because no operator reads the source.
 test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
   let h = empty_workspace_html()
+  workspace_emission_is_ok() &&
   string_contains(s: h, pattern: "committed allocations, not observed incarnations")
     && !string_contains(s: h, pattern: "slots running")
 }
