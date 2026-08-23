@@ -3671,7 +3671,7 @@ pub fn direct_call_structured_application_mismatch_diags(
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
                                 if ((literal_introduction_type_mismatch(
-                                    formal_subst.clone(),
+                                    formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
                                 ) || structured_application_site_type_mismatch_with_peeled(

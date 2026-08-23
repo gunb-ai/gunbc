@@ -2465,7 +2465,7 @@ fn direct_call_structured_application_mismatch_diags(
       match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if literal_introduction_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope)
+          if literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
             || structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
