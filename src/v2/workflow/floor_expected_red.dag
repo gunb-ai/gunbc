@@ -528,6 +528,26 @@ fn floor_expected_red_chunks() -> List<List<String>> {
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
 // closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
 // but exclude the now-green family from the live expected-red roster.
+//
+// THE THREE compile_accepted_unevaluable_program_control ROWS ARE EXCLUDED FOR THE OPPOSITE
+// REASON, AND CHUNK 21 SAYS SO IN A SENTENCE EXECUTION REFUTES. That chunk's annotation reads
+// "until it lands they are held here so that admission does not red main". Held-in-the-roster is
+// exactly what reds main: the floor requires every ENROLLED identity to be observed among the
+// EXECUTED claims, so an identity that is enrolled and never planned refuses the whole run with
+// cause=ExpectedRedIdentityDidNotExecute. It is not a quiet parking spot. Measured twice, on the
+// authoring PR's own run (32644795043, which was merged red) and again on gunbc#9031
+// (32649496046), where it was the sole floor refusal once the ArgvCommand seal that had been
+// masking it was repaired.
+//
+// The rows are correct and stay in chunk 21. What is wrong is only their LIVENESS: the file
+// declares ReadsLiveTree, the DeclinedLiveTree arm declines it (declined_live=899 on that run),
+// and the arm's deletion is still unmerged (gunbc#8977, gunbc#8982 both OPEN at the time of
+// writing) -- so the enrolment was authored against a precondition that had not landed.
+//
+// RESTORATION TRIGGER, and it is a COUPLING someone must honour rather than a note: when either
+// #8977 or #8982 lands and these identities become executable, DELETE these three exclusions in
+// the same change. They are reds, so once they execute while excluded they count as ordinary
+// failures and red the build -- the exclusion must not outlive the decline that motivated it.
 fn floor_expected_red_is_live(name: String) -> Bool {
   !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
@@ -549,7 +569,10 @@ fn floor_expected_red_is_live(name: String) -> Bool {
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
     || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds")
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile")
 }
 
 fn floor_expected_red_roster() -> List<String> {
