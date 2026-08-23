@@ -5,6 +5,7 @@ import std.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
+import product.fabric.envelope { unstated_envelope }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -188,7 +189,10 @@ fn floor_isolation_requirement() -> IsolationProfile {
 
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) } },
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: floor_isolation_requirement(),

@@ -24,7 +24,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // assertion is that the Work identity they produce is IDENTICAL while the
 // demands remain distinct. If a provider fact ever leaks into Work, this
 // witness reds without anyone needing to notice the leak.
-data fixture_shape: Shape = Shape { hard: HardRequirements { threads: hardware_thread_count(8) } }
+data fixture_shape: Shape = Shape {
+  hard: HardRequirements { threads: hardware_thread_count(8) },
+  envelope: unstated_envelope(),
+}
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
@@ -77,7 +80,10 @@ data other_source_contract: WorkContract = WorkContract {
 // matching constraints disagreed about whether two things were the same work.
 
 data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
-  shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(64) },
+    envelope: unstated_envelope(),
+  },
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
   isolation: shared_kernel_sandbox_profile(),

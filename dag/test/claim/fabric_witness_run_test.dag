@@ -26,7 +26,7 @@ fn t_offer(
   Offer {
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
-    shape: Shape { hard: HardRequirements { threads: threads } },
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
     capabilities: caps,
     trust_domain: trust,
     isolation: current_runner_slot_profile(),
@@ -72,10 +72,10 @@ fn t_fleet_offer() -> Offer<NonEmptyStr> {
 fn fungible(e: OfferFungibility) -> Bool {
   match e {
     Fungible => true
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
     IsolationNotProvided { missing: _ } => false
+    ShapeAxesNotCovered { unmet: _ } => false
   }
 }
 
@@ -136,8 +136,8 @@ test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
   )) {
     TrustDomainMismatch { required: _, offered: _ } => true
     Fungible => false
+    ShapeAxesNotCovered { unmet: _ } => false
     IsolationNotProvided { missing: _ } => false
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
   }
 }

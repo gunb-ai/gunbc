@@ -2,6 +2,8 @@ module product.fabric.supply
 
 import std.types { Timestamp, Int, List }
 import std.measure {
+  ByteSize,
+  byte_size_count,
   MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
   Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
@@ -10,6 +12,8 @@ import std.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
   unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
@@ -171,10 +175,19 @@ type SelectionPolicy =
 
 type OfferFungibility
   = Fungible
-  | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
   | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
   | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
   | IsolationNotProvided { missing: List<IsolationGuarantee> }
+  | ShapeAxesNotCovered { unmet: List<UnmetShapeAxis> }
+
+// ShapeNotCovered IS DELETED RATHER THAN KEPT BESIDE ITS REPLACEMENT.
+//
+// It carried exactly one axis -- required and offered thread counts -- which ShapeAxesNotCovered
+// now carries as ThreadsNotCovered alongside the axes it could not express. Nothing constructs it
+// any more, so keeping it would leave a variant every consumer must match and no producer can
+// ever emit: a permanently-unreachable arm that reads as coverage. DESIGN section 4b(4) is
+// explicit that a climb deletes the redundant lower-rung machinery it obsoletes rather than
+// accumulating it beside the replacement.
 
 // GRANT DURATION -- the fact a RATE quote needs before its per-unit price can
 // be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
@@ -212,7 +225,106 @@ type DemandOfferAffordability
   | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
 
 fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
-  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+  (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
+}
+
+// THREADS WERE THE ONLY AXIS COMPARED, SO FUNGIBILITY RETURNED WRONG ANSWERS.
+//
+// An 8 GiB x64 workload was declared fungible with a 6 GiB arm offer whenever thread counts and the
+// textual capability ref matched. The broker would route work to a machine that cannot run it, and
+// nothing downstream refuses because fungibility already said yes.
+//
+// EACH UNMET AXIS IS NAMED, FOR THE REASON THE ISOLATION MATCH GIVES: "does not fit" is
+// unactionable, while "needs 8589934592 bytes, offered 6442450944" tells a broker which supplier
+// class to look for. An axis the WORK does not state is skipped and is not reported as checked --
+// unstated is not satisfied-by-everything, and rendering it as covered would turn absence of a
+// requirement into a positive clearance.
+//
+// ARCHITECTURE IS EQUALITY, NOT ORDER. There is no sense in which x86_64 "covers" aarch64: a
+// binary built for one does not run on the other, so the comparison is a match and a mismatch is
+// total. Threads and memory are genuine at-least comparisons.
+type UnmetShapeAxis
+  = ThreadsNotCovered { required: HardwareThreadCount, offered: HardwareThreadCount }
+  | MemoryNotCovered { required: ByteSize, offered: ByteSize }
+  | MemoryNotOffered { required: ByteSize }
+  | ArchitectureMismatch { required: Architecture, offered: Architecture }
+  | ArchitectureNotOffered { required: Architecture }
+
+fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
+  match axis {
+    ThreadsNotCovered { required: r, offered: o } =>
+      join(["threads: needs ", to_string(hardware_thread_count_value(t: r)),
+            ", offered ", to_string(hardware_thread_count_value(t: o))], "")
+    MemoryNotCovered { required: r, offered: o } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+    MemoryNotOffered { required: r } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offer states none"], "")
+    ArchitectureMismatch { required: r, offered: o } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offered ", architecture_diagnostic_name(arch: o) as String], "")
+    ArchitectureNotOffered { required: r } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offer states none"], "")
+  }
+}
+
+fn unmet_thread_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  if hardware_thread_count_value(t: offered.hard.threads)
+    >= hardware_thread_count_value(t: needed.hard.threads) {
+    []
+  } else {
+    [ThreadsNotCovered { required: needed.hard.threads, offered: offered.hard.threads }]
+  }
+}
+
+fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.memory {
+    Absent => []
+    Present { value: want } =>
+      match offered.envelope.memory {
+        Absent => [MemoryNotOffered { required: want.min_bytes }]
+        Present { value: have } =>
+          if byte_size_count(b: have.min_bytes) >= byte_size_count(b: want.min_bytes) {
+            []
+          } else {
+            [MemoryNotCovered { required: want.min_bytes, offered: have.min_bytes }]
+          }
+      }
+  }
+}
+
+fn unmet_architecture_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.cpu {
+    Absent => []
+    Present { value: want_cpu } =>
+      match want_cpu.architecture {
+        Absent => []
+        Present { value: want } =>
+          match offered.envelope.cpu {
+            Absent => [ArchitectureNotOffered { required: want }]
+            Present { value: have_cpu } =>
+              match have_cpu.architecture {
+                Absent => [ArchitectureNotOffered { required: want }]
+                Present { value: have } =>
+                  if have == want { [] } else {
+                    [ArchitectureMismatch { required: want, offered: have }]
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  concat(
+    unmet_thread_axis(offered: offered, needed: needed),
+    concat(
+      unmet_memory_axis(offered: offered, needed: needed),
+      unmet_architecture_axis(offered: offered, needed: needed),
+    ),
+  )
 }
 
 // THIS FOLD SCREENS FUNGIBILITY. IT DOES NOT SELECT, AND IT TAKES NO MONEY.
@@ -227,17 +339,15 @@ fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>
     required: requirements.isolation,
     provided: offer.isolation,
   )
+  let unmet_axes = unmet_shape_axes(offered: offer.shape, needed: requirements.shape)
   if requirements.trust_domain != offer.trust_domain {
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
   } else if requirements.capabilities != offer.capabilities {
     CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
   } else if (missing_isolation |> count) > 0 {
     IsolationNotProvided { missing: missing_isolation }
-  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
-    ShapeNotCovered {
-      required_threads: requirements.shape.hard.threads,
-      offered_threads: offer.shape.hard.threads,
-    }
+  } else if (unmet_axes |> count) > 0 {
+    ShapeAxesNotCovered { unmet: unmet_axes }
   } else {
     Fungible
   }
