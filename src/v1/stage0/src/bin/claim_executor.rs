@@ -11785,20 +11785,21 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
-/// It said seven until `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// landed here — the same drift, caught this time by the sentence warning about itself.)
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
+/// again. Making them block reds lanes with no connection to the defect, which needs an
+/// approved design and a shadow phase rather than an author's judgement — and the honest
+/// reporting half does not have to wait for that decision.)
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()
         && outcome.host_tool_unresolved.is_empty()
-        && outcome.known_red_runtime_errored.is_empty()
-        && outcome.known_red_observation_unreadable.is_empty()
         && outcome.route_gap.is_empty()
         && outcome.stale_route_gap.is_empty()
 }

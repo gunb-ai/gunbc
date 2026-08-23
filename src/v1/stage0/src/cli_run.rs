@@ -41995,6 +41995,13 @@ pub fn run_required_floor(
     let mut known_red_host_tool_unresolved: usize = 0;
     let mut known_red_host_effect_refused: usize = 0;
     let mut known_red_runtime_errored_count: usize = 0;
+    // THE CAUSE CENSUS, GROUPED IN-PROCESS. A count of 172 throws is not 172 defects until
+    // something says whether they share a root, and rendering one concentrated cause as
+    // distributed debt is worse than the absorbing counter it replaces: it reads as honest
+    // accounting while being wrong about the SHAPE of the problem, and a later reader prices
+    // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
+    // the same run that produces the count.
+    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
     let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
@@ -42353,9 +42360,26 @@ pub fn run_required_floor(
                     known_red_runtime_errored_count += 1;
                     let detail = match &result {
                         ClaimOutcome::RuntimeError { message } => {
+                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
+                            // offsets differ per row and would make every throw its own "cause",
+                            // which is the answer the census exists to avoid assuming.
+                            let signature: String = message
+                                .split_whitespace()
+                                .take(12)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            *known_red_runtime_error_causes
+                                .entry(signature.chars().take(140).collect())
+                                .or_insert(0) += 1;
                             format!("runtime error: {message}")
                         }
-                        other => format!("{other:?}"),
+                        other => {
+                            let rendered = format!("{other:?}");
+                            *known_red_runtime_error_causes
+                                .entry(rendered.chars().take(140).collect())
+                                .or_insert(0) += 1;
+                            rendered
+                        }
                     };
                     outcome.known_red_runtime_errored.push(format!(
                         "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
@@ -42563,6 +42587,24 @@ pub fn run_required_floor(
         known_red_runtime_errored_count,
         known_red_observation_unreadable_count
     );
+    // THE CAUSE CENSUS, PRINTED WHETHER OR NOT ANYTHING REFUSES. Largest class first, so the
+    // first line answers the only question the raw count raises: is this one root or many?
+    // Printed here rather than in the partition refusal because that refusal returns before the
+    // per-identity report runs — on precisely the run where the evidence matters, it would be
+    // computed and dropped.
+    if !known_red_runtime_error_causes.is_empty() {
+        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
+        causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        eprintln!(
+            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
+             identity(ies)",
+            causes.len(),
+            known_red_runtime_errored_count + known_red_observation_unreadable_count
+        );
+        for (signature, count) in causes.iter().take(20) {
+            eprintln!("[floor-known-red-causes] {count} × {signature}");
+        }
+    }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
         claim_rss_kb_max as f64 / 1048576.0,
@@ -42692,7 +42734,7 @@ pub fn run_required_floor(
              host_effect_refused={} runtime_errored={} observation_unreadable={} roster={} — \
              every enrolled identity must be exactly one of held, now-passing, budget-refused, \
              passed-over-budget, host-tool-unresolved, host-effect-refused, runtime-errored, or \
-             observation-unreadable",
+             observation-unreadable. First non-verdict rows: {}",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
@@ -42701,7 +42743,22 @@ pub fn run_required_floor(
             known_red_host_effect_refused,
             known_red_runtime_errored_count,
             known_red_observation_unreadable_count,
-            expected_red_roster.len()
+            expected_red_roster.len(),
+            // A BOUNDED SAMPLE, BECAUSE THIS REFUSAL RETURNS BEFORE THE PER-IDENTITY REPORT
+            // RUNS. The rows naming WHICH identities live in `outcome.known_red_runtime_errored`
+            // and are printed by `report_required_floor_outcome` — which the caller reaches only
+            // on the Ok path. So on precisely the run where the partition is wrong, the evidence
+            // that says why was computed and then dropped, and the reader is left with counts
+            // and no identities. Ten rows, not all of them: enough to see whether the population
+            // shares one cause, without turning a refusal into a log dump.
+            outcome
+                .known_red_runtime_errored
+                .iter()
+                .chain(outcome.known_red_observation_unreadable.iter())
+                .take(10)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ")
         ));
     }
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
