@@ -1,0 +1,82 @@
+module test.claim.fleet_capacity_panel_witness_test
+
+import std.types { Bool, String, List }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_page { roadmap_daily_workspace_page }
+import gunbc.fleet_capacity_panel {
+  fleet_capacity_summary_line,
+  fleet_committed_slot_total,
+  fleet_committed_slot_total_ignoring_withdrawals,
+  fleet_capacity_withdrawn_line,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+
+fn empty_workspace_html() -> String {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page(
+    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+    merged: [],
+  )) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+// THE PANEL REACHES THE RENDERED PAGE, WHICH IS THE ONLY SURFACE THE OPERATOR SEES.
+//
+// A witness over fleet_capacity_panel() alone would prove the fragment builds and say nothing
+// about whether it is composed into the workspace -- the specification-without-execution failure,
+// where a green test sits beside a page that never shows the thing. This serializes the actual
+// daily workspace document and looks for the panel in the HTML.
+test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool {
+  let h = empty_workspace_html()
+  string_contains(s: h, pattern: "fleet-capacity-panel")
+    && string_contains(s: h, pattern: "fleet capacity")
+    && string_contains(s: h, pattern: "srv1")
+    && string_contains(s: h, pattern: "srv4")
+    && string_contains(s: h, pattern: "slots committed")
+}
+
+// THE PANEL SAYS ITS NUMBERS ARE COMMITTED RATHER THAN OBSERVED, IN THE OUTPUT AND NOT ONLY IN A
+// COMMENT. runner_slot_allocation states that srv3/srv4's width of 6 is a provisioning target --
+// two slots that do not exist yet -- so a reader summing the column gets 22 for a fleet running
+// 20. The qualifier is the difference between a number and a misleading number, and an annotation
+// cannot carry it because no operator reads the source.
+test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
+  let h = empty_workspace_html()
+  string_contains(s: h, pattern: "committed allocations, not observed incarnations")
+    && !string_contains(s: h, pattern: "slots running")
+}
+
+// THE SUMMARY IS DERIVED FROM THE ALLOCATION AUTHORITY, NOT TRANSCRIBED.
+//
+// Asserted as the relation against gunbc_runner_slots_per_host rather than against the literal 22.
+// A literal would be a change detector that goes red on a correct width ruling and stays green if
+// the panel silently stopped reading the authority at all.
+test fn the_slot_total_sums_the_allocation_authority() -> Bool {
+  fleet_committed_slot_total_ignoring_withdrawals()
+    == gunbc_runner_slots_per_host(host: operator_host_srv1) * 2
+       + gunbc_runner_slots_per_host(host: operator_host_srv3) * 2
+    && fleet_committed_slot_total() > 0
+}
+
+// WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
+//
+// The absent line is the point: a standing "0 withdrawn" row is noise on every ordinary day and
+// trains the reader to skip the row where a non-zero number finally matters.
+test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
+  let line_absent = match fleet_capacity_withdrawn_line() {
+    Present { value: _ } => false
+    Absent => true
+  }
+  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
+    && line_absent
+}
+
+test fn the_summary_line_names_both_axes() -> Bool {
+  let line = fleet_capacity_summary_line()
+  string_contains(s: line, pattern: "hosts")
+    && string_contains(s: line, pattern: "runtimes")
+    && string_contains(s: line, pattern: "slots committed")
+}

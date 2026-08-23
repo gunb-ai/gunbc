@@ -6,6 +6,7 @@ import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
+import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, is_top_level,
@@ -850,9 +851,9 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat(main_prefix, concat([fleet_capacity_panel()], concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws) ])))),
+          [ workspace_markup(ws: ws) ]))))),
         dispatch_client_script(),
       ]),
     ],
