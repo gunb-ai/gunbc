@@ -508,7 +508,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-outstanding" }, decls: [
-      role_decl(prop: Color, r: SalienceRole),
+      decl(prop: Color, value: "var(--band-loud)"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontWeight, value: "600"),
@@ -539,10 +539,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-refused" }, decls: [
-      role_decl(prop: Color, r: SalienceRole),
+      decl(prop: Color, value: "var(--band-loud)"),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-misfiled" }, decls: [
-      role_decl(prop: Color, r: SalienceRole),
+      decl(prop: Color, value: "var(--band-loud)"),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-unread" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
