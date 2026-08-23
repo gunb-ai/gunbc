@@ -1,0 +1,154 @@
+module gunbc.scm.commit_closure
+
+// WHAT A COMMIT CLOSURE IS, INDEPENDENT OF HOW IT IS WRITTEN DOWN.
+//
+// A closure is a set of content-addressed objects plus the root the commit names. That is the whole
+// logical content. Positions, JSON, member names and format tags are all facts about ONE WAY of
+// writing it down, and none of them belong here -- this module is what every realization must agree
+// about, and a realization is chosen beside it, never inside it.
+//
+// THE PROPERTY THIS MODULE EXISTS TO MAKE REPRESENTABLE, and it is the reason the format it replaces
+// had to be recut rather than extended:
+//
+//   A closure may be INCOMPLETE, and an incomplete closure must be able to NAME WHAT IS MISSING.
+//
+// The predecessor format could not express that, and not by oversight. It recorded structure only --
+// kind, edge labels, and which EARLIER POSITION each edge pointed at -- with every identity re-derived
+// on load. A backward position cannot name an object the document does not contain, so an unresolved
+// reference named nothing at all and "supply the missing object" was unperformable. The disposition
+// was absent BY CONSTRUCTION, not by low population.
+//
+// WHY THAT FORMAT WAS RIGHT TO DO IT, because the recut gives something up and must say so. Omitting
+// identities was a construction wall, not an accident: a decoder is a SECOND PRODUCER, reading
+// identities from a file it does not control, and a wire that carries an identity is a wire a decoder
+// can lie in. With no such field, forging an identity is not caught -- it is UNWRITABLE. The store
+// would otherwise answer for a locator whose payload was never hashed to it, and checkout would
+// reconstruct a program the commit never named.
+//
+// SO THE TWO PROPERTIES ARE ONE DECISION SEEN FROM TWO SIDES:
+//
+//   unforgeable identity   =>  no identity on the wire
+//   nameable absent object =>  an identity on the wire
+//
+// The recut keeps both by asking what each reference NEEDS to name. A reference to an object the
+// document CONTAINS needs no identity -- the object is right there, and its identity is derived from
+// its own bytes. Only a reference to an object the document LACKS needs one, and that is the single
+// place a digest cannot do the damage the predecessor feared: there is NO PAYLOAD IN THE DOCUMENT for
+// a forged digest to be mis-bound to. So the forgeable surface is exactly the set of objects the
+// document does not contain -- the set for which forgery has nothing to bind.
+//
+// THE TRUST ROOT MOVES, AND THIS IS THE HONEST STATEMENT OF WHAT IS WEAKER.
+//
+// Deriving a supplied object's identity from its own bytes and comparing proves "I got the object THIS
+// DOCUMENT NAMED". It does NOT prove "I got the object the COMMIT named" -- a forged absent-arm digest
+// names an attacker-chosen object, and the supplied impostor matches the forgery exactly because that
+// is what was forged. The closure then reconstructs with the impostor in place of the real object: a
+// program the commit never named, reached through the very arm this recut adds.
+//
+// That is closed by ONE CONDITION, stated here as a condition rather than assumed:
+//
+//   The image's own identity MUST be derived over the wire bytes INCLUDING every absent-arm digest,
+//   and the consumer MUST obtain that identity from somewhere other than the document.
+//
+// Then altering a digest alters the image identity, so a forged document is a DIFFERENT image, and
+// whoever named the image named those digests. This is ordinary Merkle closure. But note precisely
+// what changed: the predecessor's guarantee was UNCONDITIONAL -- the format had no field to lie in --
+// and this one is CONDITIONAL on the identity being derived and independently obtained. A reader of
+// this format must not inherit the old file's unconditional claim. It is strictly weaker, it is the
+// price of being able to name what is missing, and it is paid knowingly.
+
+import std.types { Bool, Int, List, list_length }
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  ObjectStore,
+  StoredEdge,
+  object_id_eq,
+  store_contains,
+  store_records_in_dependency_order,
+}
+
+// WHY AN ADMISSION IS A VALUE AND NOT A FLAG, and this is the difference between moving a wall and
+// keeping one.
+//
+// Before the recut, an incomplete closure COULD NOT BE WRITTEN: the encoder computed which references
+// were unresolvable and refused. After the recut it CAN be written -- that is the entire point -- and
+// the danger is that the only thing left stopping an accidental partial write is a caller who
+// remembers to check. That is validation, and validation of exactly the shape that decays: the
+// encoder accepts a closure plus a caller's assurance, and one day the assurance is wrong.
+//
+// So the absent arm is constructible ONLY from an evidenced decision. The arm CARRIES the admission,
+// the admission is `sole_constructor` and minted here, and an encoder therefore cannot fabricate one
+// to get itself out of trouble -- it has to be HANDED one by whoever decided a partial closure was
+// publishable. An undeclared partial closure has no constructor, so it is not refused, it is
+// unwritable, which is where the predecessor's guarantee lived too.
+//
+// THE REVIEW TELL, stated so it can be checked against a later diff: if a consumer of this module
+// grows a check that the encoder used to perform, the wall was MOVED rather than kept, and this
+// paragraph is the thing that was violated.
+type PartialClosureAdmission sole_constructor {
+  reason: PartialClosureReason
+}
+
+// WHY A CLOSED VOCABULARY RATHER THAN A STRING. A reason nobody can enumerate is a reason nobody can
+// refuse, and the two admitted causes have genuinely different owners: one is a transfer decision,
+// the other is a graft that object_store deliberately supports.
+type PartialClosureReason
+  = ClosureTrimmedForTransfer
+  | ClosureGraftedWithoutChildren
+
+fn admit_partial_closure(reason: PartialClosureReason) -> PartialClosureAdmission {
+  PartialClosureAdmission { reason: reason }
+}
+
+fn admission_reason(admission: PartialClosureAdmission) -> PartialClosureReason {
+  admission.reason
+}
+
+// A closure is the store plus the root the commit names. Nothing about how it is written down.
+type CommitClosure {
+  store: ObjectStore
+  root: ObjectId
+}
+
+// THE ACCEPTANCE TEST OF THE WHOLE RECUT, in one function.
+//
+// This is what the predecessor could not have at any price: the set of object identities the closure
+// REFERS TO and DOES NOT CONTAIN. Each is a content address, so each names exactly what to fetch.
+// A backward position could never appear in this list, because a position that does not resolve
+// inside the document denotes nothing outside it.
+//
+// An EMPTY list is the complete closure. That is the ordinary case and it is not a special arm --
+// completeness is "nothing is missing", derived, never a stored flag that could disagree with the
+// objects beside it.
+fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
+  let from_edges = fold(
+    store_records_in_dependency_order(store: closure.store),
+    init: [],
+    f: fn(acc, record) { concat(acc, unresolved_in_record(closure: closure, record: record)) }
+  )
+  concat(from_edges, unresolved_root(closure: closure))
+}
+
+fn unresolved_in_record(closure: CommitClosure, record: ObjectRecord) -> List<ObjectId> {
+  fold(
+    record.children,
+    init: [],
+    f: fn(acc, child) { concat(acc, unresolved_target(closure: closure, edge: child)) }
+  )
+}
+
+fn unresolved_target(closure: CommitClosure, edge: StoredEdge) -> List<ObjectId> {
+  if store_contains(store: closure.store, identity: edge.target) { [] } else { [edge.target] }
+}
+
+// THE ROOT IS A REFERENCE LIKE ANY OTHER, and a closure missing its own root is the sharpest case of
+// incompleteness there is -- a document that names a commit whose top object it does not carry.
+// The predecessor encoded the root positionally too, so this case was as unnameable as the rest.
+fn unresolved_root(closure: CommitClosure) -> List<ObjectId> {
+  if store_contains(store: closure.store, identity: closure.root) { [] } else { [closure.root] }
+}
+
+fn closure_is_complete(closure: CommitClosure) -> Bool {
+  list_length(items: unresolved_identities(closure: closure)) == 0
+}

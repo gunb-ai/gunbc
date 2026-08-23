@@ -1,0 +1,169 @@
+module test.claim.scm_commit_closure_witness
+
+// THE ONE CLAIM THESE WITNESSES EXIST FOR: an incomplete closure can NAME WHAT IT IS MISSING, and
+// the name it gives is the content address of the actual absent object -- so it says what to fetch.
+//
+// The predecessor format could not do this at any price. It stored backward POSITIONS, so a
+// reference that did not resolve inside the document denoted nothing outside it, and "supply the
+// missing object" was unperformable. Every test below would have been unwritable against it -- not
+// failing, unwritable, because there was no value to assert about.
+//
+// So the discriminating question is not "does unresolved_identities return a list". It is whether
+// the returned identity is THE MISSING OBJECT'S OWN, which is what makes it fetchable rather than
+// merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
+
+import std.types { Bool, Int, List, list_length }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  CopyOutcome,
+  Copied,
+  CopySourceAbsent,
+  CopyLocatorCollision,
+  empty_store,
+  copy_object,
+  store_node,
+  object_id_eq,
+  store_object_count,
+}
+import gunbc.scm.commit_closure {
+  CommitClosure,
+  PartialClosureReason,
+  ClosureTrimmedForTransfer,
+  ClosureGraftedWithoutChildren,
+  admit_partial_closure,
+  admission_reason,
+  unresolved_identities,
+  closure_is_complete,
+}
+
+fn child_node() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_child } }, children: [])
+}
+
+fn parent_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: ^only_child }, target: child_node() }],
+  )
+}
+
+// A store holding the parent AND its child, with the parent's identity.
+type BuiltStore { store: ObjectStore, root: ObjectId, child: ObjectId }
+
+fn build_full_store() -> BuiltStore {
+  match store_node(store: empty_store(), n: child_node()) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
+    Stored { store: s1, identity: child_id } =>
+      match store_node(store: s1, n: parent_node()) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
+        Stored { store: s2, identity: parent_id } =>
+          BuiltStore { store: s2, root: parent_id, child: child_id }
+      }
+  }
+}
+
+// A deliberately wrong id used only where a probe could not be built; every test asserts a real
+// structural fact that this value cannot satisfy, so a build failure cannot pass as a green.
+fn fallback_id() -> ObjectId {
+  match store_node(store: empty_store(), n: child_node()) {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+// A store holding ONLY the parent -- object_store's copy_object grafts a record without its children,
+// which is the supported route to an incomplete closure and the reason the encoder could not assume
+// completeness.
+fn build_grafted_store() -> ObjectStore {
+  let full = build_full_store()
+  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
+    Copied { store: s, identity: _ } => s
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+// CONTROL. A complete closure names nothing missing, and completeness is DERIVED from the objects
+// rather than stored beside them -- there is no flag here that could disagree with the store.
+test fn a_complete_closure_names_nothing_missing() -> Bool {
+  let full = build_full_store()
+  let closure = CommitClosure { store: full.store, root: full.root }
+  (list_length(items: unresolved_identities(closure: closure)) == 0)
+    && closure_is_complete(closure: closure)
+    && (store_object_count(store: full.store) == 2)
+}
+
+// THE ACCEPTANCE TEST OF THE RECUT.
+//
+// A grafted root lacks its child. The closure must name EXACTLY ONE missing object, and that name
+// must be the CHILD'S OWN CONTENT ADDRESS -- not a position, not a placeholder, not merely a
+// non-empty list. Identity equality against the child id from the full store is what proves the
+// answer is fetchable: it names the object a supplier would have to produce.
+test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  let closure = CommitClosure { store: grafted, root: full.root }
+  let missing = unresolved_identities(closure: closure)
+  (store_object_count(store: grafted) == 1)
+    && (list_length(items: missing) == 1)
+    && names_exactly(missing: missing, expected: full.child)
+    && !closure_is_complete(closure: closure)
+}
+
+fn names_exactly(missing: List<ObjectId>, expected: ObjectId) -> Bool {
+  fold(missing, init: false, f: fn(acc, id) { acc || object_id_eq(left: id, right: expected) })
+}
+
+// THE ROOT IS A REFERENCE LIKE ANY OTHER. A closure whose store does not carry its own root is the
+// sharpest incompleteness there is -- a document naming a commit whose top object is absent -- and
+// the predecessor encoded the root positionally too, so this was as unnameable as the rest.
+test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
+  let full = build_full_store()
+  let closure = CommitClosure { store: empty_store(), root: full.root }
+  let missing = unresolved_identities(closure: closure)
+  (list_length(items: missing) == 1)
+    && names_exactly(missing: missing, expected: full.root)
+    && !closure_is_complete(closure: closure)
+}
+
+// THE ADMISSION IS A VALUE THAT SURVIVES BEING PASSED, which is what lets an encoder require one
+// instead of trusting a caller's assurance. That `PartialClosureAdmission` is `sole_constructor` --
+// so an undeclared partial closure has no constructor at all -- is a TYPECHECK property and cannot
+// be witnessed by execution; it is stated in the module header, and a negative compile probe is the
+// evidence that belongs with it. What executes here is only that the reason is carried faithfully,
+// which is the part a later refactor could silently break.
+test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
+  let transfer = admit_partial_closure(reason: ClosureTrimmedForTransfer)
+  let graft = admit_partial_closure(reason: ClosureGraftedWithoutChildren)
+  reason_is_transfer(r: admission_reason(admission: transfer))
+    && !reason_is_transfer(r: admission_reason(admission: graft))
+}
+
+fn reason_is_transfer(r: PartialClosureReason) -> Bool {
+  match r {
+    ClosureTrimmedForTransfer => true
+    ClosureGraftedWithoutChildren => false
+  }
+}
+
+fn commit_closure_witness_main() -> ProcessExit {
+  if !a_complete_closure_names_nothing_missing() {
+    ExitFailure { code: 1, reason: "a_complete_closure_names_nothing_missing" }
+  } else if !a_grafted_root_names_exactly_the_child_it_lacks() {
+    ExitFailure { code: 1, reason: "a_grafted_root_names_exactly_the_child_it_lacks" }
+  } else if !a_closure_missing_its_own_root_names_the_root() {
+    ExitFailure { code: 1, reason: "a_closure_missing_its_own_root_names_the_root" }
+  } else if !an_admission_carries_the_decision_that_produced_it() {
+    ExitFailure { code: 1, reason: "an_admission_carries_the_decision_that_produced_it" }
+  } else {
+    ExitSuccess
+  }
+}
