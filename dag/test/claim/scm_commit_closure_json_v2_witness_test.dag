@@ -1,11 +1,11 @@
-module test.claim.scm_commit_closure_json_v1_witness
+module test.claim.scm_commit_closure_json_v2_witness
 
 // The durable repository image, executed. The claim under test is that a store survives the round
 // trip to text and back AS THE SAME PROGRAM, and that every way the text can lie REFUSES rather than
 // producing a plausible store.
 //
 // The identity claims here are the load-bearing ones. The image carries NO object identities -- see
-// gunbc.scm.commit_closure_json_v1's header for why -- so what these witnesses establish is that identity survives
+// gunbc.scm.commit_closure_json_v2's header for why -- so what these witnesses establish is that identity survives
 // anyway, because it is re-derived from structure on load. A round trip that merely produced "some
 // store" would satisfy a weaker test; comparing the reconstructed PROGRAM through checkout is what
 // makes it a claim about meaning rather than about bytes.
@@ -73,7 +73,7 @@ import gunbc.scm.checkout {
   CheckedOut,
   CheckoutRefused,
 }
-import gunbc.scm.commit_closure_json_v1 {
+import gunbc.scm.commit_closure_json_v2 {
   ClosureDocLoadOutcome,
   ClosureDocLoaded,
   ClosureDocRefused,
