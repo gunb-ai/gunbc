@@ -1,0 +1,7 @@
+module probe.m
+type BoxI<T> {
+  v: Int
+}
+fn mk() -> BoxI<Int> {
+  BoxI { v: 1 }
+}

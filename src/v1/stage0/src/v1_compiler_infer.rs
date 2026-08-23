@@ -8212,12 +8212,27 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                                     .skip(pair.0.clone() as usize)
                                     .next()
                                 {
-                                    Some(cp) => extend_scope(
-                                        acc.clone(),
-                                        pair.1.clone(),
-                                        param_node_type_expr(cp.clone()),
-                                        param_prov.clone(),
-                                    ),
+                                    Some(cp) => {
+                                        let cpt = param_node_type_expr(cp.clone());
+                                        if type_node_is_established(
+                                            cpt.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ) {
+                                            extend_scope(
+                                                acc.clone(),
+                                                pair.1.clone(),
+                                                cpt.clone(),
+                                                param_prov.clone(),
+                                            )
+                                        } else {
+                                            extend_scope(
+                                                acc.clone(),
+                                                pair.1.clone(),
+                                                type_variable_node("callable_param".to_string()),
+                                                param_prov.clone(),
+                                            )
+                                        }
+                                    }
                                     None => extend_scope(
                                         acc.clone(),
                                         pair.1.clone(),

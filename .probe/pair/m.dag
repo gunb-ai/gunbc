@@ -1,0 +1,35 @@
+module t.arms
+
+type LexResult
+  = Rejected
+  | Accepted { remaining: String }
+
+type Thunk {
+  apply: fn(String) -> LexResult
+}
+
+type PlainFold {
+  delimited: fn(Thunk, Thunk, Thunk) -> Thunk
+}
+
+type GenericFold<R> {
+  empty: R
+  delimited: fn(R, R, R) -> R
+}
+
+fn arm_a_non_generic_algebra() -> PlainFold {
+  PlainFold {
+    delimited: fn(open_r, body_r, close_r) {
+      Thunk { apply: fn(s) { open_r.apply(s) } }
+    }
+  }
+}
+
+fn arm_b_generic_algebra_concrete_thunk() -> GenericFold<Thunk> {
+  GenericFold {
+    empty: Thunk { apply: fn(s) { Rejected } },
+    delimited: fn(open_r, body_r, close_r) {
+      Thunk { apply: fn(s) { open_r.apply(s) } }
+    }
+  }
+}

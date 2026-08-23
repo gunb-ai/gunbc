@@ -4550,7 +4550,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
-              Present { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: param_prov)
+              Present { value: cp } =>
+                let cpt = param_node_type_expr(n: cp)
+                if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
+                  extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
+                } else {
+                  extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
+                }
               Absent => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
