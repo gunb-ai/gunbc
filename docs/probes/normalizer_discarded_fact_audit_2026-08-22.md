@@ -283,3 +283,47 @@ This document is therefore its own receipt for the rule. It carried seven positi
 citations, four of which were false within a day of being written, without a single
 edit to the sentences containing them — the decay required no author and produced no
 signal.
+
+---
+
+## The residual's trigger — what the 42 are gated on (added 2026-08-23)
+
+A partial with no named next step becomes permanent by default, because `29/71` reads as
+progress every time it is re-read. So the residual is dispositioned here, per §4b's
+no-untracked-stall clause. All 42 fall in **one** bucket, and it is the buildable one:
+
+| disposition | n | |
+|---|---:|---|
+| undecidable / outside the modeled boundary — a ceiling | **0** | nothing here is outside what the substrate can see |
+| waiting on a grounding that does not exist | **0** | no missing authority is implicated |
+| **decidable and simply unbuilt** | **42** | the trigger is below |
+
+**Trigger: an expression-tree detector.** The instrument that produced the 29 follows a
+*bound variable name* to the end of its enclosing `fn`. The 42 escape it not because they are
+hard to decide but because the normalizer's result is never bound to a name the detector can
+follow — it is an argument (21), a branch tail (8), a return (5), or unplaced residue (8).
+Reading them needs the expression tree instead of the binding, which is ordinary work over a
+structure the parser already produces. **No new authority, no new modeling, no ruling.** Until
+that detector exists the 42 are **unmeasured, not clean**, and this audit's operation ranking
+covers the measured half only.
+
+This is therefore **work someone owns**, not a ceiling and not a blocked grounding. It is not
+claimed here as a scheduled row: no lane has taken it, and saying otherwise would be the
+inflation §4b names.
+
+### How the 42 were counted — two instruments, named
+
+The ratio's halves do not come from one instrument, and that is exactly the class this audit is
+about, so it is stated rather than left inferable:
+
+- **Denominator (71).** Call sites of the 26 enumerated names, from the same name-level sweep
+  that produced Verdict 1. It inherits that sweep's scope — the compiler scope — which the
+  2026-08-22 correction above showed is a **subset** of the corpus. `71` is a compiler-scope
+  figure and must not be quoted as a corpus figure.
+- **Numerator (29).** The follow-the-binding detector, calibrated first against the one known
+  member (`unwrap_single_field_product`, reproduced at both call sites by the exact mechanism)
+  after a narrower earlier version missed it.
+
+So `29/71` is *sites a binding-detector could evidence* over *sites a name-sweep could find*.
+Both halves are honest; they are not the same measurement, and the ratio is readable only with
+both named. Closing the residual replaces the numerator's instrument, not the denominator's.
