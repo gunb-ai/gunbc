@@ -40162,6 +40162,25 @@ fn reference_closure_index(
         }
         refs_by_module.insert(name, flat);
     }
+    if let Ok(name) = std::env::var("GUNBC_SCOPE_PROBE_NAME") {
+        match decl_index.get(&name) {
+            Some(mods) => eprintln!(
+                "[scope-probe] decl_index name={} declared_by={:?}",
+                name,
+                mods.iter().cloned().collect::<Vec<_>>()
+            ),
+            None => eprintln!("[scope-probe] decl_index name={} declared_by=NONE", name),
+        }
+        let refs_hit: Vec<String> = refs_by_module
+            .iter()
+            .filter(|(_, v)| v.contains(&name))
+            .map(|(k, _)| k.clone())
+            .collect();
+        eprintln!("[scope-probe] referenced_by_count={}", refs_hit.len());
+        for m in refs_hit.iter().take(8) {
+            eprintln!("[scope-probe]   referenced_by={m}");
+        }
+    }
     let index = Rc::new(ReferenceClosureIndex {
         module_count: prepared.graph.modules.len(),
         decl_index,
@@ -40309,6 +40328,17 @@ pub fn claim_scope_for(
                 frontier.push(target);
             }
         }
+    }
+    if let Ok(want) = std::env::var("GUNBC_SCOPE_PROBE_MODULE") {
+        let present = order.iter().any(|m| m == &want);
+        eprintln!(
+            "[scope-probe] entry={} scope_modules={} authored_region={} wants={} in_scope={}",
+            entry_module_path,
+            order.len(),
+            authored_region,
+            want,
+            present
+        );
     }
     let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
     // Module selection keys on `func_env.name` too, so the population and the closure that
