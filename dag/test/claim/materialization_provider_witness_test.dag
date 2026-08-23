@@ -6,7 +6,6 @@ import std.content_hash {
   Fnv1a64,
   content_hash_atom,
   as_content_hash_cryptographic,
-  as_content_hash_structural,
   sha256_hex_digest,
 }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
@@ -259,26 +258,26 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
         Present { value: sha_b } => {
           let refused_a = serve_resolved_graph_stored_disk_probe(
             closure_digest: as_content_hash_cryptographic(digest: sha_a),
-            compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
-            stored_request_key: as_content_hash_structural(structural: content_hash_atom(value: "closure-1")),
+            compiler_digest: content_hash_atom(value: "compiler-identity-1"),
+            stored_request_key: content_hash_atom(value: "closure-1"),
             stored_semantic_digest: witness_closure_digest(),
-            graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+            graph_digest: content_hash_atom(value: "closure-graph-1"),
             graph_bytes: byte_size(count: 60),
-            indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+            indices_digest: content_hash_atom(value: "closure-indices-1"),
             indices_bytes: byte_size(count: 25),
-            union_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-diagnostics-1")),
+            union_digest: content_hash_atom(value: "closure-diagnostics-1"),
             union_bytes: byte_size(count: 15)
           )
           let refused_b = serve_resolved_graph_stored_disk_probe(
             closure_digest: as_content_hash_cryptographic(digest: sha_b),
-            compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
-            stored_request_key: as_content_hash_structural(structural: content_hash_atom(value: "closure-1")),
+            compiler_digest: content_hash_atom(value: "compiler-identity-1"),
+            stored_request_key: content_hash_atom(value: "closure-1"),
             stored_semantic_digest: witness_closure_digest(),
-            graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+            graph_digest: content_hash_atom(value: "closure-graph-1"),
             graph_bytes: byte_size(count: 60),
-            indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+            indices_digest: content_hash_atom(value: "closure-indices-1"),
             indices_bytes: byte_size(count: 25),
-            union_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-diagnostics-1")),
+            union_digest: content_hash_atom(value: "closure-diagnostics-1"),
             union_bytes: byte_size(count: 15)
           )
           lookup_is_refused_cross_family_content_hash(l: refused_a)
@@ -412,7 +411,7 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
-    observed_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-payload-corrupt"))
+    observed_digest: content_hash_atom(value: "closure-payload-corrupt")
   )
   admission_is_refused_wrong_content_write(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -465,9 +464,9 @@ fn witness_hash_list_contains(xs: List<ContentHash>, wanted: ContentHash) -> Boo
 fn witness_carries_the_canonical_three_digests(a: MaterializedArtifact) -> Bool {
   let ds = artifact_carried_outputs(artifact: a) |> map(o => o.digest)
   (ds.count() == 3)
-    && witness_hash_list_contains(xs: ds, wanted: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")))
-    && witness_hash_list_contains(xs: ds, wanted: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")))
-    && witness_hash_list_contains(xs: ds, wanted: as_content_hash_structural(structural: content_hash_atom(value: "closure-diagnostics-1")))
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-graph-1"))
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-indices-1"))
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-diagnostics-1"))
 }
 
 test fn understated_bytes_alone_hold_every_part_digest_fixed() -> Bool {

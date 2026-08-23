@@ -5,7 +5,7 @@ import std.emit_on_demand {
   EmitOnDemandCacheReceipt, materialization_for_lookup
 }
 import std.content_hash { ContentHash }
-import std.content_hash { content_hash_atom, as_content_hash_structural }
+import std.content_hash { content_hash_atom }
 import std.realization { Materialization, Share, Recompute }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -32,7 +32,7 @@ fn model_lookup_for(o: HostWarmObservation, key: ContentHash) -> EmitOnDemandLoo
 }
 
 fn fusion_agreement_holds_for(o: HostWarmObservation) -> Bool {
-  let key = as_content_hash_structural(structural: content_hash_atom(value: "fusion-law-synthetic-key"))
+  let key = content_hash_atom(value: "fusion-law-synthetic-key")
   let model_share = materialization_for_lookup(lookup: model_lookup_for(o: o, key: key)) == Share
   host_compile_skipped(o: o) == model_share
 }
