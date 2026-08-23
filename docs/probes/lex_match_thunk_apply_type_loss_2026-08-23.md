@@ -9,7 +9,8 @@ generic-instantiation repair.
 
 The comparison instrument was `docs/probes/curated_cargo_probe_one.sh` with entry
 `src/v2/compiler/01_tokenize.dag`. Every comparison rebuilt the seed binary from the
-worktree before emission. The unchanged control summary was:
+worktree before emission. **CLOSED_AT_REF:** `849d3aec6a59f5288781f1d576dbe68432cd3958`.
+The unchanged control summary at that ref was:
 
 ```text
 26 files emitted, 31 diagnostics, cargo refuse
@@ -53,6 +54,28 @@ at that pre-descent seam than the later `subst=[R]` trace suggests: declaration-
 lookup there does not expose `empty: R` as bindable evidence. The ordering trial and
 its instrumentation were reverted rather than widened into another compiler-wide
 generic-inference theory.
+
+## Root classification correction
+
+The observation map initially suggested an **ordering defect**: the substitution
+appeared to exist and merely be consulted after its consumers. The expectation-first
+third arm refutes that reading. At the pre-descent seam, declaration-field lookup does
+not represent `empty: R` as binding evidence at all; there is therefore no available
+binding to consult earlier. The located root is a **representation gap, not an ordering
+gap**. Its next owner is the declaration-field lookup/direct-call-fold boundary that
+must make that evidence expressible, rather than another rearrangement of inference.
+
+All three rebuilt-binary arms triangulate that boundary. Each assumed `R` was
+recoverable at a different position—after descent, through the inferred-type-variable
+key, or before descent—and each left the relevant observation byte/count-identical.
+The `unify_generics` keying inconsistency in arm two remains a real, separate defect:
+it needs its own discriminating red and must not be mistaken for this producer.
+
+The discriminating rule is transferable: **measure the outer lambda expectation before
+measuring the rustc mask**. An unchanged mask is ambiguous—it could mean a correct
+upstream repair exposed a second blocker. An unchanged `expected_name=` /
+`expected_params=0` directly proves the attempted producer did not establish the fact
+its consumer requires, which closed the third arm without a fourth speculative repair.
 
 ## Located pipeline map
 
