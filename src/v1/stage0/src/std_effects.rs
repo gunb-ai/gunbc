@@ -226,7 +226,7 @@ impl CompositionVerdict {
 }
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
-    effects.clone().iter().cloned().fold(
+    effects.iter().cloned().fold(
         Rc::new(CompositionVerdict::IdempotentComposition),
         |acc: Rc<CompositionVerdict>, e: _| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
@@ -458,7 +458,7 @@ pub fn generate_idempotency_obligations(
         let mut __result = Vec::new();
         for o in Rc::new({
             let mut __result = Vec::new();
-            for o in ops.clone().iter().cloned() {
+            for o in ops.iter().cloned() {
                 if is_idempotent_effect(o.shape.clone()) {
                     __result.push(o);
                 }

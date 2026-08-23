@@ -315,7 +315,7 @@ pub fn stage0_lookup_module_owner_package_name(
         });
         let package_name = Rc::new({
             let mut __result = Vec::new();
-            for row in matches.clone().iter().cloned() {
+            for row in matches.iter().cloned() {
                 __result.push(row.package_name.clone());
             }
             __result
@@ -354,18 +354,16 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
             }
             __result
         });
-        let crate_dir =
-            matches
-                .clone()
-                .iter()
-                .cloned()
-                .fold("".to_string(), |acc: String, row: _| {
-                    if (acc.clone() == "".to_string()) {
-                        row.crate_dir.clone()
-                    } else {
-                        acc.clone()
-                    }
-                });
+        let crate_dir = matches
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, row: _| {
+                if (acc.clone() == "".to_string()) {
+                    row.crate_dir.clone()
+                } else {
+                    acc.clone()
+                }
+            });
         if (crate_dir.clone() == "".to_string()) {
             Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
                 cause: Rc::new(
@@ -509,7 +507,7 @@ pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>>
 pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
-    reexport_packages.clone().iter().cloned().fold(
+    reexport_packages.iter().cloned().fold(
         Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
             deps: Rc::new(vec![]),
         }),
@@ -730,7 +728,6 @@ pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>)
             v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
             Rc::new(
                 features
-                    .clone()
                     .iter()
                     .cloned()
                     .map(render_stage0_crate_feature)
@@ -843,7 +840,7 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
         });
         let reexports = Rc::new({
             let mut __result = Vec::new();
-            for pkg in sorted_reexports.clone().iter().cloned() {
+            for pkg in sorted_reexports.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         "pub use ".to_string(),
@@ -888,7 +885,7 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
 pub fn stage0_emit_shell_module_reexports_outcome(
     modules: Rc<Vec<String>>,
 ) -> Rc<Stage0EmitShellReexportsOutcome> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         Rc::new(
             Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
                 lines: Rc::new(vec![]),

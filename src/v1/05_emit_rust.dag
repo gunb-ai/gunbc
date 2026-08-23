@@ -7693,8 +7693,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
+            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
             match lookup_item_for_value_ref(
-              resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
+              resolved_name: resolved_name,
               registry: registry
             ) {
               Present { value: info } =>
@@ -7703,10 +7704,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
                 } else {
                   let is_data = info.kind == DataItem
                   if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+                  else { emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info) }
                 }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
+                emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
             }
         }
       }
@@ -8597,9 +8598,39 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, shared_types: Set
   }
 }
 
+type IterOwnedReceiverCloneDisposition
+  = IterOwnedReceiverCloneDropped
+  | IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String }
+  | IterOwnedReceiverCloneRetainedNotSimpleIdentifier
+
+data iter_owned_receiver_clone_disposition_note: String = "Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch) renders its receiver through the general identifier renderer (emit_var_ref), which clones any resolved-type, non-moved identifier unconditionally -- correct in owned position, but sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a real reference and is treated as one) -- retains today's clone. Fail-open by construction: the disposition can only ever retain an unnecessary clone, never drop a needed one. Named per DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather than a single collapsed default, so the retained-for-downstream-reference population (must never be silently indistinguishable from an ordinary unoptimized site) is separately countable from the retained-for-non-simple-receiver population. The decision never consults movable, Read, or any ownership classification -- the syntactic position of the receiver as a sharing.iter_owned argument is itself the borrow-position proof, which is what keeps this sound where a disposition keyed on the ownership pass's Read edge kind would not be (Read fires on genuine by-value-consuming positions too, not only borrow positions)."
+
+fn iter_owned_receiver_clone_disposition(receiver: Node, downstream: List<Node>, source_indices: Map<String, NewlineIndex>) -> IterOwnedReceiverCloneDisposition {
+  match receiver.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: receiver, source_indices: source_indices)
+      if downstream |> any(n => expr_references_var(node: n, var_name: name, source_indices: source_indices)) {
+        IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: name }
+      } else {
+        IterOwnedReceiverCloneDropped
+      }
+    _ => IterOwnedReceiverCloneRetainedNotSimpleIdentifier
+  }
+}
+
+fn emit_typed_iter_owned_receiver(receiver: Node, downstream: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let disposition = iter_owned_receiver_clone_disposition(receiver: receiver, downstream: downstream, source_indices: scope.type_env.source_indices)
+  match disposition {
+    IterOwnedReceiverCloneDropped =>
+      emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    _ =>
+      emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
+}
+
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
-  let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let coll_str = emit_typed_iter_owned_receiver(receiver: collection, downstream: [body], registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: scope.type_env.source_indices)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8766,7 +8797,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 }
 
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
   let contextual_acc_type = match result_type {
     Present { value: Resolved { node: method_result_type } } => Present { value: method_result_type }
@@ -8940,7 +8971,7 @@ fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, New
 }
 
 fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = match receiver.inferred {
     Present { value: Resolved { node: rt } } =>
       let resolved = rt
@@ -8993,7 +9024,8 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     }
   } else {
     let sharing = language_spec(target: Rust).sharing
-    let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
+    let iter_recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: iter_recv_str)
     match args |> first {
       Present { value: a } =>
         match arg_value(n: a).expr_data {
@@ -9014,7 +9046,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
 
 fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {

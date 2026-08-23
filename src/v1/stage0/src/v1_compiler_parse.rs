@@ -1846,7 +1846,7 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
+            for op in ops.iter().cloned() {
                 if (op.symbol.clone() == symbol.clone()) {
                     __result.push(op);
                 }
@@ -1871,7 +1871,7 @@ pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Op
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
+            for op in ops.iter().cloned() {
                 if (op.symbol.clone() == symbol.clone()) {
                     __result.push(op);
                 }
@@ -2349,7 +2349,7 @@ pub fn stamp_parsed_node_list(
     ctx: Rc<ParseContext>,
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeListStampResult> {
-    nodes.clone().iter().cloned().fold(
+    nodes.iter().cloned().fold(
         Rc::new(ParsedNodeListStampResult {
             nodes: Rc::new(vec![]),
             ctx: ctx.clone(),
@@ -3250,7 +3250,7 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
-            for f in forms.clone().iter().cloned() {
+            for f in forms.iter().cloned() {
                 if (f.keyword.clone() == keyword.clone()) {
                     __result.push(f);
                 }
@@ -3613,7 +3613,7 @@ pub fn variant_to_child_node(
         let fields = variant_node_fields(variant.clone());
         let children = Rc::new({
             let mut __result = Vec::new();
-            for f in fields.clone().iter().cloned() {
+            for f in fields.iter().cloned() {
                 __result.push(field_to_child_node(f.clone(), source_indices.clone()));
             }
             __result
@@ -3658,7 +3658,7 @@ pub fn outputs_to_inferred(
                 ident_span: None,
                 children: Rc::new({
                     let mut __result = Vec::new();
-                    for f in outputs.clone().iter().cloned() {
+                    for f in outputs.iter().cloned() {
                         __result.push(field_to_child_node(f.clone(), source_indices.clone()));
                     }
                     __result
@@ -3712,7 +3712,7 @@ pub fn make_operation_node(
             children: Rc::new(vec![]),
             params: Rc::new({
                 let mut __result = Vec::new();
-                for f in inputs.clone().iter().cloned() {
+                for f in inputs.iter().cloned() {
                     __result.push(make_param_node(
                         field_node_name_at(f.clone(), source_indices.clone()),
                         field_node_type_expr(f.clone()),
@@ -3755,7 +3755,7 @@ pub fn make_capability_node(
         children: Rc::new(vec![]),
         params: Rc::new({
             let mut __result = Vec::new();
-            for f in inputs.clone().iter().cloned() {
+            for f in inputs.iter().cloned() {
                 __result.push(make_param_node(
                     field_node_name_at(f.clone(), source_indices.clone()),
                     field_node_type_expr(f.clone()),
@@ -4325,7 +4325,7 @@ pub fn parse_type_body_after_eq(
                                 let variants = rest.variants.clone();
                                 let type_children = Rc::new({
                                     let mut __result = Vec::new();
-                                    for v in variants.clone().iter().cloned() {
+                                    for v in variants.iter().cloned() {
                                         __result.push(variant_to_child_node(
                                             v.clone(),
                                             ctx.source_indices.clone(),
@@ -8884,7 +8884,7 @@ pub fn modifiers_to_props(
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for m in modifiers.clone().iter().cloned() {
+        for m in modifiers.iter().cloned() {
             __result.push(match m.clone() {
                 OperationModifier::Idempotent => {
                     modifier_to_prop("idempotent".to_string(), span.clone())
@@ -14940,7 +14940,7 @@ pub fn parse_interp_parts(
                         Rc::new(ExprData::ExprStringInterp),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for p in final_parts.clone().iter().cloned() {
+                            for p in final_parts.iter().cloned() {
                                 __result.push(match (*p.clone()).clone() {
                                     StringPart::Text { value: v, .. } => {
                                         make_text_part_node(v.clone(), span.clone())
@@ -14966,7 +14966,7 @@ pub fn parse_interp_parts(
                         Rc::new(ExprData::ExprStringInterp),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for p in new_parts.clone().iter().cloned() {
+                            for p in new_parts.iter().cloned() {
                                 __result.push(match (*p.clone()).clone() {
                                     StringPart::Text { value: v, .. } => {
                                         make_text_part_node(v.clone(), span.clone())

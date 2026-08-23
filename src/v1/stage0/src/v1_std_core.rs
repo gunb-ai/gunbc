@@ -1608,7 +1608,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         {
             if {
                 let mut __found = false;
-                for r in roles.clone().iter().cloned() {
+                for r in roles.iter().cloned() {
                     if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1629,7 +1629,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         {
             if {
                 let mut __found = false;
-                for r in roles.clone().iter().cloned() {
+                for r in roles.iter().cloned() {
                     if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1917,7 +1917,7 @@ pub fn collect_decl_ref_coords_from_list(
 ) -> Rc<Vec<Rc<DeclRefCoords>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for e in exprs.clone().iter().cloned() {
+        for e in exprs.iter().cloned() {
             __result.extend(
                 (*match decl_ref_coords_from_call_expr(e.clone(), source_indices.clone()) {
                     Some(coords) => Rc::new(vec![coords.clone()]),
@@ -2581,7 +2581,7 @@ pub fn find_property(
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
-        for p in props.clone().iter().cloned() {
+        for p in props.iter().cloned() {
             if (field_init_node_name_at(p.clone(), source_indices.clone()) == prop_name.clone()) {
                 __result.push(p);
             }
@@ -4061,7 +4061,7 @@ pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
 }
 
 pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
-    tables.clone().iter().cloned().fold(
+    tables.iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
             let merged_allocator = occurrence_id_allocator_advance_to(
@@ -4096,7 +4096,6 @@ pub fn is_internable_token(shape: TokenShape) -> bool {
 
 pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> Rc<InternTable> {
     tokens
-        .clone()
         .iter()
         .cloned()
         .fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| {

@@ -206,7 +206,7 @@ pub fn normalize_module_diagnostics(
         let items = module_items(m.module.clone());
         Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*check_bare_containers(
                         item.clone(),
