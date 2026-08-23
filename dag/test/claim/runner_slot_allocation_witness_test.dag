@@ -241,12 +241,32 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // index above the GitHub ceiling answered "fabric" -- measured, srv1-06 and srv3-99 both did, though
 // srv1 is five wide and neither is a member of anything. Membership now precedes purpose and those
 // identities are refused with the width they were measured against.
+// THE OUT-OF-RANGE INDEX IS DERIVED, BECAUSE WRITING ONE DOWN IS HOW THIS ROW STOPPED CHECKING.
+//
+// It read slot 6 on srv1 and slot 7 on srv3. Both WERE outside the committed population -- at the
+// widths of the day, five and six. The 2026-08-23 CPU-axis change moved both hosts to twenty-one,
+// so both indices became ordinary committed members, the refusal correctly did not fire, and the
+// row went red. Nothing about the property it names had changed.
+//
+// Retyping 7 as 22 would re-arm exactly the same landmine one width later. A fixture that picks an
+// out-of-range index by writing down a number that happens to be out of range TODAY is a change
+// detector wearing a property's name (DESIGN section 5: a measurement copied from the same current
+// tree is not an oracle). Deriving committed + 1 makes the fixture discriminating at ANY width,
+// which is what it was always trying to say.
+//
+// The two clauses that did NOT need touching are the informative ones. srv3-99 stays outside at any
+// plausible width, and srv3-06 stays INSIDE and stays fabric, because runner_slot_allocation
+// AUTHORS that identity rather than deriving it from a count -- the defence in
+// the_fabric_member_is_an_authored_identity_not_a_top_index_rule, observed working through a real
+// width change rather than only asserted.
 test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
-  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+  let srv1_past_end = gunbc_runner_slots_per_host(host: operator_host_srv1) + 1
+  let srv3_past_end = gunbc_runner_slots_per_host(host: operator_host_srv3) + 1
+  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
     && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
-    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 7))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_past_end))
     && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
 }
 
 // THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
@@ -273,11 +293,29 @@ test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
 // GitHub slots and none is renamed or deregistered to pay for the canary. Taking the fabric slot
 // from the bottom would have renumbered every live runner on the host, and this row goes red if
 // anyone reverses that direction.
+// THE GITHUB COUNT IS THE COMMITTED WIDTH LESS THE FABRIC MEMBERS, NOT THE NUMBER FIVE.
+//
+// This row pinned 5, which was srv3's six committed slots less its one fabric member. At width
+// twenty-one the same relation yields twenty, so the literal went red while the property -- that
+// carving out srv3-06 costs GitHub exactly one slot and takes none of the five that were live --
+// held throughout.
+//
+// Stated as the relation it survives any width, and it still fails if the carve ever starts
+// deregistering a live runner: slots one through five are asserted individually, so a fabric role
+// that slid onto one of them would be caught here rather than absorbed into a count.
+//
+// The minus-one is deliberate rather than minus host_fabric_slot_count. Subtracting the measured
+// fabric count would make this row true for ANY number of fabric members, including zero, which is
+// the general conservation already asserted by
+// slot_purposes_partition_every_host_committed_width. THIS row is about the specific
+// carve: srv3 gives up exactly one slot to the fabric. Writing it as the general identity would
+// leave that claim asserted nowhere.
 test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
   !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 1))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 2))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
-    && host_github_slot_count(host: operator_host_srv3) == 5
+    && host_github_slot_count(host: operator_host_srv3)
+         == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
 }
