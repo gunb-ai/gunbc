@@ -446,23 +446,26 @@ test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bo
   quantity && read && cited && no_obligation && no_public_cost && no_public_receipt
 }
 
-// THE LEDGER STILL REPORTS EVERY STICK AWAITING RECEIPT, AND THAT IS NOW A LAG, NOT THE WORLD.
-// The sticks arrived: twenty-four are installed across srv1/srv3/srv4 and srv2's eight were
-// installed, failed training and were removed. The ledger has not been advanced because the
-// receipt events need per-stick PhysicalAssetIdentity that nobody captured, and because srv2's
-// eight have no established disposition - both stated as an obligation in
-// gunbc.fleet_physical_inventory beside the lot.
+// RECEIVED AND UNQUALIFIED, WHICH IS CONSERVATIVE AND TRUE. The sticks arrived, so the ledger says
+// so; twenty-four are installed across srv1/srv3/srv4 and srv2's eight were installed, failed
+// training and were removed, and NONE of that is recorded yet, so every stick sits unqualified.
 //
-// SO THIS CLAIM MEASURES THE LEDGER, NOT THE FLEET, and it is kept rather than deleted precisely
-// because it makes the lag countable: it goes red the moment the events land, which is the signal
-// to re-read this comment and retire it. Reading it as evidence that nothing has arrived is the
-// authority-substitution failure DESIGN warns about - the ledger is the authority for allocation,
-// never for what is physically installed, and the installed answer lives in fleet_dimm_verdicts.
-test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
+// THIS CLAIM PREVIOUSLY ASSERTED received == 0, which made a known-false state -- delivered hardware
+// modeled as still on a truck - a condition the change had to preserve to stay green. Annotating a
+// false state does not make it acceptable, and pinning it in a witness makes it load-bearing.
+//
+// WHAT REMAINS UNRECORDED IS BOUNDED AND NOT A LAG BY OVERSIGHT: QuantityInstalled needs a
+// PhysicalAssetIdentity per stick and the serials were observed but not captured, and srv2's eight
+// have no established disposition. Both are stated as obligations in gunbc.fleet_physical_inventory
+// beside the lot. This claim measures THE LEDGER, never the fleet - the installed answer lives in
+// fleet_dimm_verdicts, and reading an allocation ledger for a physical-installation fact is the
+// authority-substitution failure DESIGN names.
+test fn the_dimm_lot_is_received_and_wholly_unqualified() -> Bool {
   match derive_inventory_balance(lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger) {
     BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
     BalanceDerived { balance: b } =>
-      b.acquired == 32 && b.received == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
+      b.acquired == 32 && b.received == 32 && b.unqualified == 32
+        && b.qualified == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
   }
 }
 

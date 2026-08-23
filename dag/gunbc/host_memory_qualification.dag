@@ -311,9 +311,13 @@ data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrain
 // WHY THESE ROWS EXIST AT ALL, given that both hosts are up and serving. The 2026-08-11 incident's
 // whole lesson was that "the memory works" is four questions, and a successful outcome collapses
 // them just as easily as a failure did -- more easily, because nobody interrogates a green. srv3
-// and srv4 reaching the OS at 512 GiB is a BOOT receipt and a TRAINING receipt for this part on
-// this board. It is NOT a part qualification, and recording it as one would be the rung inflation
-// DESIGN 4b names.
+// and srv4 reaching the OS at 512 GiB is a BOOT receipt for this part on this board. It is NOT a
+// part qualification, and it is NOT a training receipt either: full-capacity enumeration is strong
+// circumstantial evidence that training succeeded, but no firmware training artifact was captured,
+// so the training axis stays TrainingOutcomeUnobserved on both rows. An earlier revision of this
+// sentence called it a training receipt, which contradicted the rows underneath it and the
+// paragraph below that states the same thing correctly -- recording it as either a qualification
+// or a training result would be the rung inflation DESIGN 4b names.
 //
 // WHAT IS DIFFERENT ABOUT THIS PART FROM THE ONE THAT FAILED, and it is the reason to expect a
 // different outcome rather than merely to observe one: the M386A4G40DM0-CPB was LOAD-REDUCED, so
@@ -326,9 +330,9 @@ data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrain
 //
 // PART QUALIFICATION REMAINS NotListedInVendorAvl AND THAT IS NOT A COMPLAINT. The Ampere AVL
 // issue 1.15 does not carry this part number. Absence is the absence of a positive result, which
-// is precisely why the boot and training receipts below are worth having: they are host-specific
-// evidence standing where a vendor result does not exist. Two independent hosts, eight modules
-// each, one per channel, is a real sample and it is still not an AVL entry.
+// is precisely why the boot receipts below are worth having: they are host-specific evidence
+// standing where a vendor result does not exist. Two independent hosts, eight modules each, one
+// per channel, is a real sample and it is still not an AVL entry.
 // TRAINING IS UNOBSERVED ON BOTH ROWS AND THAT IS THE HONEST ANSWER, not a gap I failed to close.
 // TrainingOperational carries a dimm_mask because the 2026-08-11 evidence for it was a specific
 // firmware artifact -- "DDR: Operational DIMM: 0x00005555" off the console. No such reading was
@@ -351,7 +355,7 @@ data srv3_new_population_standing: HostMemoryStanding = HostMemoryStanding {
   },
   training: TrainingOutcomeUnobserved,
   boot: BootReachedOperatingSystem,
-  observed_at: 1787775338000,
+  observed_at: 1787429738000,
 }
 
 data srv4_new_population_standing: HostMemoryStanding = HostMemoryStanding {
@@ -365,8 +369,10 @@ data srv4_new_population_standing: HostMemoryStanding = HostMemoryStanding {
   },
   training: TrainingOutcomeUnobserved,
   boot: BootReachedOperatingSystem,
-  observed_at: 1787773558000,
+  observed_at: 1787427958000,
 }
+
+data srv4_observed_at_is_a_window_lower_bound_note: String = "srv4's observed_at is the LOWER BOUND OF A WINDOW, NOT A KNOWN INSTANT, and the difference is recorded because the carrier cannot express it. The srv4 Redfish population read was taken between 19:45Z and 20:15Z on 2026-08-22 and the exact minute was not recorded; 1787427958000 is 19:45:58Z, the timestamp of the correctable-ECC entry this session read first, so it is the earliest instant the read can have occurred at. srv3's value IS an instant, because that read was taken against a live boot transition where the clock mattered. EpochMs admits only a point, so a bounded observation must either fabricate a second or pick a bound and say which -- this picks the lower bound. A consumer computing an age from this row gets an OVERESTIMATE of elapsed time, never an underestimate, which is the safe direction for a staleness question. DISSOLVE-ON: an observed-at carrier that can express a bounded window, at which point this row moves into it and this note goes."
 
 // srv2 FAILED THE SAME PART THAT THREE SIBLINGS TRAINED, AND THAT IS THE MOST INFORMATIVE ROW
 // IN THIS MODULE (2026-08-22). srv1, srv3 and srv4 all POSTed on the 64 GiB Samsung population;
@@ -410,7 +416,7 @@ data srv2_failed_64gib_population_standing: HostMemoryStanding = HostMemoryStand
   },
   training: TrainingOutcomeUnobserved,
   boot: RepeatingFirmwareReset { token: "Power.Error.Blackout (no firmware POST token reached; BootProgress remained Unspecified at epoch zero)", cycles: 3 },
-  observed_at: 1787782000000,
+  observed_at: 1787436400000,
 }
 
 data srv2_boot_serial_unobservable_note: String = "srv2 HostLogger held ZERO entries across both the failed 64 GiB cycles AND the successful 8 x 16 GiB boot that followed. The successful boot is the control: it proves the absence is a missing recorder, not a mute SoC. Consequence for any retry: the training axis cannot be observed on this fleet until host serial capture works (the obmc-console server configs for ttyS1/ttyS2/ttyS3 exist -- ttyS2 is the SCP, which runs DDR training -- but nothing is captured), so the highest-value action before re-testing 64 GiB on srv2 is fixing serial capture or attaching a physical cable. Failing that, the per-DIMM thermal sensors are the working instrument: the baseline is all eight at 67-75 C during a FAILED run, so a future attempt showing one channel cool fingers that channel with no firmware log needed."

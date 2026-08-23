@@ -457,13 +457,15 @@ data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
 // against the tree by hand when it was authored; nothing in the substrate checks
 // it, and that stays true until feature:cited-symbol-resolution lands.
 //
-// THE LEDGER IS NOW BEHIND PHYSICAL REALITY, AND THAT GAP IS DECLARED RATHER
-// THAN GUESSED. It still holds exactly one event, LotAcquired, so it reports
-// thirty-two units AwaitingReceipt. What actually happened: all thirty-two
-// arrived, eight are installed in each of srv1, srv3 and srv4, and srv2's eight
-// were installed, failed memory training, and were removed. So the true event
-// sequence is a LotReceived, a QuantityQualified, three QuantityInstalled and a
-// QuantityRemoved.
+// THE LEDGER RECORDS RECEIPT AND STOPS THERE, AND THE REMAINING GAP IS DECLARED
+// RATHER THAN GUESSED. All thirty-two sticks arrived, so LotReceived is authored:
+// modeling delivered hardware as AwaitingReceipt was a known-false state, and a
+// known-false state does not become acceptable by being annotated. What is NOT
+// yet recorded is qualification and installation -- eight sticks in each of srv1,
+// srv3 and srv4, and srv2's eight installed, failed and removed -- so the balance
+// reports thirty-two received and unqualified, which is conservative and true:
+// no stick carries a recorded qualification event, whatever three hosts are
+// currently doing with them.
 //
 // THOSE EVENTS ARE NOT AUTHORED HERE, for two reasons that are obligations and
 // not preferences. QuantityInstalled requires a PhysicalAssetIdentity per stick;
@@ -506,6 +508,7 @@ data dimm_lot_64gib_32x: ProcurementLot = ProcurementLot {
 
 data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
   LotAcquired { lot: dimm_lot_64gib_32x_identity },
+  LotReceived { lot: dimm_lot_64gib_32x_identity, quantity: 32 },
 ]
 
 // The intended destination of the lot, one row per host. This is an INTENT and

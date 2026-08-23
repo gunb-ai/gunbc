@@ -8,7 +8,6 @@ import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
 import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
 import test.claim.installed_bom_reconcile_witness_test {
   the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost,
-  the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt,
 }
 fn parsecheck_holds() -> Bool {
   ucs_mr_1x648ru_a.underlying_module.rank_count == 8
@@ -16,5 +15,4 @@ fn parsecheck_holds() -> Bool {
     && fleet_dimm_expectations.length() == 4
     && srv1_memory_population.rows.length() == 1
     && the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost()
-    && the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt()
 }
