@@ -40395,6 +40395,54 @@ pub enum RequiredFloorDisposition {
     DeclinedLiveTree,
 }
 
+/// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
+/// returns and retained for the run. Every population the floor reports about executed
+/// claims is a fold over these rows -- the over-cost members, their count, and the
+/// identity-grain receipt -- so there is no second account of which claims executed and
+/// nothing to quote before the fold has minted its exact members.
+///
+/// WHY THE EXACT NANOSECONDS ARE KEPT: milliseconds are a RENDERING choice. Flooring here
+/// would make a sub-millisecond claim indistinguishable from an unmeasured one at the only
+/// place the distinction still exists.
+///
+/// WHAT IS DELIBERATELY ABSENT: no `over_cost` flag and no count. Whether a row is over the
+/// line is the diagnostic predicate applied to the measurement, not a stored property of
+/// the row -- a stored flag is a second representation of a comparison the policy already
+/// owns, and it is what lets a summary disagree with its own members.
+#[derive(Clone)]
+pub struct WitnessExecutionOccurrence {
+    pub identity: String,
+    pub module_path: String,
+    pub outcome: String,
+    pub wall_nanos: u128,
+    pub cpu_nanos: u128,
+    /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
+    /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
+    /// claim has no cost to be over, and inferring that from the duration would make a slow
+    /// claim and a killed one the same fact.
+    pub verdict_reached: bool,
+    /// The policy line this claim was measured against -- an INPUT, not a derivation, and
+    /// carried per row because a future per-claim line must not silently re-judge old rows.
+    pub cost_line_ms: u64,
+}
+
+/// The occurrence's terminal outcome as a stable receipt token.
+///
+/// EXHAUSTIVE ON PURPOSE -- there is no `_` arm. A new `ClaimOutcome` variant must fail to
+/// compile here rather than be absorbed into a plausible existing label, which is the
+/// silent-widen arm DESIGN section 5 forbids.
+fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "pass",
+        ClaimOutcome::Fail => "fail",
+        ClaimOutcome::NotBool { .. } => "not_bool",
+        ClaimOutcome::RuntimeError { .. } => "runtime_error",
+        ClaimOutcome::TimedOut { .. } => "timed_out",
+        ClaimOutcome::HostToolUnresolved { .. } => "host_tool_unresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",
+    }
+}
+
 /// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
 /// downstream consumers can join on identity rather than reconstruct a population from filenames
 /// or intended-rename lists.
@@ -40590,6 +40638,9 @@ pub struct RequiredFloorOutcome {
     /// reads it to fail the run, unlike `completed_over_cost_requirement` above, which blocks on
     /// the independently-derived safety limit and is unaffected by this field.
     pub over_cost_line_diagnostic: usize,
+    /// Every executed claim's measured occurrence. `over_cost_line_diagnostic` is a fold
+    /// over this population, never an independently maintained tally.
+    pub claim_cost: Vec<WitnessExecutionOccurrence>,
     pub failures: Vec<String>,
     /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
     /// site-projection loop considered. This is the sole admission authority for the site; see
@@ -41799,6 +41850,7 @@ pub fn run_required_floor(
     let roster_join_active = roster_join_path.is_some() || roster_join_only;
     let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
     let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
+    let claim_cost_path = std::env::var("GUNBC_REQUIRED_FLOOR_CLAIM_COST").ok();
     let mut roster_join_report = if roster_join_active {
         let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
         roster_identities.sort();
@@ -41893,6 +41945,7 @@ pub fn run_required_floor(
         route_gap: Vec::new(),
         stale_route_gap: Vec::new(),
         over_cost_line_diagnostic: 0,
+        claim_cost: Vec::new(),
         failures: Vec::new(),
         required_floor_disposition: disposition_rows,
         long_home_storage_agreement: storage_agreement_rows,
@@ -42092,13 +42145,19 @@ pub fn run_required_floor(
                 wall_ms: claim.wall_safety_limit_ms,
             },
         );
-        if exceeds_completed_cost_line(
-            &terminality,
-            claim.cost_line_ms,
-            required_floor_cost_basis(),
-        ) {
-            outcome.over_cost_line_diagnostic += 1;
-        }
+        // MINT THE OCCURRENCE HERE, before any classification can diverge from it. The
+        // over-cost population, its count and the identity-grain receipt are all folds over
+        // `outcome.claim_cost` computed after the loop -- so the summary cannot disagree with
+        // its own members, and there is no separately incremented tally to drift.
+        outcome.claim_cost.push(WitnessExecutionOccurrence {
+            identity: claim.qualified.clone(),
+            module_path: claim.module_path.clone(),
+            outcome: witness_execution_outcome_label(&result).to_string(),
+            wall_nanos: receipt.wall_nanos,
+            cpu_nanos: receipt.cpu_nanos,
+            verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
+            cost_line_ms: claim.cost_line_ms,
+        });
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
         //
         // The frame is dropped at the end of this iteration, so by the next trim its caches are
@@ -42679,6 +42738,30 @@ pub fn run_required_floor(
             write_expected_red_roster_join_tsv(&path, &join)?;
         }
     }
+    // THE DIAGNOSTIC IS A FOLD OVER THE RETAINED ROWS, not a tally kept beside them. The
+    // millisecond projection here is exactly `claim_terminality`'s (`nanos / 1_000_000`), so
+    // this reproduces `exceeds_completed_cost_line` on the same quantities rather than
+    // approximating it.
+    let cost_basis = required_floor_cost_basis();
+    let over_cost_members: Vec<&WitnessExecutionOccurrence> = outcome
+        .claim_cost
+        .iter()
+        .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
+        .collect();
+    outcome.over_cost_line_diagnostic = over_cost_members.len();
+    for row in &over_cost_members {
+        eprintln!(
+            "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
+            row.identity,
+            row.wall_nanos / 1_000_000,
+            row.cpu_nanos / 1_000_000,
+            row.cost_line_ms,
+            row.outcome
+        );
+    }
+    if let Some(path) = claim_cost_path {
+        write_required_floor_claim_cost_tsv(&path, &outcome.claim_cost, cost_basis)?;
+    }
     if let Some(path) = required_floor_disposition_path {
         write_required_floor_disposition_tsv(&path, &outcome.required_floor_disposition)?;
     }
@@ -42781,6 +42864,66 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
 /// Writes the per-identity `RequiredFloorDisposition` receipt as TSV: one row per site the
 /// site-projection loop considered, joinable on `identity`. This is a receipt of the admission
 /// decision already made above -- writing it changes nothing about which claims execute.
+/// The occurrence's cost on the basis the policy names. One clock is the SUBJECT of the
+/// comparison; the other rides in the receipt beside it as a remedy discriminator (high wall
+/// with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O,
+/// subprocess or scheduling). It is not a second threshold.
+fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> u64 {
+    let exact = match basis {
+        RequiredFloorCostBasis::CpuCost => row.cpu_nanos,
+        RequiredFloorCostBasis::WallCost => row.wall_nanos,
+    };
+    (exact / 1_000_000) as u64
+}
+
+/// The identity-grain cost receipt: one row for EVERY executed claim, not only the over-cost
+/// ones. Emitting only the positives would lose which identities entered or left the set, the
+/// near-threshold population, the ability to reclassify after a policy-line change, and the
+/// proof that every executed identity received a measurement at all.
+///
+/// There is no `over_cost` column. Membership is the policy predicate applied to these
+/// measurements, and a stored flag would be a second representation of it that can disagree.
+fn write_required_floor_claim_cost_tsv(
+    path: &str,
+    rows: &[WitnessExecutionOccurrence],
+    basis: RequiredFloorCostBasis,
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_claim_cost_tsv: create {path}: {e}"))?;
+    let basis_name = match basis {
+        RequiredFloorCostBasis::CpuCost => "cpu",
+        RequiredFloorCostBasis::WallCost => "wall",
+    };
+    writeln!(
+        file,
+        "# summary\texecuted={}\tcost_basis={}",
+        rows.len(),
+        basis_name
+    )
+    .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
+    writeln!(
+        file,
+        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+    )
+    .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.identity.replace(['\t', '\n'], " "),
+            row.module_path.replace(['\t', '\n'], " "),
+            row.outcome,
+            row.verdict_reached,
+            row.wall_nanos / 1_000_000,
+            row.cpu_nanos / 1_000_000,
+            row.cost_line_ms
+        )
+        .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
