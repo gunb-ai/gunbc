@@ -1,0 +1,44 @@
+module test.parsecheck2
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { byte_size, byte_size_count }
+import product.fabric.runner_shape_profile {
+  SlotMemoryAnchor, RunnerShapeProfile, MemoryPerCore, OperatorAdoption,
+  cores_for_anchor, resolve_slot_shape, SlotShapeDerived, SlotShapeRefused,
+  gunbc_slot_shape, gunbc_slot_memory_anchor, gunbc_internal_arm_ci_profile,
+}
+
+// 16 GiB against 3 decimal GB/core is 5.73 cores, and the shape must round UP to 6: rounding down
+// to 5 would pack more slots onto a host than the profile's ratio justifies, which is the direction
+// that over-admits. The GiB-vs-GB distinction is asserted directly, because reading the vendor's
+// "3GB" as 3 GiB gives 5.33 and a different fleet-wide count.
+fn shape_holds() -> Bool {
+  let cores = cores_for_anchor(anchor: gunbc_slot_memory_anchor, profile: gunbc_internal_arm_ci_profile)
+  let derived = match gunbc_slot_shape() {
+    SlotShapeDerived { shape: s } => s.cores == 6 && byte_size_count(b: s.memory) == 17179869184
+    SlotShapeRefused { reason: _ } => false
+  }
+  cores == 6 && derived && exact_ratio_rounds_down_and_refusal_holds()
+}
+
+// An exact multiple must NOT round up -- 24 GB of anchor against 3 GB/core is exactly 8 cores, and a
+// ceil that added a ninth would inflate every shape by one core. And a non-positive per-core figure
+// refuses rather than yielding a zero-core slot that downstream counts would divide by.
+fn exact_ratio_rounds_down_and_refusal_holds() -> Bool {
+  let exact = SlotMemoryAnchor { bytes: byte_size(24000000000), chosen_because: "fixture" }
+  let eight = cores_for_anchor(anchor: exact, profile: gunbc_internal_arm_ci_profile)
+  let broken = RunnerShapeProfile {
+    name: "fixture-zero",
+    memory_per_core: MemoryPerCore { bytes: byte_size(0), quoted_numeral: 0, quoted_unit_label: "GB" },
+    evidence: OperatorAdoption { source: "fixture", adopted_on: "fixture", rationale: "fixture" },
+  }
+  let refused = match resolve_slot_shape(anchor: gunbc_slot_memory_anchor, profile: broken) {
+    SlotShapeDerived { shape: _ } => false
+    SlotShapeRefused { reason: _ } => true
+  }
+  eight == 8 && refused
+}
+
+fn parsecheck2_main() -> ProcessExit {
+  if shape_holds() { ExitSuccess } else { exit_failure(reason: "shape_holds returned false") }
+}
