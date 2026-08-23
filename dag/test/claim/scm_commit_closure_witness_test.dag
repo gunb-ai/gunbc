@@ -38,6 +38,8 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
   ClosureDocTargetNotOneArm,
+  ClosureDocMemberDuplicated,
+  ClosureDocMemberWrongShape,
   TargetDecode,
   TargetDecoded,
   TargetDecodeFailed,
@@ -192,6 +194,10 @@ fn commit_closure_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "a_target_must_carry_exactly_one_arm" }
   } else if !a_target_carrying_one_arm_still_decodes() {
     ExitFailure { code: 1, reason: "a_target_carrying_one_arm_still_decodes" }
+  } else if !a_duplicated_at_is_refused_against_at() {
+    ExitFailure { code: 1, reason: "a_duplicated_at_is_refused_against_at" }
+  } else if !a_non_string_at_is_refused_against_at() {
+    ExitFailure { code: 1, reason: "a_non_string_at_is_refused_against_at" }
   } else {
     ExitSuccess
   }
@@ -309,5 +315,54 @@ test fn a_target_carrying_one_arm_still_decodes() -> Bool {
   ) {
     TargetDecoded { target: _ } => true
     TargetDecodeFailed { cause: _ } => false
+  }
+}
+
+// A BROKEN `at` IS REPORTED AGAINST `at`, NOT AGAINST THE ARM IT IS NOT.
+//
+// These two exist because the refusal was real but named the WRONG KEY, which no refusal-only
+// assertion could ever have caught -- the decoder said no in both the correct and the broken build,
+// so every existing claim here stayed green while the diagnostic pointed at an innocent member.
+//
+// The defect was selecting the arm on READ SUCCESS: a missing `at` and a malformed `at` both arrive
+// as MemberFailed, so "at did not read" was treated as "this is the uncontained arm". A target
+// carrying `at` twice fell into the uncontained read, where `uncontained` is legitimately absent,
+// and was refused as a wrong-shape `uncontained` -- with the duplication never mentioned at all.
+//
+// Both claims therefore assert the CAUSE and its KEY, not the refusal. Under the previous code the
+// first reports ClosureDocMemberWrongShape("uncontained") and the second ClosureDocMemberMissing(
+// "uncontained"), so each goes red for a different wrong answer rather than by a shared accident.
+test fn a_duplicated_at_is_refused_against_at() -> Bool {
+  match decode_target(
+    positions: empty_map(),
+    target_value: json_object(
+      members: [
+        json_kv(key: "at", value: json_string(s: "0")),
+        json_kv(key: "at", value: json_string(s: "1")),
+      ]
+    )
+  ) {
+    TargetDecodeFailed { cause: c } =>
+      match c {
+        ClosureDocMemberDuplicated { key: k } => k == "at"
+        _ => false
+      }
+    TargetDecoded { target: _ } => false
+  }
+}
+
+test fn a_non_string_at_is_refused_against_at() -> Bool {
+  match decode_target(
+    positions: empty_map(),
+    target_value: json_object(
+      members: [json_kv(key: "at", value: json_object(members: []))]
+    )
+  ) {
+    TargetDecodeFailed { cause: c } =>
+      match c {
+        ClosureDocMemberWrongShape { key: k } => k == "at"
+        _ => false
+      }
+    TargetDecoded { target: _ } => false
   }
 }
