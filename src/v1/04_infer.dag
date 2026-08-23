@@ -8964,10 +8964,12 @@ fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
+fn nominal_parameter_relation(argument: Node) -> TypeParameterRelation {
+  NominalParameterRelation
+}
+
 fn nominal_parameter_relations(arguments: List<Node>) -> List<TypeParameterRelation> {
-  arguments |> map(argument =>
-    if argument == argument { NominalParameterRelation }
-    else { NominalParameterRelation })
+  arguments |> map(argument => nominal_parameter_relation(argument: argument))
 }
 
 fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
