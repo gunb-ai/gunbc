@@ -114,7 +114,7 @@ import v1.compiler.infer {
   declared_return_type_node,
   expr_span,
   resolved_type_name,
-  expand_type_for_field_access,
+  expand_type_for_field_access, record_lit_alias_struct_expansion,
   is_where_refinement_type,
   call_args_by_name
 }
@@ -11810,6 +11810,17 @@ fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, sco
   }
 }
 
+fn data_def_initializer_shape_type_node(type_node: Node, type_name: String, scope: InferScope) -> Node {
+  if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) {
+    type_node
+  } else {
+    match record_lit_alias_struct_expansion(type_name: type_name, scope: scope) {
+      Present { value: expansion } => expansion.resolved
+      Absent => type_node
+    }
+  }
+}
+
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
@@ -11865,7 +11876,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           "            })")
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
-  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
+  } else if has_nested_records_node(n: data_def_initializer_shape_type_node(type_node: type_node, type_name: type_name, scope: scope), source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
@@ -11890,6 +11901,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           concat("            ", val_str)
       }
     } else {
+      let dbg_conj = if is_product_type(n: type_node) { "y" } else { "n" }
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let is_already_wrapped = match value.expr_data {
         ExprRecordLit { parent_enum: _ } => true
