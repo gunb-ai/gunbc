@@ -306,17 +306,20 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
 
-test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
-  let apply = witness_apply_script()
+test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
+  !string_contains(s: retract, pattern: "chown")
+    && !string_contains(s: retract, pattern: "rmdir")
+    && !string_contains(s: retract, pattern: "rsync")
+}
+
+test fn apply_script_and_tree_sync_unit_stay_within_ci_runner_grants() -> Bool {
+  let apply = witness_apply_script()
   let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
   !string_contains(s: apply, pattern: "chown")
-    && !string_contains(s: retract, pattern: "chown")
     && !string_contains(s: apply, pattern: "rmdir")
-    && !string_contains(s: retract, pattern: "rmdir")
     && !string_contains(s: apply, pattern: "rsync -a ")
     && !string_contains(s: apply, pattern: "\nrsync")
-    && !string_contains(s: retract, pattern: "rsync")
     && string_contains(s: unit, pattern: "Type=oneshot")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
@@ -590,29 +593,36 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
 
 data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
-test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
+test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "--function roadmap_serve_handle ")
-    && string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
-    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
+}
+
+test fn emitted_twin_apply_touches_none_of_productions_effects() -> Bool {
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
 }
 
 data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOST NEEDED AND DID NOT HAVE (review 46541). Every other member's twin-safety follows from its PATH differing, which spec_owned_paths and the disjointness claim above already cover. The belt timer is the one member whose damage is not expressible as a path collision: both instances install their own unit at their own path, and the twin's unit can still drive PRODUCTION's tree, because what selects the tree is an argument inside the unit body rather than the unit's name. A path-level witness cannot see it, which is exactly the shape deployment_service_handler_note records for the serve handler.\\n\\nSo this reads the emitted body. The twin's belt unit must carry the twin's own spawn root, and must not carry production's — and because GUNBC_BELT_SPAWN_WORKDIR is fail-closed in belt_run_once_cli, a unit that carried neither would refuse at run time rather than silently default, which is the third state this pins shut.\\n\\nIt is discriminating in the direction that matters: deleting the Environment= line, or hardcoding either root in the emitter, reds it. The earlier conditional-membership shape would also have redded it, since the twin would have had no belt unit at all to carry a root."
 
-test fn twin_belt_timer_actuates_its_own_tree_not_productions() -> Bool {
+test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
   let lab_instance = srv1_lab_dashboard_instance()
   let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let env = concat(belt_spawn_workdir_env_var as String, "=")
   string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
     && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
-    && string_contains(s: live, pattern: concat(env, live_instance.repo_root as String))
     && !(live_instance.repo_root == lab_instance.repo_root)
+}
+
+test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
+  let live_instance = srv1_live_dashboard_instance()
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: concat(concat(belt_spawn_workdir_env_var as String, "="), live_instance.repo_root as String))
 }
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
@@ -635,14 +645,15 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
 
 data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
 
-test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
+test fn production_apply_creates_productions_binary_parent_directory() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
+}
+
+test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions() -> Bool {
   let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live_parent = serve_binary_parent_install_command(instance: srv1_live_dashboard_instance())
-  let twin_parent = serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance())
-  string_contains(s: live, pattern: live_parent)
-    && !string_contains(s: twin, pattern: live_parent)
-    && string_contains(s: twin, pattern: twin_parent)
+  !string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
+    && string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance()))
 }
 
 // The parent-directory command is DERIVED from the same instance field the binary path is derived
@@ -685,19 +696,28 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   mapping && binary && package
 }
 
-data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
+data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms required_floor_claim_cpu_safety_limit_ms and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
-test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
+test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
-  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
   string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && !string_contains(s: live_apply, pattern: "--set-path")
-    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+}
+
+test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+}
+
+test fn production_retract_offs_its_own_endpoint() -> Bool {
+  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
+test fn twin_retract_offs_its_own_endpoint_and_not_productions() -> Bool {
+  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
@@ -812,3 +832,5 @@ fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
     argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: endpoint)),
   )
 }
+
+
