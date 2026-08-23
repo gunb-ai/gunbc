@@ -125,6 +125,31 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
   }
 }
 
+// DID THE AUTHOR NAME THIS NAME, OR DID A CLOSURE SUPPLY IT?
+//
+// Three states, and the third is the one that must not collapse into either other. This reuses
+// `type_env.source_visible_names` rather than minting a visibility notion beside it: that map is
+// already the corpus authority for "the author named this" (locals + kernel + selectively
+// imported names + all-module import exports), and `v1.compiler.infer_env`
+// `closure_independent_bare_free_call_note` already refuses global-bare and pool-coincidence
+// resolution for registered symbols absent from it. Same question, same authority, one seam over.
+type AuthorNamedVisibility
+  = AuthorNamedThisName
+  | AuthorNamedNothingForThisName
+  | VisibilityUnobservable
+
+fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibility {
+  if map_is_empty(m: type_env.source_visible_names) {
+    VisibilityUnobservable
+  } else {
+    if map_has(m: type_env.source_visible_names, key: name) {
+      AuthorNamedThisName
+    } else {
+      AuthorNamedNothingForThisName
+    }
+  }
+}
+
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
 //
 // THE LEVELS, and they are lexical scope rather than precedence between authorities. This
@@ -136,16 +161,41 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
 //              a candidate in any decision. (Body-scope binders -- let, match binders, fn and
 //              lambda parameters -- shadow even this, one seam up, in
 //              `body_shadow_aware_func_sig`.)
-//   level 1 -- THE IMPORT CLOSURE AND THE BUILTIN SURFACE, TOGETHER. Both are visible to this
-//              module without the author naming either at the call, so two answers here are two
-//              answers at ONE level and nothing ranks them. This is the level the row-30
-//              collision lives at, and collecting it whole is what this cut adds.
+//   level 1a - NAMES THE AUTHOR EXPLICITLY BROUGHT INTO SCOPE (`type_env.source_visible_names`:
+//              the module's own declarations, the kernel surface, selectively imported names,
+//              and all-module import exports). An `import v2.std.collection { map_get }` NAMES
+//              ONE EXACT DECLARATION, and every later bare call in that module is a reference to
+//              the thing the author named -- the same authorial act as a qualified reference,
+//              one line higher. The builtin surface is NOT a co-candidate here, because nothing
+//              about it was named. Two LISTED imports of one name are still two candidates and
+//              still ambiguous, so this is membership in a set, never a first-wins rule.
+//   level 1b - THE TRANSITIVE CLOSURE AND THE BUILTIN SURFACE, TOGETHER. Both are visible to
+//              this module without the author naming either anywhere, so two answers here are
+//              two answers at ONE level and nothing ranks them. THIS IS THE ROW-30 INCIDENT:
+//              `dag/extdeps/git/object_store.dag` names `v2.std.collection` zero times; the
+//              declaration reached it through somebody else's edge, and one added import moved
+//              the closure under three untouched files.
 //   level 2 -- THE CORPUS-WIDE BARE-NAME CENSUS (`func_sig_from_global_bare`), consulted only
 //              when level 1 answered nothing at all. It is strictly outside the module's own
 //              visibility -- it resolves names the author never imported -- and it runs its own
 //              0/1/many decision internally over the referencing module's containment chain.
 //
-// ORDER-INDEPENDENCE: within level 1 the answer is a function of the candidate SET. Import
+// WHAT 1a RANKS, and why it is not the precedence this cut exists to remove: it does not rank
+// CANDIDATES -- there is no first-imported-wins, no declared-beats-builtin, no import-order
+// fallback. It distinguishes WHAT THE AUTHOR NAMED from WHAT A CLOSURE HAPPENED TO SUPPLY, and
+// that distinction IS the defect, not a tiebreak between kinds of callable. An UNLISTED
+// declaration still does not beat the builtin; that is exactly the case that refuses.
+//
+// EMPTY source_visible_names IS IGNORANCE, NOT AN ANSWER. It is built at resolve time and is
+// not persisted onto TypedModule.type_env, so the emit-side consumer reads an empty map and
+// cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
+// DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
+// "nothing was named", which would make the wall strictest exactly where it knows least.
+// The class's rung is therefore per path and its minimum governs (DESIGN 4b): refuses on the
+// resolve path, silent on the emit path. Next-rung trigger for the emit row: persisting
+// source_visible_names onto TypedModule.type_env.
+//
+// ORDER-INDEPENDENCE: within a level the answer is a function of the candidate SET. Import
 // order, parent-list order, map insertion order, and whether a module was reached through one
 // path or several change which order the candidates are collected in and cannot change the
 // verdict, because the verdict is taken on the population and a position is read only after the
@@ -158,10 +208,13 @@ fn callable_lookup_over_candidates(
   match map_get(func_env.local, name) {
     Present { value: sig } => FuncSigResolved { sig: sig }
     Absent =>
-      let admissible = concat(
-        parent_closure_callable_candidates(env: func_env, name: name),
-        builtin_callable_candidates(name: name)
-      )
+      let declared = parent_closure_callable_candidates(env: func_env, name: name)
+      let admissible = match author_named_visibility(type_env: type_env, name: name) {
+        AuthorNamedThisName => declared
+        VisibilityUnobservable => declared
+        AuthorNamedNothingForThisName =>
+          concat(declared, builtin_callable_candidates(name: name))
+      }
       match decide_callable_candidates(candidates: admissible) {
         FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }

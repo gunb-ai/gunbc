@@ -23,20 +23,28 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // and where ambiguity WAS constructed one projection mapped it onto the same `Absent` that means
 // "no such signature". A wall that is named, typed and documented is still not a wall.
 //
-// THE PAIR IS THE PROOF. Both cases below compile a source through the REAL acceptance path
-// (`compile_dag_diagnostic_census` runs the production resolve/typecheck over the live source
-// roots), and they differ in exactly the fact under test:
+// THE TRIPLE IS THE PROOF, and it discriminates the DEFECT from the STORM. All three compile a
+// source through the REAL acceptance path (`compile_dag_diagnostic_census` runs the production
+// resolve/typecheck over the live source roots), and they differ in exactly the fact under test:
 //
-//   RED   -- a bare call to a name the module's import closure and the builtin surface BOTH
-//            answer. Two candidates at one admissible level, nothing the author wrote ranking
-//            them, so the call refuses and the diagnostic names both.
-//   GREEN -- the same spelling, called by a module that DECLARES IT ITSELF. That is lexical
-//            scope, not a collision: the nearest binding wins, exactly as it always has, and the
-//            module compiles clean.
+//   RED   -- THE INCIDENT'S ACTUAL SHAPE. A module that names NO authority for the callable and
+//            reaches a declaration only transitively, through an import whose own closure happens
+//            to contain it. Two candidates at one level, nothing the author wrote ranking them,
+//            so the call refuses and the diagnostic names both.
+//   GREEN 1 -- THE SAME SPELLING, WITH THE AUTHORITY NAMED. `import v2.std.collection { map_get }`
+//            and then a bare call. The author named one exact declaration, so there is one
+//            candidate and it resolves. This control is not decoration: sixteen modules in
+//            dag/ and src/v2 do exactly this, among them 02_parse, 03_ingest, 03_resolve and
+//            target_model, and a wall without it refuses the v2 compiler core.
+//   GREEN 2 -- THE SAME SPELLING, DECLARED BY THE CALLER ITSELF. Lexical scope: the nearest
+//            binding wins, exactly as it always has.
 //
-// Without the green control the red is satisfied by any implementation that refuses every
-// homonym anywhere, which is not a wall but a corpus-wide outage. Without the red the green is
-// satisfied by the silent pick this cut removes.
+// WHY THE RED HAD TO BE REBUILT, recorded because the first version of this file was the failure
+// it exists to catch. It used the GREEN 1 source as its RED -- a listed import -- and asserted a
+// refusal. That is not the incident: `dag/extdeps/git/object_store.dag` at ac9e010a83~1 names
+// `v2.std.collection` zero times. A witness that certifies a wall while testing a shape the
+// defect never had is worse than no witness, because it goes green and reads as coverage; this
+// one would have certified refusing the compiler core as correct behaviour.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -53,12 +61,18 @@ fn blocking_ambiguous_reference_count(source: String) -> Int {
   }
 }
 
-data red_two_authorities_source: String = "module probe_callable_two_authorities\nimport v2.std.collection { map_get }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserName }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+
+data green_named_authority_source: String = "module probe_callable_named_authority\nimport v2.std.collection { map_get }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Accepted { value: inner } => 0\n    Rejected { diagnostics: _ } => 0\n  }\n}\n"
 
 data green_own_declaration_source: String = "module probe_callable_own_declaration\nimport std.types { String, Int, Map, Bool }\nfn map_has(m: Map<String, Bool>, key: String) -> Bool {\n  match map_get(m, key) {\n    Present { value: v } => v\n    Absent => false\n  }\n}\nfn asks(m: Map<String, Bool>) -> Bool { map_has(m: m, key: \"k\") }\n"
 
-test fn a_bare_call_answered_by_a_declaration_and_a_builtin_refuses() -> Bool {
-  blocking_ambiguous_reference_count(source: red_two_authorities_source) >= 1
+test fn a_bare_call_whose_only_declarer_is_reached_transitively_refuses() -> Bool {
+  blocking_ambiguous_reference_count(source: red_transitive_reach_source) >= 1
+}
+
+test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
+  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
 }
 
 test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> Bool {
