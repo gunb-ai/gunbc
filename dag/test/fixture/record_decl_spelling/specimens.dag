@@ -1,0 +1,24 @@
+module test.fixture.record_decl_spelling.specimens
+
+import std.types { String }
+
+// The two authored spellings of ONE concept: a named record with two named fields.
+// They are declared side by side so a consumer can ask whether the compiler carries them
+// as the same declaration, which is the whole subject of the witness that reads this file.
+// Nothing else in the repository declares both forms adjacently -- the corpus carries exactly
+// one `type X = { .. }` site (v2.compiler.06_translate TranslateFoldAcc), and a fixture is what
+// lets the claim be stated about the SPELLING rather than about that one production carrier.
+type RecordDeclBraceSpelling {
+  first: String
+  second: String
+}
+
+type RecordDeclEqualsSpelling = {
+  first: String,
+  second: String
+}
+
+// Negative control: a `type X = <name>` alias is NOT a record declaration, and must keep the
+// alias shape after the two spellings above are unified. Without this row the witness would
+// pass just as well against a change that turned every `=` form into a record.
+type RecordDeclLeafAlias = String
