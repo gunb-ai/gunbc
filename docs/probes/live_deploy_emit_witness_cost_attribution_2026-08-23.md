@@ -281,8 +281,33 @@ which are refusal poisons that return before emission, and its own note argues t
 arms must be pinned apart in one claim — it has never crossed).
 
 So the honest claim is: **the population's MAXIMUM now equals its median.** Every row costs
-one apply emission, ~3.3s local and ~3.5s in CI — about 70% of the limit. That is not
-"crossing is impossible"; it is "no row is structurally dearer than the rest any more", so a
-future crossing would be host noise against the whole population rather than a predictable
-tail. Anyone reading this as a guarantee has read it wrong, and the systemic cost — §3's
-~6,714 evals per emitted word, §6's ranking question — is untouched.
+one apply emission, ~3.3s local and ~3.5s in CI. That is a property of the module rather
+than an observation about today, and the census above is what makes it one: it fails loudly
+the moment someone adds a row that emits a second apply script.
+
+**THE MARGIN, STATED CAREFULLY, BECAUSE THE OBVIOUS FORM OF THIS SENTENCE REPEATS §1'S OWN
+ERROR.** It is tempting to say the crossers sat at 5001–5015ms and therefore had 1–15ms of
+margin. They did not: **5001–5015ms is the INTERRUPT POINT, not the row's cost** — the
+deadline preempted the verdict, so those five rows' true costs are unknown and bounded only
+from below. The margins that can honestly be quoted are the ones from rows that COMPLETED:
+before, the dearest measured row was 4826ms, a margin of 174ms (3.5%). After, the dearest
+row is ~3.5s, a margin of ~1500ms (30%) — an order of magnitude more headroom, against a
+limit that has not moved.
+
+What that buys is a change in the KIND of residual risk, which is the useful way to say it.
+Before, a crossing was a coin flip against scheduler jitter on a shared runner. Now it would
+take something structural, and the structural thing that could do it is named and already in
+§6: a fleet runner-slot width increase lengthens the emitted script again. So this is not
+"crossing is impossible" and not merely "the tail is gone" — it is that the failure mode
+changed from a noisy host to a width change, and the width change has a trigger someone can
+watch. The systemic cost itself — §3's ~6,714 evals per emitted word, §6's ranking question
+— is untouched.
+
+**RENAME RISK, CHECKED RATHER THAN ASSUMED.** Four of these rows were renamed, and a renamed
+identity that a ROSTER references does not produce a slower row — it produces a STALE ROSTER
+ENTRY, and `stale_quarantine` and `stale_route_gap` ARE among the seven gating populations.
+So a clean rename can turn a green floor red through a carrier the diff never touched, and no
+timing measurement here would catch it. Grepped all five old identities across `dag`,
+`src/v2`, `.github` and `tools`, excluding the live_deploy module itself: **no references**.
+Only the historical measurement TSVs in `docs/plans/measurements/` name them, and those are
+dated receipts of past runs, correctly frozen.
