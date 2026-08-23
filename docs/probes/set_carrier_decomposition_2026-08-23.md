@@ -107,9 +107,33 @@ fn bind_facts_lookup(key: Node) -> Optional<InferredFacts> {
 ```
 
 — a **total function of the key**, not a table. So most of the Map population is a genuine partial
-function that should name `PartialFunction` under its own authority, exactly the move this change
-made on the Set side, rather than 145 re-authorings into finite maps. That makes the Map lane far
-cheaper than scoped and brings the joint alias retarget closer.
+function rather than a finite table, and 145 re-authorings into finite maps is the wrong lane.
+
+**But it is NOT the symmetric move, and an earlier revision of this addendum said it was.** That
+revision read "they should name `PartialFunction` under its own authority, exactly the move this
+change made on the Set side." Corrected here rather than left standing, because it is the premise a
+reader would plan the Map lane against. `PointwisePower` is **one** template row (`member`), which is
+why an open characteristic function inhabits it completely and the Set change is clean.
+`PartialFunction` is **thirteen** (`get map_get lookup map_insert map_merge map_has map_contains_key
+map_keys map_values with contains length count`) — it bundles a partial function with a finite map,
+and an open delegate cannot answer `map_keys`, `map_values` or `count` at all.
+
+The asymmetry is visible in the model's own profile rosters, and it is the Map side that is missing a
+carrier, not the Set side that has a spare:
+
+| concept | Set side | Map side |
+|---|---|---|
+| open / characteristic | `PointwisePower` — 1 template | **missing** |
+| finite / enumerable | `BooleanAlgebra` collection — 13 templates | `PartialFunction` — 13 templates |
+
+Inhabitance measured, not argued: **0 of the 145** `Map { … }` literals in `src/v2` + `dag` supply any
+field beyond `lookup`. The other twelve rows are promises the entire existing population already
+fails to keep. So the Map lane's first move is a **decomposition** of `PartialFunction` — the partial
+function keeps its real meaning (`lookup: fn(K) -> V?`, mirroring the single-slot
+`v2.std.collection` `TotalMap<K, V> { lookup: fn(K) -> V }` already in tree, so this is the totality
+axis on an existing pair rather than a minted name) and the finite map takes its own name — not a
+retype. That is a `std` authority change of the same class as the alias row deferred above, so it
+moves in its own PR verified by whole-corpus compile, and **both** alias retargets can ride it.
 
 **What this does and does not establish.** The classifier is a text predicate over the body and one
 level of callees, so it is a *lower bound on openness*: a delegate could still be finite through a
