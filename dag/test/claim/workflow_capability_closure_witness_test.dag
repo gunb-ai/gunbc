@@ -157,5 +157,3 @@ test fn a_capability_outside_the_provided_list_still_refuses() -> Bool {
 test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool {
   fleet_converge_build_job_capability_closure_holds()
 }
-
-
