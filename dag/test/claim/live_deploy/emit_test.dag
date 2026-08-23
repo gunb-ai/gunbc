@@ -355,15 +355,15 @@ test fn witness_retract_script_owned_only() -> Bool {
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: concat("then ", concat(systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true), "; fi")))
-    && string_contains(s: sh, pattern: rm_force_command(paths: ["/opt/gunbc/bin/gunbc"]))
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/opt/gunbc/bin/gunbc"]))
     && string_contains(s: sh, pattern: rm_empty_directory_command(path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/gunbc"))
     && !string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/dispatch-worktrees"))
-    && string_contains(s: sh, pattern: rm_force_command(paths: [
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: [
       "/etc/systemd/system/gunbc-tree-sync.service",
       "/etc/gunbc-tree-sync.env",
     ]))
-    && string_contains(s: sh, pattern: rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
@@ -627,7 +627,7 @@ test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
   let twin = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  !string_contains(s: twin, pattern: rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
+  !string_contains(s: twin, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "tailscale serve reset")
     && !string_contains(s: twin, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
