@@ -287,6 +287,11 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
     && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    // RELOCATED from twin_and_production_configure_disjoint_tailscale_endpoints, which used to
+    // render this same script a second time to make this one claim. Production serves the ROOT
+    // mount, so its apply must carry no --set-path; this row already holds the script the claim is
+    // about, so asserting it here costs nothing and lets that row stop rendering live scripts.
+    && !string_contains(s: sh, pattern: "--set-path")
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
     && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
@@ -687,16 +692,65 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
 
+// THIS ROW RENDERS THE TWIN SCRIPTS ONLY, AND THAT IS A MEASURED CHANGE, NOT A TIDY-UP.
+//
+// It used to render FOUR scripts -- apply and retract, for production AND the twin -- and cost
+// 3,584,995 node-evals, which the required floor killed at its 5000ms per-row cap. A row that is
+// budget-refused every run is UNDISCRIMINATING: it reaches no verdict, proves nothing, and was
+// nevertheless the single red standing between the repository and a green main.
+//
+// The two LIVE-side positives it made are redundant with siblings in this same file, and that is
+// established by execution rather than by reading, because A TRUE CONJUNCT REMOVED FROM AN && IS
+// UNFALSIFIABLE BY READING -- every other row stays green whether or not the sibling really covers
+// it. So each removed conjunct had the defect it exists to catch planted, in a copy of the tree:
+//
+//   apply step emits no endpoint      -> this row FALSE, witness_apply_script_contains_systemd_and_tailscale FALSE, retract row true
+//   retract "off" loses its endpoint  -> this row FALSE, witness_retract_script_owned_only FALSE, apply row true
+//
+// Each defect reds its own sibling and leaves the unrelated one green, so the probes discriminate
+// rather than breaking everything. The second is the production-destroying case this file's
+// endpoint_identity_is_the_collision_axis_note describes: an off missing --set-path targets the
+// ROOT mount, removing production routing while exiting zero. It is still caught, by that sibling.
+//
+// THE FOUR DISJOINTNESS CONJUNCTS ARE UNTOUCHED and are not negotiable against cost: a row that
+// costs too much is a cost problem, a row that stops catching that case is a correctness problem.
+// The --set-path claim about the PRODUCTION apply moved to the row that already renders that
+// script rather than being dropped -- it was the one live-side conjunct with no sibling.
+//
+// MEASURED, via GUNBC_INTERP_PROFILE=1 claim_batch, node-evals because they are deterministic
+// while cpu ms is not (the same tree measured 6524ms and 5403ms on consecutive runs):
+//
+//   before  3,584,995 node-evals   6524ms / 5403ms   OVER the 5000ms cap both runs
+//   after   2,584,177 node-evals   3956ms / 4094ms   UNDER it both runs
+//
+// One million node-evals, 27.9%. NOT from the repeated deployment_spec_srv1() calls -- hoisting
+// those seven to one moved the row 455ms the WRONG way, because the eval memo keys on
+// constructed-value identity and one nullary call chain already collapses. The live SCRIPTS are a
+// different chain and do not collapse, which is where the million lived.
+//
+// REMAINING MARGIN IS ~20% ON THIS HOST AND CI IS NOT THIS HOST, so this is a named trigger and
+// not a worry: IF THIS ROW RE-REFUSES ON CI, THE RELOCATION TO A DECLARED LONG HOME IS THE ANSWER
+// AND IT COMES BACK WITH A REAL REASON FIELD -- previous rung, temporary rung (DeclinedLongModule
+// declines the row, it does not run it under a laxer ceiling), bounded population of exactly this
+// one identity, and a restoration trigger naming a measured cost under the cap. That analysis was
+// drafted and is deliberately recorded here rather than discarded with the draft, so the next
+// person does not re-derive it.
+//
+// AND CONJUNCT SURGERY IS EXHAUSTED, which is what makes that trigger honest. Emit cost is driven
+// by the count of DISTINCT emitted words; the twin renders are now the entire cost and no sibling
+// renders them, so there is no further redundancy in this row to remove. A second round of this
+// same move is not available -- if it goes over again the answer is a cheaper subject or a declared
+// home, not more conjuncts.
+//
+// ONE THING THIS DIFF DOES NOT ESTABLISH: that the row reaches a VERDICT on CI. It never has --
+// budget-refused and interrupted-before-verdict on every run it has ever had. Passing here at
+// ~4000ms is a strong prediction, not the fact, and the two are exactly what this repository spent
+// twelve hours apart on. It closes when a main run shows this identity terminal.
 test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
-  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
   let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && !string_contains(s: live_apply, pattern: "--set-path")
-    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+  string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
     && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
