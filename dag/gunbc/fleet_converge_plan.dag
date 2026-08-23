@@ -87,7 +87,11 @@ import gunbc.runner_slot_provision {
   runner_slot_provision_plan,
   RunnerSlotProvisionPlan,
 }
-import extdeps.github.actions_runner { actions_runner_release_2_334_0 }
+import extdeps.github.actions_runner {
+  actions_runner_release_2_334_0,
+  actions_runner_binary_artifact_for_arch,
+}
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
@@ -354,6 +358,7 @@ fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) 
 type FleetConvergeSlotFamily
   = SlotFamilyPlanned { plan: RunnerSlotProvisionPlan }
   | SlotFamilyUnmodeledHost { host: HostIdentity }
+  | SlotFamilyArtifactUnpublished { host: HostIdentity }
 
 // ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
 // the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
@@ -368,12 +373,15 @@ fn fleet_converge_slot_family(
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
     RunnerHostDeployFound { deploy: d } =>
-      SlotFamilyPlanned {
-        plan: runner_slot_provision_plan(
-          deploy: d,
-          artifact: actions_runner_release_2_334_0,
-          observed: observed_slots,
-        ),
+      match actions_runner_binary_artifact_for_arch(
+        binary_release: actions_runner_release_2_334_0,
+        arch: altra_max_m12830_catalog.architecture,
+      ) {
+        Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
+        Present { value: a } =>
+          SlotFamilyPlanned {
+            plan: runner_slot_provision_plan(deploy: d, artifact: a, observed: observed_slots),
+          }
       }
   }
 }
@@ -385,6 +393,8 @@ fn fleet_converge_slot_lines(
   match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
     SlotFamilyUnmodeledHost { host: h } =>
       [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [concat("REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=", h as String)]
     SlotFamilyPlanned { plan: p } => map(p.membership.actions, a => slot_action_line(action: a))
   }
 }
@@ -417,6 +427,7 @@ fn fleet_converge_slot_refusal_count(
 ) -> Int {
   match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
     SlotFamilyUnmodeledHost { host: _ } => 1
+    SlotFamilyArtifactUnpublished { host: _ } => 1
     SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
   }
 }
@@ -430,6 +441,14 @@ fn slot_apply_lines(
       [
         concat(
           "echo 'fleet_converge_apply: REFUSED-UNMODELED-HOST runner-slot host=",
+          concat(h as String, "' >&2"),
+        ),
+        "exit 1",
+      ]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=",
           concat(h as String, "' >&2"),
         ),
         "exit 1",

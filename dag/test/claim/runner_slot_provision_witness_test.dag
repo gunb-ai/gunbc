@@ -188,14 +188,18 @@ data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
 // unread population proposes installing every desired slot onto a machine whose real state nobody
 // saw. This is the arm that turns a silent overwrite into a stop.
 test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
-  match runner_slot_converge_verdict(
-    host: operator_host_srv1,
-    deploy: srv1_runner_host_deploy,
-    artifact: actions_runner_release_2_334_0,
-    observation: unobserved_fixture,
-  ) {
-    RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
-    RunnerSlotConvergePlanned { host: _, plan: _ } => false
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Absent => false
+    Present { value: artifact } =>
+      match runner_slot_converge_verdict(
+        host: operator_host_srv1,
+        deploy: srv1_runner_host_deploy,
+        artifact: artifact,
+        observation: unobserved_fixture,
+      ) {
+        RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
+        RunnerSlotConvergePlanned { host: _, plan: _ } => false
+      }
   }
 }
 
@@ -203,16 +207,20 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
 // srv1 commits twenty-one and two slots are observed, so a plan must be produced AND must propose
 // adding the nineteen that are missing.
 test fn an_observed_host_plans_the_missing_slots() -> Bool {
-  match runner_slot_converge_verdict(
-    host: operator_host_srv1,
-    deploy: srv1_runner_host_deploy,
-    artifact: actions_runner_release_2_334_0,
-    observation: observed_two_fixture,
-  ) {
-    RunnerSlotConvergePlanned { host: _, plan: p } =>
-      runner_slot_provision_has_width_increase(plan: p)
-        && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
-    RunnerSlotConvergeRefused { host: _, reason: _ } => false
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Absent => false
+    Present { value: artifact } =>
+      match runner_slot_converge_verdict(
+        host: operator_host_srv1,
+        deploy: srv1_runner_host_deploy,
+        artifact: artifact,
+        observation: observed_two_fixture,
+      ) {
+        RunnerSlotConvergePlanned { host: _, plan: p } =>
+          runner_slot_provision_has_width_increase(plan: p)
+            && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
+        RunnerSlotConvergeRefused { host: _, reason: _ } => false
+      }
   }
 }
 
