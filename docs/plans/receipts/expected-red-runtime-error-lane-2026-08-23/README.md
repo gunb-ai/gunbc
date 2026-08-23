@@ -164,3 +164,38 @@ PASS and nothing else in those three files regresses, the per-site import works 
 and the remaining question is only unit-of-work. If any of them REGRESSES a currently-passing
 witness in the same file, that is the bare-scan gate biting, measured, and per-site repair is
 excluded for the other 117 by evidence rather than by argument.
+
+## Round 2 executed: the experiment answered, and it answered against my own hazard
+
+**Subject:** required-floor run `32664512304` on this branch at `42d0a8502` (`origin/main` merged
+after `gunbc#9031` landed), 2026-08-23. Ledger:
+
+    planned=10693 executed=10693 terminal=10693 passed=10421 known_red_held=36 failed=0
+    stale_quarantine=24 known_red_now_passing=24 known_red_runtime_errored=111 route_gap_held=101
+
+`planned == executed == terminal` and all three are nonzero, so the fold actually ran and the
+counts are readable. **143 -> 135 -> 111.**
+
+**The BARE-file experiment passed on both arms, which is the load-bearing result.** All 17 rows in
+the three import-LESS files flipped to PASS — `ci_deploy_target_host_witness` 2,
+`design_argument_witness` 9, `emit_host_gate_witness` 6 — and `failed=0`, so **nothing else in
+those three files regressed**. The bare-scan gate did not bite. That retires the hazard this
+receipt raised in its own first section as a MEASURED negative rather than an argued one: moving a
+file across `source_declares_import_lines` is survivable in practice, at least where the file's
+remaining ambient names are reachable by the entry closure. It does not license a blind 117-file
+rollout — the three files were chosen to vary exactly the property at risk, and a file whose other
+names are reachable ONLY by the census could still break — but it removes the objection that
+per-site repair is structurally unsafe for the BARE class.
+
+The seven remaining frontier rows from round 1 also flipped (`fleet_convergence_verdict_witness`
+2, `host_reach_identity_probe_witness` 2, `runtime_axis` 3 of 6). All 24 are removed from the
+roster here by the same rule as before: each reported STALE-QUARANTINE, enrolled and PASSED.
+Roster 195 -> 171 entries, deletions only.
+
+**Three `runtime_axis` rows advanced a second time** — `cost_is_lowerable` cleared, and the
+reported name is now `type_decls_anti_unify` (`v2.lens.structural_similarity`). Imported here.
+That file has now advanced through three successive frontier names, which is the clearest single
+demonstration in this lane that the floor reports the FIRST unresolved name and clearing one
+guarantees an advance, not a verdict.
+
+`runtime_errored_111_after_round_2.tsv` is the post-round-2 population as the run printed it.

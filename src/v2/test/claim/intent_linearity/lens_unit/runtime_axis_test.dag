@@ -9,6 +9,7 @@ import v2.lens.intent_linearity {
   level_is_linear
 }
 import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.std.node {
   Cardinality,
   ComputationNode,
