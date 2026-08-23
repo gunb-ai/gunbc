@@ -6,7 +6,7 @@ import std.resources { Network }
 import extdeps.uri { Uri, uri_wire }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.make { make_command }
 import extdeps.tools.sed { sed_in_place_command }
@@ -42,6 +42,13 @@ fn bb_config_path(plan: BusyboxCrossBuildPlan) -> String {
   join([plan.build_dir as String, "/.config"], "")
 }
 
+// THE mkdir HERE IS PATH-RESOLVED DELIBERATELY, and the reason is the transport one line below in
+// busybox_bmc_build_run: this whole sequence runs under LocalExec, on whatever machine the operator
+// invoked the build from, and it demands an arm-linux-gnueabi- cross toolchain rather than any host
+// this repository has observed. /usr/bin/mkdir would be a claim about that machine's filesystem
+// layout, which is the fabrication extdeps.tools.mkdir's own rows warn against -- the same shape as
+// the devboot case recorded there. The other seven commands name tools whose absence is a plain
+// spawn failure; mkdir is the one with two spellings, so it is the one that has to choose.
 fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   let bd = plan.build_dir as String
   let arch = bb_make_var(key: "ARCH", value: plan.kernel_arch as String)
@@ -50,7 +57,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   let config = bb_config_path(plan: plan)
   [
     curl_download_command(url: uri_wire(uri: plan.source_url), destination: plan.source_tarball as String),
-    mkdir_parents_command(path: bd),
+    mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: bd),
     tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1),
     make_command(directory: bd, arguments: [arch, cross, "defconfig"]),
     sed_in_place_command(expression: "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", path: config),

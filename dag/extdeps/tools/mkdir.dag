@@ -61,8 +61,14 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
 // ssh, where mkdir is a BusyBox APPLET, and this repository has not observed where that image
 // installs it. Writing /usr/bin/mkdir there would be a guess whose failure mode is a hard spawn
 // error on a live BMC, so that site keeps PATH resolution DELIBERATELY and says so at the call
-// site, rather than the guess being made here on its behalf. Every other caller gets the recorded
-// absolute path through the wrapper above.
+// site, rather than the guess being made here on its behalf.
+//
+// THERE ARE TWO SUCH CALLERS, NOT ONE, and the second is why this paragraph no longer says "every
+// other caller" takes the absolute path. gunbc.busybox_bmc_build runs its whole command sequence
+// under LocalExec on whichever machine the operator invoked the cross-build from -- a developer box
+// or a runner image, never a host this repository has read -- so it cites this form for the same
+// reason and says so at its own call site. The wrapper above remains the default for callers that
+// reach a modeled fleet host; it is simply not the majority-by-assertion this note once claimed.
 fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(program: mkdir_binary, arguments: ["-p", path])
 }

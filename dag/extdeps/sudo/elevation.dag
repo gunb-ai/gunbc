@@ -13,6 +13,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE ABSOLUTE PATH IS THE CLAIM THIS ONE BINARY MUST MAKE, and callers that previously spelled a
+// bare `sudo` now render this row -- a real change in the emitted words, stated here because the
+// -E row below states its own delta and this one was left implicit until review 55022 asked.
+// extdeps.exec.command program_spelling_is_an_observation_claim is the general authority: an
+// absolute path asserts a filesystem someone read, and a bare name declines to. sudo is the case
+// where declining is the WORSE claim, because a sudoers rule matches on the absolute path -- a
+// PATH-resolved spelling would let the caller's own PATH decide which binary crosses the privilege
+// boundary, which is the opposite of what elevation is for. It is also the spelling sudo_elevate
+// above already used, so the alternative was two spellings of one binary inside one module.
 data sudo_binary_path: NonEmptyStr = "/usr/bin/sudo"
 
 // ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
