@@ -779,3 +779,4 @@ test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
 
 
 
+

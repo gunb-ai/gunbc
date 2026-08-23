@@ -31,11 +31,17 @@ import gunbc.scm.object_store {
   object_id_eq,
   store_object_count,
 }
-import extdeps.languages.json.emit { serialize_json }
+import v2.std.collection { empty_map }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.scm.commit_closure_json_v1 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
+  ClosureDocTargetNotOneArm,
+  TargetDecode,
+  TargetDecoded,
+  TargetDecodeFailed,
+  decode_target,
   ClosureDocEncodeOutcome,
   ClosureDocEncoded,
   ClosureDocEncodeRefused,
@@ -182,6 +188,10 @@ fn commit_closure_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "a_partial_closure_encodes_only_with_an_admission" }
   } else if !an_uncontained_object_survives_the_wire_and_is_still_named() {
     ExitFailure { code: 1, reason: "an_uncontained_object_survives_the_wire_and_is_still_named" }
+  } else if !a_target_must_carry_exactly_one_arm() {
+    ExitFailure { code: 1, reason: "a_target_must_carry_exactly_one_arm" }
+  } else if !a_target_carrying_one_arm_still_decodes() {
+    ExitFailure { code: 1, reason: "a_target_carrying_one_arm_still_decodes" }
   } else {
     ExitSuccess
   }
@@ -253,5 +263,51 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
               )
           }
       }
+  }
+}
+
+// A TARGET CARRYING BOTH ARMS IS REFUSED, AND SO IS ONE CARRYING NEITHER.
+//
+// This exists because the module DOCUMENTED this refusal while the code did not perform it, and no
+// witness executed the claim -- review found it by reading. The closed member set admits both keys
+// (each is individually legal), so it could never have been what enforced the choice; the earlier
+// code then read "at" first and SILENTLY DROPPED a digest sitting beside it. A document asserting
+// two contradictory things about one target answered with one of them.
+//
+// The count is asserted, not just the refusal: `found` distinguishes both-arms from neither-arm,
+// which the previous variant could not do because it was hardcoded to 0 at its only construction.
+test fn a_target_must_carry_exactly_one_arm() -> Bool {
+  let both = json_object(
+    members: [
+      json_kv(key: "at", value: json_string(s: "0")),
+      json_kv(key: "uncontained", value: json_string(s: "0000000000000000")),
+    ]
+  )
+  let neither = json_object(members: [])
+  arm_count_refused(v: both, expected: 2) && arm_count_refused(v: neither, expected: 0)
+}
+
+fn arm_count_refused(v: JsonValue, expected: Int) -> Bool {
+  match decode_target(positions: empty_map(), target_value: v) {
+    TargetDecodeFailed { cause: c } =>
+      match c {
+        ClosureDocTargetNotOneArm { found: n } => n == expected
+        _ => false
+      }
+    TargetDecoded { target: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, without which the two refusals above are satisfied by a decoder that refuses
+// every target. One arm, well formed, resolves.
+test fn a_target_carrying_one_arm_still_decodes() -> Bool {
+  match decode_target(
+    positions: empty_map(),
+    target_value: json_object(
+      members: [json_kv(key: "uncontained", value: json_string(s: "0000000000000000"))]
+    )
+  ) {
+    TargetDecoded { target: _ } => true
+    TargetDecodeFailed { cause: _ } => false
   }
 }

@@ -727,24 +727,63 @@ type EdgeAcc {
 fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
   match member_set_refusal(v: target_value, allowed: ["at", "uncontained"], context: ClosureDocTargetMembers) {
     Present { value: c } => TargetDecodeFailed { cause: c }
-    Absent =>
-      match read_string_member(v: target_value, key: "at") {
-        MemberString { value: reference } =>
-          match resolve_reference(positions: positions, reference: reference) {
-            Present { value: identity } => TargetDecoded { target: identity }
-            Absent =>
-              TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
-          }
-        _ =>
-          match read_string_member(v: target_value, key: "uncontained") {
-            MemberString { value: hex } =>
-              match fnv1a64_structural_hex_digest(hex: hex) {
-                Present { value: digest } => TargetDecoded { target: digest }
-                Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
-              }
-            _ => TargetDecodeFailed { cause: ClosureDocTargetNotOneArm { found: 0 } }
-          }
+    Absent => {
+      let arms = target_arm_count(v: target_value)
+      if arms == 1 {
+        decode_target_arm(positions: positions, target_value: target_value)
+      } else {
+        TargetDecodeFailed { cause: ClosureDocTargetNotOneArm { found: arms } }
       }
+    }
+  }
+}
+
+// EXACTLY ONE ARM, COUNTED BEFORE EITHER IS READ, and the counting is the whole point rather than a
+// tidier spelling of the same thing.
+//
+// The closed member set admits BOTH keys, because either is individually legal -- so it cannot be
+// what enforces the choice between them. An earlier revision relied on it anyway and then read "at"
+// first, which meant a target carrying BOTH arms resolved to the position and SILENTLY DROPPED the
+// digest: a document saying two contradictory things about one target quietly answered with one of
+// them. That is the last-wins read this module exists to refuse, and the docstring above it claimed
+// the opposite was already true (found by review, not by the witnesses -- which is why one now
+// executes it).
+//
+// A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
+// and is refused as ClosureDocMemberDuplicated rather than being miscounted as two arms; the two
+// failures are different and keep different names.
+fn target_arm_count(v: JsonValue) -> Int {
+  arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
+}
+
+fn arm_present(v: JsonValue, key: String) -> Int {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: _ } => 1
+    JsonMemberDuplicated { count: _ } => 1
+    JsonMemberAbsent => 0
+    JsonMemberNotAnObject => 0
+  }
+}
+
+fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match read_string_member(v: target_value, key: "at") {
+    MemberString { value: reference } =>
+      match resolve_reference(positions: positions, reference: reference) {
+        Present { value: identity } => TargetDecoded { target: identity }
+        Absent =>
+          TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
+      }
+    MemberFailed { cause: c } =>
+      match read_string_member(v: target_value, key: "uncontained") {
+        MemberString { value: hex } =>
+          match fnv1a64_structural_hex_digest(hex: hex) {
+            Present { value: digest } => TargetDecoded { target: digest }
+            Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
+          }
+        MemberFailed { cause: inner } => TargetDecodeFailed { cause: inner }
+        _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
+      }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "at" } }
   }
 }
 
