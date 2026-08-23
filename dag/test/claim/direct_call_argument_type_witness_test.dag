@@ -1,6 +1,6 @@
 module test.claim.direct_call_argument_type_witness_test
 
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 import gunbc.guarantee_probe_corpus {
   active_probe_row,
   census_blocking_count_for_class,
@@ -34,6 +34,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn direct_call_arg_type_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
+}
+
+fn direct_call_arg_type_blocking_count(source: String, wanted: String) -> Int {
+  match direct_call_arg_type_census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (n, r) => n + r.count)
+    CensusNotRunnable { cause: _ } => -1
+  }
 }
 
 // The three sources differ on exactly two axes and nothing else, which is what makes the trio
@@ -90,4 +98,37 @@ test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
       probe_row_expectation_holds(census: direct_call_arg_type_census_of(source: direct_call_arg_type_v2_green_source), row: row)
     Absent => false
   }
+}
+
+// Applied formals must not disappear into the nominal-declaration fallback. List<Int> has no
+// nominal declaration at that lookup, which used to make the String actual silently admissible.
+data direct_call_applied_list_red_source: String = "module probe_direct_call_applied_list_red\nfn takes(xs: List<Int>) -> Int { xs |> count }\nfn f() -> Int { takes(xs: \"not a list\") }\n"
+data direct_call_applied_list_green_source: String = "module probe_direct_call_applied_list_green\nfn takes(xs: List<Int>) -> Int { xs |> count }\nfn f() -> Int { takes(xs: [1, 2]) }\n"
+
+test fn direct_call_applied_list_refuses_kernel_scalar() -> Bool {
+  direct_call_arg_type_blocking_count(source: direct_call_applied_list_red_source, wanted: "TypeMismatch") >= 1
+}
+
+test fn direct_call_applied_list_accepts_matching_value() -> Bool {
+  direct_call_arg_type_blocking_count(source: direct_call_applied_list_green_source, wanted: "TypeMismatch") == 0
+}
+
+// Shape alone cannot decide applied types: std.nat.Nat is algebraic syntax with a native numeric
+// realization, while v2.std.nat.Nat is the Peano coproduct. The existing declaration-identity
+// authority admits only a kernel numeric at the first. A String at native Nat and an Int at Peano
+// Nat both remain refusals, so this is a conjunction rather than a type-wide carve-out.
+data direct_call_native_nat_numeric_green_source: String = "module probe_direct_call_native_nat_numeric_green\nimport std.nat { Nat }\nfn takes(n: Nat) -> Int { 1 }\nfn f() -> Int { takes(n: 40) }\n"
+data direct_call_native_nat_string_red_source: String = "module probe_direct_call_native_nat_string_red\nimport std.nat { Nat }\nfn takes(n: Nat) -> Int { 1 }\nfn f() -> Int { takes(n: \"forty\") }\n"
+data direct_call_peano_nat_numeric_red_source: String = "module probe_direct_call_peano_nat_numeric_red\nimport v2.std.nat { Nat }\nfn takes(n: Nat) -> Int { 1 }\nfn f() -> Int { takes(n: 40) }\n"
+
+test fn direct_call_native_nat_accepts_kernel_numeric() -> Bool {
+  direct_call_arg_type_blocking_count(source: direct_call_native_nat_numeric_green_source, wanted: "TypeMismatch") == 0
+}
+
+test fn direct_call_native_nat_refuses_non_numeric_kernel() -> Bool {
+  direct_call_arg_type_blocking_count(source: direct_call_native_nat_string_red_source, wanted: "TypeMismatch") >= 1
+}
+
+test fn direct_call_peano_nat_refuses_kernel_numeric() -> Bool {
+  direct_call_arg_type_blocking_count(source: direct_call_peano_nat_numeric_red_source, wanted: "TypeMismatch") >= 1
 }

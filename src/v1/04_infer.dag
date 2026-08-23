@@ -91,6 +91,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
+import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -1881,6 +1882,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   )
 }
 
+fn declared_realizes_as_kernel_numeric(
+  declared: Node,
+  produced: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
+  if produced_is_kernel_numeric == false {
+    false
+  } else {
+    decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
@@ -1895,10 +1910,12 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
         false
-      } else if (formal_base.children |> count) > 0 {
-        // A ground kernel scalar cannot inhabit an applied type. Decide this before
-        // declaration lookup: kernel applications such as List<Int> have no nominal
-        // declaration there, so the fallback silently admitted every scalar.
+      } else if (formal_base.children |> count) > 0
+        && declared_realizes_as_kernel_numeric(declared: formal, produced: actual, source_indices: source_indices) == false {
+        // Decide non-native applications before declaration lookup: kernel applications
+        // such as List<Int> have no nominal declaration there, so the fallback silently
+        // admitted every scalar. Native Nat/Int applications admit only kernel numerics,
+        // keyed on their resolved declaration identity; unknown identity fails closed.
         true
       } else {
         if is_kernel_type(name: formal_name) {
