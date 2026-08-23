@@ -385,18 +385,18 @@ fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Ob
   fold(commits, init: none, f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) })
 }
 
+// ASK THE TABLE, NOT THE ENCODING. This read the ENCODED root and compared it to "" -- the old
+// sentinel for "unresolvable" -- which worked only while an unresolvable root encoded to an empty
+// string. With the two-arm reference there is no sentinel: an uncontained root is a legitimate arm,
+// so the comparison went permanently false and this refusal SILENTLY STOPPED FIRING. It typechecked,
+// because the comparison was against a JsonValue by then.
+//
+// The repair is to stop routing a containment question through a representation at all. The question
+// is "does the table hold this object", and position_of answers it directly.
 fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: RepositoryCommit) -> ObjectId? {
   match found {
     Present { value: _ } => found
     Absent =>
-      // ASK THE TABLE, NOT THE ENCODING. This read the ENCODED root and compared it to "" -- the
-      // old sentinel for "unresolvable" -- which worked only while an unresolvable root encoded to
-      // an empty string. With the two-arm reference there is no sentinel: an uncontained root is a
-      // legitimate arm, so the comparison went permanently false and this refusal silently stopped
-      // firing. It typechecked, because the comparison was against a JsonValue by then.
-      //
-      // The repair is to stop routing a containment question through a representation at all. The
-      // question is "does the table hold this object", and position_of answers it directly.
       match position_of(positions: acc.positions, identity: commit.root) {
         Present { value: _ } => none
         Absent => Present { value: commit.root }
@@ -455,6 +455,12 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
   }
 }
 
+// A COMMIT ROOT THAT RESOLVES TO NOTHING KEEPS ITS OWN REFUSAL. The generic target decoder reports
+// an unresolved reference without knowing WHOSE it was, and letting that through unchanged would
+// merge "an edge inside an object points nowhere" with "a commit names a root this repository does
+// not hold" -- two states with different owners and different repairs, which is the conflation this
+// module's refusal split exists to prevent. Every other cause (a malformed digest, a target that is
+// not one arm) has no repository-level meaning and is wrapped as-is.
 fn commit_root_refusal(cause: ClosureDocRefusal) -> RepositoryDecodeRefusal {
   match cause {
     ClosureDocEdgeTargetUnresolved { reference: r } =>
@@ -472,13 +478,6 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
         MemberObject { value: root_value } =>
           match decode_target(positions: positions, target_value: root_value) {
-            // A COMMIT ROOT THAT RESOLVES TO NOTHING KEEPS ITS OWN REFUSAL. The generic target decoder
-            // reports an unresolved reference without knowing WHOSE it was, and letting that through
-            // unchanged would merge "an edge inside an object points nowhere" with "a commit names a
-            // root this repository does not hold" -- two states with different owners and different
-            // repairs, which is the conflation this module's refusal split exists to prevent. Every
-            // other cause (a malformed digest, a target that is not one arm) has no repository-level
-            // meaning and is wrapped as-is.
             TargetDecodeFailed { cause: c } =>
               CommitDecodeAcc {
                 commits: acc.commits,
