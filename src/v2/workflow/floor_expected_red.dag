@@ -371,7 +371,7 @@ fn floor_expected_red_chunk_04() -> List<String> {
 }
 
 fn floor_expected_red_chunk_05() -> List<String> {
-  Empty {}   
+  Empty {}
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
