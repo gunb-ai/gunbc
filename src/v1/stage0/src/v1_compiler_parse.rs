@@ -12873,9 +12873,13 @@ pub fn parse_expr_bp_no_brace(
             Some(t) => is_ident_shape(t.shape.clone()),
             None => false,
         } && tok_is_lbrace(next.clone()));
-        if ((((min_bp.clone() == 0) && leading_ident_brace.clone())
-            && !has_err(parsed.err.clone()))
+        let stopped_at_infix = match infix_bp(parsed.tokens.clone()) {
+            Some(_) => true,
+            None => false,
+        };
+        if (((leading_ident_brace.clone() && !has_err(parsed.err.clone()))
             && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
+            && !stopped_at_infix.clone())
         {
             {
                 let span = token_span(tok.clone());

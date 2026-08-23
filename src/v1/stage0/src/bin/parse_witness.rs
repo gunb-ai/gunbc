@@ -820,6 +820,17 @@ fn uppercase_condition_does_not_consume_then_branch_as_record_literal() {
     );
 }
 
+fn uppercase_rhs_condition_does_not_consume_then_branch_as_record_literal() {
+    let source =
+        "module test\nfn choose(flag: Bool) -> Int {\n  if flag == Present { 1 } else { 2 }\n}";
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "uppercase condition RHS should leave the following brace for the then-branch: {:?}",
+        result.error
+    );
+}
+
 fn parse_real_source() {
     let source =
         "module test\ntype Foo { x: Int }\ntype Bar = Foo\nfn identity(x: Int) -> Int { x }";
@@ -1002,6 +1013,10 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "uppercase_condition_does_not_consume_then_branch_as_record_literal",
             uppercase_condition_does_not_consume_then_branch_as_record_literal,
+        ),
+        (
+            "uppercase_rhs_condition_does_not_consume_then_branch_as_record_literal",
+            uppercase_rhs_condition_does_not_consume_then_branch_as_record_literal,
         ),
         ("parse_real_source", parse_real_source),
         ("parse_fold_with_fn_lambda", parse_fold_with_fn_lambda),

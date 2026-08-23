@@ -4578,7 +4578,8 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   if has_err(err: r.err) { return r }
   let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
   let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
-  if min_bp == 0 && leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) {
+  let stopped_at_infix = match infix_bp(tokens: parsed.tokens) { Present { value: _ } => true  Absent => false }
+  if leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) && !stopped_at_infix {
     let span = token_span(tok: tok)
     let lhs = make_named_expr_node(name: tok.value.text, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span)
     parse_expr_loop_no_brace(
