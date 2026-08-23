@@ -95,11 +95,14 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
+use crate::v1_std_core::TransportKind::{
+    FileTransport, LocalTransport, RestTransport, ShellTransport,
+};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
+    binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
     expr_field_access_summary, expr_has_non_tail_self_call, expr_has_self_call,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
@@ -116,7 +119,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2208,32 +2211,31 @@ pub fn emit_unified_transport_dispatch(
         + Clone,
     render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        render_rest(
+    match classify_transport(transport.clone(), source_indices.clone()) {
+        Some(TransportKind::RestTransport) => render_rest(
             op_name.clone(),
             transport.clone(),
             depth.clone(),
             source_indices.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            render_shell(
-                op_name.clone(),
-                transport.clone(),
-                depth.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), target.clone())
-            } else {
-                if is_local_transport(transport.clone(), source_indices.clone()) {
-                    render_local(op_name.clone(), depth.clone())
-                } else {
-                    emit_error_expr("unrecognized transport kind".to_string(), target.clone())
-                }
-            }
+        ),
+        Some(TransportKind::ShellTransport) => render_shell(
+            op_name.clone(),
+            transport.clone(),
+            depth.clone(),
+            source_indices.clone(),
+        ),
+        Some(TransportKind::FileTransport) => {
+            emit_unmodeled_file_transport_refusal(op_name.clone(), target.clone())
         }
+        Some(TransportKind::LocalTransport) => render_local(op_name.clone(), depth.clone()),
+        None => emit_error_expr(
+            v1_rt::concat(
+                v1_rt::concat("transport for operation '".to_string(), op_name.clone()),
+                "' matches no member of the closed transport roster (rest, shell, file, local)"
+                    .to_string(),
+            ),
+            target.clone(),
+        ),
     }
 }
 
@@ -4204,14 +4206,9 @@ pub fn is_file_transport_after_dispatch_precedence(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if is_rest_transport(t.clone(), source_indices.clone()) {
-        false
-    } else {
-        if is_shell_transport(t.clone()) {
-            false
-        } else {
-            is_file_transport(t.clone(), source_indices.clone())
-        }
+    match classify_transport(t.clone(), source_indices.clone()) {
+        Some(TransportKind::FileTransport) => true,
+        _ => false,
     }
 }
 
