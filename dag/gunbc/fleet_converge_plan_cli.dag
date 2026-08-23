@@ -137,7 +137,7 @@ func fleet_converge_plan_wet() -> ProcessExit
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
   match observe_runner_slot_members_wet() {
-    RunnerSlotsUnobserved { host: _, reason: why } =>
+    RunnerSlotsUnobserved { reason: why } =>
       exit_failure(
         reason: concat("fleet_converge_plan: RunnerSlotsUnobserved — ", why as String),
       )
@@ -279,7 +279,7 @@ func fleet_converge_apply_wet() -> ProcessExit
               let observed_timers = observe_timer_members_wet()
               let observed_caps = observe_cap_members_wet()
               match observe_runner_slot_members_wet() {
-                RunnerSlotsUnobserved { host: _, reason: why } =>
+                RunnerSlotsUnobserved { reason: why } =>
                   exit_failure(
                     reason: concat("fleet_converge_apply: RunnerSlotsUnobserved — ", why as String),
                   )

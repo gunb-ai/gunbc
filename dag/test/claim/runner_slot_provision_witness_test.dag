@@ -173,7 +173,6 @@ test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
 data converge_seam_witness_note: String = "THESE FOUR ROWS EXIST BECAUSE THE REFUSAL ARM IS THE ENTIRE POINT OF THE SEAM. An observation type with an Unobserved arm that nothing can drive is a decoration -- permanently green by construction and worse than absent, because it gets cited as coverage. The fixture below authors the unobserved state directly, so the arm has a RED that a fixture may produce, and the planned control beside it stops the refusal being satisfied by refusing always."
 
 data unobserved_fixture: RunnerSlotObservation = RunnerSlotsUnobserved {
-  host: operator_host_srv1,
   reason: "FIXTURE: the base-directory listing refused" as NonEmptyStr,
 }
 

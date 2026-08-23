@@ -1,6 +1,7 @@
 module gunbc.runner_slot_provision
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { trim }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.membership_reconcile {
@@ -61,7 +62,7 @@ type RunnerSlotMember {
 
 type RunnerSlotObservation
   = RunnerSlotsObserved { members: List<RunnerSlotMember> }
-  | RunnerSlotsUnobserved { host: HostIdentity, reason: NonEmptyStr }
+  | RunnerSlotsUnobserved { reason: NonEmptyStr }
 
 fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
   join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
@@ -184,7 +185,7 @@ fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bo
 
 // --- observation: the third converge member family -------------------------------------------
 
-data runner_slot_observation_refuses_note: String = "AN UNREADABLE HOST REFUSES; AN EMPTY HOST DOES NOT. These are different states and collapsing them is the empty-observation narrow: rendering 'I could not enumerate the slots' as 'this host has no slots' makes the reconcile propose ADDING every desired slot to a machine whose real population was never read, which on apply means installing over a live fleet. RunnerSlotsUnobserved carries the host and the cause; RunnerSlotsObserved with an empty list is a genuine answer about a genuinely empty host.\n\nTHE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY. gunbc.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish 'no such unit' from 'could not run the test'. Those are tolerable for caps because an absent drop-in is the common real state; they are not tolerable for slots, where absent means 'provision it'.\n\nENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect exist' can only ever return a subset of what I already intended, so an out-of-band slot -- one nobody desired -- would be invisible and could never be reported as MemberRemoved. Listing the base directory is what makes the observed population independent of the desired one, which is the whole point of a reconcile."
+data runner_slot_observation_refuses_note: String = "AN UNREADABLE HOST REFUSES; AN EMPTY HOST DOES NOT. These are different states and collapsing them is the empty-observation narrow: rendering 'I could not enumerate the slots' as 'this host has no slots' makes the reconcile propose ADDING every desired slot to a machine whose real population was never read, which on apply means installing over a live fleet. RunnerSlotsUnobserved carries the CAUSE AND NOT THE HOST, which is a correction rather than an omission: this observer runs LocalExec against whatever machine it is on and has no way to name that machine, so a host field here could only ever be fabricated. It was, briefly -- as the empty string -- and the empty string is not even a HostIdentity, so the fabrication refused to typecheck, which is the carrier shape doing the work a review would otherwise have had to do. The caller knows which host it is converging and supplies it; the observation reports only what it actually established. RunnerSlotsObserved with an empty list is a genuine answer about a genuinely empty host.\n\nTHE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY. gunbc.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish 'no such unit' from 'could not run the test'. Those are tolerable for caps because an absent drop-in is the common real state; they are not tolerable for slots, where absent means 'provision it'.\n\nENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect exist' can only ever return a subset of what I already intended, so an out-of-band slot -- one nobody desired -- would be invisible and could never be reported as MemberRemoved. Listing the base directory is what makes the observed population independent of the desired one, which is the whole point of a reconcile."
 
 func observe_runner_slot_members_wet() -> RunnerSlotObservation
   uses net: Network
@@ -195,7 +196,6 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
   ) {
     ProcessRefused { exit_code: code, stderr: err } =>
       RunnerSlotsUnobserved {
-        host: "" as HostIdentity,
         reason: concat(
           concat("could not enumerate ", actions_runner_base_dir),
           concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", err)
@@ -203,7 +203,6 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
       }
     ProcessOutputAbsent =>
       RunnerSlotsUnobserved {
-        host: "" as HostIdentity,
         reason: concat(
           concat("enumerating ", actions_runner_base_dir),
           " produced no output at all -- not an empty listing, which would be an empty string. A command that yields nothing has not answered the question, and treating it as 'no slots' would propose installing every desired slot onto a host whose population was never read."
@@ -212,8 +211,8 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
     ProcessOutputPresent { text: t } =>
       RunnerSlotsObserved {
         members: map(
-          filter(t.split("\n"), l => trim(l) != ""),
-          l => runner_slot_member_from_instance_name(instance_name: trim(l)),
+          filter(t.split("\n"), l => trim(s: l) != ""),
+          l => runner_slot_member_from_instance_name(instance_name: trim(s: l)),
         ),
       }
   }
@@ -232,7 +231,7 @@ fn runner_slot_converge_verdict(
   observation: RunnerSlotObservation,
 ) -> RunnerSlotConvergeVerdict {
   match observation {
-    RunnerSlotsUnobserved { host: _, reason: r } =>
+    RunnerSlotsUnobserved { reason: r } =>
       RunnerSlotConvergeRefused { host: host, reason: r }
     RunnerSlotsObserved { members: obs } =>
       RunnerSlotConvergePlanned {

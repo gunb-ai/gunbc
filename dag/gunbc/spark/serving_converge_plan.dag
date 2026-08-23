@@ -289,8 +289,14 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
 
 fn spark_serving_fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
 ) -> String {
-  fleet_converge_apply_shell(timer_plan: timer_plan)
+  fleet_converge_apply_shell(
+    timer_plan: timer_plan,
+    host: host,
+    observed_slots: observed_slots,
+  )
 }
 
 // THE FULL-POPULATION CUTOVER. This function planned a single-element linger desired list, so three
@@ -465,7 +471,11 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
     )
     let planned_generation = prior_generation + 1
     let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows))
-    let apply_shell = spark_serving_fleet_converge_apply_shell(timer_plan: timer_plan)
+    let apply_shell = spark_serving_fleet_converge_apply_shell(
+      timer_plan: timer_plan,
+      host: host,
+      observed_slots: observed_slots,
+    )
     let body = join(
       concat(
         [
