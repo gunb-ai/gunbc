@@ -1,0 +1,223 @@
+module gunbc.fleet_capacity_panel
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.markup { Fragment }
+import std.measure { ByteSize, byte_size_count }
+import gunbc.site.markup { txt, el_class }
+import extdeps.languages.css.values { css_ch, css_length_wire }
+import product.placement_supply { HostIdentity }
+import extdeps.llm.cli_lifecycle { ProviderKind, provider_kind_label }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host, gunbc_runner_slot_desired, host_width_binding_label,
+}
+import gunbc.fleet_capacity_control {
+  capacity_controlled_hosts, capacity_controlled_providers,
+  host_withdrawal_for, provider_withdrawal_for,
+  withdrawal_cause_label, withdrawal_cause_detail,
+  active_host_count, active_provider_count,
+}
+
+// THE FLEET CAPACITY PANEL ON THE DAILY WORKSPACE.
+//
+// It reads gunbc.fleet_capacity_control -- the SAME roster the dispatch gate reads -- rather than
+// a display copy. That is the whole difference between a control and a cockpit: a panel with its
+// own roster drifts from the thing it claims to steer, and the drift is invisible because both
+// sides look internally consistent.
+data fleet_capacity_panel_note: String = "Daily-workspace panel over declared fleet capacity. Reads gunbc.fleet_capacity_control directly so the panel and the dispatch gate cannot disagree."
+
+// EVERY NUMBER HERE IS DECLARED, NOT OBSERVED, AND THE PANEL SAYS SO IN THE RENDERED OUTPUT.
+//
+// This is not caution, it is the difference between two facts that look identical on a screen.
+// gunbc.runner_slot_allocation states plainly that srv3 and srv4's committed width of 6 is a
+// PROVISIONING TARGET -- two slots that do not exist yet -- while srv1 and srv2's 5 matches live.
+// A panel rendering "6 slots" beside "5 slots" with no qualifier invites the reader to conclude the
+// fleet is running 22, and a capacity decision made on that number would be wrong on the only axis
+// the panel exists to inform. Labelling the column "committed" costs one word and removes the
+// class of error entirely.
+data fleet_capacity_panel_declared_note: String = "Widths are committed allocations, not observed incarnations. srv3/srv4 commit 6 while running 5 (runner_slot_allocation gunbc_runner_slot_width_ruling_note): the model leads the fleet on that axis."
+
+// THE PANEL NAMES WHICH AXIS BOUND EACH HOST, BECAUSE THE TOTAL CANNOT SAY IT AND THE REMEDIES
+// DIFFER. A committed width is a minimum over axes, and the number that survives says nothing
+// about what would buy more. The axes are not interchangeable purchases: where memory binds the
+// answer is DIMMs, where cores bind it is a different machine entirely, and a reader given only a
+// fleet total assumes one story across four hosts.
+//
+// THIS IS ABOUT TO MATTER MUCH MORE THAN IT DOES TODAY. Measured now, memory binds everywhere and
+// the rows agree, so the column looks redundant. Once the CPU axis lands (gunbc#8976) srv1/srv3/
+// srv4 become core-bound at 21 while srv2 stays memory-bound at 5 -- its 64 GiB DIMM install
+// failed training and was reverted, so it holds 8x16 GiB where the others hold 8x64 -- and the
+// single total becomes two unrelated stories. The column is authored before that lands rather than
+// after someone reads the total wrong.
+data fleet_capacity_panel_binding_axis_note: String = "Each host row names its binding axis. A committed width is a minimum over axes and the surviving number cannot say which one bound it; the remedies differ per axis and per host."
+
+fn gib_label(bytes: ByteSize) -> String {
+  join([to_string(byte_size_count(b: bytes) / 1073741824), " GiB"], "")
+}
+
+fn host_standing_label(host: HostIdentity) -> String {
+  match host_withdrawal_for(host: host) {
+    Present { value: w } =>
+      join(["withdrawn · ", withdrawal_cause_label(cause: w.cause), " · ",
+            withdrawal_cause_detail(cause: w.cause) as String], "")
+    Absent => "active"
+  }
+}
+
+fn provider_standing_label(provider: ProviderKind) -> String {
+  match provider_withdrawal_for(provider: provider) {
+    Present { value: w } =>
+      join(["withdrawn · ", withdrawal_cause_label(cause: w.cause), " · ",
+            withdrawal_cause_detail(cause: w.cause) as String], "")
+    Absent => "active"
+  }
+}
+
+fn host_standing_class(host: HostIdentity) -> String {
+  match host_withdrawal_for(host: host) {
+    Present { value: _ } => "capacity-row capacity-withdrawn"
+    Absent => "capacity-row capacity-active"
+  }
+}
+
+fn provider_standing_class(provider: ProviderKind) -> String {
+  match provider_withdrawal_for(provider: provider) {
+    Present { value: _ } => "capacity-row capacity-withdrawn"
+    Absent => "capacity-row capacity-active"
+  }
+}
+
+fn fleet_committed_slot_total() -> Int {
+  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
+    match host_withdrawal_for(host: h) {
+      Present { value: _ } => acc
+      Absent => acc + gunbc_runner_slots_per_host(host: h)
+    }
+  })
+}
+
+// A WITHDRAWN HOST CONTRIBUTES ZERO TO THE ACTIVE TOTAL, WHICH IS THE POINT OF THE TOTAL.
+// Summing every host's committed width regardless of standing would report capacity the operator
+// has explicitly taken out of service, which is the number they turned the control to change.
+fn fleet_committed_slot_total_ignoring_withdrawals() -> Int {
+  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
+    acc + gunbc_runner_slots_per_host(host: h)
+  })
+}
+
+fn host_capacity_row(host: HostIdentity) -> Fragment {
+  el_class("div", host_standing_class(host: host), [
+    el_class("span", "capacity-subject", [txt(host as String)]),
+    el_class("span", "capacity-metric", [
+      txt(join([to_string(gunbc_runner_slots_per_host(host: host)),
+                " slots committed"], "")),
+    ]),
+    el_class("span", "capacity-metric", [
+      txt(join([gib_label(bytes: gunbc_runner_slot_desired().memory_max), "/slot"], "")),
+    ]),
+    el_class("span", "capacity-metric", [txt(host_width_binding_label(host: host))]),
+    el_class("span", "capacity-standing", [txt(host_standing_label(host: host))]),
+  ])
+}
+
+fn provider_capacity_row(provider: ProviderKind) -> Fragment {
+  el_class("div", provider_standing_class(provider: provider), [
+    el_class("span", "capacity-subject", [txt(provider_kind_label(kind: provider))]),
+    el_class("span", "capacity-metric", [txt("runtime")]),
+    el_class("span", "capacity-standing", [txt(provider_standing_label(provider: provider))]),
+  ])
+}
+
+fn fleet_capacity_summary_line() -> String {
+  join([
+    to_string(active_host_count()), " of ",
+    to_string(capacity_controlled_hosts() |> count), " hosts · ",
+    to_string(active_provider_count()), " of ",
+    to_string(capacity_controlled_providers() |> count), " runtimes · ",
+    to_string(fleet_committed_slot_total()), " slots committed",
+  ], "")
+}
+
+// THE SUMMARY REPORTS WITHDRAWN CAPACITY ONLY WHEN THERE IS SOME.
+//
+// A standing "0 withdrawn" line is noise on every ordinary day and trains the reader to skip the
+// row where the number finally matters. Absent means nothing is withdrawn, which is the same thing
+// the per-host rows already say -- this line exists to make a NON-ZERO state impossible to miss.
+fn fleet_capacity_withdrawn_line() -> String? {
+  let withdrawn = fleet_committed_slot_total_ignoring_withdrawals() - fleet_committed_slot_total()
+  if withdrawn > 0 {
+    Present {
+      value: join([to_string(withdrawn), " slots withdrawn by operator control"], ""),
+    }
+  } else {
+    none
+  }
+}
+
+fn fleet_capacity_withdrawn_nodes() -> List<Fragment> {
+  match fleet_capacity_withdrawn_line() {
+    Present { value: line } => [el_class("div", "capacity-withdrawn-total", [txt(line)])]
+    Absent => []
+  }
+}
+
+// THE TWO COLUMN RESERVATIONS ARE DERIVED FROM THE LABELS THEY MUST HOLD, NOT PICKED.
+//
+// An earlier revision wrote min-width: 5rem and 9rem, which were the only untokened lengths in the
+// stylesheet and would have needed re-tuning by eye every time a host name or a metric phrase grew.
+// This follows roadmap_component dispatch_reserved_width exactly: reserve the longest string the
+// column can actually wear, plus a gutter, so a new host or a longer binding-axis phrase moves the
+// reservation by derivation and there is no pixel to maintain.
+data capacity_column_ch_gutter: Int = 2
+
+fn capacity_longest_len(labels: List<String>) -> Int {
+  fold(labels, init: 0, f: (acc, l) =>
+    if string_length(s: l) > acc { string_length(s: l) } else { acc })
+}
+
+fn capacity_subject_labels() -> List<String> {
+  concat(
+    map(capacity_controlled_hosts(), h => h as String),
+    map(capacity_controlled_providers(), p => provider_kind_label(kind: p)),
+  )
+}
+
+fn capacity_metric_labels() -> List<String> {
+  concat(
+    map(capacity_controlled_hosts(), h =>
+      join([to_string(gunbc_runner_slots_per_host(host: h)), " slots committed"], "")),
+    map(capacity_controlled_hosts(), h => host_width_binding_label(host: h)),
+  )
+}
+
+fn capacity_subject_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: capacity_longest_len(labels: capacity_subject_labels())
+    + capacity_column_ch_gutter))
+}
+
+fn capacity_metric_reserved_width() -> String {
+  css_length_wire(l: css_ch(n: capacity_longest_len(labels: capacity_metric_labels())
+    + capacity_column_ch_gutter))
+}
+
+fn fleet_capacity_panel() -> Fragment {
+  el_class("section", "fleet-capacity-panel", concat(
+    [
+      el_class("h2", "capacity-title", [txt("fleet capacity")]),
+      el_class("div", "capacity-summary", [txt(fleet_capacity_summary_line())]),
+    ],
+    concat(
+      fleet_capacity_withdrawn_nodes(),
+      concat(
+        map(capacity_controlled_hosts(), h => host_capacity_row(host: h)),
+        concat(
+          map(capacity_controlled_providers(), p => provider_capacity_row(provider: p)),
+          [
+            el_class("div", "capacity-declared-note", [
+              txt("committed allocations, not observed incarnations — srv3/srv4 commit 6 while running 5"),
+            ]),
+          ],
+        ),
+      ),
+    ),
+  ))
+}

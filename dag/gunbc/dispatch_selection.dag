@@ -53,6 +53,12 @@ import gunbc.roadmap_model {
   IntricacyHigh,
   PrsMerged,
 }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_capacity_control {
+  fleet_capacity_admission, fleet_capacity_admission_in, fleet_capacity_admission_admits,
+  HostCapacityWithdrawal, ProviderCapacityWithdrawal,
+  withdrawn_hosts, withdrawn_providers,
+}
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardExistingProviderState,
@@ -612,7 +618,101 @@ fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
   )
 }
 
+// THE OPERATOR CAPACITY GATE, APPLIED WHERE THE OFFER IS MADE RATHER THAN WHERE IT IS CHOSEN.
+//
+// A withdrawn host or runtime makes NO OFFER, so ResolvedProviderSelection has no constructor for
+// it -- the cut-off provider is not selected-and-then-rejected, it is unselectable. Gating after
+// selection instead would concede that the bad state is writable and leave a refusal to catch it
+// (DESIGN section 5: construction over validation).
+//
+// THE WITHDRAWALS ARE RETURNED SEPARATELY AND THAT IS NOT A CONVENIENCE. An inventory emptied by
+// withdrawal and an inventory empty because nothing is installed are different facts with opposite
+// remedies, and a bare filter renders both as the same empty list -- the empty-observation narrow,
+// where could-not-offer becomes the verdict nothing-is-available. Keeping the removed rows
+// addressable is what lets a consumer say WHY it has no offers.
+fn instance_capacity_host(instance: HostDashboardInstance) -> HostIdentity {
+  instance.host_identity as HostIdentity
+}
+
+// THE GATE TAKES ITS ROSTERS AS ARGUMENTS FOR THE REASON THE AUTHORITY DOES, ONE LAYER OUT.
+//
+// The live rosters are empty, so a gate that read them directly could only ever be witnessed in
+// its neutral state -- a fixture could prove the gate is WIRED and never that it CUTS, which is a
+// green test over the half that does nothing.
+fn offer_is_capacity_admitted_in(
+  host_rows: List<HostCapacityWithdrawal>,
+  provider_rows: List<ProviderCapacityWithdrawal>,
+  instance: HostDashboardInstance,
+  offer: ProviderOffer,
+) -> Bool {
+  fleet_capacity_admission_admits(admission: fleet_capacity_admission_in(
+    host_rows: host_rows,
+    provider_rows: provider_rows,
+    host: instance_capacity_host(instance: instance),
+    provider: provider_offer_kind(offer: offer),
+  ))
+}
+
+fn capacity_admitted_offers_in(
+  host_rows: List<HostCapacityWithdrawal>,
+  provider_rows: List<ProviderCapacityWithdrawal>,
+  instance: HostDashboardInstance,
+  offers: List<ProviderOffer>,
+) -> List<ProviderOffer> {
+  filter(offers, o => offer_is_capacity_admitted_in(
+    host_rows: host_rows, provider_rows: provider_rows, instance: instance, offer: o))
+}
+
+fn capacity_withdrawn_offers_in(
+  host_rows: List<HostCapacityWithdrawal>,
+  provider_rows: List<ProviderCapacityWithdrawal>,
+  instance: HostDashboardInstance,
+  offers: List<ProviderOffer>,
+) -> List<ProviderOffer> {
+  filter(offers, o => !offer_is_capacity_admitted_in(
+    host_rows: host_rows, provider_rows: provider_rows, instance: instance, offer: o))
+}
+
+fn capacity_admitted_offers(
+  instance: HostDashboardInstance,
+  offers: List<ProviderOffer>,
+) -> List<ProviderOffer> {
+  capacity_admitted_offers_in(
+    host_rows: withdrawn_hosts, provider_rows: withdrawn_providers,
+    instance: instance, offers: offers)
+}
+
+fn capacity_withdrawn_offers(
+  instance: HostDashboardInstance,
+  offers: List<ProviderOffer>,
+) -> List<ProviderOffer> {
+  capacity_withdrawn_offers_in(
+    host_rows: withdrawn_hosts, provider_rows: withdrawn_providers,
+    instance: instance, offers: offers)
+}
+
+fn provider_inventory_withdrawn_for_instance(
+  instance: HostDashboardInstance,
+) -> List<ProviderOffer> {
+  capacity_withdrawn_offers(
+    instance: instance,
+    offers: declared_provider_inventory_for_instance(instance: instance).offers,
+  )
+}
+
 fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
+  ProviderInventory {
+    offers: capacity_admitted_offers(
+      instance: instance,
+      offers: declared_provider_inventory_for_instance(instance: instance).offers,
+    ),
+  }
+}
+
+// THE DECLARED INVENTORY, BEFORE THE OPERATOR GATE. Kept as its own function so the gate has an
+// unfiltered denominator to compare against; a gate folded into the construction below would have
+// nothing to report a withdrawal against.
+fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
   if instance.instance_id == srv2_dashboard_lab_id
     || instance.instance_id == srv2_dashboard_preview_id {
     ProviderInventory {
