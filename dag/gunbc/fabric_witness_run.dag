@@ -23,6 +23,7 @@ import product.fabric.demand {
 }
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
+import gunbc.claim_executor_cli { claim_executor_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
 
@@ -207,23 +208,25 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // and that ruling governs what one composed entry point is responsible for. A distinct subject
 // gets its own check, and --required-ci is left at exactly three.
 fn cited_symbol_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: fold(
+  claim_executor_command(
+    mode_flag: "--required-cited-symbol",
+    operands: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-cited-symbol"],
+      init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
-  }
+  )
 }
 
 fn floor_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: fold(
+  claim_executor_command(
+    mode_flag: "--required-ci",
+    operands: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-ci"],
+      init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
-  }
+  )
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.

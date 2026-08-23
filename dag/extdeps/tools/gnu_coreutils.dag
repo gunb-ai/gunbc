@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, FilePath, String, List }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,6 +24,62 @@ data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
 data min_coreutils_version: VersionConstraint = ">= 8.0"
+
+// THE COREUTILS ARGV BUILDERS. Each is one utility's one operation, cited to the manual anchored at
+// the top of this module, admitted by name on extdeps.exec.command argv_command. They exist because
+// every one of these was previously hand-spelled at a call site as a bare word list, which is where
+// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution).
+//
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data cat_program: NonEmptyStr = "cat"
+data cp_program: NonEmptyStr = "cp"
+data rm_program: NonEmptyStr = "rm"
+data printf_program: NonEmptyStr = "printf"
+data true_program: NonEmptyStr = "true"
+data whoami_program: NonEmptyStr = "whoami"
+data readlink_program: NonEmptyStr = "readlink"
+
+fn cat_command(path: String) -> ArgvCommand {
+  argv_command(program: cat_program, arguments: [path])
+}
+
+fn cp_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program, arguments: [source, destination])
+}
+
+// -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which
+// is what an unlink-if-present means; it does NOT recurse, so a path that turns out to be a
+// directory refuses instead of destroying its contents. The recursive form is a different operation
+// and needs its own name and its own call site, not a flags parameter here.
+fn rm_force_command(path: String) -> ArgvCommand {
+  argv_command(program: rm_program, arguments: ["-f", path])
+}
+
+// The format string is the first operand and the values follow it, exactly as printf(1) takes them.
+fn printf_command(format: String, values: List<String>) -> ArgvCommand {
+  argv_command(program: printf_program, arguments: append([format], items: values))
+}
+
+// true(1) does nothing and exits 0. It is a real utility rather than a placeholder, and it is here
+// because a control that asks "does the runner report success for a command that succeeds and
+// prints nothing" needs a program whose whole contract is exactly that.
+fn true_command() -> ArgvCommand {
+  argv_command(program: true_program, arguments: [])
+}
+
+fn whoami_command() -> ArgvCommand {
+  argv_command(program: whoami_program, arguments: [])
+}
+
+// readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
+// makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
+// executing", and a non-symlink there is a broken assumption, not empty output.
+fn readlink_command(path: String) -> ArgvCommand {
+  argv_command(program: readlink_program, arguments: [path])
+}
 
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
 // here are the ones that manual defines: -d creates each named directory, -m sets the mode,

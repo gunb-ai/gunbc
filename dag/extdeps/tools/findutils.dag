@@ -1,0 +1,47 @@
+module extdeps.tools.findutils
+
+import std.types { String, NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/findutils/manual/html_mono/find.html"
+  }
+}
+
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data find_program: NonEmptyStr = "find"
+
+// -lname IS A GNU EXTENSION and it matches the TARGET of a symbolic link, not the link's own name --
+// which is the whole reason this operation exists rather than a plain -name walk. Its pattern is a
+// GLOB, so a bracketed literal such as socket:[12345] is read as a character class and matches
+// NOTHING: gunbc.build_cache_endpoint_observe records the measurement where exactly that produced a
+// zero that was then read as "the walk cannot be done". A caller passing a target pattern must
+// escape or wildcard its brackets, and this note is here so the next author meets that fact before
+// the empty result rather than after.
+//
+// THE DEPTH BOUND IS A PARAMETER AND HAS NO DEFAULT. An unbounded /proc walk is a different
+// operation with a different cost, and a caller that has not thought about the depth has not thought
+// about the walk.
+fn find_symlink_target_glob_command(
+  search_root: String,
+  max_depth: Int,
+  path_glob: String,
+  link_target_glob: String,
+) -> ArgvCommand {
+  argv_command(
+    program: find_program,
+    arguments: [
+      search_root,
+      "-maxdepth", to_string(max_depth),
+      "-path", path_glob,
+      "-lname", link_target_glob,
+    ],
+  )
+}
