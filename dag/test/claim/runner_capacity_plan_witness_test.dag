@@ -13,7 +13,7 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation { committed_slot_identities, gunbc_runner_slots_per_host }
 import gunbc.runner_capacity_plan {
   runner_capacity_plan,
   runner_capacity_add_count,
@@ -63,10 +63,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // to carry stops at the wall with a typed cause rather than being admitted and then producing
 // nothing. Both hosts plan zero actions and both carry a WidthRefused admission -- the difference
 // from the old behaviour is that the refusal is now VISIBLE in the plan.
+// THE REQUESTED WIDTH IS DERIVED FROM THE CEILING, BECAUSE A LITERAL SEVEN STOPPED BEING ABOVE IT.
+//
+// This row asked for width 7 when the committed ceiling was 6, so the plan refused to add and
+// add_count was 0. The 2026-08-23 CPU-axis change moved srv3 and srv4 to twenty-one, and 7 became
+// an ordinary in-range request that the plan quite correctly fulfils -- so the row went red without
+// the ceiling behaviour it names having changed at all.
+//
+// Retyping 7 as 22 puts the same landmine one width further out. Asking for committed + 1 keeps the
+// request above the ceiling by construction, so this stays a check on the refusal arm rather than
+// on whatever number the fleet happened to commit the day it was written.
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
+    srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
     roster: organization_runner_roster_evidence()
   )
   match plan {
@@ -269,6 +279,16 @@ test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
     ))
 }
 
+// THE srv1 CLAUSE NOW DERIVES ITS OUT-OF-RANGE INDEX; THE srv3 CLAUSES NEEDED NOTHING.
+//
+// The last clause observed srv1 slots [1, 6] and required a refusal. Six was outside srv1's
+// five-wide population when this was written; at twenty-one it is an ordinary committed member, so
+// the refusal correctly did not fire and only this fixture was wrong. It now asks for committed + 1.
+//
+// Every srv3 clause is untouched and that is the informative half: srv3-06 refuses because it is
+// the AUTHORED fabric identity, not because of where it sits relative to a width. The width moved
+// from six to twenty-one underneath these clauses and they did not notice -- which is the property
+// runner_slot_allocation was built to have, observed rather than asserted.
 test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
   population_is_refused(v: validate_observed_github_slot_members(
     host: operator_host_srv3,
@@ -288,7 +308,7 @@ test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() 
     ))
     && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
-      observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
+      observed: [srv1_slot(i: 1), srv1_slot(i: gunbc_runner_slots_per_host(host: operator_host_srv1) + 1)],
     ))
 }
 

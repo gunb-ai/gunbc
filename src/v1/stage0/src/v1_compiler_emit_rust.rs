@@ -44,26 +44,34 @@ pub use crate::v1_compiler_coercion::{
     type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::BoundOperation::{
+    BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
+};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
-pub use crate::v1_compiler_emit::{
-    child_from_key, compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
-    emit_container, emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    emit_unmodeled_file_transport_refusal_with_cause, escape_rust_interp_text,
-    extract_modifier_names, file_emission_refusal, file_operation_has_content_input,
-    file_output_channel_fields, file_output_channel_of_field, file_transport_declared_verb,
-    file_transport_verb_delete, file_transport_verb_list, file_transport_verb_write_owner_only,
-    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
-    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
-    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, tco_reassign_core, typed_named_arg_matches, unwrap_single_field_product,
+use crate::v1_compiler_emit::FileResultChannel::{
+    FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
+};
+use crate::v1_compiler_emit::FileVerb::{
+    FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    bind_operation_transport, child_from_key, compute_service_fields,
+    effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
+    emit_error_expr, emit_ident, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
+    emit_let_binding_annotated, emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type,
+    emit_null_coalesce, emit_return, emit_shared_expr, emit_shared_tco_expr, emit_simple_expr,
+    emit_string_literal, emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared,
+    emit_unary_op, escape_rust_interp_text, extract_modifier_names, has_nested_records_node,
+    has_service_items, is_null_coalesce, is_self_recursive, is_tco_eligible,
+    is_tco_identity_passthrough, lookup_item, module_emit_scope, order_typed_call_args,
+    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
+    tco_reassign_core, transport_binding_refusal_fact, typed_named_arg_matches,
+    unwrap_single_field_product,
+};
+pub use crate::v1_compiler_emit::{
+    BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
+    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -176,19 +184,18 @@ pub use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
     find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
-    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
-    with_required_cardinality,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
+    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -12595,7 +12602,8 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let name = authored_name_at(source_indices.clone(), n.clone());
+        let authored = authored_name_at(source_indices.clone(), n.clone());
+        let name = qualified_last_segment(authored.clone());
         if v1_rt::set_contains(&shared_types, name.clone()) {
             break false;
         } else {
@@ -25736,7 +25744,10 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone() != "".to_string())
-                        && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                        && v1_rt::set_contains(
+                            &shared_types,
+                            qualified_last_segment(rc_name.clone()),
+                        ))
                     {
                         rust_shared_wrap_ctor(raw.clone())
                     } else {
@@ -28689,8 +28700,13 @@ pub fn emit_operation_method(
         );
         let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
         let op_inferred = resolved_type(op_node.clone());
-        let real_body = emit_transport_call(
+        let bound = bind_operation_transport(
             eff_transport.clone(),
+            op_node.clone(),
+            env.source_indices.clone(),
+        );
+        let real_body = emit_transport_call(
+            bound.clone(),
             op_text.clone(),
             registry.clone(),
             (depth.clone() + 2),
@@ -28899,7 +28915,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 }
 
 pub fn emit_transport_call(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
@@ -28910,10 +28926,10 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        emit_rest_call(
+    match (*bound.clone()).clone() {
+        BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
             op_name.clone(),
-            transport.clone(),
+            t.clone(),
             registry.clone(),
             depth.clone(),
             service_item.clone(),
@@ -28921,30 +28937,36 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(
-                op_name.clone(),
-                transport.clone(),
-                registry.clone(),
-                depth.clone(),
-                inferred.clone(),
-                op_node.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_file_call(
-                    op_name.clone(),
-                    transport.clone(),
-                    op_node.clone(),
-                    source_indices.clone(),
-                )
-            } else {
-                emit_local_call(op_name.clone())
-            }
-        }
+        ),
+        BoundOperation::ShellBound { transport: t, .. } => emit_shell_call(
+            op_name.clone(),
+            t.clone(),
+            registry.clone(),
+            depth.clone(),
+            inferred.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        BoundOperation::FileBound {
+            verb: v,
+            path_template: pt,
+            result_fields: fs,
+            ..
+        } => emit_file_call(v.clone(), pt.clone(), fs.clone(), source_indices.clone()),
+        BoundOperation::LocalBound => emit_local_call(op_name.clone()),
+        BoundOperation::BindingRefused { cause: cz, .. } => emit_error_expr(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "transport binding refused for operation '".to_string(),
+                        op_name.clone(),
+                    ),
+                    "': ".to_string(),
+                ),
+                transport_binding_refusal_fact(cz.clone()),
+            ),
+            RenderTarget::Rust,
+        ),
     }
 }
 
@@ -30745,45 +30767,45 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
 }
 
 pub fn emit_file_call(
-    op_name: String,
-    transport: Rc<Node>,
-    op_node: Rc<Node>,
+    verb: FileVerb,
+    path_template: Rc<Node>,
+    result_fields: Rc<Vec<Rc<FileResultField>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match file_emission_refusal(
-        op_node.clone(),
-        transport.clone(),
-        RenderTarget::Rust,
-        source_indices.clone(),
-    ) {
-        Some(refusal) => emit_unmodeled_file_transport_refusal_with_cause(
-            op_name.clone(),
-            RenderTarget::Rust,
-            refusal.clone(),
-        ),
-        None => {
-            let path_line = emit_file_path_line(transport.clone(), source_indices.clone());
-            let empty_guard = file_empty_path_guard();
-            let action =
-                emit_file_action_block(transport.clone(), op_node.clone(), source_indices.clone());
-            let return_line = emit_file_return(op_node.clone(), source_indices.clone());
-            Rc::new(vec![
-                path_line.clone(),
-                empty_guard.clone(),
-                action.clone(),
-                return_line.clone(),
-            ])
-            .join(&"\n".to_string())
-        }
+    {
+        let path_line = emit_file_path_line(path_template.clone(), source_indices.clone());
+        let action = v1_rt::concat(
+            file_channel_binding_prefix(),
+            file_verb_action_expr(verb.clone()),
+        );
+        let return_line = emit_file_return(result_fields.clone());
+        Rc::new(vec![
+            path_line.clone(),
+            file_empty_path_guard(),
+            action.clone(),
+            return_line.clone(),
+        ])
+        .join(&"\n".to_string())
+    }
+}
+
+pub fn file_verb_action_expr(verb: FileVerb) -> String {
+    match verb.clone() {
+        FileVerb::FileRead => file_read_match_expr(),
+        FileVerb::FileWrite => file_write_expr(),
+        FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
+        FileVerb::FileDelete => file_delete_match_expr(),
+        FileVerb::FileList => file_list_match_expr(),
     }
 }
 
 pub fn emit_file_path_line(
-    transport: Rc<Node>,
+    path_template: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match transport_base_path(transport.clone(), source_indices.clone()) {
-        Some(path_node) => match (*path_node.expr_data.clone()).clone() {
+    {
+        let path_node = path_template.clone();
+        match (*path_node.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
                 if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
             {
@@ -30826,7 +30848,7 @@ pub fn emit_file_path_line(
                 });
                 let fmt_str = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
                             StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
@@ -30837,7 +30859,7 @@ pub fn emit_file_path_line(
                 .join(&"".to_string());
                 let args = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.extend(
                             (*match (*p.clone()).clone() {
                                 StringPart::Text { value: _, .. } => Rc::new(vec![]),
@@ -30890,8 +30912,7 @@ pub fn emit_file_path_line(
                 "compile_error!(\"file transport path must be a string literal or interpolation\");"
                     .to_string()
             }
-        },
-        None => "compile_error!(\"file transport declares no path\");".to_string(),
+        }
     }
 }
 
@@ -30911,37 +30932,6 @@ pub fn file_channel_binding_prefix() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn emit_file_action_block(
-    transport: Rc<Node>,
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let verb = file_transport_declared_verb(transport.clone(), source_indices.clone());
-        let body = match verb.clone() {
-            Some(v) => {
-                if (v.clone() == file_transport_verb_delete()) {
-                    file_delete_match_expr()
-                } else {
-                    if (v.clone() == file_transport_verb_list()) {
-                        file_list_match_expr()
-                    } else {
-                        file_write_owner_only_expr()
-                    }
-                }
-            }
-            None => {
-                if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
-                    file_write_expr()
-                } else {
-                    file_read_match_expr()
-                }
-            }
-        };
-        v1_rt::concat(file_channel_binding_prefix(), body.clone())
-    }
 }
 
 pub fn file_read_match_expr() -> String {
@@ -30989,40 +30979,14 @@ pub fn file_write_owner_only_expr() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn emit_file_channel_expr(channel: String, is_optional: bool) -> String {
+pub fn emit_file_channel_expr(channel: FileResultChannel, is_optional: bool) -> String {
     {
-        let base = if ((channel.clone() == "write_success".to_string())
-            || (channel.clone() == "success".to_string()))
-        {
-            "file_success".to_string()
-        } else {
-            if (((channel.clone() == "bytes_written".to_string())
-                || (channel.clone() == "bytes".to_string()))
-                || (channel.clone() == "byte_count".to_string()))
-            {
-                "file_byte_count".to_string()
-            } else {
-                if (channel.clone() == "path".to_string()) {
-                    "file_path.clone()".to_string()
-                } else {
-                    if (channel.clone() == "error".to_string()) {
-                        "file_error.clone()".to_string()
-                    } else {
-                        if (channel.clone() == "content".to_string()) {
-                            "file_content.clone()".to_string()
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "compile_error!(\"file transport output key '".to_string(),
-                                    channel.clone(),
-                                ),
-                                "' reached the rust renderer without a modeled channel\")"
-                                    .to_string(),
-                            )
-                        }
-                    }
-                }
-            }
+        let base = match channel.clone() {
+            FileResultChannel::FileChanSuccess => "file_success".to_string(),
+            FileResultChannel::FileChanByteCount => "file_byte_count".to_string(),
+            FileResultChannel::FileChanPath => "file_path.clone()".to_string(),
+            FileResultChannel::FileChanError => "file_error.clone()".to_string(),
+            FileResultChannel::FileChanContent => "file_content.clone()".to_string(),
         };
         if is_optional.clone() {
             v1_rt::concat(
@@ -31035,26 +30999,23 @@ pub fn emit_file_channel_expr(channel: String, is_optional: bool) -> String {
     }
 }
 
-pub fn emit_file_return(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> String {
     {
-        let fields = file_output_channel_fields(op_node.clone());
         let field_exprs = Rc::new({
             let mut __result = Vec::new();
-            for ch in fields.clone().iter().cloned() {
+            for f in result_fields.iter().cloned() {
                 __result.push(emit_file_channel_expr(
-                    file_output_channel_of_field(ch.clone(), source_indices.clone()),
-                    (ch.return_cardinality.clone() == Cardinality::CardOptional),
+                    f.channel.clone(),
+                    f.optional.clone(),
                 ));
             }
             __result
         });
-        if ((fields.clone().len() as i64) == 0) {
+        let n = (result_fields.clone().len() as i64);
+        if (n.clone() == 0) {
             "Ok(())".to_string()
         } else {
-            if ((fields.clone().len() as i64) == 1) {
+            if (n.clone() == 1) {
                 v1_rt::concat(
                     v1_rt::concat(
                         "Ok(".to_string(),

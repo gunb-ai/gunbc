@@ -1,6 +1,6 @@
 module v2.workflow.floor_expected_red
 
-import v2.std.algebra { Cons, Empty, list_flat_map }
+import v2.std.algebra { Cons, Empty, filter, list_flat_map }
 import v2.std.collection { List }
 import v2.std.text { String }
 
@@ -55,8 +55,34 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 306 identities, after the declared rung drop below took 111 out by relocation
-// and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306). Those 52
+// THE PRESENT POPULATION IS NOT WRITTEN HERE, AND THAT IS THE CORRECTION RATHER THAN AN
+// OMISSION. It is `floor_expected_red_roster()` -- the fold over the chunks below -- and that
+// fold is the only authority for it. A transcribed total is a SECOND representation of a fact
+// this module already computes (DESIGN 2/3): nothing derives from the sentence, so nothing
+// refuses when it goes stale, and it goes stale on the roster's own removal path, which is
+// designed to fire without anyone editing this header.
+//
+// It had already gone stale twice over, in the way that makes the class worth naming: this
+// block carried TWO current-state totals at once -- `311` here and `306` immediately below --
+// each correct when written, neither correct together, and the roster they both described had
+// moved on from both. Two accounts of one population in one comment is the same defect as two
+// authorities for one fact; the repair is to delete both rather than to reconcile them into a
+// third number that will rot on the same schedule.
+//
+// WHAT SURVIVES, and why the distinction is not cosmetic: a DATED MEASUREMENT bound to a named
+// run is a receipt -- it says what was observed on a tree that still exists, and it stays true
+// forever because its subject is fixed. A BARE PRESENT-TENSE TOTAL is a claim about the live
+// roster, and the live roster is exactly what this file already computes. So the derivations,
+// the run ids, the 429/313 partition and the removal history below all remain untouched; only
+// the two sentences asserting a current count are gone.
+//
+// The five rows added 2026-08-22 are the previously-INVISIBLE rows described at chunk_20 --
+// they enter this roster from marker-less files rather than from a regression, which is a route
+// this roster had not carried before, and that route is the reason they are called out here.
+//
+// The derivation below is a receipt and is unchanged: the declared rung drop took 111 out by
+// relocation and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306
+// as of that run). Those 52
 // reported STALE-QUARANTINE -- enrolled as expected-red and PASSED -- which is this roster's own
 // removal path, not a roster edit: they pass because that branch closed two emitter roots (a
 // builtin answering a call the program had already bound to a lexical binding, and a bare closure
@@ -341,11 +367,11 @@ fn floor_expected_red_chunk_03() -> List<String> {
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-  Cons { head: "test.claim.materialized_secret.witness_destroyed_version_refuses_even_when_probe_says_live", tail: Cons { head: "test.claim.materialized_secret.witness_enabled_but_revoked_refuses", tail: Cons { head: "test.claim.materialized_secret.witness_enabled_but_unprobed_refuses", tail: Cons { head: "test.claim.materialized_secret.witness_live_secret_materializes_and_runs_the_use", tail: Cons { head: "test.claim.materialized_secret.witness_red_control_existence_only_rejected_by_gate", tail: Cons { head: "test.claim.materialized_secret.witness_self_repairing_probe_is_refused_by_classification", tail:    Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Cons { head: "test.claim.realization_reconcile_witness.witness_different_keysource_does_not_collapse", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_post_always_never_collapses", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_same_keysource_collapses_to_share", tail:  Empty {} } } } } } } } } } } } } }
+     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Cons { head: "test.claim.realization_reconcile_witness.witness_different_keysource_does_not_collapse", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_post_always_never_collapses", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_same_keysource_collapses_to_share", tail:  Empty {} } } } } } } }
 }
 
 fn floor_expected_red_chunk_05() -> List<String> {
-            Cons { head: "test.claim.samsung_dram_module.capacity_is_thirty_two_gibibytes", tail: Cons { head: "test.claim.samsung_dram_module.four_rank_by_four_is_realizable_on_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_is_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_mismatch_fails_closed", tail: Cons { head: "test.claim.samsung_dram_module.manufacturer_grounds_on_the_single_vendor_authority", tail: Cons { head: "test.claim.samsung_dram_module.organization_derives_eighteen_dies_per_rank", tail: Cons { head: "test.claim.samsung_dram_module.required_die_density_derives_four_gigabit", tail: Cons { head: "test.claim.samsung_dram_module.row_axes_match_the_labelled_module_organization", tail: Cons { head: "test.claim.samsung_dram_module.same_capacity_at_one_rank_by_eight_is_not_realizable", tail:      Empty {} } } } } } } } } }
+  Cons { head: "test.claim.samsung_dram_module.four_rank_by_four_is_realizable_on_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_mismatch_fails_closed", tail: Cons { head: "test.claim.samsung_dram_module.same_capacity_at_one_rank_by_eight_is_not_realizable", tail: Empty {} } } }
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
@@ -413,10 +439,121 @@ fn floor_expected_red_chunk_19() -> List<String> {
   Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
 }
 
+// FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
+// before: they were not failing rows that someone broke, they were rows the floor COULD NOT SEE.
+// Both files declared their assertions as plain `fn`, so floor discovery -- which keys on the
+// literal `test fn ` marker -- enrolled nothing from either. Marking them is what made these
+// failures observable at all, and unmarking them again would be the same silence wearing a
+// different justification, so they are enrolled here instead.
+//
+// The four bootstrap_footprint rows fail identically: `atom_identity_hash requires exactly one
+// string argument`. The cause is stated by the file itself, which DEMOTED them on 2026-08-19 by
+// removing their markers -- every bootstrap_footprint path hashes a closure embedding
+// rust_target_model().bundle, whose semantic-decl bundles store char CODE POINTS in
+// Atom.identity, and content_hash's atom fold routes that into an intrinsic that requires a
+// string. That is a substrate gap, not a defect in these rows, and the file names its own
+// repair trigger: the code-point encoding carries a string identity, or content_hash gains a
+// non-symbol atom arm.
+//
+// nominal_distinct_control_compiles_ok returns false: the CONTROL fixture -- the one whose call
+// site is type-correct -- does not compile through compile_ingest_staging today. gunbc#8505 held
+// this class back from promotion for exactly this reason ("35 parse-reaching claims declared as
+// residue"), so the red is a known frontier fact rather than news.
+//
+// WHAT IS HONEST TO SAY ABOUT THEM, since this roster's header asks: nobody is actively fixing
+// these five. What the enrolment buys over the demotion it replaces is the stale-quarantine arm
+// -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
+// naming itself. The file's prose trigger could not do that; this roster does it mechanically.
+fn floor_expected_red_chunk_20() -> List<String> {
+  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } }
+}
+
+// THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red
+// rather than discovered red. They are compiler control fixtures: each hands the v1 compile path a
+// program the host refuses at evaluation and asserts that the refusal happens at COMPILE. All three
+// return false today, measured by execution at head 907f19c2cc.
+//
+// WHY THEY WERE AUTHORED. Required-floor run 32633501354 reported known_red_runtime_errored=164 --
+// programs the compiler accepted and the interpreter could not evaluate -- and that counter is the
+// class's only observer. It falls to zero as the 164 witnesses are repaired, taking the evidence
+// with it, so the class needed evidence that does not live in the specimens. Eleven of the 164 are
+// this family: a host primitive's argument list is not checked at compile in any direction.
+//
+// WHY THEY BELONG IN A ROSTER WHOSE HEADER SAYS A ROW BELONGS HERE ONLY WHILE SOMEONE IS FIXING IT.
+// Nobody is fixing this one today, and the enrolment is still the honest home rather than a
+// demotion: the roster's stale-quarantine arm is exactly what these rows need, because the day the
+// argument contract is checked at compile they PASS and red the build naming themselves. That arm
+// is the whole point of authoring them as reds instead of as assertions of today's behaviour, which
+// would have been a change detector pointing the wrong way.
+//
+// THE FILE DECLARES ReadsLiveTree and is therefore DeclinedLiveTree today, so these three are
+// enrolled and not yet planned. That is stated rather than worked around: the declaration is honest
+// (compile_dag_rust_emit_check walks the live tree) and the decline arm's deletion is in flight
+// (gunbc#8977, gunbc#8982). Until it lands they are held here so that admission does not red main.
+//
+// The partition of the 164 and the measurements behind this family are
+// docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
+fn floor_expected_red_chunk_21() -> List<String> {
+  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}
+}
+
+// Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
+// closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
+// but exclude the now-green family from the live expected-red roster.
+//
+// THE THREE compile_accepted_unevaluable_program_control ROWS ARE EXCLUDED FOR THE OPPOSITE
+// REASON, AND CHUNK 21 SAYS SO IN A SENTENCE EXECUTION REFUTES. That chunk's annotation reads
+// "until it lands they are held here so that admission does not red main". Held-in-the-roster is
+// exactly what reds main: the floor requires every ENROLLED identity to be observed among the
+// EXECUTED claims, so an identity that is enrolled and never planned refuses the whole run with
+// cause=ExpectedRedIdentityDidNotExecute. It is not a quiet parking spot. Measured twice, on the
+// authoring PR's own run (32644795043, which was merged red) and again on gunbc#9031
+// (32649496046), where it was the sole floor refusal once the ArgvCommand seal that had been
+// masking it was repaired.
+//
+// The rows are correct and stay in chunk 21. What is wrong is only their LIVENESS: the file
+// declares ReadsLiveTree, the DeclinedLiveTree arm declines it (declined_live=899 on that run),
+// and the arm's deletion is still unmerged (gunbc#8977, gunbc#8982 both OPEN at the time of
+// writing) -- so the enrolment was authored against a precondition that had not landed.
+//
+// RESTORATION TRIGGER, and it is a COUPLING someone must honour rather than a note: when either
+// #8977 or #8982 lands and these identities become executable, DELETE these three exclusions in
+// the same change. They are reds, so once they execute while excluded they count as ordinary
+// failures and red the build -- the exclusion must not outlive the decline that motivated it.
+fn floor_expected_red_is_live(name: String) -> Bool {
+  !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds"
+    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile"
+    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile")
 }
 
 fn floor_expected_red_roster() -> List<String> {
-  list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk })
+  filter(
+    xs: list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk }),
+    predicate: floor_expected_red_is_live
+  )
 }
