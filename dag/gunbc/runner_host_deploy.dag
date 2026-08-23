@@ -1,8 +1,11 @@
 module gunbc.runner_host_deploy
 
-import extdeps.tools.env { env_path_resolved_program }
 import std.types { NonEmptyStr, String, Int, List }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
+import extdeps.sudo.elevation { sudo_preserve_environment_command }
+import extdeps.languages.bash.invocation { bash_script_argv }
+import extdeps.systemd.systemctl { systemctl_enable_now_command }
+import v2.std.orchestration { EnvSet }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps {
@@ -47,7 +50,8 @@ type RunnerHostDeploy {
   runner_count: Int
 }
 
-data srv4_runner_count_disk_cap_note: String = "srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06). runner_count on srv4_runner_host_deploy now names the materialization target width (6 after the 2026-08-17 16GiB ruling, matching srv3), and disk binding moves to APPLY-TIME preflight in gunbc.runner_lifecycle runner_width_disk_preflight — not a silent row pin and never an absorbing fallback to 5 when disk is unobservable.\n\nFACT unchanged: NVMe is a Samsung 970 EVO 500GB against 2TB on srv1-3; every ephemeral runner keeps a _work tree plus caches. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot (~38GB per slot; the charge is per-slot, so the total demanded at apply falls with the 2026-08-17 move from width 7 to 6) is the conservative charge used at apply; sufficient observed headroom proceeds, insufficient REFUSES, unobservable REFUSES.\n\ngunbc.ci_runner_placement still models RAM only for solver admission; memory admits 6 for srv4 at the 16GiB slot (7 at the superseded 14GiB slot). The disk gate is no longer this note or host_disk_admitted_width reading runner_count as a cap — it is the observed preflight arm vivid-eagle-131's apply_wet path must invoke before slot ADD."
+data srv4_runner_count_disk_cap_note: String = "srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06) and runner_count on srv4_runner_host_deploy names the materialization target, DERIVED from gunbc_runner_slots_per_host rather than authored here. Disk binding lives in APPLY-TIME preflight in gunbc.runner_lifecycle runner_width_disk_preflight -- not a silent row pin, and never an absorbing fallback to 5 when disk is unobservable.\n\nTHE WIDTH AND THE DISK ARITHMETIC IN THIS NOTE WERE BOTH SIX AND ARE NOW TWENTY-ONE, AND THE SECOND CHANGE IS NOT COSMETIC. The prior text sized the per-slot disk charge at width 6 (~38GB per slot against a 500GB class disk) and read as reassurance. At the width the CPU axis committed on 2026-08-23 the same charge is 21 x 40.96 GB, about 860 GB, against a Samsung 970 EVO 500GB -- so runner_width_disk_preflight is EXPECTED TO REFUSE srv4 at its committed width. srv1-3 carry 2TB and are unaffected.\n\nSO THIS ROW NO LONGER RECORDS A MARGIN; IT RECORDS AN EXPECTED REFUSAL. That is the apply-time gate doing exactly what the 2026-08-06 ruling built it to do, and it means srv4 currently has a committed width it cannot materialize. Nothing here lowers the commitment to hide that -- absorbing to a width the disk happens to permit is the fallback that ruling removed.\n\nWHETHER THE REFUSAL IS REAL IS UNRESOLVED, because the charge is circular. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot_note derives 40.96 GB from \"about 38GB per slot at width 7 on 500GB class disk\" -- disk size divided by desired width, so the number was computed FROM a width and is now used to constrain one. A live observation of per-slot usage under an active reclaimer came in near 2.5 GB, two orders of magnitude off. A circular charge refusing a derived width is two unmeasured numbers meeting, and neither side of that refusal is currently evidence.\n\nEvery ephemeral runner keeps a _work tree plus caches, so the real figure is not zero and the question is genuinely open. DISSOLVE-ON: a measured per-slot disk series on srv4."
+
 
 data runner_count_derives_from_committed_width_note: String = "runner_count IS DERIVED, NOT AUTHORED, AND THAT CLOSES A FORK THAT WOULD HAVE SILENTLY EATEN A WIDTH CHANGE. These rows carried a literal 6 while gunbc.runner_slot_allocation gunbc_runner_slots_per_host independently answered the same question -- how many slots does this host carry -- so one concept had two authorings and the deploy side was the one nobody re-derived. The cost was not hypothetical: the 2026-08-23 CPU-axis change moved committed width to 21 on srv3 and srv4, and with the literal in place PROVISIONING WOULD STILL HAVE STOOD UP SIX. The allocation model and the materialization path would have disagreed about the fleet with no diagnostic anywhere, which is exactly the roster-versus-prose failure gunbc.runner_slot_allocation width_is_a_minimum_over_axes_note records for srv4.\n\nTHE DIRECTION IS DELIBERATE. Width is decided by the conservation and admission axes and materialization CONSUMES that decision; a deploy row is not a place to re-decide it. The disk question that the old srv4 note worried about is unaffected and still lives where it belongs -- apply-time gunbc.runner_lifecycle runner_width_disk_preflight refuses on insufficient or unobservable headroom rather than lowering the count here.\n\nsrv1 AND srv2 NOW HAVE ROWS, closing the gap this note declared on 2026-08-23. All four hosts are modeled for materialization and every row derives its width from the same authority, so the fleet is covered rather than partially covered."
 
@@ -170,17 +174,24 @@ fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
   }
 }
 
+// FIVE JOINED "NAME=value" STRINGS BECOME FIVE MODELED BINDINGS. The joins were not merely verbose:
+// a value carrying an `=` or a space was indistinguishable from a second binding once flattened, and
+// nothing in the old shape could tell them apart. The invocation is now three composed facts --
+// the environment (extdeps.tools.env), the elevation that must preserve it (extdeps.sudo.elevation
+// -E), and the script the elevated shell runs (extdeps.languages.bash.invocation) -- each owned by
+// the authority that knows its spelling.
 fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
-    argv: [
-      env_path_resolved_program as String,
-      join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
-      join(["CTRL_RUNNER_USER=", deploy.runner_user as String], ""),
-      join(["CTRL_RUNNER_JOB_USER=", deploy.job_user as String], ""),
-      join(["CTRL_RUNNER_APP_PEM_SRC=", pem_src_path as String], ""),
-      "sudo", "-E", "bash", installer_path as String,
+  env_prefixed_command(
+    bindings: [
+      EnvSet { name: "CTRL_RUNNER_HOST_LABEL", value: deploy.host_label as String },
+      EnvSet { name: "CTRL_RUNNER_USER", value: deploy.runner_user as String },
+      EnvSet { name: "CTRL_RUNNER_JOB_USER", value: deploy.job_user as String },
+      EnvSet { name: "CTRL_RUNNER_APP_PEM_SRC", value: pem_src_path as String },
     ],
-  }
+    command: sudo_preserve_environment_command(
+      command: bash_script_argv(script_path: installer_path as String),
+    ),
+  )
 }
 
 fn runner_host_installer_command(
@@ -219,12 +230,9 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
 }
 
 fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
-  ArgvCommand {
-    argv: append(
-      ["sudo", "systemctl", "enable", "--now"],
-      items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
-    ),
-  }
+  systemctl_enable_now_command(
+    units: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
+  )
 }
 
 data runner_enable_command_deleted_note: String = "runner_enable_command USED TO LIVE HERE and is deleted rather than deprecated. It took a RunnerHostAdmission and returned an enable command, so a host that was merely ENROLLED could be activated — no managed cache endpoint, no compile pool, nothing about where the first cache-miss compile would put its server. That is the path every host in this fleet was actually activated through, and it produced four different broken states: srv1 stranded in a retired slot, srv2 and srv3 runner-owned in active ones, srv4 trapped behind a stale socket.\n\nActivation now lives in gunbc.runner_activation and consumes a readiness receipt. This module keeps MATERIALIZATION — the installer command, the slot names, the argv builder — because writing a slot's files cannot spawn a cache server; only letting it accept work can. runner_enable_command_argv stays exported precisely because it is the inert half: an ArgvCommand value with no admission attached, which the activation module wraps in its own wall.\n\nDeprecating instead of deleting would have left the readiness-blind constructor in the namespace, and a wall with a door beside it is a sign."

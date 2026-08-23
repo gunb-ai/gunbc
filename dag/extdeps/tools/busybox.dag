@@ -6,7 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { package_busybox }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -29,7 +29,27 @@ data busybox_source_1_36_1_url: Uri = Uri {
 }
 
 fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Port) -> ArgvCommand {
-  ArgvCommand {
-    argv: [busybox_bin as String, "httpd", "-p", to_string(port), "-h", document_root as String],
-  }
+  argv_command(
+    program: busybox_bin,
+    arguments: ["httpd", "-p", to_string(port), "-h", document_root as String],
+  )
+}
+
+// THE PROGRAM IS THE STAGED BUSYBOX, NAMED TWICE ON PURPOSE. udpsvd binds the UDP port and then
+// EXECS the program named in its own operands for each datagram, so the second occurrence is not a
+// repetition of the first -- it is udpsvd's argument, the server it supervises. A builder that
+// took one path and used it once would have to invent which of the two it meant.
+//
+// -E tells udpsvd not to print the connection banner; 0.0.0.0 and 69 are the bind address and the
+// IANA-assigned TFTP port; -r makes tftpd read-only, which is the fail-closed posture for a netboot
+// server that must never accept an upload.
+fn busybox_tftpd_over_udpsvd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: busybox_bin,
+    arguments: [
+      "udpsvd", "-E", "0.0.0.0", "69",
+      busybox_bin as String,
+      "tftpd", "-r", document_root as String,
+    ],
+  )
 }
