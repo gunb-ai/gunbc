@@ -4756,6 +4756,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
+            "ServiceConfigReferenceJudgmentDeferred"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4831,6 +4834,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the config FIELD, not the referenced spelling: the burn-down this
+        // histogram feeds is the list of service-config fields still awaiting the reference
+        // judgment, and keying on the referenced name would spread one unjudged field across
+        // a row per service that happens to use a different word in it.
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field, .. } => field.clone(),
     };
     (class.to_string(), name)
 }
