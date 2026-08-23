@@ -141,6 +141,13 @@ type StringPart
 
 type OperationModifier = Idempotent | Readonly | Hermetic
 
+// The closed transport roster. Before this, the roster was implicit and re-derived in four
+// places at once -- emit_unified_transport_dispatch's if-chain, the Rust emit_transport_call's
+// copy of it, is_file_transport_after_dispatch_precedence's private copy of the ordering, and
+// is_local_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
+// a multi-key transport by coincidence rather than by construction (DESIGN section 3).
+type TransportKind = RestTransport | ShellTransport | FileTransport | LocalTransport
+
 type CompileResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
@@ -187,6 +194,7 @@ type CompilerDiagnostic
       permitted_callers: List<String>,
       span: SourceSpan
     }
+  | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -325,6 +333,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
       permitted_callers: _,
       span: s
     } => s
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -396,6 +405,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
         join(permitted, separator: ", "),
         "]"
       )
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, span: _ } =>
+      concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -1035,6 +1046,10 @@ fn call_named_arg_string_optional(
   }
 }
 
+type AdmitCallersEntry
+  = AdmitCallersEntryCoords { coords: DeclRefCoords }
+  | AdmitCallersEntryUninterpretable { span: SourceSpan }
+
 fn decl_ref_coords_from_call_expr(
   expr: Node,
   source_indices: Map<String, NewlineIndex>
@@ -1062,31 +1077,68 @@ fn decl_ref_coords_from_call_expr(
   }
 }
 
-fn collect_decl_ref_coords_from_list(
+// TOTALITY IS THE REPAIR, not a check beside it. This was a flat_map whose Absent arm
+// returned [], so an entry that could not be interpreted was DROPPED: N authored entries
+// collected to fewer than N, and in the all-malformed case to zero — at which point
+// fn_admit_callers returned Present-and-empty and the admission wall refused every caller
+// while the diagnostic named the CALL SITE, the one place with nothing wrong. The parser's
+// admit_callers_property_nonempty guard does not catch this: it counts list CHILDREN before
+// interpretation, so it refuses a syntactically empty list and cannot see a list that
+// EMPTIES during collection.
+//
+// Mapping to a total per-entry outcome makes the shrink unrepresentable at this seam rather
+// than detected after it: the result length equals the authored length by construction, so
+// "the roster is smaller than the author wrote" has no spelling here. A post-collection
+// count check would not have been equivalent — three entries with one malformed still
+// collect to a nonempty list and pass any threshold, while silently dropping a caller the
+// author explicitly admitted.
+fn admit_callers_entries_from_list(
   exprs: List<Node>,
   source_indices: Map<String, NewlineIndex>
-) -> List<DeclRefCoords> {
-  flat_map(
+) -> List<AdmitCallersEntry> {
+  map(
     exprs,
     e =>
       match decl_ref_coords_from_call_expr(expr: e, source_indices: source_indices) {
-        Present { value: coords } => [coords]
-        Absent => []
+        Present { value: coords } => AdmitCallersEntryCoords { coords: coords }
+        Absent => AdmitCallersEntryUninterpretable { span: e.span }
       }
   )
 }
 
-fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<DeclRefCoords>? {
+fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<AdmitCallersEntry>? {
   match n.properties |> filter(p => p.name == "admit_callers") |> first {
     Present { value: p } =>
       Present {
-        value: collect_decl_ref_coords_from_list(
+        value: admit_callers_entries_from_list(
           exprs: field_init_node_value(n: p).children,
           source_indices: source_indices
         )
       }
     Absent => Absent
   }
+}
+
+fn admit_callers_entry_uninterpretable_spans(entries: List<AdmitCallersEntry>) -> List<SourceSpan> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: _ } => []
+        AdmitCallersEntryUninterpretable { span: s } => [s]
+      }
+  )
+}
+
+fn admit_callers_entry_coords(entries: List<AdmitCallersEntry>) -> List<DeclRefCoords> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: c } => [c]
+        AdmitCallersEntryUninterpretable { span: _ } => []
+      }
+  )
 }
 
 fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
@@ -1364,7 +1416,44 @@ fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
+// A local transport is the one local_transport_node builds: no properties, no argv, no body.
+fn is_bare_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0 && t.body == none
+}
+
+// The precedence is declared ONCE here and every consumer reads it. Absent = the transport
+// matches no roster member.
+//
+// WHAT THIS CHANGES AND WHAT IT DOES NOT, because the two are easy to conflate. Local used to be
+// defined as "not rest, not shell, not file", which made it ABSORB every transport the other
+// three predicates declined -- so the dispatch's `unrecognized transport kind` arm could not be
+// reached by any input whatsoever, and a check whose red is unreachable is a decoration:
+// permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class).
+// Local is now a POSITIVE test, so that arm is reachable and an unrecognized transport is refused
+// instead of silently emitting as a direct function call.
+//
+// IT DOES NOT MAKE THE ARM FIRE ON ANY SOURCE SPELLING TODAY, and this PR does not claim it does.
+// A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and
+// parse_rest_fields substitute an empty string literal when their key is omitted, rather than
+// producing a transport node carrying no recognized key, so every transport the PARSER builds
+// still lands in a roster member. The arm's occupancy is therefore zero and its reachability is
+// bounded by the parser, not by this predicate -- which is the honest statement of what moved:
+// the absorbing arm is gone, the fabricated default that keeps it unoccupied is the open next
+// step and belongs to the parser, not here.
+fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
+  if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
+  else if is_shell_transport(t: t) { Present { value: ShellTransport } }
+  else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
+  else if is_bare_transport(t: t) { Present { value: LocalTransport } }
+  else { none }
+}
+
+fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: LocalTransport } => true
+    _ => false
+  }
+}
 
 fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
