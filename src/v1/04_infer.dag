@@ -2156,6 +2156,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if kernel_value_declared_type_mismatch(
+      formal: declared, actual: produced,
+      type_env: scope.type_env, source_indices: source_indices) {
+    InhabitanceRefused { reason: RefusedKernelAtStructured }
   } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedPayloadAtParent }
   } else {

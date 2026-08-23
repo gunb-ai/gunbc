@@ -1,0 +1,101 @@
+module test.claim.declared_type_inhabitance_list_element_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FLOOR CLAUSE THIS GUARDS: a value accepted at a declared-type position inhabits that
+// declared type. DESIGN names it as floor, so a breach is a below-baseline safety regression
+// rather than a missing nicety, and it is not softened to mitigatable anywhere in this file.
+//
+// WHY ONE CARRIER AND NOT ONE CHECK PER POSITION. The grammar has fourteen type positions;
+// twelve can receive a source value. Before the obligation carrier, each position that judged
+// anything judged it with its own local chain of predicates -- one rule in N representations,
+// where a position added later inherits nothing and a rule repaired at one position stays
+// broken at the rest. A DeclaredTypeObligation names WHERE the obligation arose, WHAT was
+// declared and WHAT was produced; declared_type_inhabitance is the single relation that
+// decides; the position rides along so the diagnostic can locate the refusal without the
+// decision procedure forking. This file is the executing evidence for the FIRST position wired
+// through that carrier, and its arms are the shape every later position reuses.
+//
+// THE RELATION CONSUMES, IT DOES NOT RE-DERIVE. Alias identity is decided once in the tree:
+// coproduct_payload_where_parent_required peels transparent aliases through
+// transparent_alias_identity_agrees, and the kernel arm defers to
+// kernel_value_declared_type_mismatch. A second answer to either question authored here would
+// be the nicknaming failure at the level of judgments.
+//
+// PATH SCOPE, per DESIGN 4b's rung-per-path rule: this asserts source -> .dag acceptance only.
+// The refusal sits in inference, so nothing reaches emission with a non-inhabiting list
+// element -- but that is a consequence of where the wall sits, not a second measurement, and
+// it is not claimed as one.
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// RED ARM ONE -- the plain kernel at a structured declared type. This is the floor case, and it
+// is in this file because the FIRST wiring of the carrier ACCEPTED it: the relation consulted
+// only the payload-at-parent predicate, so RefusedKernelAtStructured was a declared verdict
+// variant that no code path could produce. A variant nothing constructs is a decoration that
+// reads as coverage, which is the rung inflation DESIGN 4b names. This arm exists so that
+// deleting the kernel route from the relation goes red rather than quiet.
+data kernel_at_structured_source: String = "module probe_inhabit_nega\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [7] }\n"
+
+test fn w_plain_kernel_at_declared_list_element_is_refused() -> Bool {
+  violation_count(source: kernel_at_structured_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+// RED ARM TWO -- an arm's PAYLOAD type standing where the PARENT coproduct is declared. The
+// shape gunbc#8865 recorded, measured here at the list-element position rather than inferred
+// from the record-field one: two positions are two paths, and a wall proven at one says
+// nothing about the other.
+data payload_at_parent_source: String = "module probe_inhabit_negb\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk_inner() -> Inner { Inner { v: 1 } }\nfn probe() -> List<Rel> { [mk_inner()] }\n"
+
+test fn w_arm_payload_where_parent_declared_is_refused() -> Bool {
+  violation_count(source: payload_at_parent_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+// GREEN ARM -- the control that stops the wall being a wrecking ball. A genuine member of the
+// declared coproduct must still compile and must raise NO inhabitance diagnostic. Without it,
+// a relation that refused every list element would score identically on both red arms above,
+// and the reds would establish nothing.
+data inhabiting_member_source: String = "module probe_inhabit_pos\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [SameRev] }\n"
+
+test fn w_declared_coproduct_member_is_accepted() -> Bool {
+  violation_count(source: inhabiting_member_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// REACHABILITY -- an undefined name at the same position must refuse whether or not the
+// inhabitance wall exists. This separates "the position is judged and the value was refused"
+// from "the position is never reached at all", which the accepting arms above cannot
+// distinguish on their own. It is asserted on a DIFFERENT class than the wall's, deliberately:
+// keying it on DeclaredTypeNotInhabited would make it a second copy of arm one.
+data undefined_name_source: String = "module probe_inhabit_reach\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [nosuchname_zzz_probe] }\n"
+
+test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
+  violation_count(source: undefined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. An optional carrier at the
+// declared position is genuinely undecidable at this seam -- optionality lives in
+// return_cardinality while the produced value carries the nominal coproduct, so the two are
+// not comparable here without peeling a representation this relation does not own. It must
+// therefore NOT refuse. This arm is what keeps Undecidable honest: if the relation ever starts
+// refusing optionals it goes red, and if a future author repurposes an Undecidable reason to
+// mean "unimplemented" this is the arm that notices.
+data optional_carrier_source: String = "module probe_inhabit_opt\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn maybe() -> Rel? { none }\nfn probe() -> List<Rel?> { [maybe()] }\n"
+
+test fn w_optional_carrier_is_undecidable_not_refused() -> Bool {
+  violation_count(source: optional_carrier_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
