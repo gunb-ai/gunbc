@@ -1,6 +1,7 @@
 module gunbc.inference_endpoint_binding
 
-import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 
 // WHY THIS IS NOT A FIELD ON ProviderInterfaceBinding OR CodexProviderRuntimeReceipt, and why two
@@ -8,53 +9,58 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp }
 //
 // THE CORPUS CARRIES TWO SENSES OF THE WORD "PROVIDER" and they are different subjects:
 //   (1) the coding-agent RUNTIME we install and control -- gunbc.provider_interface_binding
-//       ProviderInterfaceBinding (transport, executable, runtime identity, protocol schema) and
-//       gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt (host, placement,
-//       bundled executable, bundle identity, process fingerprint). Every field is about HOW A
-//       PROCESS IS INSTALLED AND CONTROLLED.
-//   (2) the INFERENCE BACKEND that process sends requests to -- which is upstream's own use of the
-//       word, as in codex's `model_providers` config key.
+//       ProviderInterfaceBinding and gunbc.codex_provider_runtime_receipt
+//       CodexProviderRuntimeReceipt. Every field is about HOW A PROCESS IS INSTALLED AND CONTROLLED.
+//   (2) the INFERENCE BACKEND that process sends requests to -- upstream's own use of the word, as
+//       in codex's `model_providers` config key.
 //
 // Both carriers in sense (1) have "Provider" in their name and no field ranging over sense (2). So
 // searching them for an endpoint is searching the right word in the wrong subject, and the absence
 // found there reads as absence everywhere. That happened twice, independently, before anyone noticed
 // the homonym.
 //
-// This module therefore avoids the word in its own name. Putting an endpoint on either carrier
-// above would fuse process-control with model-backend -- one carrier answering for another subject,
-// which is the same authority-substitution the naming collision already caused at the search layer.
+// This module therefore avoids the word in its own name. Putting an endpoint on either carrier above
+// would fuse process-control with model-backend -- one carrier answering for another subject.
 
-// WHICH WIRE A HARNESS SPEAKS IS NOT A FREE CHOICE PER CALL SITE -- it is a property of the
-// harness/backend pair, and both sides must agree. Kept as a closed set so a new one is a row.
-type InferenceWireProtocol
-  = OpenAiResponses
-  | OpenAiChatCompletions
-  | AnthropicMessages
-
-fn inference_wire_protocol_wire(p: InferenceWireProtocol) -> String {
-  match p {
-    OpenAiResponses => "openai-responses"
-    OpenAiChatCompletions => "openai-chat-completions"
-    AnthropicMessages => "anthropic-messages"
-  }
-}
+// GROUNDING OF THIS MODULE, stated on its face so a reader can falsify each type without
+// re-deriving the argument. Every type below names an authority OUTSIDE this module that could make
+// it wrong today. A type that could only be falsified once a consumer arrives is not modeled here;
+// four such types were removed rather than carried (see the removal note at the foot of this file).
+//
+// The layer is legitimate: extdeps.ollama.api's own scope note assigns "which model, which host,
+// which endpoint binding" to gunbc, and keeps only the HTTP API surface for itself.
 
 // THE URL A HARNESS WAS CONFIGURED TO DIAL IS A FACT ABOUT THE MACHINE RUNNING THE HARNESS, not
 // about any serving host. Under a direct bind the two coincide and a carrier fusing them looks
-// correct forever; the first tunnel, proxy or shared name breaks it silently. They are kept apart
-// here so the distinction cannot be lost later.
+// correct forever; the first tunnel, proxy or shared name breaks it silently.
+//
+// GROUNDED BY: extdeps.ollama.api OllamaEndpoint, referenced symbolically through wire_surface.
+//
+// wire_surface IS A DeclarationRef AND NOT A PRODUCT ENUM, and that is a §3 requirement rather than
+// a style choice. extdeps.ollama.api states that adding vLLM or a NIM container must not widen a
+// central product enum -- each serving product is its own module citing its own API. An enum here
+// enumerating OllamaNative | OpenAiResponses | AnthropicMessages would be exactly that forbidden
+// hub: this module would have to be edited for a product whose authority lives elsewhere. Naming
+// the upstream declaration instead means a new backend is a new extdeps module and no edit here.
+//
+// FALSIFIABLE TODAY: the reference must resolve to a real declaration. Point it at a module or a
+// symbol that does not exist and it is wrong immediately, with no consumer required.
 type DialledEndpoint {
   url: NonEmptyStr
-  wire: InferenceWireProtocol
+  wire_surface: DeclarationRef
 }
 
 // WHETHER A DIALLED URL REACHED A PARTICULAR HOST IS NOT DERIVABLE FROM THE RESPONSE ON THIS FLEET,
 // AND THAT IS A CONSEQUENCE OF CONVERGENCE RATHER THAN A GAP IN THE PROBE.
 //
-// srv5 and srv6 are byte-identically converged -- same runtime version, same model, same
-// materialization identity, same observation digest. Every fact a response could carry is exactly
-// what convergence was built to make identical, so no response can discriminate its origin. The
-// property we engineered is what forecloses the question.
+// GROUNDED BY: the srv5/srv6 byte-identical convergence observation carried in
+// gunbc.spark.serving_observe and gunbc.spark.serving_terminal_health -- same runtime version, same
+// model, same materialization identity, same observation digest. Every fact a response could carry
+// is exactly what convergence was built to make identical, so no response can discriminate its
+// origin. The property we engineered is what forecloses the question.
+//
+// FALSIFIABLE TODAY: if those two hosts ever report differing version, model or digest, this type's
+// premise is false and JoinObservedFromResponse becomes reachable without any new probe.
 //
 // So this is NOT an Unobserved arm. An Unobserved arm carries an implicit promise that a better
 // probe closes it, and no probe can. It is an ASSERTION, and an assertion has an asserter, a basis
@@ -86,72 +92,41 @@ fn endpoint_host_join_wire(j: EndpointHostJoin) -> String {
   }
 }
 
-// ── The turn receipt ─────────────────────────────────────────────────────────────────────────────
-//
-// TWO PRECONDITIONS ARE VALIDITY CONDITIONS, NOT SETUP STEPS, and that is why they live in the
-// receipt rather than in a runbook.
-//
-// A coding harness driven against a model with too small a context, or against an implementation
-// serving only a subset of the wire protocol the harness exercises, degrades in a way that LOOKS
-// LIKE POOR MODEL QUALITY -- truncation, lost tool loops, dropped conversation state. The whole
-// point of running real work through a Spark is to let a human form an informed opinion about the
-// model; a run that converts an infrastructure shortfall into a quality impression does not merely
-// weaken that opinion, it INVERTS it. That is worse than no run, because it is confidently wrong in
-// the direction someone will act on.
-//
-// A runbook step can be skipped silently and leaves no trace in the artifact. A precondition whose
-// value was never observed makes the receipt REFUSE, so the failure is the absence of a receipt
-// rather than the presence of an unqualified opinion.
-type TurnPrecondition<T>
-  = PreconditionObserved { value: T }
-  | PreconditionUnobserved { what: NonEmptyStr }
-
-// The wire subset actually exercised, kept apart from the protocol NAME. "Speaks Responses" is not a
-// bit: an implementation may serve the non-stateful form only, and a harness exercising conversation
-// state against it fails in exactly the way this receipt exists to keep out of the operator's
-// judgement.
-type WireSubsetExercised
-  = WireSubsetNonStatefulOnly
-  | WireSubsetIncludesConversationState
-
-type CodingTurnReceipt {
-  harness: NonEmptyStr
-  harness_version: NonEmptyStr
-  dialled: DialledEndpoint
-  join: EndpointHostJoin
-  context_window_tokens: TurnPrecondition<Int>
-  wire_subset: TurnPrecondition<WireSubsetExercised>
+// The endpoint surface this fleet's harnesses dial today. A second backend is a second declaration
+// beside this one, never a widened enum above.
+data ollama_native_wire_surface: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ollama.api",
+  decl_name: "OllamaEndpoint",
+  field: WholeDeclaration
 }
 
-// A RECEIPT IS QUALIFIED ONLY WHEN EVERY PRECONDITION CARRIES AN OBSERVED VALUE. This is the whole
-// mechanism: it is not a warning field a reader may weigh, it is a verdict that separates a turn
-// whose result means something from one whose result cannot be attributed.
-type TurnReceiptStanding
-  = TurnReceiptQualified
-  | TurnReceiptUnqualified { missing: NonEmptyStr }
-
-fn coding_turn_receipt_standing(r: CodingTurnReceipt) -> TurnReceiptStanding {
-  match r.context_window_tokens {
-    PreconditionUnobserved { what: w } => TurnReceiptUnqualified { missing: w }
-    PreconditionObserved { value: _ } =>
-      match r.wire_subset {
-        PreconditionUnobserved { what: w } => TurnReceiptUnqualified { missing: w }
-        PreconditionObserved { value: _ } => TurnReceiptQualified
-      }
-  }
-}
-
-// The wire deliberately reports the join's STANDING rather than flattening it into the host name,
-// so a reader cannot mistake an asserted route for an observed one by skimming.
-fn coding_turn_receipt_wire(r: CodingTurnReceipt) -> String {
-  join([
-    "turn harness=", r.harness as String, " version=", r.harness_version as String,
-    " dialled=", r.dialled.url as String,
-    " wire=", inference_wire_protocol_wire(p: r.dialled.wire),
-    " ", endpoint_host_join_wire(j: r.join),
-    " standing=", match coding_turn_receipt_standing(r: r) {
-      TurnReceiptQualified => "QUALIFIED"
-      TurnReceiptUnqualified { missing: m } => join(["UNQUALIFIED missing=", m as String], "")
-    },
-  ], "")
-}
+// WHAT WAS REMOVED HERE, AND WHY IT IS NOT PARKED SOMEWHERE.
+//
+// InferenceWireProtocol, TurnPrecondition<T>, WireSubsetExercised, CodingTurnReceipt and
+// TurnReceiptStanding were removed after each was tested against the question this module now
+// answers on its face: what outside authority could make this wrong TODAY.
+//
+// InferenceWireProtocol enumerated OpenAiResponses, OpenAiChatCompletions and AnthropicMessages.
+// Measured against the fleet, that closed set was already wrong by omission: extdeps.ollama.api
+// models no OpenAI-compatible surface at all, and gunbc.spark.serving_observe probes Ollama's native
+// API, so the one wire srv5 and srv6 actually serve was absent from the set. It was also the
+// forbidden product hub described above.
+//
+// The receipt half named no outside authority. Its preconditions and standing were derived shapes,
+// and its wire-subset arm distinguished a statefulness axis of a protocol nothing on this fleet
+// serves -- falsifiable only once a consumer arrives, which is the definition of a slice.
+//
+// Its fixtures are the reason the test is worth stating: the dialled port was 127.0.0.1:11435, a
+// number with zero occurrences anywhere in this repository outside the module's own witness, while
+// the fleet serves 11434; and harness_version was 0.148.0, while gunbc.package_delivery
+// codex_required_package_version pins 0.146.0. Both read as measurements because they were
+// specific. Neither was measured.
+//
+// The version was NOT corrected to the pinned value. extdeps.llm.codex_app_server codex_plan_type_note
+// records the same defect at 0.147.0 and states the rule: a protocol fact is cited from the exact
+// executable the runtime receipt admits, and a bump moves manifest, lock, admitted artifacts and
+// receipt together or it does not happen. Rewriting 0.148.0 to 0.146.0 would have made an
+// ungrounded field match an authority it was never derived from -- converting a detectable
+// fabrication into an undetectable one. A wrong value that matches nothing is a finding; a wrong
+// value that matches something is a lie. If a turn receipt returns, its version comes from an
+// executable that ran.

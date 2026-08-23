@@ -1,30 +1,14 @@
 module test.claim.inference_endpoint_binding_witness_test
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import gunbc.inference_endpoint_binding {
-  InferenceWireProtocol,
-  OpenAiResponses,
-  OpenAiChatCompletions,
-  AnthropicMessages,
   DialledEndpoint,
   EndpointHostJoin,
   JoinAssertedBy,
   JoinObservedFromResponse,
-  inference_wire_protocol_wire,
   endpoint_host_join_wire,
-  TurnPrecondition,
-  PreconditionObserved,
-  PreconditionUnobserved,
-  WireSubsetExercised,
-  WireSubsetNonStatefulOnly,
-  WireSubsetIncludesConversationState,
-  CodingTurnReceipt,
-  TurnReceiptStanding,
-  TurnReceiptQualified,
-  TurnReceiptUnqualified,
-  coding_turn_receipt_standing,
-  coding_turn_receipt_wire,
+  ollama_native_wire_surface,
 }
 
 fn tunnel_join() -> EndpointHostJoin {
@@ -67,87 +51,26 @@ test fn d_asserted_wire_names_its_asserter() -> Bool {
   string_contains(s: endpoint_host_join_wire(j: tunnel_join()), pattern: "operator workstation ssh tunnel")
 }
 
-test fn e_three_wire_protocols_render_distinctly() -> Bool {
-  if inference_wire_protocol_wire(p: OpenAiResponses) == inference_wire_protocol_wire(p: OpenAiChatCompletions) {
-    false
-  } else if inference_wire_protocol_wire(p: OpenAiChatCompletions) == inference_wire_protocol_wire(p: AnthropicMessages) {
-    false
-  } else {
-    inference_wire_protocol_wire(p: OpenAiResponses) != inference_wire_protocol_wire(p: AnthropicMessages)
-  }
-}
-
 // The dialled URL is a transport fact and must survive into the carrier unchanged -- it is the one
-// thing a tunnelled receipt can honestly state about where the request went.
-test fn f_dialled_endpoint_carries_its_url() -> Bool {
+// thing a tunnelled receipt can honestly state about where the request went. The port here is the
+// tunnel's LOCAL forward, which is exactly the case the type exists to keep apart from the host.
+test fn e_dialled_endpoint_carries_its_url() -> Bool {
   let d = DialledEndpoint {
     url: "http://127.0.0.1:11435" as NonEmptyStr,
-    wire: OpenAiResponses,
+    wire_surface: ollama_native_wire_surface,
   }
   d.url as String == "http://127.0.0.1:11435"
 }
 
-// ── The receipt refuses rather than producing an unqualified opinion ─────────────────────────────
-fn qualified_receipt() -> CodingTurnReceipt {
-  CodingTurnReceipt {
-    harness: "codex" as NonEmptyStr,
-    harness_version: "0.148.0" as NonEmptyStr,
-    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
-    join: tunnel_join(),
-    context_window_tokens: PreconditionObserved { value: 65536 },
-    wire_subset: PreconditionObserved { value: WireSubsetNonStatefulOnly },
+// THE GROUNDING WITNESS: the wire surface must name the upstream authority that owns the API, not a
+// label minted here. If this module ever re-mints a product enum, or points at a module that does
+// not own an endpoint surface, this goes red.
+test fn f_wire_surface_names_the_upstream_endpoint_authority() -> Bool {
+  let m = ollama_native_wire_surface.module_path as String
+  let n = ollama_native_wire_surface.decl_name as String
+  if m == "extdeps.ollama.api" {
+    n == "OllamaEndpoint"
+  } else {
+    false
   }
-}
-
-fn receipt_missing_context() -> CodingTurnReceipt {
-  CodingTurnReceipt {
-    harness: "codex" as NonEmptyStr,
-    harness_version: "0.148.0" as NonEmptyStr,
-    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
-    join: tunnel_join(),
-    context_window_tokens: PreconditionUnobserved { what: "model context window" as NonEmptyStr },
-    wire_subset: PreconditionObserved { value: WireSubsetNonStatefulOnly },
-  }
-}
-
-fn receipt_missing_wire_subset() -> CodingTurnReceipt {
-  CodingTurnReceipt {
-    harness: "codex" as NonEmptyStr,
-    harness_version: "0.148.0" as NonEmptyStr,
-    dialled: DialledEndpoint { url: "http://127.0.0.1:11435" as NonEmptyStr, wire: OpenAiResponses },
-    join: tunnel_join(),
-    context_window_tokens: PreconditionObserved { value: 65536 },
-    wire_subset: PreconditionUnobserved { what: "wire subset exercised" as NonEmptyStr },
-  }
-}
-
-fn standing_tag(r: CodingTurnReceipt) -> String {
-  match coding_turn_receipt_standing(r: r) {
-    TurnReceiptQualified => "qualified"
-    TurnReceiptUnqualified { missing: _ } => "unqualified"
-  }
-}
-
-test fn g_all_preconditions_observed_qualifies() -> Bool {
-  standing_tag(r: qualified_receipt()) == "qualified"
-}
-
-// EITHER precondition missing must refuse. These are separate witnesses because a check that
-// happened to test only the first would pass while the second silently qualified.
-test fn h_missing_context_refuses() -> Bool {
-  standing_tag(r: receipt_missing_context()) == "unqualified"
-}
-
-test fn i_missing_wire_subset_refuses() -> Bool {
-  standing_tag(r: receipt_missing_wire_subset()) == "unqualified"
-}
-
-// The refusal must NAME what is missing, or a reader learns only that something was wrong.
-test fn j_refusal_names_the_missing_precondition() -> Bool {
-  string_contains(s: coding_turn_receipt_wire(r: receipt_missing_wire_subset()), pattern: "wire subset exercised")
-}
-
-// An asserted join must not render as an observed one in the receipt's own wire.
-test fn k_receipt_wire_reports_join_as_asserted() -> Bool {
-  string_contains(s: coding_turn_receipt_wire(r: qualified_receipt()), pattern: "join=ASSERTED")
 }
