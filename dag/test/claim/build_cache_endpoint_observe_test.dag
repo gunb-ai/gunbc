@@ -156,6 +156,14 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
   }
 }
 
+// THE RETIRED ARM CLAIMS "PAST THE COMMITTED WIDTH", WHICH IS WHAT RETIRED MEANS, rather than an
+// index equality that has to be re-typed every time the fleet's width moves. Asserting the property
+// the decoder actually decides makes this row survive a width change instead of being broken by
+// one.
+//
+// (Hoisted from inside the match arm it describes. DESIGN section 4c admits only standalone
+// leading blocks on MODULE-SCOPE declarations; the body form refuses until separately modeled, so
+// the rationale lives here rather than beside the arm.)
 test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   match observe_placement_full(
     path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
@@ -165,10 +173,6 @@ test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   ) {
     ServerRunnerOwned { slot: s, lifecycle: lc } =>
       match lc {
-        // THE CLAIM IS "PAST THE COMMITTED WIDTH", WHICH IS WHAT RETIRED MEANS, rather than an index
-        // equality that has to be re-typed every time the fleet's width moves. Asserting the property
-        // the decoder actually decides makes this row survive a width change instead of being broken
-        // by one.
         RetiredRunnerSlot => s.slot_index > gunbc_runner_slots_per_host(host: "srv1")
         DesiredRunnerSlot => false
       }
