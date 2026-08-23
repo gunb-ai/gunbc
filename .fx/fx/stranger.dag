@@ -1,0 +1,9 @@
+module fx.stranger
+
+import std.types { Int }
+
+data shared_value: Int = 222
+
+fn stranger_reads_its_own() -> Int {
+  shared_value
+}

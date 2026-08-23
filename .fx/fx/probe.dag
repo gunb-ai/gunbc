@@ -1,0 +1,9 @@
+module fx.probe
+
+import std.types { Int }
+import fx.owner { owner_reads_its_own }
+import fx.puller { pull_stranger_into_closure }
+
+fn owner_value_with_stranger_in_closure() -> Int {
+  owner_reads_its_own() * 1000 + pull_stranger_into_closure()
+}

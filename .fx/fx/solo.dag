@@ -1,0 +1,8 @@
+module fx.solo
+
+import std.types { Int }
+import fx.owner { owner_reads_its_own }
+
+fn owner_value_alone() -> Int {
+  owner_reads_its_own()
+}
