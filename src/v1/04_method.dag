@@ -73,13 +73,19 @@ data observe_declared_import_closure_symbol_binding_row_note: String = "CLASS B 
 // WHY THAT IS THE SAME CLASS AS gap-analysis row 30 WITH THE HALVES SWAPPED, which is why it
 // is deleted alongside the callable-candidate work rather than filed separately: there, a
 // consumer's import closure CHANGED a name's meaning; here the closure is the only thing
-// SUPPLYING one. All 21 live call sites reach the declared `v1.compiler.infer_types`
+// SUPPLYING one. All 20 live call sites reach the declared `v1.compiler.infer_types`
 // `emit_map_has` through their own closure, so every one of them resolves to the declaration
 // and none was ever served by this row -- which is exactly what made it invisible. The first
 // module to call the name without that closure would have been handed a certified call with
 // nothing behind it.
 //
-// Deleting the row costs no call site (21 of 21 keep resolving to the declaration) and makes
+// THE COUNT: 20 CALL SITES, not 21. An earlier revision of this note said 21, which counted
+// the declaration in `04_types.dag` as one of its own callers -- the same measure-the-name-
+// rather-than-the-binding error this whole change exists to close, committed inside the
+// receipt for it. Recorded rather than silently corrected: a count that moves between two
+// tellings with no reason given is the shape people stop trusting.
+//
+// Deleting the row costs no call site (20 of 20 keep resolving to the declaration) and makes
 // the typecheck honest: a caller outside that closure now gets an unresolved-name refusal at
 // compile time instead of a runtime `NoSuchFunction`.
 
