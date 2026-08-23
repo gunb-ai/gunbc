@@ -2,7 +2,7 @@ module product.supplier.ubicloud
 
 import std.types { NonEmptyStr, List, Int, Timestamp }
 import std.nat { Nat }
-import std.measure { MoneyRate, ByteSize, HardwareThreadCount, Second, second }
+import std.measure { ByteSize, Second, second }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
