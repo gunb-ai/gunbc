@@ -37,6 +37,7 @@ import extdeps.languages.json.parse { parse_json }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
+  ClosureDocEncodeRefusal,
   ClosureDocTargetNotOneArm,
   ClosureDocMemberDuplicated,
   ClosureDocMemberWrongShape,
@@ -314,10 +315,22 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
   refused && admitted
 }
 
-fn cause_is_incomplete_without_admission(cause: ClosureDocRefusal) -> Bool {
+// THIS HELPER IS NOW TOTAL BY CONSTRUCTION, and saying so is the point rather than an apology.
+//
+// Before the encode/decode split it discriminated: the cause could have been any of sixteen decode
+// refusals and this asked whether it was the encode-only one. ClosureDocEncodeRefusal has a single
+// arm, so the match cannot answer anything else, and the runtime question it used to pose is gone.
+//
+// That is what a climb to structural impossibility LOOKS like from the test side -- the check does
+// not get stronger, it becomes unnecessary, because the state it excluded is no longer nameable
+// here. DESIGN section 4b(4) says the production machinery a climb obsoletes is deleted while the
+// evidence stays enrolled, so this stays as the positive control that encode still refuses an
+// unadmitted partial closure; what it no longer carries is the discrimination, which moved to the
+// type. The claim that the LOAD classifier cannot name this cause is a compile-time property and is
+// recorded by the probe in the commit message, not by a runtime assertion that cannot express it.
+fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
   match cause {
     ClosureDocIncompleteWithoutAdmission { identity: _ } => true
-    _ => false
   }
 }
 

@@ -128,7 +128,22 @@ type ClosureDocRefusal
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetNotOneArm { found: Int }
   | ClosureDocUncontainedDigestInvalid { found: String }
-  | ClosureDocIncompleteWithoutAdmission { identity: String }
+
+// THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
+//
+// ClosureDocIncompleteWithoutAdmission is produced by encode_closure_document_checked and by nothing
+// else -- no decode path can reach it. It nevertheless sat in ClosureDocRefusal, which the LOAD
+// classifier matches exhaustively, so closure_document_load_standing was forced to assign a standing
+// to a state the loader cannot produce. It answered LoadDocumentMalformed, and malformed is the ONE
+// standing standing_may_supersede_generation permits to overwrite a newer document. An encode-only
+// state therefore had a route to "may supersede".
+//
+// That is a closed match over a dishonest domain: exhaustiveness is satisfied, the compiler is
+// content, and the arm is answering for something that cannot occur. Splitting the type does not
+// hide the arm -- it makes the question unaskable, because the classifier's parameter can no longer
+// name this cause. DESIGN section 4b's top rung: not validated, not proven, unrepresentable.
+type ClosureDocEncodeRefusal
+  = ClosureDocIncompleteWithoutAdmission { identity: String }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -437,7 +452,7 @@ fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> JsonValue {
 
 type ClosureDocEncodeOutcome
   = ClosureDocEncoded { value: JsonValue }
-  | ClosureDocEncodeRefused { cause: ClosureDocRefusal }
+  | ClosureDocEncodeRefused { cause: ClosureDocEncodeRefusal }
 
 // AN INCOMPLETE CLOSURE IS NOW REPRESENTABLE, SO THE QUESTION CHANGES FROM "CAN IT BE WRITTEN" TO
 // "WAS IT DECIDED".
@@ -1049,7 +1064,6 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
     ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
     ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
     ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
-    ClosureDocIncompleteWithoutAdmission { identity: _ } => LoadDocumentMalformed
   }
 }
 
