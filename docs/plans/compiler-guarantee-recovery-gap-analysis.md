@@ -3161,7 +3161,14 @@ enforces end to end.
    not exclude `v2.*` (where the exemption still suppresses the judgment), and was
    produced by one grep rather than by the census. **It does not meet reopening
    condition (2)**, which asks for a deliberately dispatched census returning a
-   count.
+   count. Stated so the DISTANCE is legible and not merely disclaimed — a bounded
+   number invites the inference *the census is an afternoon*, which is the second
+   way this figure misleads and is not covered by the population guard above: the
+   census additionally requires the two joins this grep does not perform — resolve
+   each declared alias to its USE SITES and decide, per site, whether the argument
+   lands at a `Generic<T>` formal; and exclude `v2.*`, where the exemption
+   suppresses the judgment so no site there is observable at all. Neither join is
+   a grep, and it is those two, not the enumeration, that the reserved work is.
 
    REOPENING CONDITIONS for the declined repair, current as of the re-ruling:
    (1) someone costs the resolve change on its merits as a type-system change; or
