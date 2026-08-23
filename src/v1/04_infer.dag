@@ -1890,7 +1890,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       if expression_directed_type_mismatch(
         formal: expected_ty,
         actual_expr: texpr,
-        actual_typed: with_refinement.typed,
         scope: scope
       ) {
         InferResult {
@@ -1910,19 +1909,41 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 fn expression_directed_type_mismatch(
   formal: Node,
   actual_expr: Node,
-  actual_typed: Node,
   scope: InferScope
 ) -> Bool {
   match actual_expr.expr_data {
-    ExprLiteral { value: _ } =>
-      literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
-        || kernel_value_declared_type_mismatch(
-          formal: formal,
-          actual: resolved_type(n: actual_typed),
-          type_env: scope.type_env,
-          source_indices: scope.type_env.source_indices
-        )
+    ExprLiteral { value: _ } => literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
     _ => false
+  }
+}
+
+fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope) -> InferResult {
+  let result = infer_expr(texpr: element, scope: scope, expected: expected)
+  match expected {
+    Present { value: formal } =>
+      let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+      match element.expr_data {
+        ExprLiteral { value: _ } =>
+          if is_kernel_type(name: formal_name)
+            && kernel_value_declared_type_mismatch(
+              formal: formal,
+              actual: resolved_type(n: result.typed),
+              type_env: scope.type_env,
+              source_indices: scope.type_env.source_indices
+            ) {
+            InferResult {
+              typed: result.typed,
+              diagnostics: concat(result.diagnostics, [type_mismatch_error(
+                expected: node_type_shape(n: formal, source_indices: scope.type_env.source_indices),
+                got: node_type_shape(n: resolved_type(n: result.typed), source_indices: scope.type_env.source_indices),
+                span: element.span,
+                module_name: scope.module_name
+              )])
+            }
+          } else { result }
+        _ => result
+      }
+    Absent => result
   }
 }
 
@@ -4694,7 +4715,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           } else { none }
         Absent => none
       }
-      let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope, expected: elem_expected))
+      let elem_results = elements |> map(e => infer_list_literal_element(element: e, expected: elem_expected, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {

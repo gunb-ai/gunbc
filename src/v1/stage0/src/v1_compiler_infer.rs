@@ -2835,7 +2835,6 @@ pub fn infer_expr(
                 if expression_directed_type_mismatch(
                     expected_ty.clone(),
                     texpr.clone(),
-                    with_refinement.typed.clone(),
                     scope.clone(),
                 ) {
                     Rc::new(InferResult {
@@ -2868,20 +2867,66 @@ pub fn infer_expr(
 pub fn expression_directed_type_mismatch(
     formal: Rc<Node>,
     actual_expr: Rc<Node>,
-    actual_typed: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
     match (*actual_expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: _, .. } => {
-            (literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone())
-                || kernel_value_declared_type_mismatch(
-                    formal.clone(),
-                    resolved_type(actual_typed.clone()),
-                    scope.type_env.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ))
+            literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone())
         }
         _ => false,
+    }
+}
+
+pub fn infer_list_literal_element(
+    element: Rc<Node>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let result = infer_expr(element.clone(), scope.clone(), expected.clone());
+        match expected.clone() {
+            Some(formal) => {
+                let formal_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    formal.clone(),
+                );
+                match (*element.expr_data.clone()).clone() {
+                    ExprData::ExprLiteral { value: _, .. } => {
+                        if (is_kernel_type(formal_name.clone())
+                            && kernel_value_declared_type_mismatch(
+                                formal.clone(),
+                                resolved_type(result.typed.clone()),
+                                scope.type_env.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                        {
+                            Rc::new(InferResult {
+                                typed: result.typed.clone(),
+                                diagnostics: v1_rt::concat(
+                                    result.diagnostics.clone(),
+                                    Rc::new(vec![type_mismatch_error(
+                                        node_type_shape(
+                                            formal.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        node_type_shape(
+                                            resolved_type(result.typed.clone()),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        element.span.clone(),
+                                        scope.module_name.clone(),
+                                    )]),
+                                ),
+                            })
+                        } else {
+                            result.clone()
+                        }
+                    }
+                    _ => result.clone(),
+                }
+            }
+            None => result.clone(),
+        }
     }
 }
 
@@ -8329,7 +8374,11 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             let elem_results = Rc::new({
                 let mut __result = Vec::new();
                 for e in elements.iter().cloned() {
-                    __result.push(infer_expr(e.clone(), scope.clone(), elem_expected.clone()));
+                    __result.push(infer_list_literal_element(
+                        e.clone(),
+                        elem_expected.clone(),
+                        scope.clone(),
+                    ));
                 }
                 __result
             });
