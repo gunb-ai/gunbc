@@ -262,6 +262,11 @@ fn spark_serving_converge_slice_would_apply_verdict(
 // longer free. Whether terminal evidence is owed on EVERY convergence or on a declared cadence is an
 // evidence-frequency policy, and it needs its own carrier rather than being settled here by whichever
 // call site happened to be written first.
+// THE CONVERGED RECEIPT CARRIES WHERE THE GENERATION RAN, not merely that it ran.
+// unit_outcome=active is a PLACEMENT fact and nvidia_driver=580 is a PREREQUISITE fact; neither
+// says the model was in accelerator memory. Residency is the behaviour fact, and it is read only
+// on the converged arm below -- after a converged verdict, within keep_alive of the generation
+// that verdict proves.
 fn spark_serving_terminal_health_verdict(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -269,10 +274,6 @@ fn spark_serving_terminal_health_verdict(
 ) -> String {
   let health = spark_serving_observe_terminal_health(context: context, host: host)
   if spark_serving_health_is_converged(health: health) {
-    // THE RECEIPT CARRIES WHERE THE GENERATION RAN, not merely that it ran. unit_outcome=active is
-    // a PLACEMENT fact and nvidia_driver=580 is a PREREQUISITE fact; neither says the model was in
-    // accelerator memory. Residency is the behaviour fact, and it is read only here -- after a
-    // converged verdict, within keep_alive of the generation that verdict proves.
     join([
       converged_verdict, " ", spark_serving_health_wire(health: health),
       " ", spark_serving_residency_wire(
