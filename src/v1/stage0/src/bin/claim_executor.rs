@@ -10356,11 +10356,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     // workaround this repository refuses; a distinct concern with its own check is the shape the
     // ruling points at.
     //
-    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
-    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
-    // reading the live corpus IS this census's subject -- relocating the witness moves it from
-    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
-    // cheaper opens that door.
+    // WHY IT IS NOT A FLOOR CLAIM EITHER. This reason WAS structural and no longer is, which is
+    // recorded rather than quietly rewritten: `run_required_floor` used to decline any entry that
+    // reads the live tree (`DeclinedLiveTree`), and reading the live corpus IS this census's
+    // subject -- relocating the witness moved it from `DeclinedLongModule` to `DeclinedLiveTree`
+    // and never to `Planned`. THAT ARM IS DELETED, so the route is open and the argument that
+    // closed it is void. This stays a separate job on the other half of the ruling, untouched by
+    // the cut: a check-run is a job rather than a step, so a separately named required check must
+    // be a second job. Whether it should ALSO become a floor claim is left open here.
     //
     // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
     // green -- the population it checked. An empty refusal list means both "every authored
@@ -11656,15 +11659,18 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // `planned` is the population that SURVIVED site projection; printing it
     // without `offered` and `declined_long` made the receipt unable to say what it
     // dropped, which is how a roster that narrowed read exactly like one that did
-    // not. The three are printed together so the subtraction is visible rather
-    // than inferable.
+    // not. They are printed together so the subtraction is visible rather than
+    // inferable.
+    //
+    // `declined_live` IS GONE FROM THIS LINE BECAUSE THE ARM IS GONE, not because the
+    // population stopped mattering: every identity it named is now routed and executed, so it
+    // is counted in `routed` and answers for itself downstream. Printing a permanently-zero
+    // fourth term would be a decoration -- a category whose red is unreachable, read as
+    // coverage by anyone scanning the line.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_live={} \
+        "required-floor: offered={} routed={} declined_long={} \
          — every discovered site is exactly one of these",
-        outcome.sites_offered,
-        outcome.claims_planned,
-        outcome.declined_long_module,
-        outcome.declined_live_tree
+        outcome.sites_offered, outcome.claims_planned, outcome.declined_long_module
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the

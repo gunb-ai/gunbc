@@ -20,45 +20,35 @@ import std.types { NonEmptyStr }
 // why a site's identity is excluded from the executed roster; it is never itself the mechanism
 // deciding execution order or eligibility for a DIFFERENT gate.
 //
-// `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
-// already known to be stale (below), but the deletion is a behaviour change — 782 sites move
-// from declined to executed — and it lands with the measurement that prices it, not with this
-// change. This paragraph is written in the tense of what IS, because an earlier revision of it
-// asserted the deletion as done while the Rust realization still returned the arm: the .dag
-// named two arms, `v1_compiler.cli_run` `run_required_floor` emitted three, and the header
-// claiming a completed deletion was rung inflation on the exact axis this module argues for
-// (caught by review 54035, on this PR).
-//
-// WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
+// `DeclinedLiveTree` IS DELETED, AND THIS RECORDS WHAT IT WAS SO THE DELETION IS NOT A
+// SILENT ONE. A site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
 // ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
-// in the hermetic frame this floor runs". 778 identities across 112 files sat in that arm, and
-// since the floor cut left `claim_executor --required-floor` as the only witness-executing
-// consumer in the tree, they had no executing consumer at all — discovered every run, never
+// in the hermetic frame this floor runs". 847 identities across 118 files sat in that arm on
+// 544b0feda, and since the floor cut left the witness fold as the only witness-executing
+// consumer in the tree, they had no executing consumer at all -- discovered every run, never
 // run, for as long as the arm existed.
 //
 // WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-read carve-out
 // (`v1_interpreter` `hermetic_checkout_read_disposition_under`), under which a
-// `Filesystem.Read` of a path proven under the checkout root is INPUT access — the commit is
-// the run's deterministic input — and not a host effect. That carve-out landed AFTER
+// `Filesystem.Read` of a path proven under the checkout root is INPUT access -- the commit is
+// the run's deterministic input -- and not a host effect. That carve-out landed AFTER
 // `live_tree_disposition` was authored. From that day "reads the live tree" no longer implied
 // "cannot run hermetically", and the decline was a prediction standing where the interpreter
 // already decides the same question exactly, per identity, at the effect boundary.
 //
-// WHAT WILL REPLACE IT: nothing here. Once the arm is deleted, every non-long identity is
-// routed and executed, its route carried by the claim that runs it
-// (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
-// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
-// residue that genuinely has no hermetic arm. That residue reaches the receipt as
-// `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
-// not green, and it is not a failure either — the two have different remedies and are
-// reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
-// deletion safe to make next: the route-gap arm, its two-way roster join, and the
-// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
-// without this arm being touched at all.
+// WHAT REPLACED IT: nothing here, which is the point. Every non-long identity is now routed and
+// executed, its route carried by the claim that runs it (`RequiredFloorClaim.execution_mode` --
+// one route per identity, not a second vocabulary restating it), and the interpreter's own
+// typed `HermeticHostEffectRefused` classifies the residue that genuinely has no hermetic arm.
+// That residue reaches the receipt as `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim
+// that never reached its subject is not green, and it is not a failure either -- the two have
+// different remedies and are reported apart.
 //
-// DELETION TRIGGER: the live-tree decline is removed when the cost measurement over its 782
-// sites lands (run 32345970386 measured 626/783 passing under execution), together with the
-// `witness_file_from_source` scan the split retained beside it.
+// THE DELETION TOOK THE SCAN WITH IT. `v1_compiler.cli_run` `witness_file_from_source` carried
+// a column-zero TEXT SCAN for the declaration, a second syntactic computation of a fact
+// `reads_live_tree_effective` derives semantically. Deleting the arm without the scan would
+// have left a private field nothing reads -- the residue that makes a later reader reconstruct
+// a dead premise -- so both went in one motion.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
 // deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
@@ -68,7 +58,6 @@ import std.types { NonEmptyStr }
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
-  | DeclinedLiveTree
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
 //

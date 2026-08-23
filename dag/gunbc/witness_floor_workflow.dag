@@ -580,10 +580,16 @@ fn witness_floor_job() -> Job {
 // name would be the workaround this repository refuses; a distinct subject with its own check is
 // the shape the ruling points at.
 //
-// WHY IT IS NOT A FLOOR CLAIM, which is structural rather than a preference: `run_required_floor`
-// declines any entry that reads the live tree (`DeclinedLiveTree`), and reading the live corpus IS
-// this census's subject. Relocating the witness moves it from `DeclinedLongModule` to
-// `DeclinedLiveTree` and never to `Planned`, so no amount of making it cheaper opens that route.
+// WHY IT IS NOT A FLOOR CLAIM. The reason WAS structural and no longer is, which is recorded
+// rather than quietly rewritten: `run_required_floor` used to decline any entry that reads the
+// live tree (`DeclinedLiveTree`), and reading the live corpus IS this census's subject, so
+// relocating the witness moved it from `DeclinedLongModule` to `DeclinedLiveTree` and never to
+// `Planned`. THAT ARM IS DELETED, so the route is now open and the argument that closed it is
+// void. What keeps this a separate job is the OTHER half of the original ruling, which the
+// deletion does not touch: a GitHub check-run is a job rather than a step, so a separately named
+// required check must be a second job, and the operator narrowed `--required-ci` to three phases
+// on 2026-08-21. Whether this census should now ALSO become a floor claim is a live question this
+// change deliberately leaves open -- it is a scope decision, not a consequence of the cut.
 //
 // THE COST OF A SECOND JOB, stated rather than hidden: it re-does checkout, toolchain and build.
 // The build is the same cargo invocation against the same self-hosted runner pool, so it is warm
