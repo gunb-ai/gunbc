@@ -43,6 +43,7 @@ import extdeps.languages.json.parse {
 }
 
 import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, object_id_eq }
+import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.commit_closure_json_v1 {
   ClosureDocRefusal,
   ClosureDocMemberMissing,
@@ -56,12 +57,17 @@ import gunbc.scm.commit_closure_json_v1 {
   DecodePositions,
   EncodeAcc,
   encode_object_table,
+  object_id_key,
+  position_of,
   encoded_root_reference,
   decode_object_table,
   position_reference,
-  unresolved_edge_reference,
   unexpected_member_key,
   resolve_reference,
+  decode_target,
+  TargetDecode,
+  TargetDecoded,
+  TargetDecodeFailed,
   read_string_member,
   MemberString,
   MemberArray,
@@ -283,7 +289,7 @@ fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId
 fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
-      json_kv(key: "root", value: json_string(s: encoded_root_reference(acc: acc, root: commit.root))),
+      json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
       json_kv(key: "message", value: json_string(s: commit.message)),
     ]
   )
@@ -337,9 +343,25 @@ type RepositoryEncodeOutcome
 // separate causes rather than one because their remedies differ: an unresolvable EDGE means the
 // object table is an incomplete closure, an unresolvable COMMIT ROOT means a commit names an object
 // the store does not hold, and an unresolvable CHECKOUT means the selection names a non-commit.
+// THE REPOSITORY STILL REFUSES A PARTIAL OBJECT TABLE, and that is a DELIBERATE non-change in a diff
+// that made partial closures representable everywhere else. A commit closure may now legitimately be
+// shipped incomplete, under a declared admission, because a delta is a real thing to send. A whole
+// REPOSITORY written with dangling edges is not that -- nobody asked for it, no consumer wants it,
+// and admitting it here would widen the change beyond what was decided. When a repository-grain
+// partial write is actually wanted, it takes an admission exactly as the closure encoder does; until
+// then this refusal stands rather than being loosened by proximity.
+fn first_uncontained_target(store: ObjectStore) -> String? {
+  fold(uncontained_targets(store: store), init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: object_id_key(identity: id) }
+    }
+  })
+}
+
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   let acc = encode_object_table(store: repo.store)
-  match unresolved_edge_reference(acc: acc, store: repo.store) {
+  match first_uncontained_target(store: repo.store) {
     Present { value: reference } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeClosureDocRefusal { cause: ClosureDocEdgeTargetUnresolved { reference: reference } } }
     Absent =>
@@ -367,10 +389,17 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   match found {
     Present { value: _ } => found
     Absent =>
-      if encoded_root_reference(acc: acc, root: commit.root) == "" {
-        Present { value: commit.root }
-      } else {
-        none
+      // ASK THE TABLE, NOT THE ENCODING. This read the ENCODED root and compared it to "" -- the
+      // old sentinel for "unresolvable" -- which worked only while an unresolvable root encoded to
+      // an empty string. With the two-arm reference there is no sentinel: an uncontained root is a
+      // legitimate arm, so the comparison went permanently false and this refusal silently stopped
+      // firing. It typechecked, because the comparison was against a JsonValue by then.
+      //
+      // The repair is to stop routing a containment question through a representation at all. The
+      // question is "does the table hold this object", and position_of answers it directly.
+      match position_of(positions: acc.positions, identity: commit.root) {
+        Present { value: _ } => none
+        Absent => Present { value: commit.root }
       }
   }
 }
@@ -426,21 +455,36 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
   }
 }
 
+fn commit_root_refusal(cause: ClosureDocRefusal) -> RepositoryDecodeRefusal {
+  match cause {
+    ClosureDocEdgeTargetUnresolved { reference: r } =>
+      RepositoryCommitRootReferenceUnresolved { reference: r }
+    _ => RepositoryDecodeClosureDocRefusal { cause: cause }
+  }
+}
+
 fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match read_string_member(v: value, key: "root") {
+      match read_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
-        MemberString { value: reference } =>
-          match resolve_reference(positions: positions, reference: reference) {
-            Absent =>
+        MemberObject { value: root_value } =>
+          match decode_target(positions: positions, target_value: root_value) {
+            // A COMMIT ROOT THAT RESOLVES TO NOTHING KEEPS ITS OWN REFUSAL. The generic target decoder
+            // reports an unresolved reference without knowing WHOSE it was, and letting that through
+            // unchanged would merge "an edge inside an object points nowhere" with "a commit names a
+            // root this repository does not hold" -- two states with different owners and different
+            // repairs, which is the conflation this module's refusal split exists to prevent. Every
+            // other cause (a malformed digest, a target that is not one arm) has no repository-level
+            // meaning and is wrapped as-is.
+            TargetDecodeFailed { cause: c } =>
               CommitDecodeAcc {
                 commits: acc.commits,
-                refusal: Present { value: RepositoryCommitRootReferenceUnresolved { reference: reference } },
+                refusal: Present { value: commit_root_refusal(cause: c) },
               }
-            Present { value: root } =>
+            TargetDecoded { target: root } =>
               match read_string_member(v: value, key: "message") {
                 MemberFailed { cause: c } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }

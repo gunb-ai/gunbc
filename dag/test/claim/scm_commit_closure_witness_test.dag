@@ -31,12 +31,27 @@ import gunbc.scm.object_store {
   object_id_eq,
   store_object_count,
 }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.parse { parse_json }
+import gunbc.scm.commit_closure_json_v1 {
+  ClosureDocRefusal,
+  ClosureDocIncompleteWithoutAdmission,
+  ClosureDocEncodeOutcome,
+  ClosureDocEncoded,
+  ClosureDocEncodeRefused,
+  ClosureDocLoadOutcome,
+  ClosureDocLoaded,
+  ClosureDocRefused,
+  encode_closure_document_checked,
+  decode_closure_document,
+}
 import gunbc.scm.commit_closure {
   CommitClosure,
   PartialClosureReason,
   ClosureTrimmedForTransfer,
   ClosureGraftedWithoutChildren,
   admit_partial_closure,
+  PartialClosureAdmission,
   admission_reason,
   unresolved_identities,
   closure_is_complete,
@@ -163,7 +178,80 @@ fn commit_closure_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "a_closure_missing_its_own_root_names_the_root" }
   } else if !an_admission_carries_the_decision_that_produced_it() {
     ExitFailure { code: 1, reason: "an_admission_carries_the_decision_that_produced_it" }
+  } else if !a_partial_closure_encodes_only_with_an_admission() {
+    ExitFailure { code: 1, reason: "a_partial_closure_encodes_only_with_an_admission" }
+  } else if !an_uncontained_object_survives_the_wire_and_is_still_named() {
+    ExitFailure { code: 1, reason: "an_uncontained_object_survives_the_wire_and_is_still_named" }
   } else {
     ExitSuccess
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE WIRE HALF OF THE ACCEPTANCE TEST.
+//
+// The witnesses above prove an incomplete closure can NAME what it lacks at the LOGICAL layer. That
+// is only half the claim: a format that cannot carry the name would leave the property true in
+// memory and unrepresentable in the thing that actually gets written down. These execute the other
+// half -- an uncontained reference surviving encode, serialization to text, and decode.
+// ------------------------------------------------------------------------------------------------
+
+// A PARTIAL CLOSURE REFUSES TO ENCODE UNTIL SOMEONE DECIDES IT SHOULD, and the two arms of this test
+// are the whole admission wall: the same store, the same root, differing only in whether a decision
+// token was supplied. The refusing arm is what stops a partial document being written by accident;
+// the encoding arm is what stops that refusal being a wall against the feature itself.
+test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  let refused = match encode_closure_document_checked(store: grafted, root: full.root, admission: none) {
+    ClosureDocEncodeRefused { cause: c } => cause_is_incomplete_without_admission(cause: c)
+    ClosureDocEncoded { value: _ } => false
+  }
+  let admitted = match encode_closure_document_checked(
+    store: grafted,
+    root: full.root,
+    admission: Present { value: admit_partial_closure(reason: ClosureTrimmedForTransfer) }
+  ) {
+    ClosureDocEncoded { value: _ } => true
+    ClosureDocEncodeRefused { cause: _ } => false
+  }
+  refused && admitted
+}
+
+fn cause_is_incomplete_without_admission(cause: ClosureDocRefusal) -> Bool {
+  match cause {
+    ClosureDocIncompleteWithoutAdmission { identity: _ } => true
+    _ => false
+  }
+}
+
+// THE CLAIM THE WHOLE RECUT WAS FOR, executed end to end through TEXT.
+//
+// A partial closure is encoded, SERIALIZED TO A STRING, parsed back, and decoded -- and the object it
+// could not carry is still named, by its own content address, on the far side. Going through text
+// matters: it is the only arm that proves the identity survives in the BYTES rather than in a value
+// that never left memory. The predecessor could not have expressed this at any price.
+test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match encode_closure_document_checked(
+    store: grafted,
+    root: full.root,
+    admission: Present { value: admit_partial_closure(reason: ClosureTrimmedForTransfer) }
+  ) {
+    ClosureDocEncodeRefused { cause: _ } => false
+    ClosureDocEncoded { value: encoded } =>
+      match parse_json(s: serialize_json(v: encoded)) {
+        Absent => false
+        Present { value: reparsed } =>
+          match decode_closure_document(v: reparsed) {
+            ClosureDocRefused { cause: _ } => false
+            ClosureDocLoaded { store: store, root: root } =>
+              names_exactly(
+                missing: unresolved_identities(closure: CommitClosure { store: store, root: root }),
+                expected: full.child
+              )
+          }
+      }
   }
 }

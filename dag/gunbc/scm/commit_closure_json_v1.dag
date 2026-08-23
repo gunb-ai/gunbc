@@ -1,7 +1,13 @@
 module gunbc.scm.commit_closure_json_v1
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, list_length }
 
+import std.content_hash { fnv1a64_structural_hex_digest }
+import gunbc.scm.commit_closure {
+  CommitClosure,
+  PartialClosureAdmission,
+  unresolved_identities,
+}
 import extdeps.languages.json.emit {
   JsonValue,
   JsonNull,
@@ -111,6 +117,9 @@ type ClosureDocRefusal
   | ClosureDocRootUnresolved { reference: String }
   | ClosureDocObjectCollision { identity: ObjectId }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
+  | ClosureDocTargetNotOneArm { found: Int }
+  | ClosureDocUncontainedDigestInvalid { found: String }
+  | ClosureDocIncompleteWithoutAdmission { identity: String }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -139,6 +148,7 @@ type ClosureDocMemberContext
   | ClosureDocComputationKindMembers
   | ClosureDocNamedEdgeMembers
   | ClosureDocPositionalEdgeMembers
+  | ClosureDocTargetMembers
 
 fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
   fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
@@ -181,7 +191,7 @@ type ClosureDocLoadOutcome
   = ClosureDocLoaded { store: ObjectStore, root: ObjectId }
   | ClosureDocRefused { cause: ClosureDocRefusal }
 
-data closure_document_format_tag: String = "gunbc-scm-commit-closure-v1"
+data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
 //
@@ -320,15 +330,34 @@ fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
 // the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
 // decoder tolerates -- ClosureDocEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
 // a typed refusal at load rather than as a silently wrong store.
-fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
-  let reference = match position_of(positions: positions, identity: e.target) {
-    Present { value: r } => r
-    Absent => ""
+// A TARGET IS ONE OF TWO ARMS, AND WHICH ONE IS A FACT ABOUT THIS DOCUMENT, NOT ABOUT THE WORLD.
+//
+//   {"at": "3"}          this document CARRIES that object, at that position
+//   {"uncontained": "<digest>"}   this document does NOT carry it, and here is its content address
+//
+// The two arms exist because they answer different questions and only one of them CAN be answered
+// both ways. A contained object needs no identity on the wire -- it is right there and its identity
+// is derived from its own bytes, so there is no field to lie in. An uncontained object needs one,
+// because a position denotes nothing outside the document that defines it, and that is the single
+// place a digest cannot be mis-bound: no payload here binds to it.
+//
+// Exactly one member, checked. Both arms present, or neither, is a typed refusal rather than a
+// last-wins read -- the same reason every member set in this module is closed.
+fn encode_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+  match position_of(positions: positions, identity: target) {
+    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Absent =>
+      json_object(
+        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      )
   }
+}
+
+fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
   json_object(
     members: concat(
       encode_label(l: e.label),
-      [json_kv(key: "target", value: json_string(s: reference))]
+      [json_kv(key: "target", value: encode_target(positions: positions, target: e.target))]
     )
   )
 }
@@ -389,71 +418,68 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
   }
 }
 
-// A root that names no object in the table yields the empty reference, which decode refuses as
-// ClosureDocRootUnresolved. It is never silently omitted from the commit list.
-fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
-  match position_of(positions: acc.positions, identity: root) {
-    Present { value: r } => r
-    Absent => ""
-  }
+// THE ROOT IS AN ORDINARY REFERENCE, and it takes both arms for the same reason every edge does: a
+// closure may legitimately be shipped without the object its own root names (a delta whose recipient
+// already holds it). The predecessor encoded the root positionally too, so that case was as
+// unnameable as any other.
+fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> JsonValue {
+  encode_target(positions: acc.positions, target: root)
 }
 
-// ENCODING CAN REFUSE, AND IT MUST, because the alternative is a write that reports success for
-// bytes that cannot be loaded.
-//
-// The empty-string reference below is what an unresolvable root or edge target encodes to, and
-// decode refuses it. That is correct at the DECODER but it arrives too late: encode_closure_document returned an
-// ordinary JsonValue, commit_closure_save wrote it, the filesystem write succeeded, and save answered
-// CommitClosureSaved. The user is told their repository is saved; the very next load refuses it.
-// That is the fabricated-plausible-output failure DESIGN section 5 forbids, reached through a
-// success report rather than through a value.
-//
-// The state is REACHABLE, not theoretical: object_store deliberately supports building an INCOMPLETE
-// closure through copy_object -- a root grafted without its children -- and that is a feature, not a
-// defect, so the encoder cannot assume completeness. It must check and refuse.
-//
-// The refusal is computed from the SAME position table the encoding uses, so there is no second
-// notion of "resolvable" that could drift from the one decode enforces.
 type ClosureDocEncodeOutcome
   = ClosureDocEncoded { value: JsonValue }
   | ClosureDocEncodeRefused { cause: ClosureDocRefusal }
 
-fn encode_closure_document_checked(store: ObjectStore, root: ObjectId) -> ClosureDocEncodeOutcome {
-  let acc = encode_object_table(store: store)
-  let root_reference = encoded_root_reference(acc: acc, root: root)
-  if root_reference == "" {
-    ClosureDocEncodeRefused { cause: ClosureDocRootUnresolved { reference: object_id_key(identity: root) } }
-  } else {
-    match unresolved_edge_reference(acc: acc, store: store) {
-      Present { value: reference } =>
-        ClosureDocEncodeRefused { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
-      Absent => ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
-    }
+// AN INCOMPLETE CLOSURE IS NOW REPRESENTABLE, SO THE QUESTION CHANGES FROM "CAN IT BE WRITTEN" TO
+// "WAS IT DECIDED".
+//
+// The predecessor refused here, because a document with an unresolvable reference could not be
+// loaded and writing it would have reported success for bytes that cannot be read -- a fabricated
+// success. That refusal was right for a format that could not name what it lacked. This one can, so
+// a partial closure is a legitimate document and its wire form is well-formed; whether a partial
+// closure may be PUBLISHED is a policy question that does not belong in a codec (DESIGN section 3).
+//
+// What must NOT happen is the refusal quietly becoming optional -- a caller who forgets, and a
+// partial document written by accident. So the encoder does not accept a closure plus a caller's
+// assurance: it requires a PartialClosureAdmission, which is `sole_constructor` in gunbc.scm.
+// commit_closure and therefore cannot be fabricated here. An undeclared partial closure has no token
+// to offer and is refused, typed and naming the first identity that would have gone uncontained.
+//
+// RUNG, STATED HONESTLY BECAUSE THE TOKEN'S STRENGTH IS NOT THE PATH'S. The admission itself is
+// unforgeable (structural). This GATE is only mechanically preventable: `encode_closure_document`
+// below remains callable directly, so a caller bypassing this entry can still emit uncontained arms
+// with no admission. The wall is at the entry, not on the carrier.
+// dissolve-on: module-private functions in .dag, at which point the unchecked encoder stops being
+// reachable and the gate becomes structural. Until then this comment is the only thing saying so.
+fn encode_closure_document_checked(
+  store: ObjectStore,
+  root: ObjectId,
+  admission: PartialClosureAdmission?
+) -> ClosureDocEncodeOutcome {
+  match unresolved_identities(closure: CommitClosure { store: store, root: root }) {
+    missing =>
+      if list_length(items: missing) == 0 {
+        ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
+      } else {
+        match admission {
+          Present { value: _ } =>
+            ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
+          Absent =>
+            ClosureDocEncodeRefused {
+              cause: ClosureDocIncompleteWithoutAdmission {
+                identity: first_uncontained_key(missing: missing)
+              }
+            }
+        }
+      }
   }
 }
 
-// A child an edge names that the table does not contain. store_records_in_dependency_order yields
-// children before parents for any closure store_node built, so this is empty for every complete
-// store -- it is the INCOMPLETE ones, which copy_object can legitimately produce, that it catches.
-fn unresolved_edge_reference(acc: EncodeAcc, store: ObjectStore) -> String? {
-  fold(store_records_in_dependency_order(store: store), init: none, f: fn(outer, record) {
-    match outer {
-      Present { value: _ } => outer
-      Absent => unresolved_edge_in_record(acc: acc, record: record)
-    }
-  })
-}
-
-fn unresolved_edge_in_record(acc: EncodeAcc, record: ObjectRecord) -> String? {
-  fold(record.children, init: none, f: fn(inner, stored) {
-    match inner {
-      Present { value: _ } => inner
-      Absent =>
-        match position_of(positions: acc.positions, identity: stored.target) {
-          Present { value: _ } => none
-          Absent => Present { value: object_id_key(identity: stored.target) }
-        }
-    }
+// The first identity that would have been written as an uncontained arm. Naming one is what makes
+// the refusal actionable; naming all of them is the caller's own query via unresolved_identities.
+fn first_uncontained_key(missing: List<ObjectId>) -> String {
+  fold(missing, init: "", f: fn(acc, id) {
+    if acc == "" { object_id_key(identity: id) } else { acc }
   })
 }
 
@@ -464,7 +490,7 @@ fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
     members: [
       json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
       json_kv(key: "objects", value: json_array(elements: acc.objects)),
-      json_kv(key: "root", value: json_string(s: root_reference)),
+      json_kv(key: "root", value: root_reference),
     ]
   )
 }
@@ -684,6 +710,48 @@ type EdgeAcc {
 // nearby object. Only earlier positions are in scope -- the accumulator holds exactly what has been
 // decoded so far -- so a forward reference and a fabricated one are the same refusal, and neither
 // can quietly bind to whatever happens to sit at that index later.
+// DECODING A TARGET, AND THE ONE ARM THAT IS NOT A FAILURE.
+//
+// A CONTAINED arm resolves against earlier positions exactly as before: only what has already been
+// decoded is in scope, so a forward reference and a fabricated one are the same refusal and neither
+// binds to whatever later sits at that index.
+//
+// An UNCONTAINED arm is NOT a decode failure. It is a well-formed statement that this document does
+// not carry that object, and it decodes to a successful PARTIAL closure whose missing members the
+// consumer finds by joining against the store it has. Treating it as a refusal would put the codec
+// in the business of deciding whether a partial closure is acceptable, which is policy.
+//
+// The digest is MINTED THROUGH A VALIDATOR, never trusted as text: fnv1a64_structural_hex_digest
+// refuses anything that is not canonical lowercase hex of the exact length, so a malformed digest is
+// a typed refusal here rather than an ObjectId that lies about its own shape downstream.
+fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match member_set_refusal(v: target_value, allowed: ["at", "uncontained"], context: ClosureDocTargetMembers) {
+    Present { value: c } => TargetDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: target_value, key: "at") {
+        MemberString { value: reference } =>
+          match resolve_reference(positions: positions, reference: reference) {
+            Present { value: identity } => TargetDecoded { target: identity }
+            Absent =>
+              TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
+          }
+        _ =>
+          match read_string_member(v: target_value, key: "uncontained") {
+            MemberString { value: hex } =>
+              match fnv1a64_structural_hex_digest(hex: hex) {
+                Present { value: digest } => TargetDecoded { target: digest }
+                Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
+              }
+            _ => TargetDecodeFailed { cause: ClosureDocTargetNotOneArm { found: 0 } }
+          }
+      }
+  }
+}
+
+type TargetDecode
+  = TargetDecoded { target: ObjectId }
+  | TargetDecodeFailed { cause: ClosureDocRefusal }
+
 fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -691,19 +759,14 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
       match decode_label(edge_value: edge_value) {
         LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
         LabelDecoded { label: label } =>
-          match read_string_member(v: edge_value, key: "target") {
+          match read_member(v: edge_value, key: "target") {
             MemberFailed { cause: c } =>
               EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
-            MemberString { value: reference } =>
-              match resolve_reference(positions: positions, reference: reference) {
-                Absent =>
-                  EdgeAcc {
-                    edges: acc.edges,
-                    refusal: Present {
-                      value: ClosureDocEdgeTargetUnresolved { reference: reference }
-                    },
-                  }
-                Present { value: identity } =>
+            MemberObject { value: target_value } =>
+              match decode_target(positions: positions, target_value: target_value) {
+                TargetDecodeFailed { cause: c } =>
+                  EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+                TargetDecoded { target: identity } =>
                   EdgeAcc {
                     edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
                     refusal: acc.refusal,
@@ -853,13 +916,12 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
           match refusal {
             Present { value: c } => ClosureDocRefused { cause: c }
             Absent =>
-              match read_string_member(v: v, key: "root") {
+              match read_member(v: v, key: "root") {
                 MemberFailed { cause: c } => ClosureDocRefused { cause: c }
-                MemberString { value: root_reference } =>
-                  match resolve_reference(positions: positions, reference: root_reference) {
-                    Absent =>
-                      ClosureDocRefused { cause: ClosureDocRootUnresolved { reference: root_reference } }
-                    Present { value: root } => ClosureDocLoaded { store: store, root: root }
+                MemberObject { value: root_value } =>
+                  match decode_target(positions: positions, target_value: root_value) {
+                    TargetDecodeFailed { cause: c } => ClosureDocRefused { cause: c }
+                    TargetDecoded { target: root } => ClosureDocLoaded { store: store, root: root }
                   }
                 _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "root" } }
               }

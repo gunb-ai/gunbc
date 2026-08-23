@@ -323,7 +323,7 @@ test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
   scm_image_refused(
     loaded: decode_closure_document(
       v: json_object(
-        members: concat(scm_image_members(v: encoded), [json_kv(key: "root", value: json_string(s: "0"))])
+        members: concat(scm_image_members(v: encoded), [json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))]))])
       )
     )
   )
@@ -348,7 +348,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
           json_kv(
             key: "objects",
             value: json_array(
@@ -372,7 +372,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
                             members: [
                               json_kv(key: "label", value: json_string(s: "named")),
                               json_kv(key: "name", value: json_string(s: "alpha")),
-                              json_kv(key: "target", value: json_string(s: "1")),
+                              json_kv(key: "target", value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])),
                             ]
                           )
                         ]
@@ -383,7 +383,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
               ]
             )
           ),
-          json_kv(key: "root", value: json_string(s: "0")),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
         ]
       )
     )
@@ -395,7 +395,7 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
           json_kv(
             key: "objects",
             value: json_array(
@@ -417,7 +417,7 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
               ]
             )
           ),
-          json_kv(key: "root", value: json_string(s: "0")),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
         ]
       )
     )
@@ -433,7 +433,7 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
           json_kv(
             key: "objects",
             value: json_array(
@@ -456,7 +456,7 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
               ]
             )
           ),
-          json_kv(key: "root", value: json_string(s: "0")),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
         ]
       )
     ),
@@ -495,14 +495,14 @@ fn scm_image_orphan_parent_store() -> ScmImagePut {
 test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   scm_image_encode_refused(
-    outcome: encode_closure_document_checked(store: empty_store(), root: full.identity)
+    outcome: encode_closure_document_checked(store: empty_store(), root: full.identity, admission: none)
   )
 }
 
 test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
   let orphan = scm_image_orphan_parent_store()
   scm_image_encode_refused(
-    outcome: encode_closure_document_checked(store: orphan.store, root: orphan.identity)
+    outcome: encode_closure_document_checked(store: orphan.store, root: orphan.identity, admission: none)
   )
 }
 
@@ -510,7 +510,7 @@ test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
 // everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
 test fn scm_image_a_complete_closure_encodes() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
-  match encode_closure_document_checked(store: full.store, root: full.identity) {
+  match encode_closure_document_checked(store: full.store, root: full.identity, admission: none) {
     ClosureDocEncoded { value: v } =>
       serialize_json(v: v) == serialize_json(v: encode_closure_document(store: full.store, root: full.identity))
     ClosureDocEncodeRefused { cause: _ } => false
@@ -637,9 +637,9 @@ fn scm_image_one_object_image(object_members: List<JsonKeyValue>, extra: List<Js
   json_object(
     members: concat(
       [
-        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
         json_kv(key: "objects", value: json_array(elements: [json_object(members: object_members)])),
-        json_kv(key: "root", value: json_string(s: "0")),
+        json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
       ],
       extra
     )
@@ -734,7 +734,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "root", value: json_string(s: "0")),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
           json_kv(
             key: "objects",
             value: json_array(
@@ -754,7 +754,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
               ]
             )
           ),
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
         ]
       )
     ),
@@ -775,5 +775,6 @@ test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
     expected: closure_doc_atom(identity: ^A),
   )
 }
+
 
 

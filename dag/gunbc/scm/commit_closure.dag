@@ -40,7 +40,7 @@ module gunbc.scm.commit_closure
 // THE TRUST ROOT MOVES, AND THIS IS THE HONEST STATEMENT OF WHAT IS WEAKER.
 //
 // Deriving a supplied object's identity from its own bytes and comparing proves "I got the object THIS
-// DOCUMENT NAMED". It does NOT prove "I got the object the COMMIT named" -- a forged absent-arm digest
+// DOCUMENT NAMED". It does NOT prove "I got the object the COMMIT named" -- a forged uncontained-arm digest
 // names an attacker-chosen object, and the supplied impostor matches the forgery exactly because that
 // is what was forged. The closure then reconstructs with the impostor in place of the real object: a
 // program the commit never named, reached through the very arm this recut adds.
@@ -97,7 +97,7 @@ import gunbc.scm.object_store {
 // remembers to check. That is validation, and validation of exactly the shape that decays: the
 // encoder accepts a closure plus a caller's assurance, and one day the assurance is wrong.
 //
-// So the absent arm is constructible ONLY from an evidenced decision. The arm CARRIES the admission,
+// So the uncontained arm is constructible ONLY from an evidenced decision. The arm CARRIES the admission,
 // the admission is `sole_constructor` and minted here, and an encoder therefore cannot fabricate one
 // to get itself out of trouble -- it has to be HANDED one by whoever decided a partial closure was
 // publishable. An undeclared partial closure has no constructor, so it is not refused, it is
@@ -131,6 +131,21 @@ type CommitClosure {
   root: ObjectId
 }
 
+// WHY THE WIRE ARM IS "UNCONTAINED" AND THIS FUNCTION SAYS "UNRESOLVED", which is not two names for
+// one thing (DESIGN section 3) but two different facts one join apart.
+//
+// CONTAINED / UNCONTAINED is INTRINSIC to the document: it states whether this document carries the
+// object's payload, and that is true of the bytes forever, wherever they are read. UNRESOLVED is
+// RELATIVE: it is what you get by joining an uncontained identity against the store you actually
+// have. An object this document does not carry may already sit in the local store, in another
+// generation, in a cache, or at a remote -- so it is uncontained here and not unresolved for you.
+//
+// Naming the wire arm "absent" would have frozen a relative availability observation into immutable
+// vocabulary, which is exactly the state-space conflation that makes a reader draw "missing" from a
+// document that only ever said "not carried here".
+//
+//   uncontained identities  +  the store you have  ->  unresolved identities
+//
 // THE ACCEPTANCE TEST OF THE WHOLE RECUT, in one function.
 //
 // This is what the predecessor could not have at any price: the set of object identities the closure
@@ -142,24 +157,33 @@ type CommitClosure {
 // completeness is "nothing is missing", derived, never a stored flag that could disagree with the
 // objects beside it.
 fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
-  let from_edges = fold(
-    store_records_in_dependency_order(store: closure.store),
-    init: [],
-    f: fn(acc, record) { concat(acc, unresolved_in_record(closure: closure, record: record)) }
-  )
-  concat(from_edges, unresolved_root(closure: closure))
+  concat(uncontained_targets(store: closure.store), unresolved_root(closure: closure))
 }
 
-fn unresolved_in_record(closure: CommitClosure, record: ObjectRecord) -> List<ObjectId> {
+// TABLE COMPLETENESS WITHOUT A ROOT, because two different consumers ask two different questions and
+// only one of them has a root to ask about.
+//
+// A COMMIT closure asks "is anything this program reaches missing", which includes its own root. A
+// REPOSITORY object table asks only "does any edge point at a record this table does not hold" --
+// it carries many commits over one population, so there is no single root and the roots it does
+// have are checked separately against the commit list. Folding the root into this would have forced
+// the repository to invent one.
+fn uncontained_targets(store: ObjectStore) -> List<ObjectId> {
+  fold(
+    store_records_in_dependency_order(store: store),
+    init: [],
+    f: fn(acc, record) { concat(acc, uncontained_in_record(store: store, record: record)) }
+  )
+}
+
+fn uncontained_in_record(store: ObjectStore, record: ObjectRecord) -> List<ObjectId> {
   fold(
     record.children,
     init: [],
-    f: fn(acc, child) { concat(acc, unresolved_target(closure: closure, edge: child)) }
+    f: fn(acc, child) {
+      if store_contains(store: store, identity: child.target) { acc } else { concat(acc, [child.target]) }
+    }
   )
-}
-
-fn unresolved_target(closure: CommitClosure, edge: StoredEdge) -> List<ObjectId> {
-  if store_contains(store: closure.store, identity: edge.target) { [] } else { [edge.target] }
 }
 
 // THE ROOT IS A REFERENCE LIKE ANY OTHER, and a closure missing its own root is the sharpest case of

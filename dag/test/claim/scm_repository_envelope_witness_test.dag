@@ -293,7 +293,7 @@ test fn scm_env_a_dangling_commit_root_refuses() -> Bool {
           elements: [
             json_object(
               members: [
-                json_kv(key: "root", value: json_string(s: "4242")),
+                json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "4242"))])),
                 json_kv(key: "message", value: json_string(s: "dangling")),
               ]
             )
@@ -552,5 +552,6 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
     )
   ) == "unexpected_member"
 }
+
 
 
