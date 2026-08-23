@@ -78,7 +78,31 @@ fn blocking_ambiguous_reference_count(source: String) -> Int {
 // counter answers 0 - 1 on a census that could not run, so a broken harness fails in both
 // directions rather than passing by silence.
 
-data boundary_listed_plus_transitive_homonym_source: String = "module probe_callable_listed_plus_homonym\nimport v1.compiler.emit_core_support { to_string }\nimport std.types { String, Int }\nfn renders(n: Int) -> String {\n  to_string(value: n)\n}\n"
+// THE BOUNDARY CONTROL, and it is the row that keeps this file's prose honest.
+//
+// A listed import removes the implicit BUILTIN co-candidate and does nothing else. It carries
+// NAME MEMBERSHIP, not selected declaration identity -- `authored_import_names` is a
+// Map<String, Bool>, so it cannot say WHICH declaration the author meant -- and the remaining
+// DECLARED population still undergoes exact cardinality admission.
+//
+// This source names `int_max` in a listed import from `v2.std.spine`, whose own closure reaches
+// `std.realization_width`, which declares `int_max` too. Two declarations answer at one level,
+// nothing the author wrote ranks them, and the call REFUSES. No builtin is involved at all --
+// `int_max` has no registry row -- which is what makes this row ISOLATE the claim rather than
+// restate the RED: it is about the declared population surviving a listed import, not about the
+// builtin being suppressed by one.
+//
+// If anyone later reads level 1a as "the explicitly imported declaration excludes every
+// transitive homonym", this control goes red, because that rule needs an exact-binding carrier
+// that does not exist. A green here would mean the claim had been strengthened past its
+// mechanism without anyone noticing.
+//
+// (Its first version imported `v1.compiler.emit_core_support`, a SEED module. The census
+// resolves against the witness roots ["dag", "src/v2"], so that import could never resolve, no
+// `to_string` candidate existed, and the assertion read false for a reason unrelated to the
+// boundary -- the same broken-fixture class as the RED's `PosixUserName`, committed inside the
+// control built to prevent a different mistake.)
+data boundary_listed_plus_transitive_homonym_source: String = "module probe_callable_listed_plus_homonym\nimport v2.std.spine { int_max }\nimport std.types { Int }\nfn widest() -> Int {\n  int_max(a: 3, b: 7)\n}\n"
 
 data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserId }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
 
