@@ -145,3 +145,31 @@ test fn w_control_valid_file_transport_is_clean_at_both_stages() -> Bool {
   parse_blocking_count(source: file_ok_source) == 0
     && not_modeled_blocking_count(source: file_ok_source) == 0
 }
+
+// THE CLASSIFICATION GUARD. The `//` annotation on v1.compiler.core is_rest_transport records WHY
+// rest's always-written base_url is load-bearing; DESIGN §4c is explicit that an annotation is
+// never evidence a machine claim holds, because no Accepted program can read one. Prose is the
+// right home for the rationale and cannot be the guard for the invariant, so the invariant is
+// asserted here.
+//
+// It is asserted through EMISSION SHAPE rather than by calling is_rest_transport directly, and
+// that is a reachability fact rather than a preference: CI's source roots are `dag` and `src/v2`,
+// so v1.compiler.core is not in the witness pool and the predicate cannot be named from here. The
+// consequence is the better subject anyway -- it runs the real pipeline instead of the predicate
+// in isolation.
+//
+// What goes red: delete the fabricated base_url from `rest_transport_node` because it looks like a
+// lazy default, and every rest transport reclassifies as `local` -- no rest client is emitted, and
+// the first row below fails. That is the exact failure the annotation exists to prevent, and until
+// now nothing in the corpus would have caught it.
+test fn w_red_rest_transport_classifies_as_rest_not_local() -> Bool {
+  compile_dag_rust_emit_check(rest_ok_source, "src/tfr_rest_ok.rs", ["self.base_url"], [])
+}
+
+// The other answer, so the row above is not satisfied by an oracle that matches everything: a
+// SHELL transport is not classified rest and emits no rest client. Without this pair, `must_contain
+// ["self.base_url"]` proves nothing about discrimination -- the same defect the stage counters had
+// before their inverse row was added.
+test fn w_control_shell_transport_emits_no_rest_client() -> Bool {
+  compile_dag_rust_emit_check(shell_ok_source, "src/tfr_shell_ok.rs", ["Command::new"], ["self.base_url"])
+}
