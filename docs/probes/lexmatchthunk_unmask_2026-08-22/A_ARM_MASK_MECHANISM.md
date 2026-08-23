@@ -173,3 +173,54 @@ The unmask was re-scoped out of this lane by `smart-ram-730` and dispatched as a
 carrying the fail-open above. This A/B is **parked, not cancelled**: the registered population, the
 join rule and this A-arm baseline stand, and the B arm costs one probe run plus one python run once
 the repair lands, because the classifier is committed and the raw log is published.
+
+## Amendment: the arm pair is named by SHA, because "the parent" is a non-discriminating name (2026-08-23)
+
+Committed **before the B arm was run and before any B-arm number existed**, which is the only
+condition under which amending a pre-registration is worth anything. The provenance is checkable
+independently of this file: the defect was disclosed to `smart-ram-730` and `calm-heron-887` on the
+dashboard, by name, before the run started.
+
+The clause above says the baseline is re-taken at "the repair commit's own parent". That phrase
+**resolves uniquely for a linear commit and ambiguously for a merge**, and the registration never
+recorded which kind it assumed. The repair is a merge with two parents, and the two answer
+differently: the first (`df90bc8541`) already contains the (c) and (a) commits and would yield a
+null delta; the second (`c07d13a49f`) is pure main.
+
+**The arms, named by SHA:**
+
+| arm | sha | what it is |
+|---|---|---|
+| A′ | `c07d13a49f` | pure main, no repair — the differential baseline |
+| B | `974ac5d808` | the repair, `(c)` + `(a)` only |
+
+"Second parent" is **not** an acceptable repair of the phrase: it is still positional, and it
+inherits the identical failure the moment anyone rebases, re-merges or reorders. A SHA is the
+discriminating identity; every shorter spelling of it is a nickname that happens to resolve today
+(DESIGN §3). `smart-ram-730` reports this as the fourth instance of that class in one night — a
+basename collision across two `complexity.dag`, a prefix regex matching a spelling where a concept
+was meant, "Cut A" minted twice by two lanes, and now "its parent" — all of them surfacing in
+**reporting** rather than in code, which is where nothing instruments for it.
+
+**What did NOT change:** the registered population (68 rows), the prediction
+(`unexplained additions = 0`), the join rule (file + normalized expected/found relation + mechanism,
+never a generated line number), and the reporting convention. Only the arm *names* are made
+discriminating.
+
+### A consequence the original registration did not state, and should have
+
+The registered 68-row population was derived at `967b5bc1b92`, which is **not** either arm. So A′
+must be *measured*, not reused from the published partition. This is not the forbidden re-derivation:
+the standing constraint from `smart-ram-730` is not to re-derive the population **after exposure**,
+and A′ carries no repair, so measuring it is upstream of any exposure. The 68 stays exactly as
+committed, and the A′ population is reported **beside** it rather than replacing it — two arms
+several refs apart is precisely the confound the clause above was written to avoid, and quietly
+substituting A′'s rows for the registered 68 would reintroduce it under a new name.
+
+### Held constant across the pair, checked rather than assumed
+
+`#8929` (the `file` transport rust realization handler) is an ancestor of **both** arms, verified with
+`git merge-base --is-ancestor`. Before it, this subject could not be emitted at all — exit 1, 0 files,
+five typed transport refusals — so the A/B was unrunnable, not merely unrun. It is a **held constant**,
+not a confound, and it is why `177 files / 503 emit diagnostics` still serves as this subject's
+identity stamp instead of needing a waiver.
