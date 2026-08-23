@@ -1,0 +1,115 @@
+module test.claim.devboot_host_tool_spelling_witness
+
+import std.types { Bool, String }
+
+import extdeps.tools.mkdir {
+  mkdir_binary_path,
+  mkdir_path_resolved_program,
+  mkdir_parents_args,
+  mkdir_parents_argv,
+}
+import extdeps.tools.env { env_path_resolved_program, env_bindings_argv }
+import v2.std.orchestration { EnvBinding, EnvSet }
+import extdeps.cargo {
+  CargoEnvironmentVariable,
+  CargoHomeEnv,
+  CargoTargetDirEnv,
+  CargoBuildJobsEnv,
+  RustcWrapperEnv,
+  cargo_environment_variable_name,
+}
+import extdeps.rustup { rustup_home_env_name }
+
+// WHAT THIS WITNESS CAN AND CANNOT REACH, said before the assertions so the coverage is not
+// inferred from the file's name. gunbc.devboot reaches the host through a raw WitnessBin.Run, so
+// the six directory-ensure sites and the two cargo invocations cannot be evaluated here without
+// executing real effects -- and a mocked exit status would pass this suite against a fabricated
+// result, which is the failure the sites exist to expose. What IS reachable is the authority the
+// sites now call, and the coherence between its two doors. Devboot's adoption is carried by the
+// import graph rather than by these assertions: it no longer contains a mkdir or a variable-name
+// literal to diverge, which the compiler checks and this witness does not.
+//
+// The honest rung is therefore mitigatable (DESIGN section 4b) -- one construction site per fact
+// instead of seven, with these controls pinning what that site produces. Its next-rung trigger is
+// the host_effect_apply migration the retained rows already name.
+//
+// THE SPLIT AND THE WHOLE MUST AGREE. extdeps.tools.mkdir hands out a bare argument tail for
+// callers whose transport splits bin_path from args -- gunbc.devboot's WitnessBin.Run seam is one
+// -- and a full argv for callers that need the vector. If those two ever describe different
+// commands, every caller is correct and the corpus is not, and the divergence is invisible at both
+// call shapes because each one reads only its own half.
+//
+// THE SECOND OPERAND IS A LITERAL, AND THAT IS THE LOAD-BEARING HALF. The concat relation alone
+// restates the body of mkdir_parents_argv as it is written today, so on its own it is a change
+// detector rather than an oracle -- automate its expected side and it collapses to
+// measure() == measure(), which DESIGN section 5 names exactly. The literal is grounded outside
+// the implementation: /usr/bin/mkdir is the host path this module records and -p is the POSIX
+// spelling it cites. Together the two operands say something the body cannot make true by
+// construction -- that both doors expand to the cited command, not merely to each other.
+test fn the_mkdir_argument_tail_and_the_full_argv_describe_one_command() -> Bool {
+  mkdir_parents_argv(path: "/srv/devboot/exchange") ==
+    concat([mkdir_binary_path as String], mkdir_parents_args(path: "/srv/devboot/exchange"))
+    && mkdir_parents_argv(path: "/srv/devboot/exchange") ==
+      ["/usr/bin/mkdir", "-p", "/srv/devboot/exchange"]
+}
+
+// -p IS THE ENSURE, and it is the reason the six devboot sites may run repeatedly against a work
+// root that may or may not already exist. Without it an existing directory is an error and every
+// re-serve of a token fails on its second run.
+test fn the_mkdir_argument_tail_is_the_idempotent_ensure_form() -> Bool {
+  mkdir_parents_args(path: "/srv/devboot/exchange") == ["-p", "/srv/devboot/exchange"]
+}
+
+// UPSTREAM'S OWN NAMES, spelled once. A wrong name here is not an error to cargo -- it is simply
+// not read -- so the build completes under a default the caller believed it had overridden, and
+// nothing reports it. That silence is why the names are pinned rather than trusted.
+test fn cargo_environment_variable_names_are_the_cited_upstream_spellings() -> Bool {
+  (cargo_environment_variable_name(variable: CargoHomeEnv) as String) == "CARGO_HOME"
+    && (cargo_environment_variable_name(variable: CargoTargetDirEnv) as String) == "CARGO_TARGET_DIR"
+    && (cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String) == "CARGO_BUILD_JOBS"
+    && (cargo_environment_variable_name(variable: RustcWrapperEnv) as String) == "RUSTC_WRAPPER"
+}
+
+// THE NAME COMES FROM CARGO, THE OPERAND FORM FROM env(1), AND THE JOIN IS THE ASSERTION. This
+// pairing is the whole point of the decomposition: cargo owns which names it reads, extdeps.tools.env
+// owns how a launcher spells an assignment, and neither renders the other's half. An earlier
+// revision asserted a cargo_environment_assignment that rendered "NAME=value" inside extdeps.cargo
+// -- a second authority for env's argument syntax, which is the fork this migration removes.
+test fn the_cargo_name_and_the_env_operand_form_compose() -> Bool {
+  env_bindings_argv(bindings: [
+    EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: "/srv/devboot/target" },
+  ]) == ["CARGO_TARGET_DIR=/srv/devboot/target"]
+}
+
+// AN EMPTY VALUE IS A STATE, NOT AN ABSENCE. `RUSTC_WRAPPER=` instructs cargo to use no wrapper;
+// leaving the variable unset inherits whatever the ambient environment holds, which on a CI host
+// is sccache. The two are different builds, and env(1) models that distinction structurally --
+// EnvSet with an empty value is not EnvUnset, and they render as one argv element and two.
+// gunbc.devboot.build passed this exact operand as a bare literal before either authority existed.
+test fn an_empty_cargo_value_renders_the_no_wrapper_operand() -> Bool {
+  env_bindings_argv(bindings: [
+    EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+  ]) == ["RUSTC_WRAPPER="]
+}
+
+// RUSTUP IS A SEPARATE UPSTREAM, and its variable is asserted from its own module for the reason
+// DESIGN section 3 gives: a rustup release must not require editing cargo's module. The two are
+// set side by side at devboot's one cargo site, which is exactly the coincidence that makes the
+// merge tempting and the separation load-bearing.
+test fn the_rustup_home_name_comes_from_rustups_own_authority() -> Bool {
+  (rustup_home_env_name as String) == "RUSTUP_HOME"
+    && env_bindings_argv(bindings: [
+         EnvSet { name: rustup_home_env_name as String, value: "/srv/devboot/rustup" },
+       ]) == ["RUSTUP_HOME=/srv/devboot/rustup"]
+}
+
+// THE SPELLING DEVBOOT ACTUALLY RUNS, pinned because this migration deliberately did NOT change
+// it. Both tools are cited at their PATH-RESOLVED rows, so the argv is byte-identical to what
+// devboot ran before the authorities existed; what ended is the private spelling. The absolute
+// rows are asserted alongside to prove the two forms are genuinely distinct facts and that this
+// caller picked the one for an unobserved host.
+test fn devboot_cites_the_path_resolved_form_of_both_tools() -> Bool {
+  (mkdir_path_resolved_program as String) == "mkdir"
+    && (env_path_resolved_program as String) == "env"
+    && (mkdir_path_resolved_program as String) != (mkdir_binary_path as String)
+}
