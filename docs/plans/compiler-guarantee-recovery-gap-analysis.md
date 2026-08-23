@@ -3143,8 +3143,25 @@ enforces end to end.
 
    **What changed in substance, which is not nothing: the affected population is
    no longer the 9 formatter declarations.** It is every non-`v2` author writing
-   `type Alias = Generic<Arg>` passed at a `Generic<T>` formal, and nothing in the
-   repository counts them. **Strictly larger class, unchanged ceiling.**
+   `type Alias = Generic<Arg>` passed at a `Generic<T>` formal. **Strictly larger
+   class, unchanged ceiling.**
+
+   **The size of that class is UNKNOWN, and the earlier phrasing here — *nothing in
+   the repository counts them* — was an absence claim this row never established.**
+   No census has been run (deliberately; see the reopening conditions below), and
+   no exhaustive search was made for an existing counter, so the supported
+   statement is *no count is known to this row*, not *no count exists*. Those reach
+   the same disposition by different routes and only one of them was measured.
+
+   One crude datapoint, stated with its limits inside the same sentence so it
+   cannot be quoted as a population: a tree-wide grep for the DECLARATION SHAPE
+   `^type X = Y<` over `dag/` and `src/` returns **185 declarations, which is an
+   upper bound on candidate DECLARATIONS and emphatically not the affected site
+   count** — it does not test whether each is passed at a `Generic<T>` formal, does
+   not exclude `v2.*` (where the exemption still suppresses the judgment), and was
+   produced by one grep rather than by the census. **It does not meet reopening
+   condition (2)**, which asks for a deliberately dispatched census returning a
+   count.
 
    REOPENING CONDITIONS for the declined repair, current as of the re-ruling:
    (1) someone costs the resolve change on its merits as a type-system change; or
