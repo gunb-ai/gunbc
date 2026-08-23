@@ -1,5 +1,6 @@
 module v2.test.intent_linearity.lens_unit.runtime_axis
 
+import v2.lens.complexity_lowering { cost_is_lowerable }
 import v2.lens.cost { symbolic_cost_of_node }
 import v2.lens.intent_linearity {
   chain_has_lowerable_cost,

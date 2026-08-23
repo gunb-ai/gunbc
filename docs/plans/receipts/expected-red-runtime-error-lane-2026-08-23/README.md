@@ -74,6 +74,36 @@ the fix in flight), so no witness executes on any PR cut from main. Unenrolling 
 run would be exactly the stale-quarantine hazard the roster exists to surface. The removals land
 in the same lane once a run observes these identities passing.
 
+## Round 1 executed: the measurement, and what it changed
+
+**Subject:** required-floor run `32660721426` on this branch (PR `gunbc#9039`, with `gunbc#9031`'s
+seal fix merged in so the fold could be reached at all), 2026-08-23. Ledger line:
+
+    planned=10695 executed=10695 terminal=10695 passed=10414 known_red_held=36 failed=0
+    stale_quarantine=8 known_red_now_passing=8 known_red_runtime_errored=135 route_gap_held=101
+
+So the runtime-errored family went **143 -> 135**, and the roster's own removal path fired: the
+eight identities below reported STALE-QUARANTINE — enrolled as expected-red and PASSED — naming
+themselves and asking to be removed. They are removed from the roster in this PR, which is the
+only reason any row leaves it. Five are `v2.test.lens_vacuity.vacuity_test`, two are
+`v2.test.lens_mutation_adequacy.mutation_adequacy_test`, one is
+`v2.test.manual.value_null_split_witness.optional_null_straddle_rostered_until_phase_e`.
+
+**The other eleven repaired rows did not flip, and the run says exactly why.** Their reported
+missing name CHANGED: `test.claim.fleet_convergence_verdict_witness` and
+`test.claim.host_reach_identity_probe_witness` advanced from
+`srv3_post_install_lease_table_fixture` to `srv3_install_hang_no_router_lease_ms`, and the six
+`v2.test.intent_linearity.lens_unit.runtime_axis` rows advanced from `symbolic_cost_of_node` /
+`chain_is_simulated` to `cost_is_lowerable`. That is the first-failure frontier: the floor reports
+only the FIRST unresolved name, so clearing one advances a row to its next blocker without
+guaranteeing a verdict. Round 2 in this PR imports those three names in the same three files.
+
+`runtime_errored_135_after_round_1.tsv` is the post-round-1 population, one row per identity:
+loader eligibility, identity, referring file, missing name, declaring module, message.
+
+The split holds at the new population: **120 BARE / 15 HASIMPORT**, the 15 being the eleven
+frontier rows above plus the four `bootstrap_footprint_anchor` rows.
+
 ## The tail families, named so they are not mistaken for reference failures
 
 Each of these is a distinct defect with its own root, and none of them is repaired by an import:
