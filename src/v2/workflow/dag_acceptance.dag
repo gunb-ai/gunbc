@@ -970,7 +970,7 @@ fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
 }
 
 fn post_front_end_obligations(effective: List<DagStageObligation>) -> List<DagStageObligation> {
-  fold(effective, init: no_rows(), f: fn(acc, o) {
+  fold(effective, init: no_obligations(), f: fn(acc, o) {
     if is_front_end_obligation(obligation: o) { acc } else { list_snoc_item(xs: acc, item: o) }
   })
 }
