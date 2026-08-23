@@ -14869,10 +14869,19 @@ impl CiWitnessVerdict {
     /// unresolved host tool is an infra gap whose remedy is provisioning, not witness cost.
     /// Enrollment cannot hold a claim that was never decided.
     ///
-    /// The counting side already refuses exactly that absorption — `expected_red_arm` gives
-    /// `BudgetRefused` and `HostToolUnresolved` their own arms rather than folding them into
-    /// `Held`. So the bug was not a missing rule; it was a SECOND, coarser copy of a join this
-    /// file already performs correctly (DESIGN §3). This now derives from that one authority:
+    /// The counting side refuses that absorption — `expected_red_arm` gives `BudgetRefused`,
+    /// `HostToolUnresolved`, `RuntimeErrored` and `ObservationUnreadable` their own arms rather
+    /// than folding them into `Held`. So the bug was not a missing rule; it was a SECOND,
+    /// coarser copy of a join this file already performs correctly (DESIGN §3). This now
+    /// derives from that one authority:
+    ///
+    /// THIS SENTENCE WAS FALSE FOR THE TWO ARMS ADDED LAST, and is corrected here rather than
+    /// quietly widened. The original repair split out budget interruption and unresolved host
+    /// tools, then described itself as having refused the absorption GENERALLY, while
+    /// `expected_red_arm` still read `Fail | NotBool | RuntimeError => Held`. Two of four
+    /// non-verdict outcomes stayed folded, and the comment claiming otherwise is the reason
+    /// nobody looked again — an unexecuted claim standing where an executed one appeared to be.
+    /// It was found by a cross-derivation check refusing a real run, not by review.
     /// only `Held` — enrolled AND semantically failed — renders as KNOWN-RED, and every other
     /// arm falls through to the outcome's own token, so the console says what the ledger says.
     ///
@@ -16415,6 +16424,12 @@ enum ExpectedRedArm {
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
     BudgetRefused,
+    /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
+    /// claim was never decided, so there is no expected failure for the enrollment to hold.
+    RuntimeErrored,
+    /// Enrolled and ANSWERED WITH SOMETHING THAT IS NOT A VERDICT. Same reason again — a
+    /// non-Bool observation is unreadable as agreement or disagreement.
+    ObservationUnreadable,
     /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
     ///
     /// This arm exists because the row is true on two axes at once and the other three arms
@@ -16584,12 +16599,19 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
         (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::RuntimeError { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, false) => {
-            ClaimDisposition::ObservationUnreadableBeforeVerdict
-        }
-        (ClaimOutcome::RuntimeError { .. }, false) => ClaimDisposition::RuntimeErroredBeforeVerdict,
+        // EXPECTATION IS NOT CONSULTED FOR EITHER OF THESE, and it used to be. Both arms
+        // returned `KnownRedHeld` when the row was enrolled, while the correct disposition sat
+        // one line below for the unenrolled case. That was one state collapsed onto another
+        // already spelled correctly beside it — no missing vocabulary, just a wrong selection.
+        //
+        // `Held` asserts the claim RAN AND FAILED as predicted. A claim that threw, or answered
+        // with something that is not a verdict, produced no verdict to agree with. This file
+        // already settled the principle when the same defect was repaired for budget
+        // interruption and unresolved host tools: ENROLLMENT CANNOT HOLD A CLAIM THAT WAS NEVER
+        // DECIDED. A runtime error is not a semantic verdict either, and the principle does not
+        // distinguish being cut off at a budget from throwing.
+        (ClaimOutcome::NotBool { .. }, _) => ClaimDisposition::ObservationUnreadableBeforeVerdict,
+        (ClaimOutcome::RuntimeError { .. }, _) => ClaimDisposition::RuntimeErroredBeforeVerdict,
         (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
         (ClaimOutcome::HostToolUnresolved { .. }, _) => {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
@@ -16686,9 +16708,11 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
             completion: BudgetCompletion::CompletedOverBudget,
             ..
         } => ExpectedRedArm::PassedOverBudget,
-        ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
-            ExpectedRedArm::Held
-        }
+        ClaimOutcome::Fail => ExpectedRedArm::Held,
+        // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
+        // enrollment predicts a failing verdict, and only a failing verdict can hold it.
+        ClaimOutcome::RuntimeError { .. } => ExpectedRedArm::RuntimeErrored,
+        ClaimOutcome::NotBool { .. } => ExpectedRedArm::ObservationUnreadable,
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
         ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
     }
@@ -40694,6 +40718,15 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
+    /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
+    /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
+    /// a witness that no longer returns a Bool. Neither is the enrolled failure, and holding
+    /// either lets an enrollment cover a witness that has not actually run since the day it was
+    /// enrolled.
+    pub known_red_runtime_errored: Vec<String>,
+    /// See `known_red_runtime_errored`.
+    pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     /// THE ROUTE HAD NO ARM — a sixth blocking cause, and the one this floor previously
@@ -42026,6 +42059,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        known_red_runtime_errored: Vec::new(),
+        known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
         stale_route_gap: Vec::new(),
@@ -42098,6 +42133,15 @@ pub fn run_required_floor(
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
     let mut known_red_host_effect_refused: usize = 0;
+    let mut known_red_runtime_errored_count: usize = 0;
+    // THE CAUSE CENSUS, GROUPED IN-PROCESS. A count of 172 throws is not 172 defects until
+    // something says whether they share a root, and rendering one concentrated cause as
+    // distributed debt is worse than the absorbing counter it replaces: it reads as honest
+    // accounting while being wrong about the SHAPE of the problem, and a later reader prices
+    // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
+    // the same run that produces the count.
+    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
+    let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
     // "is this enrollment still real", which is exactly how a skip list rots.
@@ -42453,6 +42497,57 @@ pub fn run_required_floor(
                     }
                     continue;
                 }
+                // A THROW IS NOT THE ENROLLED FAILURE. Same shape as the three arms above and
+                // for the same reason: enrollment asserts an expected VERDICT, and a claim that
+                // threw produced none. Held here would keep a witness enrolled forever on the
+                // strength of an error, which is the exact rot this lane exists to surface.
+                ExpectedRedArm::RuntimeErrored => {
+                    known_red_runtime_errored_count += 1;
+                    let detail = match &result {
+                        ClaimOutcome::RuntimeError { message } => {
+                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
+                            // offsets differ per row and would make every throw its own "cause",
+                            // which is the answer the census exists to avoid assuming.
+                            let signature: String = message
+                                .split_whitespace()
+                                .take(12)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            *known_red_runtime_error_causes
+                                .entry(signature.chars().take(140).collect())
+                                .or_insert(0) += 1;
+                            format!("runtime error: {message}")
+                        }
+                        other => {
+                            let rendered = format!("{other:?}");
+                            *known_red_runtime_error_causes
+                                .entry(rendered.chars().take(140).collect())
+                                .or_insert(0) += 1;
+                            rendered
+                        }
+                    };
+                    outcome.known_red_runtime_errored.push(format!(
+                        "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
+                         Enrollment asserts an expected verdict; a claim that threw \
+                         produced none. Repair the witness or its subject, then \
+                         re-read the enrollment — do not read this as the enrolled \
+                         failure.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::ObservationUnreadable => {
+                    known_red_observation_unreadable_count += 1;
+                    outcome.known_red_observation_unreadable.push(format!(
+                        "{} is enrolled as expected-red but returned something that is NOT A \
+                         VERDICT ({:?}), so it is neither the enrolled failure nor a \
+                         repayment. Enrollment asserts an expected verdict; an \
+                         unreadable observation is none. Make the witness return a \
+                         Bool, then re-read the enrollment.",
+                        claim.qualified, result
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -42627,13 +42722,34 @@ pub fn run_required_floor(
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
          budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
-         not budget)",
+         not budget); {} RUNTIME-ERRORED (threw, so never decided); {} returned a \
+         NON-VERDICT (unreadable, so never decided)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
         known_red_passed_over_budget,
-        known_red_host_tool_unresolved
+        known_red_host_tool_unresolved,
+        known_red_runtime_errored_count,
+        known_red_observation_unreadable_count
     );
+    // THE CAUSE CENSUS, PRINTED WHETHER OR NOT ANYTHING REFUSES. Largest class first, so the
+    // first line answers the only question the raw count raises: is this one root or many?
+    // Printed here rather than in the partition refusal because that refusal returns before the
+    // per-identity report runs — on precisely the run where the evidence matters, it would be
+    // computed and dropped.
+    if !known_red_runtime_error_causes.is_empty() {
+        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
+        causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        eprintln!(
+            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
+             identity(ies)",
+            causes.len(),
+            known_red_runtime_errored_count + known_red_observation_unreadable_count
+        );
+        for (signature, count) in causes.iter().take(20) {
+            eprintln!("[floor-known-red-causes] {count} × {signature}");
+        }
+    }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
         claim_rss_kb_max as f64 / 1048576.0,
@@ -42740,7 +42856,10 @@ pub fn run_required_floor(
     // AND THE PARTITION MUST BE EXACT. With the reverse join above, every enrolled identity was
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
-    // it fails loudly if a later edit adds a third arm that quietly swallows rows.
+    // it fails loudly if a later edit adds a third arm that quietly swallows rows — which is
+    // exactly what it did to the edit that added `runtime_errored` and `observation_unreadable`,
+    // catching an incomplete change one site short. The sum is the reason those two arms could
+    // not be added quietly, and it is why this invariant is worth more than the six names in it.
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
     if !roster_join_only
@@ -42750,21 +42869,41 @@ pub fn run_required_floor(
             + known_red_passed_over_budget
             + known_red_host_tool_unresolved
             + known_red_host_effect_refused
+            + known_red_runtime_errored_count
+            + known_red_observation_unreadable_count
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
              budget_refused={} passed_over_budget={} host_tool_unresolved={} \
-             host_effect_refused={} roster={} — every enrolled identity must be exactly one of \
-             held, now-passing, budget-refused, passed-over-budget, host-tool-unresolved, or \
-             host-effect-refused",
+             host_effect_refused={} runtime_errored={} observation_unreadable={} roster={} — \
+             every enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, host-tool-unresolved, host-effect-refused, runtime-errored, or \
+             observation-unreadable. First non-verdict rows: {}",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
             known_red_host_tool_unresolved,
             known_red_host_effect_refused,
-            expected_red_roster.len()
+            known_red_runtime_errored_count,
+            known_red_observation_unreadable_count,
+            expected_red_roster.len(),
+            // A BOUNDED SAMPLE, BECAUSE THIS REFUSAL RETURNS BEFORE THE PER-IDENTITY REPORT
+            // RUNS. The rows naming WHICH identities live in `outcome.known_red_runtime_errored`
+            // and are printed by `report_required_floor_outcome` — which the caller reaches only
+            // on the Ok path. So on precisely the run where the partition is wrong, the evidence
+            // that says why was computed and then dropped, and the reader is left with counts
+            // and no identities. Ten rows, not all of them: enough to see whether the population
+            // shares one cause, without turning a refusal into a log dump.
+            outcome
+                .known_red_runtime_errored
+                .iter()
+                .chain(outcome.known_red_observation_unreadable.iter())
+                .take(10)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ")
         ));
     }
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
