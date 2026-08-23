@@ -10225,9 +10225,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
