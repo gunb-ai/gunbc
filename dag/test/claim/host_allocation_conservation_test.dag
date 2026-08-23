@@ -31,6 +31,7 @@ import gunbc.ci_runner_placement {
 import gunbc.ci_floor_measurement {
   gunbc_ci_host_usable_ram_for,
   gunbc_ci_host_fixed_overhead_for,
+  gunbc_ci_conservative_lower_bound_usable_ram,
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_demand_sum_memory_max,
@@ -239,12 +240,24 @@ test fn perturbing_one_host_moves_only_that_host() -> Bool {
     && synthetic_bytes_of(host: operator_host_srv3) != byte_size_count(b: usable_ram_of(host: operator_host_srv3))
 }
 
-// srv3 IS MEASURED AS OF 2026-08-22, so this control moved to srv2 -- which is now the fleet's
-// genuine lower-bound host, its 64 GiB upgrade having failed DDR training and been reverted the
-// same day. The property under test is unchanged: whatever a host's row carries must not exceed
-// that host's real usable RAM, because the conservation wall spends against it.
+// EVERY FLEET HOST IS MEASURED AS OF 2026-08-23, so this control no longer has a live subject and
+// is stated against a CONSTRUCTED one. It was re-pointed from srv3 to srv2 when srv3 was measured;
+// re-pointing again is not available, because srv1 and srv2 were read the same day and the bound
+// arm now has no inhabitant anywhere in the fleet.
+//
+// THE ARM IS NOT DELETED, AND THE DISTINCTION IS THE POINT. Three questions decide whether a guard
+// should exist and only the first two are about health: can any authority produce this state (yes --
+// a host enrolled tomorrow carries no reading until someone takes one), can it reach THIS fold
+// (yes -- gunbc_ci_host_usable_ram_for returns it for exactly that host), and does anything occupy
+// it today (no). Yes/yes/zero is a healthy guard being quiet. Deleting it here would remove a live
+// wall while looking principled, and the wall it removes is the one that stops a bound exceeding
+// the RAM it stands in for.
 test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
+  let bound = HostUsableRamConservativeLowerBound {
+    bytes: byte_size(134217728000),
+    basis: "constructed fixture: the fleet-wide bound that stood before every host was measured",
+  }
+  match bound {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamUnmeasured => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
@@ -277,14 +290,30 @@ test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
   }
 }
 
-// Re-pointed to srv2 for the same reason as the control above: it is now the host that carries
-// the bound. The arm itself is unchanged and still reachable.
+// Constructed for the same reason as the control above, and kept for the same reason: the arm
+// stays reachable from any newly enrolled host, so the claim that a bound reads as a BOUND rather
+// than as a measurement must keep executing even with no live occupant.
 test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
+  match gunbc_ci_conservative_lower_bound_usable_ram {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
     HostUsableRamUnmeasured => false
   }
+}
+
+// AND THE FLEET IS NOW WHOLLY MEASURED, asserted directly so the transition is a fact this suite
+// holds rather than something a reader infers from the two controls above going constructed. This
+// is what raised srv1, srv3 and srv4 from the 125 GiB bound to their real ~502 GiB: the bound was
+// sound and cost those hosts a 4x under-admission for as long as it stood.
+test fn every_fleet_host_carries_a_measured_usable_ram_reading() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h => match gunbc_ci_host_usable_ram_for(host: h) {
+      HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b) > 0
+      HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+      HostUsableRamUnmeasured => false
+    },
+  )
 }
 
 data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."

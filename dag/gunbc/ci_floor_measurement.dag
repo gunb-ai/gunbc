@@ -316,6 +316,16 @@ data gunbc_ci_host_usable_ram_disposition: Disposition = Scaffold {
 // figure into this carrier would therefore have overstated the budget's ceiling by nearly ten
 // gibibytes on each host, which is the error this carrier's whole existence is meant to prevent
 // and which was one edit away the moment the BMC reported a bigger number.
+data gunbc_ci_srv1_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
+  bytes: byte_size(539281129472),
+  provenance: "srv1 /proc/meminfo MemTotal = 526641728 kB, read over SSH 2026-08-23 while the host was serving. THIS RETIRES srv1's OPERATOR-RELAYED STANDING: gunbc.fleet_intent recorded srv1's 8 x 64 GiB Samsung population from an operator report with no independent read, and this branch flagged that its row shape was identical to the two measured hosts so nothing downstream could tell them apart. The kernel now confirms it -- 502.24 GiB usable against a 512 GiB nominal population, the same ~10 GiB firmware-and-kernel reservation srv3 and srv4 show on identical boards. The relayed figure was correct; it is no longer the evidence.",
+}
+
+data gunbc_ci_srv2_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
+  bytes: byte_size(134314512384),
+  provenance: "srv2 /proc/meminfo MemTotal = 131166516 kB, read over SSH 2026-08-23, corroborated by the host docker daemon reporting MemTotal = 134314512384 bytes exactly. This is srv2 on its REVERTED 8 x 16 GiB Hynix population after its 64 GiB install failed memory training (gunbc.host_memory_qualification srv2_failed_64gib_population_standing), so 125.09 GiB usable against 128 GiB nominal. It replaces the 125 GiB conservative bound that stood for every host: the bound was sound and is now unnecessary here, and srv2 is the one host where the bound and the measurement nearly coincide -- which is why carrying it fleet-wide made the two upgraded hosts under-admit by 4x.",
+}
+
 data gunbc_ci_srv3_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
   bytes: byte_size(539282522112),
   provenance: "srv3 /proc/meminfo MemTotal = 526643088 kB, read over SSH 2026-08-22 while the host was serving (5 actions-runner units active, uptime 2h21m, kernel 6.8.0-138-generic), against the 8 x 64 GiB Samsung population installed the same day",
@@ -336,9 +346,9 @@ data gunbc_ci_srv4_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
 // unmeasured-and-accurate.
 fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   if (host as String) == (operator_host_srv1 as String) {
-    gunbc_ci_conservative_lower_bound_usable_ram
+    gunbc_ci_srv1_memtotal_measured
   } else if (host as String) == (operator_host_srv2 as String) {
-    gunbc_ci_conservative_lower_bound_usable_ram
+    gunbc_ci_srv2_memtotal_measured
   } else if (host as String) == (operator_host_srv3 as String) {
     gunbc_ci_srv3_memtotal_measured
   } else if (host as String) == (operator_host_srv4 as String) {

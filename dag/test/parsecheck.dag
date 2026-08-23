@@ -1,18 +1,21 @@
 module test.parsecheck
 import std.types { Bool }
-import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
-import extdeps.memory.cisco_ucs { ucs_mr_1x648ru_a }
-import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
-import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
-import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
-import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
-import test.claim.installed_bom_reconcile_witness_test {
-  the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost,
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.runner_shape_profile_witness_test {
+  slot_shape_derives_six_cores_from_the_sixteen_gibibyte_anchor,
+  decimal_and_binary_bases_are_not_interchangeable,
+  a_basis_less_quote_refuses_to_derive_a_core_count,
+  an_exact_multiple_does_not_gain_a_core,
+  the_adoption_covers_the_ratio_and_refuses_storage,
 }
-fn parsecheck_holds() -> Bool {
-  ucs_mr_1x648ru_a.underlying_module.rank_count == 8
-    && fleet_dimm_verdicts.length() == 4
-    && fleet_dimm_expectations.length() == 4
-    && srv1_memory_population.rows.length() == 1
-    && the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost()
+fn parsecheck_main() -> ProcessExit {
+  if slot_shape_derives_six_cores_from_the_sixteen_gibibyte_anchor()
+    && decimal_and_binary_bases_are_not_interchangeable()
+    && a_basis_less_quote_refuses_to_derive_a_core_count()
+    && an_exact_multiple_does_not_gain_a_core()
+    && the_adoption_covers_the_ratio_and_refuses_storage() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "runner shape profile witness returned false")
+  }
 }

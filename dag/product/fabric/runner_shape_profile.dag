@@ -1,8 +1,13 @@
 module product.fabric.runner_shape_profile
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, gigabyte }
 import std.nat { Nat }
+import extdeps.ci_runner.types {
+  QuotedByteMagnitude, QuotedDecimalGigabytes, QuotedBinaryGibibytes, QuotedWithoutBasis,
+  QuotedByteResolution, ResolvedBytes, QuotedBasisUnresolved, quoted_magnitude_bytes,
+}
+import v2.std.algebra { any }
 
 // A RUNNER SHAPE IS ONE FACT WITH TWO COORDINATES, AND THIS EXISTS BECAUSE THE FLEET STORED IT AS
 // TWO. gunbc.runner_slot_allocation declares cores_per_slot = 8 and memory_max = 16 GiB as
@@ -26,27 +31,63 @@ import std.nat { Nat }
 // one. Azure's Ampere Altra families quote about 4 GiB per vCPU general-purpose and about 8 GiB
 // memory-optimized. The ratio is a workload-family profile. Recording a market profile as a
 // standard would be the rung inflation DESIGN 4b names, applied to a citation.
+// AN ADOPTION NAMES THE AXES IT COVERS, so what it does NOT cover is a fact the substrate can read
+// rather than prose beside it. The first cut recorded the storage exclusion as a bare String note,
+// which DESIGN 4c rules out in as many words -- an ordinary String declaration whose sole purpose
+// is commentary is misplaced or dead data, and no Accepted program can read one, so it was
+// machine-invisible authority dressed as data (review 54922).
+//
+// The exclusion this exists for: Ubicloud's cited arm64 rows carry a per-runner disk figure (200 GB
+// at 8 vCPU, 300 at 16, 400 at 30) sitting right beside the ratio being adopted. Those rows price
+// standalone VMs that own their disks; a gunbc slot shares one host filesystem with every other
+// slot, the OS, shared caches and swap. Copying the figure would price ~21 slots at over 4 TB
+// against a 457 GB device and refuse the fleet to two slots while appearing faithful to the
+// citation. With the axis list, a consumer that wants per-runner storage asks and is told no.
+type AdoptedAxis
+  = CpuMemoryRatio
+  | PerRunnerStorage
+
+fn adoption_covers_axis(evidence: ShapeProfileEvidence, axis: AdoptedAxis) -> Bool {
+  match evidence {
+    OperatorAdoption { source: _, adopted_on: _, rationale: _, adopted_axes: axes } =>
+      any(axes, a => adopted_axis_eq(a: a, b: axis))
+    PublishedProviderCatalog { provider: _, catalog_symbol: _ } => false
+    NormativeStandard { document: _ } => false
+  }
+}
+
+fn adopted_axis_eq(a: AdoptedAxis, b: AdoptedAxis) -> Bool {
+  match a {
+    CpuMemoryRatio => match b { CpuMemoryRatio => true, PerRunnerStorage => false }
+    PerRunnerStorage => match b { CpuMemoryRatio => false, PerRunnerStorage => true }
+  }
+}
+
 type ShapeProfileEvidence
   = PublishedProviderCatalog { provider: NonEmptyStr, catalog_symbol: NonEmptyStr }
-  | OperatorAdoption { source: NonEmptyStr, adopted_on: NonEmptyStr, rationale: NonEmptyStr }
+  | OperatorAdoption {
+      source: NonEmptyStr
+      adopted_on: NonEmptyStr
+      rationale: NonEmptyStr
+      adopted_axes: List<AdoptedAxis>
+    }
   | NormativeStandard { document: NonEmptyStr }
 
-// THE RATIO IS CARRIED IN THE UNIT ITS SOURCE QUOTED, NEVER SILENTLY REBASED. gunbc.runner_shape_census
-// memory_per_vcpu returns the per-vCPU figure on the basis-less arm precisely because a quotient of
-// two quoted figures is a figure in that same unit, and promoting it to a decimal magnitude asserts
-// a basis the census cannot check. The vendor writes '48GB'; that is 48 decimal GB, which is 44.7
-// GiB -- a 7% difference, which is a whole slot at fleet scale. So the bytes are stated explicitly
-// and the label is kept beside them, rather than a bare 3 that a reader will resolve however they
-// happen to think about GB.
-type MemoryPerCore {
-  bytes: ByteSize
-  quoted_numeral: Nat
-  quoted_unit_label: NonEmptyStr
-}
+// THE RATIO REUSES extdeps.ci_runner.types QuotedByteMagnitude RATHER THAN RESTATING IT, and the
+// first cut of this module got that wrong in the exact way its own header criticizes. It carried
+// bytes: ByteSize BESIDE quoted_numeral and quoted_unit_label, with nothing deriving either from
+// the other, so byte_size(3000000000) and (3, "GB") could silently disagree -- one measured quantity
+// with two independent literals, which is a fork and not provenance (review 54922).
+//
+// The reused carrier is also strictly better than what it replaces: it states the BASIS as a
+// constructor (decimal gigabytes vs binary gibibytes vs a vendor figure with no stated basis) and
+// its resolution REFUSES on the basis-less arm instead of guessing. That matters here because the
+// whole point is that 3 GB is 2.79 GiB -- a 7% difference, a whole slot at fleet scale -- so a
+// module that could not tell the two apart would be unable to say what it means.
 
 type RunnerShapeProfile {
   name: NonEmptyStr
-  memory_per_core: MemoryPerCore
+  memory_per_core: QuotedByteMagnitude
   evidence: ShapeProfileEvidence
 }
 
@@ -65,11 +106,29 @@ type SlotMemoryAnchor {
 // than the shape justifies. Rounding UP to 6 gives each slot slightly more CPU than the profile
 // implies and admits fewer slots. Since the count derived from this shape is a capacity ADMISSION,
 // the error that over-admits is the one that hurts, so the rounding goes the other way.
-fn cores_for_anchor(anchor: SlotMemoryAnchor, profile: RunnerShapeProfile) -> Nat {
-  let want = byte_size_count(b: anchor.bytes)
-  let per = byte_size_count(b: profile.memory_per_core.bytes)
-  if per == 0 { per } else { (want + per - 1) / per }
+fn cores_for_anchor(anchor: SlotMemoryAnchor, profile: RunnerShapeProfile) -> CoreCountResolution {
+  match quoted_magnitude_bytes(quoted: profile.memory_per_core) {
+    QuotedBasisUnresolved { numeral: n, unit_label: u } =>
+      CoreCountRefused {
+        reason: "runner shape profile quotes memory-per-core with no stated basis; refusing to derive a core count, because reading the same numeral as decimal GB or binary GiB differs by about 7% and changes the fleet-wide slot count",
+      }
+    ResolvedBytes { bytes: per_bytes } => {
+      let want = byte_size_count(b: anchor.bytes)
+      let per = byte_size_count(b: per_bytes)
+      if per == 0 {
+        CoreCountRefused {
+          reason: "runner shape profile carries a zero memory-per-core figure; refusing to derive a slot shape with no CPU entitlement",
+        }
+      } else {
+        CoreCountDerived { cores: (want + per - 1) / per }
+      }
+    }
+  }
 }
+
+type CoreCountResolution
+  = CoreCountDerived { cores: Nat }
+  | CoreCountRefused { reason: NonEmptyStr }
 
 type SlotShape {
   memory: ByteSize
@@ -85,19 +144,12 @@ type SlotShapeResolution
   | SlotShapeRefused { reason: NonEmptyStr }
 
 fn resolve_slot_shape(anchor: SlotMemoryAnchor, profile: RunnerShapeProfile) -> SlotShapeResolution {
-  let cores = cores_for_anchor(anchor: anchor, profile: profile)
-  if cores == 0 {
-    SlotShapeRefused {
-      reason: "runner shape profile carries a non-positive memory-per-core figure; refusing to derive a slot shape with no CPU entitlement",
-    }
-  } else {
-    SlotShapeDerived {
-      shape: SlotShape {
-        memory: anchor.bytes,
-        cores: cores,
-        profile_name: profile.name,
-      },
-    }
+  match cores_for_anchor(anchor: anchor, profile: profile) {
+    CoreCountRefused { reason: r } => SlotShapeRefused { reason: r }
+    CoreCountDerived { cores: c } =>
+      SlotShapeDerived {
+        shape: SlotShape { memory: anchor.bytes, cores: c, profile_name: profile.name },
+      }
   }
 }
 
@@ -107,11 +159,7 @@ fn resolve_slot_shape(anchor: SlotMemoryAnchor, profile: RunnerShapeProfile) -> 
 // transfers without a threading adjustment.
 data ubicloud_standard_arm_profile: RunnerShapeProfile = RunnerShapeProfile {
   name: "ubicloud-standard-arm",
-  memory_per_core: MemoryPerCore {
-    bytes: byte_size(3000000000),
-    quoted_numeral: 3,
-    quoted_unit_label: "GB",
-  },
+  memory_per_core: QuotedDecimalGigabytes { value: gigabyte(3) },
   evidence: PublishedProviderCatalog {
     provider: "Ubicloud",
     catalog_symbol: "extdeps.cloud.ubicloud ubicloud_runner_catalog",
@@ -124,15 +172,12 @@ data ubicloud_standard_arm_profile: RunnerShapeProfile = RunnerShapeProfile {
 // Altra Max M128-30, so the ratio is being carried across a hardware boundary by choice.
 data gunbc_internal_arm_ci_profile: RunnerShapeProfile = RunnerShapeProfile {
   name: "gunbc-internal-arm-ci",
-  memory_per_core: MemoryPerCore {
-    bytes: byte_size(3000000000),
-    quoted_numeral: 3,
-    quoted_unit_label: "GB",
-  },
+  memory_per_core: QuotedDecimalGigabytes { value: gigabyte(3) },
   evidence: OperatorAdoption {
     source: "product.fabric.runner_shape_profile ubicloud_standard_arm_profile",
     adopted_on: "2026-08-23",
-    rationale: "operator ruling: price internal CI slots on the Ubicloud standard arm ratio. Adopted across a hardware boundary -- the cited rows are Altra Q80-30 and this fleet is Altra Max M128-30 -- and adopted for the CPU:memory axis ONLY.",
+    rationale: "operator ruling: price internal CI slots on the Ubicloud standard arm ratio. Adopted across a hardware boundary -- the cited rows are Altra Q80-30 and this fleet is Altra Max M128-30.",
+    adopted_axes: [CpuMemoryRatio],
   },
 }
 
@@ -143,8 +188,6 @@ data gunbc_internal_arm_ci_profile: RunnerShapeProfile = RunnerShapeProfile {
 // cap the fleet at two slots and believe they were being faithful to the citation. The rows price
 // whole VMs that own their disks; these slots share a host filesystem. The storage axis is a
 // separate question with separate evidence and does not come along with the ratio.
-data arm_profile_storage_not_adopted_note: String = "Ubicloud's cited arm64 rows carry a per-runner disk_bytes figure (200 GB at 8 vCPU, 300 GB at 16 vCPU, 400 GB at 30 vCPU). It is NOT adopted, and this row exists so that is a recorded decision rather than an oversight a later author corrects. Those rows describe standalone VMs whose disk is theirs alone; a gunbc runner slot shares one host filesystem with every other slot, the host OS, shared caches and swap, so per-slot storage demand here is a decomposition question (workspace high-water, shared cache caps, diagnostics retention) rather than a figure to copy. Adopting the quoted number would price ~22 slots at 4.4 TB against a 457 GB device and refuse the fleet down to two slots while appearing faithful to the citation."
-
 data gunbc_slot_memory_anchor: SlotMemoryAnchor = SlotMemoryAnchor {
   bytes: byte_size(17179869184),
   chosen_because: "operator ruling 2026-08-23: 16 GiB is the anchor FOR NOW and is explicitly arbitrary -- it is the per-slot figure this fleet has run and validated, not a derived quantity, and it is expected to change as the compute fabric prices slots properly. It is recorded as an anchor rather than as a slot field so that changing it moves the core count with it instead of requiring a second edit that can silently disagree.",

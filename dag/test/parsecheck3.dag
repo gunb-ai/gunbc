@@ -1,0 +1,37 @@
+module test.parsecheck3
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { byte_size_count }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_host_usable_ram_for,
+  HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+}
+import std.types { Int }
+
+// Every fleet host must now carry a MEASURED reading with the kernel's figure, not the 512 GiB
+// nominal and not the old 125 GiB fleet-wide bound. srv1 and srv3/srv4 land at ~502 GiB; srv2 stays
+// at ~125 GiB because its 64 GiB install failed training and was reverted -- so the same assertion
+// distinguishes "upgraded and measured" from "not upgraded and measured", which a bare
+// is-it-measured check would not.
+fn measured_holds() -> Bool {
+  let s1 = usable_bytes(host: operator_host_srv1)
+  let s2 = usable_bytes(host: operator_host_srv2)
+  let s3 = usable_bytes(host: operator_host_srv3)
+  let s4 = usable_bytes(host: operator_host_srv4)
+  s1 == 539281129472 && s2 == 134314512384 && s3 == 539282522112 && s4 == 539282526208
+    && s1 < 549755813888 && s2 < 137438953472
+}
+
+fn usable_bytes(host: HostIdentity) -> Int {
+  match gunbc_ci_host_usable_ram_for(host: host) {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => 0
+    HostUsableRamUnmeasured => 0
+  }
+}
+
+fn parsecheck3_main() -> ProcessExit {
+  if measured_holds() { ExitSuccess } else { exit_failure(reason: "measured_holds returned false") }
+}
