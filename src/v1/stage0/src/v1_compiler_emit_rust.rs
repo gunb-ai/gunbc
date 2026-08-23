@@ -7391,6 +7391,135 @@ pub fn reference_derived_candidate_authored(
         ))
 }
 
+pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
+    {
+        let spaced = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(s.clone(), "<".to_string(), " ".to_string()),
+                                        ">".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    ",".to_string(),
+                                    " ".to_string(),
+                                ),
+                                "(".to_string(),
+                                " ".to_string(),
+                            ),
+                            ")".to_string(),
+                            " ".to_string(),
+                        ),
+                        "[".to_string(),
+                        " ".to_string(),
+                    ),
+                    "]".to_string(),
+                    " ".to_string(),
+                ),
+                "&".to_string(),
+                " ".to_string(),
+            ),
+            ":".to_string(),
+            " ".to_string(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for t in Rc::new({
+                let mut __result = Vec::new();
+                for t in Rc::new(
+                    spaced
+                        .clone()
+                        .split(&" ".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(v1_rt::trim(t.clone()));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (t.clone() != "".to_string()) {
+                    __result.push(t);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn collect_type_node_realized_surface_names(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    rust_identifier_tokens(render_rust_type(
+        n.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.clone(),
+    ))
+}
+
+pub fn collect_item_realized_surface_names(
+    item: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    {
+        let from_ann = match item.type_annotation.clone() {
+            Some(t) => collect_type_node_realized_surface_names(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+            None => Rc::new(vec![]),
+        };
+        let from_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_realized_surface_names(
+                        param_node_type_expr(p.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let from_inferred = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                collect_type_node_realized_surface_names(
+                    rt.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(
+            from_ann.clone(),
+            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+        ))
+    }
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -7403,6 +7532,8 @@ pub fn reference_derived_use_lines(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    shared_types: Rc<BTreeSet<String>>,
+    emitted_source: String,
 ) -> Rc<Vec<String>> {
     {
         let module_source = match Rc::new({
@@ -7478,6 +7609,22 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
+        let realized_surface_names = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_item_realized_surface_names(
+                        item.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -7485,17 +7632,20 @@ pub fn reference_derived_use_lines(
                 for name in unique_strings(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                            type_surface_names.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                type_surface_names.clone(),
+                            ),
+                            field_surface_names.clone(),
                         ),
-                        field_surface_names.clone(),
+                        variant_payload_structs.clone(),
                     ),
-                    variant_payload_structs.clone(),
+                    realized_surface_names.clone(),
                 ))
                 .iter()
                 .cloned()
                 {
-                    if (reference_derived_candidate_authored(
+                    if ((reference_derived_candidate_authored(
                         module_source.clone(),
                         name.clone(),
                         emit_info.type_summaries.clone(),
@@ -7509,7 +7659,10 @@ pub fn reference_derived_use_lines(
                             }
                         }
                         __found
-                    }) {
+                    }) || reference_derived_candidate_spelled_in_module(
+                        emitted_source.clone(),
+                        name.clone(),
+                    )) {
                         __result.push(name);
                     }
                 }
@@ -7789,6 +7942,62 @@ pub fn emit_module_full(
             }),
             collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
         );
+        let module_import_items = module_imports(m.clone());
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let wire_context_items = v1_rt::concat(
+            typed_module.items.clone(),
+            contracts_items_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_context_imports = v1_rt::concat(
+            module_import_items.clone(),
+            contracts_imports_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_contract_item = Rc::new({
+            let mut __result = Vec::new();
+            for i in wire_context_items.iter().cloned() {
+                if (is_data_def_item(i.clone())
+                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
+                        == "wire_contract".to_string()))
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        let items_str = Rc::new({
+            let mut __result = Vec::new();
+            for item in typed_module.items.clone().iter().cloned() {
+                __result.push(emit_typed_item(
+                    item.clone(),
+                    authored_name(scope.type_env.clone(), m.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    wire_contract_item.clone(),
+                    scoped_data_items.clone(),
+                    wire_context_items.clone(),
+                    wire_context_imports.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    module_index.clone(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n\n".to_string());
         let prelude = emit_prelude(prelude_imported_names.clone(), local_type_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
@@ -7864,6 +8073,8 @@ pub fn emit_module_full(
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
+            shared_types.clone(),
+            items_str.clone(),
         );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
@@ -7984,26 +8195,6 @@ pub fn emit_module_full(
             }
             __result
         });
-        let module_import_items = module_imports(m.clone());
-        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
-        let wire_context_items = v1_rt::concat(
-            typed_module.items.clone(),
-            contracts_items_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
-        let wire_context_imports = v1_rt::concat(
-            module_import_items.clone(),
-            contracts_imports_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
             wire_context_items.clone(),
             wire_context_imports.clone(),
@@ -8027,42 +8218,6 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
-            let mut __result = Vec::new();
-            for i in wire_context_items.iter().cloned() {
-                if (is_data_def_item(i.clone())
-                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
-                        == "wire_contract".to_string()))
-                {
-                    __result.push(i);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned();
-        let items_str = Rc::new({
-            let mut __result = Vec::new();
-            for item in typed_module.items.clone().iter().cloned() {
-                __result.push(emit_typed_item(
-                    item.clone(),
-                    authored_name(scope.type_env.clone(), m.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    wire_contract_item.clone(),
-                    scoped_data_items.clone(),
-                    wire_context_items.clone(),
-                    wire_context_imports.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    module_index.clone(),
-                ));
-            }
-            __result
-        })
-        .join(&"\n\n".to_string());
         let phantom_zst_markers =
             emit_module_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone());
         let phantom_section = if (phantom_zst_markers.clone() == "".to_string()) {
