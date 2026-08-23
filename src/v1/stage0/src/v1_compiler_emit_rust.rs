@@ -164,36 +164,38 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
+use crate::v1_std_core::TransportKind::{
+    FileTransport, LocalTransport, RestTransport, ShellTransport,
+};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
+    binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
     find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
-    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
-    with_required_cardinality,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
+    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    NewlineIndex, Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -28910,8 +28912,8 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        emit_rest_call(
+    match classify_transport(transport.clone(), source_indices.clone()) {
+        Some(TransportKind::RestTransport) => emit_rest_call(
             op_name.clone(),
             transport.clone(),
             registry.clone(),
@@ -28921,30 +28923,31 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(
-                op_name.clone(),
-                transport.clone(),
-                registry.clone(),
-                depth.clone(),
-                inferred.clone(),
-                op_node.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_file_call(
-                    op_name.clone(),
-                    transport.clone(),
-                    op_node.clone(),
-                    source_indices.clone(),
-                )
-            } else {
-                emit_local_call(op_name.clone())
-            }
-        }
+        ),
+        Some(TransportKind::ShellTransport) => emit_shell_call(
+            op_name.clone(),
+            transport.clone(),
+            registry.clone(),
+            depth.clone(),
+            inferred.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        Some(TransportKind::FileTransport) => emit_file_call(
+            op_name.clone(),
+            transport.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        Some(TransportKind::LocalTransport) => emit_local_call(op_name.clone()),
+        None => emit_error_expr(
+            v1_rt::concat(
+                v1_rt::concat("transport for operation '".to_string(), op_name.clone()),
+                "' matches no member of the closed transport roster (rest, shell, file, local)"
+                    .to_string(),
+            ),
+            RenderTarget::Rust,
+        ),
     }
 }
 
