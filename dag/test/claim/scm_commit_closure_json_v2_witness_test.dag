@@ -80,8 +80,6 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefused,
   ClosureDocRefusal,
   ClosureDocFormatUnrecognized,
-  ClosureDocMemberMissing,
-  ClosureDocMemberDuplicated,
   ClosureDocEdgeTargetUnresolved,
   ClosureDocRootUnresolved,
   ClosureDocUnknownConnectiveTag,
