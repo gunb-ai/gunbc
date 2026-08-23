@@ -65,9 +65,11 @@ test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
 // IT IS CURRENTLY FAILING AND ENROLLED AS A KNOWN RED. A String at the natively-realized Nat is
 // admitted, by this branch and by main alike, so the second half of the conjunction is not
 // enforced anywhere downstream of declared_type_inhabitance: the consumed predicate
-// kernel_value_declared_type_mismatch does not fire for a kernel value at an algebraic type
-// application. That is a pre-existing gap, older than this branch, and it is named as this
-// class's next-rung trigger in the enrolment row.
+// kernel_value_declared_type_mismatch does not fire for a kernel value at ANY type application.
+// Nat is not the specimen that makes this legible -- a String reaching a List<Int> parameter is,
+// and Map<String, Int> admits one too, so it is not about arity and not about algebra. That is a
+// pre-existing gap, older than this branch, and the enrolment row in v2.workflow.floor_expected_red
+// carries the five-probe table and names it as this class's next-rung trigger.
 data string_at_native_nat_source: String = "module probe_inhabit_native_str\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: \"forty\") }\n"
 
 test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool {

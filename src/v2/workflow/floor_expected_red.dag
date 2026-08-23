@@ -407,11 +407,26 @@ fn floor_expected_red_chunk_13() -> List<String> {
 //   40 at std.nat.Nat           accepted    accepted    no change
 //
 // So the refusals were ASSERTED, not broken. The gap is in the consumed predicate
-// v1.compiler.infer kernel_value_declared_type_mismatch, which does not fire for a kernel
-// value at an algebraic type application, and it is older than this branch.
+// v1.compiler.infer kernel_value_declared_type_mismatch, and it is older than this branch and
+// WIDER than these two rows. Measured 2026-08-23 by five probes varying only the declared
+// type's shape, one String argument at every one:
 //
-// NEXT-RUNG TRIGGER: that predicate repaired so a non-numeric at a natively-realized declared
-// type refuses. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
+//   Int                                      kernel primitive   REFUSED
+//   NatLike = CommutativeSemiring<Magnitude> 1-arg application  admitted
+//   OneArg  = List<Int>                      1-arg application  admitted
+//   TwoArg  = Map<String, Int>               2-arg application  admitted
+//   Closed  = ZzA | ZzB { v: Int }           coproduct          REFUSED
+//
+// A KERNEL VALUE IS ADMITTED AT ANY TYPE APPLICATION -- not merely an algebraic one, and not
+// as a function of arity: the two-argument Map is admitted exactly as List<Int> is. So the
+// legible specimen is a String reaching a List<Int> parameter unremarked, which is the ordinary
+// compiler floor DESIGN requires before any differentiating claim, and Nat is one instance of it.
+// The class is "total at the level examined, blind one level down": the judgment is exhaustive
+// over primitive / coproduct / application and the application arm never asks what the
+// application EXPANDS TO, so there is no missing arm for exhaustiveness checking or review to see.
+// Located, with a reproducing input; the admitting branch has NOT been read and no line is named.
+//
+// NEXT-RUNG TRIGGER: that predicate repaired so a kernel value at a type application refuses. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
 // reds the build and names them for removal, at which point they become permanent regression
 // controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
 // regression; it is the dissolution event.
