@@ -55,13 +55,34 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 311 identities. The five added 2026-08-22 are the previously-INVISIBLE rows
-// described at chunk_20 -- they enter this roster from marker-less files rather than from a
-// regression, which is a route this roster had not carried before. The 306 below is the count
-// before them and the derivation that produced it is unchanged.
+// THE PRESENT POPULATION IS NOT WRITTEN HERE, AND THAT IS THE CORRECTION RATHER THAN AN
+// OMISSION. It is `floor_expected_red_roster()` -- the fold over the chunks below -- and that
+// fold is the only authority for it. A transcribed total is a SECOND representation of a fact
+// this module already computes (DESIGN 2/3): nothing derives from the sentence, so nothing
+// refuses when it goes stale, and it goes stale on the roster's own removal path, which is
+// designed to fire without anyone editing this header.
 //
-// POPULATION: 306 identities, after the declared rung drop below took 111 out by relocation
-// and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306). Those 52
+// It had already gone stale twice over, in the way that makes the class worth naming: this
+// block carried TWO current-state totals at once -- `311` here and `306` immediately below --
+// each correct when written, neither correct together, and the roster they both described had
+// moved on from both. Two accounts of one population in one comment is the same defect as two
+// authorities for one fact; the repair is to delete both rather than to reconcile them into a
+// third number that will rot on the same schedule.
+//
+// WHAT SURVIVES, and why the distinction is not cosmetic: a DATED MEASUREMENT bound to a named
+// run is a receipt -- it says what was observed on a tree that still exists, and it stays true
+// forever because its subject is fixed. A BARE PRESENT-TENSE TOTAL is a claim about the live
+// roster, and the live roster is exactly what this file already computes. So the derivations,
+// the run ids, the 429/313 partition and the removal history below all remain untouched; only
+// the two sentences asserting a current count are gone.
+//
+// The five rows added 2026-08-22 are the previously-INVISIBLE rows described at chunk_20 --
+// they enter this roster from marker-less files rather than from a regression, which is a route
+// this roster had not carried before, and that route is the reason they are called out here.
+//
+// The derivation below is a receipt and is unchanged: the declared rung drop took 111 out by
+// relocation and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306
+// as of that run). Those 52
 // reported STALE-QUARANTINE -- enrolled as expected-red and PASSED -- which is this roster's own
 // removal path, not a roster edit: they pass because that branch closed two emitter roots (a
 // builtin answering a call the program had already bound to a lexical binding, and a bare closure
@@ -346,7 +367,7 @@ fn floor_expected_red_chunk_03() -> List<String> {
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-  Cons { head: "test.claim.materialized_secret.witness_destroyed_version_refuses_even_when_probe_says_live", tail: Cons { head: "test.claim.materialized_secret.witness_enabled_but_revoked_refuses", tail: Cons { head: "test.claim.materialized_secret.witness_enabled_but_unprobed_refuses", tail: Cons { head: "test.claim.materialized_secret.witness_live_secret_materializes_and_runs_the_use", tail: Cons { head: "test.claim.materialized_secret.witness_red_control_existence_only_rejected_by_gate", tail: Cons { head: "test.claim.materialized_secret.witness_self_repairing_probe_is_refused_by_classification", tail:    Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Cons { head: "test.claim.realization_reconcile_witness.witness_different_keysource_does_not_collapse", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_post_always_never_collapses", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_same_keysource_collapses_to_share", tail:  Empty {} } } } } } } } } } } } } }
+     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Cons { head: "test.claim.realization_reconcile_witness.witness_different_keysource_does_not_collapse", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_post_always_never_collapses", tail: Cons { head: "test.claim.realization_reconcile_witness.witness_same_keysource_collapses_to_share", tail:  Empty {} } } } } } } }
 }
 
 fn floor_expected_red_chunk_05() -> List<String> {
