@@ -45,14 +45,12 @@ fn arrival_label(s: ArrivalShape) -> NonEmptyStr {
 fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
   match s {
     FlatArrival { concurrent } => concurrent,
-    DiurnalArrival { trough, peak, period_slots, busy_slots } =>
-      if period_slots == 0 {
+    DiurnalArrival { trough, peak, period_slots, busy_slots } => if period_slots == 0 {
         trough
       } else {
         if (slot % period_slots) < busy_slots { peak } else { trough }
       },
-    BurstyArrival { base, burst, every_slots, burst_width } =>
-      if every_slots == 0 {
+    BurstyArrival { base, burst, every_slots, burst_width } => if every_slots == 0 {
         base
       } else {
         if (slot % every_slots) < burst_width { burst } else { base }
@@ -113,10 +111,8 @@ fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
   PlacementAccum {
     remaining: acc.remaining - taken,
     variable_micros: acc.variable_micros + (billed * lane.variable_micros_per_slot),
-    placed_committed:
-      if lane.committed_micros_per_slot > 0 { acc.placed_committed + taken } else { acc.placed_committed },
-    placed_variable:
-      if lane.committed_micros_per_slot > 0 { acc.placed_variable } else { acc.placed_variable + taken },
+    placed_committed: if lane.committed_micros_per_slot > 0 { acc.placed_committed + taken } else { acc.placed_committed },
+    placed_variable: if lane.committed_micros_per_slot > 0 { acc.placed_variable } else { acc.placed_variable + taken },
     unplaced: acc.unplaced,
   }
 }
@@ -129,7 +125,7 @@ fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
     placed_variable: 0,
     unplaced: 0,
   }
-  let filled = fold(lanes, seeded, (acc, lane) => place_on_lane(acc: acc, lane: lane))
+  let filled = fold(lanes, init: seeded, f: (acc, lane) => place_on_lane(acc: acc, lane: lane))
   PlacementAccum {
     remaining: 0,
     variable_micros: filled.variable_micros,
@@ -164,16 +160,15 @@ fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum 
 }
 
 fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> Nat {
-  fold(lanes, 0, (acc, lane) => acc + (lane.committed_micros_per_slot * slots))
+  fold(lanes, init: 0, f: (acc, lane) => acc + (lane.committed_micros_per_slot * slots))
 }
 
 fn lane_capacity_total(lanes: List<SupplyLane>) -> Nat {
-  fold(lanes, 0, (acc, lane) => acc + lane.capacity)
+  fold(lanes, init: 0, f: (acc, lane) => acc + lane.capacity)
 }
 
 fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
-  fold(lanes, 0, (acc, lane) =>
-    if lane.committed_micros_per_slot > 0 { acc + lane.capacity } else { acc })
+  fold(lanes, init: 0, f: (acc, lane) => if lane.committed_micros_per_slot > 0 { acc + lane.capacity } else { acc })
 }
 
 // UNPLACED WORK IS REPORTED, NEVER ABSORBED. A slot whose demand exceeds every lane's
@@ -194,6 +189,11 @@ type SimulationResult {
   committed_occupancy_permille: Nat
 }
 
+fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slot: Nat) -> RunAccum {
+  let concurrent = concurrency_at(s: shape, slot: slot)
+  run_step(acc: acc, placed: place_slot(lanes: lanes, concurrent: concurrent), concurrent: concurrent)
+}
+
 fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> SimulationResult {
   let grid = nat_range_inclusive(lo: 0, hi: if slots == 0 { 0 } else { slots - 1 })
   let seeded = RunAccum {
@@ -204,10 +204,7 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
     peak_concurrency: 0,
     total_concurrency: 0,
   }
-  let run = fold(grid, seeded, (acc, slot) => {
-    let concurrent = concurrency_at(s: shape, slot: slot)
-    run_step(acc: acc, placed: place_slot(lanes: lanes, concurrent: concurrent), concurrent: concurrent)
-  })
+  let run = fold(grid, init: seeded, f: (acc, slot) => run_one_slot(acc: acc, shape: shape, lanes: lanes, slot: slot))
   let committed = lane_committed_total(lanes: lanes, slots: slots)
   let committed_capacity = committed_capacity_total(lanes: lanes)
   SimulationResult {
@@ -221,8 +218,7 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
     unplaced_slot_jobs: run.unplaced_slot_jobs,
     peak_concurrency: run.peak_concurrency,
     total_concurrency: run.total_concurrency,
-    committed_occupancy_permille:
-      if committed_capacity == 0 || slots == 0 {
+    committed_occupancy_permille: if committed_capacity == 0 || slots == 0 {
         0
       } else {
         (run.committed_slot_jobs * 1000) / (committed_capacity * slots)

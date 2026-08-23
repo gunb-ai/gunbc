@@ -49,6 +49,15 @@ fn verdict_costs_more(v: AcquisitionVerdict) -> Bool {
   }
 }
 
+fn verdict_refused(v: AcquisitionVerdict) -> Bool {
+  match v {
+    CommitmentPaysOff { saved_micros, occupancy_permille } => false
+    CommitmentCostsMore { excess_micros, occupancy_permille } => false
+    CommitmentBreaksEven { occupancy_permille } => false
+    VerdictRefusedUnplacedWork { unplaced_slot_jobs } => true
+  }
+}
+
 fn run_for(shape: ArrivalShape) -> AcquisitionVerdict {
   acquisition_verdict(
     with_commitment: simulate(shape: shape, lanes: portfolio(), slots: 600),
@@ -105,12 +114,7 @@ test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Boo
   }]
   let overloaded = simulate(shape: FlatArrival { concurrent: 50 }, lanes: tiny, slots: 10)
   overloaded.unplaced_slot_jobs > 0
-    && match acquisition_verdict(with_commitment: overloaded, all_rented: overloaded) {
-      VerdictRefusedUnplacedWork { unplaced_slot_jobs } => true
-      CommitmentPaysOff { saved_micros, occupancy_permille } => false
-      CommitmentCostsMore { excess_micros, occupancy_permille } => false
-      CommitmentBreaksEven { occupancy_permille } => false
-    }
+    && verdict_refused(v: acquisition_verdict(with_commitment: overloaded, all_rented: overloaded))
 }
 
 // Occupancy is the number the acquisition decision actually turns on, so it is reported
