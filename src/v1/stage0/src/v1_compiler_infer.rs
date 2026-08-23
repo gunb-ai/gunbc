@@ -2855,6 +2855,8 @@ pub fn kernel_value_declared_type_mismatch(
                             source_indices.clone(),
                         )) {
                             false
+                        } else if (formal_base.children.clone().len() as i64) > 0 {
+                            true
                         } else {
                             if is_kernel_type(formal_name.clone()) {
                                 true
