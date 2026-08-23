@@ -11,7 +11,7 @@ import v2.std.dependency {
 import v2.std.logic { Bool }
 import v2.std.node { Node, content_hash }
 import std.measure { ByteSize }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, Fnv1a64 }
 import v2.workflow.realization_runner {
   NodeKeyedGraphArtifact,
   NodeKeyedGraphTransitiveBytesMissingRow,
@@ -75,7 +75,7 @@ fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView)
         cause: OperandFlowNoOperand { edge: unresolved_edge }
       }
     OperandRoot { root: root } =>
-      let operand = content_hash(n: root)
+      let operand = Fnv1a64(content_hash(n: root))
       match node_keyed_graph_transitive_bytes(artifact: artifact, root: operand) {
         NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
           OperandFlow { edge: edge, operand: operand, footprint: bytes }

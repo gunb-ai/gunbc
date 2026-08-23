@@ -34,8 +34,9 @@ import v1.std.core {
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
-  NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
-  is_file_transport, transport_base_path, empty_intern_table
+  NoConnective, Cardinality, Required, CardOptional, is_rest_transport,
+  classify_transport, RestTransport, ShellTransport, FileTransport, LocalTransport,
+  transport_base_path, empty_intern_table
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
@@ -10881,10 +10882,16 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 }
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
-  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, transport: transport, op_node: op_node, source_indices: source_indices) }
-  else { emit_local_call(op_name: op_name) }
+  match classify_transport(t: transport, source_indices: source_indices) {
+    Present { value: RestTransport } => emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
+    Present { value: ShellTransport } => emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices)
+    Present { value: FileTransport } => emit_file_call(op_name: op_name, transport: transport, op_node: op_node, source_indices: source_indices)
+    Present { value: LocalTransport } => emit_local_call(op_name: op_name)
+    Absent => emit_error_expr(
+      message: concat("transport for operation '", op_name,
+        "' matches no member of the closed transport roster (rest, shell, file, local)"),
+      target: Rust)
+  }
 }
 
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {

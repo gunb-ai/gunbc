@@ -17,6 +17,7 @@ import std.realization_schedule {
   cost_account_predicted_zero,
   runnable_resource_profile_negligible
 }
+import std.content_hash { Fnv1a64 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -80,7 +81,7 @@ test fn node_content_hash_is_realization_plan_target() -> Bool {
   let root = dup_fixture()
   let other = distinct_fixture()
   let plan = RealizationPlan {
-    target: content_hash(n: root)
+    target: Fnv1a64(content_hash(n: root))
     objective: RealizationObjective { goals: [] }
     schedule: witness_plan_schedule()
     total: cost_account_predicted_zero()

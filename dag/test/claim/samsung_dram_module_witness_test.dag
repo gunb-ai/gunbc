@@ -14,6 +14,7 @@ data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 8),
   rank_count: 1,
 }
