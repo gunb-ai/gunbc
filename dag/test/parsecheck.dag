@@ -1,6 +1,15 @@
 module test.parsecheck
 import std.types { Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
+import extdeps.memory.cisco_ucs { ucs_mr_1x648ru_a }
+import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
+import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
+import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
+import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
+import test.claim.installed_bom_reconcile_witness_test {
+  the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost,
+}
 import gunbc.runner_disk_reclaim {
   admit_reclaim_operation, reclaim_admission_proceeds, reclaim_operations,
   operation_requires_idle_slot, repack_admits_pack_count, review_ref_should_be_dropped,
@@ -14,14 +23,29 @@ import gunbc.runner_disk_reclaim {
   admit_reclaim_observation, ReclaimObservationAdmitted, ReclaimObservationRefused,
 }
 
+// The memory half arrived on main with #8947 and the reclaim half on this branch; both are kept
+// rather than either side winning the add/add, because they assert about different subjects and
+// resolving a conflict by choosing one would silently delete the other's coverage.
+fn parsecheck_holds() -> Bool {
+  memory_model_holds() && reclaim_model_holds()
+}
+
+fn memory_model_holds() -> Bool {
+  ucs_mr_1x648ru_a.underlying_module.rank_count == 8
+    && fleet_dimm_verdicts.length() == 4
+    && fleet_dimm_expectations.length() == 4
+    && srv1_memory_population.rows.length() == 1
+    && the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost()
+}
+
 // Git work refuses on a busy slot and proceeds on an idle one, while diagnostic rotation proceeds
 // regardless -- the asymmetry IS the safety argument, so both directions are asserted. An
 // unobserved slot refuses rather than assuming either answer. The pack gate is exercised at its
 // boundary (46 admits, 8 does not, against a floor of 8). A managed path is owned and a foreign
-// occupant is not, so the reconcile refuses instead of deleting somebody else's unit. And differing
-// content at one path is a CHANGE to one member rather than two members, which is what keeps a
-// schedule edit from becoming a teardown-and-recreate with no reclaim in between.
-fn parsecheck_holds() -> Bool {
+// occupant is not, so the reconcile refuses instead of deleting somebody else's unit. Differing
+// content at one path is a CHANGE to one member rather than two, which keeps a schedule edit from
+// becoming a teardown-and-recreate with no reclaim in between.
+fn reclaim_model_holds() -> Bool {
   let gc = IdleSlotGitRepack { min_packs: reclaim_repack_min_packs, timeout: reclaim_repack_timeout }
   let rotate = DiagLogRotation { max_age: reclaim_diag_max_age }
   !reclaim_admission_proceeds(a: admit_reclaim_operation(op: gc, activity: SlotHasLiveWorker))
@@ -48,9 +72,9 @@ fn parsecheck_holds() -> Bool {
 
 // An unreadable unit REFUSES the whole plan rather than shrinking the roster to what could be read.
 // The discriminating pair matters: the same observation list is admitted when the third entry is a
-// genuine absence and refused when it is unreadable, so the arm is doing the work rather than the
-// count. If absence and unreadability were folded together -- as the cap observer folds them -- both
-// calls would return Admitted and this claim would go green while the distinction was gone.
+// genuine absence and refused when it is unreadable, so the arm does the work rather than the count.
+// If absence and unreadability were folded together -- as the cap observer folds them -- both calls
+// would return Admitted and this claim would go green while the distinction was gone.
 fn observation_arms_hold() -> Bool {
   let member = ReclaimMember {
     unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer",
@@ -78,10 +102,9 @@ fn observation_arms_hold() -> Bool {
   admitted && refused
 }
 
-// THE ENTRY RETURNS ProcessExit SO THE EXIT CODE IS THE VERDICT. A Bool-returning entry makes the
-// host refuse to map a verdict to an exit status, and the refusal message is identical whether the
-// function returned true or false -- so a reader who loses that one line to output truncation
-// cannot tell a pass from a failure, and the safe-looking assumption is the wrong one.
+// The entry returns ProcessExit so the exit code IS the verdict. A Bool-returning entry makes the
+// host refuse to map a verdict to an exit status, and the refusal text reads identically whether the
+// function returned true or false -- so a truncated log cannot distinguish a pass from a failure.
 fn parsecheck_main() -> ProcessExit {
   if parsecheck_holds() {
     ExitSuccess
