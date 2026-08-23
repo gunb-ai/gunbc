@@ -11,12 +11,12 @@ import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
 
-// An Offer is a supplier's statement of capacity it is willing to sell. Owned
+// A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
 // the statement, not the kind of thing being stated.
 
 // Observed and quoted supply differ in their evidence, not in their type, and
-// minting two Offer types would fork the selection fold that must compare
+// minting two SupplierOffer types would fork the selection fold that must compare
 // them. ObservedSupply is a measurement - this host has three free slots right
 // now, and here is the receipt. QuotedSupply is a standing willingness to sell
 // - this supplier will provide up to N of this shape at this rate until this
@@ -47,7 +47,7 @@ import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, Execu
 //
 // The runtime coproduct is here for a reason the type parameter cannot serve:
 // selection ranks offers billed on different bases against each other, so they
-// must inhabit one roster, and Offer<P, PerHour> and Offer<P, PerSecond> would
+// must inhabit one roster, and SupplierOffer<P, PerHour> and SupplierOffer<P, PerSecond> would
 // be different types. Discriminating at the value level keeps the roster
 // homogeneous while keeping the periods unaddable, since reaching either
 // amount requires naming which period it is.
@@ -89,7 +89,7 @@ type OfferEvidence
       receipt: ObservationReceiptRef,
     }
 
-type Offer<P> {
+type SupplierOffer<P> {
   id: FabricIdentity<P, OfferKey>
   executor: P
   shape: Shape
@@ -102,7 +102,7 @@ type Offer<P> {
   evidence: OfferEvidence
 }
 
-// An Offer carries no remaining_capacity field. Remaining capacity is DERIVED
+// A SupplierOffer carries no remaining_capacity field. Remaining capacity is DERIVED
 // as the allocatable bound minus the sum of active grant claims against that
 // offer, and deriving it is precisely what makes atomic grant issuance
 // conserve supply. A stored remainder is a second representation of the grant
@@ -138,7 +138,7 @@ type Offer<P> {
 // refusal or a demand that stays pending. It is never a degraded execution
 // path, and there is no arm to reach for one.
 
-type SelectionPolicy =
+type SupplySelectionPolicy =
   | CheapestFungibleWithDelayValuation
 
 // FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
@@ -146,7 +146,7 @@ type SelectionPolicy =
 // This fold arrived here from gunbc.fabric_witness_run, where it had been
 // written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
 // it was ever about the floor: comparing a Work's requirements against an
-// Offer's capabilities is provider-neutral, and work.dag's own header already
+// SupplierOffer's capabilities is provider-neutral, and work.dag's own header already
 // calls fungibility "selection's first and load-bearing step". A consumer that
 // owns this fold is a consumer that will answer it differently from the next
 // consumer, which is the fork the fabric exists to prevent.
@@ -220,7 +220,7 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // fungible offers, and choosing -- like pricing -- is where economics live,
 // never here.
 
-fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>) -> OfferFungibility {
+fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: SupplierOffer<P>) -> OfferFungibility {
   if requirements.trust_domain != offer.trust_domain {
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
   } else if requirements.capabilities != offer.capabilities {
@@ -353,7 +353,7 @@ fn offer_quoted_total_for_grant(
 // known to whoever is asking, never stored on the offer.
 
 fn offer_affordability_for<P>(
-  offer: Offer<P>,
+  offer: SupplierOffer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   duration: GrantDuration,

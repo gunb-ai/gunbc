@@ -22,8 +22,8 @@ fn t_offer(
   caps: CapabilityManifestRef,
   trust: TrustDomainRef,
   quote: OfferQuote,
-) -> Offer<NonEmptyStr> {
-  Offer {
+) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
     shape: Shape { hard: HardRequirements { threads: threads } },
@@ -43,8 +43,8 @@ fn t_offer(
 fn t_offer_with_quantum(
   quote: OfferQuote,
   quantum_seconds: Nat,
-) -> Offer<NonEmptyStr> {
-  Offer {
+) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
     executor: "gunbc",
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) } },
@@ -107,7 +107,7 @@ fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
 // AFFORDABILITY SCREENING and it is not selection -- nothing here chooses among
 // several affordable offers, and choosing would need the interval, tariff,
 // commitment state and alternative uses that no carrier holds yet.
-fn t_fleet_offer() -> Offer<NonEmptyStr> {
+fn t_fleet_offer() -> SupplierOffer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -139,11 +139,11 @@ fn affordable(a: DemandOfferAffordability) -> Bool {
   }
 }
 
-fn floor_fungibility(offer: Offer<NonEmptyStr>) -> OfferFungibility {
+fn floor_fungibility(offer: SupplierOffer<NonEmptyStr>) -> OfferFungibility {
   floor_offer_fungibility(offer: offer)
 }
 
-fn floor_affordability(offer: Offer<NonEmptyStr>) -> DemandOfferAffordability {
+fn floor_affordability(offer: SupplierOffer<NonEmptyStr>) -> DemandOfferAffordability {
   floor_offer_affordability(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
 }
 
@@ -254,7 +254,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
 // went red on a claim nobody had reread. It now uses its OWN zero-quoted offer,
 // because the property under test is the strictness of the comparison and has
 // nothing to do with the fleet.
-fn t_free_offer() -> Offer<NonEmptyStr> {
+fn t_free_offer() -> SupplierOffer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",

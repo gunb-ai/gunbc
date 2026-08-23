@@ -62,9 +62,9 @@ fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
 // SUPPLY LANES
 // ---------------------------------------------------------------------------------------
 
-// A COMMITMENT HAS NO HOME ON Offer, AND THAT ABSENCE IS WHY THIS TYPE EXISTS.
+// A COMMITMENT HAS NO HOME ON SupplierOffer, AND THAT ABSENCE IS WHY THIS TYPE EXISTS.
 //
-// product.fabric.supply's Offer carries a quote and a quantity bound: what a unit costs
+// product.fabric.supply's SupplierOffer carries a quote and a quantity bound: what a unit costs
 // and how many are available. It does NOT carry what is owed whether or not a single job
 // runs, because the core deliberately models a posted ask and not a tariff. A monthly
 // dedicated host, an annual licence and a colo cage are all that missing number, and a

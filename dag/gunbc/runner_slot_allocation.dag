@@ -505,8 +505,8 @@ fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
 //
 // THIS IS THE EXECUTION MEMBER ONLY. The srv1 control-plane slice is NOT a member of this list and
 // must not become one: an allocatable executor and a statically pinned bootstrap have opposite
-// liveness properties -- the executor is selected by Demand and appears in an Offer, the control
-// plane is placed by host convergence, never appears in an Offer, and must not need a Grant to
+// liveness properties -- the executor is selected by Demand and appears in a SupplierOffer, the control
+// plane is placed by host convergence, never appears in a SupplierOffer, and must not need a Grant to
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
