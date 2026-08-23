@@ -1,6 +1,6 @@
 module test.claim.heal_revalidation_witness
 
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { ContentHash, Fnv1a64, content_hash_atom }
 import std.types { CommitSha }
 import extdeps.github.checks { Success }
 import gunbc.merge_admission {
@@ -26,8 +26,8 @@ import gunbc.heal_revalidation {
 data prior_head: CommitSha = "1111111111111111111111111111111111111111"
 data healed_head: CommitSha = "2222222222222222222222222222222222222222"
 data other_head: CommitSha = "3333333333333333333333333333333333333333"
-data required_roster: Fnv1a64Structural = content_hash_atom(value: "heal-roster")
-data required_gate: Fnv1a64Structural = content_hash_atom(value: "heal-gate")
+data required_roster: ContentHash = Fnv1a64(content_hash_atom(value: "heal-roster"))
+data required_gate: ContentHash = Fnv1a64(content_hash_atom(value: "heal-gate"))
 
 fn produced() -> HealOutcome {
   HealProduced {
