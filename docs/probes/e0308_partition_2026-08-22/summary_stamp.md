@@ -3,7 +3,8 @@
 **CORRECTED 2026-08-23:** this is an E0308 projection, not mechanism grain. `A-clone = 12` reaches
 E0277 and E0599 too and has cross-code population 22. All percentages below are code-local shares,
 not mechanism shares; the cost/staffing inference is withdrawn. See
-[`rustc_mechanism_partition_2026-08-23.md`](../rustc_mechanism_partition_2026-08-23.md).
+[`rustc_mechanism_partition_2026-08-23.md`](../rustc_mechanism_partition_2026-08-23.md). That
+population is at this stamp's `967b5bc1b92` ref, not the current certified `98b18cdc81e` board.
 
 ## Completeness standing (reporting convention adopted 2026-08-22)
 

@@ -36,11 +36,18 @@ The classifier recognizes only the one cross-code mechanism established here. It
 are `UNCLASSIFIED`, not code-derived guesses. The former E0308 label is carried separately as
 `e0308_candidate_projection`; it reproduces that view without promoting it to root identity.
 
-## Established cross-code mechanism
+## Established cross-code mechanism at `967b5bc1b92ee66250e06a7870c132b48a16b80a`
 
-| mechanism | E0308 | E0277 | E0599 | population | board share |
-|---|---:|---:|---:|---:|---:|
-| `ABSENT_CLONE_BOUND` | 12 | 6 | 4 | **22** | **6.5%** of 341 manifestations |
+| ref | mechanism | E0308 | E0277 | E0599 | population | board share |
+|---|---|---:|---:|---:|---:|---:|
+| `967b5bc1b92ee66250e06a7870c132b48a16b80a` | `ABSENT_CLONE_BOUND` | 12 | 6 | 4 | **22** | **6.5%** of 341 manifestations at the same ref |
+
+**This is not a current-board population.** The current certified board is at
+`98b18cdc81e`, while every figure in this receipt comes from the retained log at `967b5bc1b92`.
+In particular, **22 must not be quoted against 316**: 22 is a classified-manifestation population
+at the older ref, while 316 is a raw-rustc-row total at the current ref. They differ in both unit
+and tree. A current population requires running this classifier over a current-ref log; the
+structural finding that a per-code partition splits one mechanism does not.
 
 The discriminator is not the word `clone` alone:
 
@@ -56,8 +63,8 @@ representation mismatches whose source expressions happen to clone values.
 
 The earlier table's `A-clone = 12` is a correct **E0308 projection** and an unsound mechanism
 population. Its `7.8%` is a correct share of the 154 E0308 manifestations and an unsound mechanism
-share. The mechanism population is 22 on this board; its share is 6.5% of the cross-code
-manifestation denominator.
+share. The mechanism population is 22 on the `967b5bc1b92` board; its share is 6.5% of that same
+ref's cross-code manifestation denominator.
 
 This is a **population revision, not a board rise**. No diagnostic was added and nothing regressed;
 the cross-code classifier makes 10 already-present manifestations visible to the mechanism
