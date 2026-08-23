@@ -199,3 +199,25 @@ demonstration in this lane that the floor reports the FIRST unresolved name and 
 guarantees an advance, not a verdict.
 
 `runtime_errored_111_after_round_2.tsv` is the post-round-2 population as the run printed it.
+
+## Round 3: the resolvable remainder, in one batch because the run is the check
+
+With the gate hazard retired by round 2's measurement, the remaining reference rows are batched
+rather than trickled. Of the 111, **90 name a symbol with exactly one declaring module** that the
+referring file does not import: 48 files, 70 imports. Three of those needed the declaring module
+decided by the FIELD's type rather than by uniqueness, because the name is corpus-ambiguous and
+the census resolves ambiguity silently:
+
+- `Dag` -> `v2.lens.fact_cardinality` (the `FactCardinalityDeclFact.tree` field's own coproduct),
+  not `v2.lens.affected_set`'s type of the same name;
+- `SourceFile` (x2) -> `v2.std.artifact` (the `Artifact.kind` field's `ArtifactKind`), not
+  `v1.compiler.compile`'s type of the same name.
+
+The remaining 21 are the tail families below plus the three `runtime_axis` rows already imported
+in round 2: seven `srv3_subsumption` and one `host_phase_status` and four `bootstrap_footprint`
+on `atom_identity_hash`, one `produced_decl_support` on the `render` shadowing, two `staging` on
+`.raw on Int`, and one divergent fixture. None of them is an import.
+
+Batching is safe here in the specific sense the floor makes it safe: every row still executes,
+`failed=0` is asserted over the whole corpus, and a repair that breaks a sibling witness shows up
+as a FAILURE naming it rather than as a silent pass. The batch is checked by the fold, not by me.
