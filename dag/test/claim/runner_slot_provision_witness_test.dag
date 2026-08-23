@@ -1,7 +1,7 @@
 module test.claim.runner_slot_provision
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr, List }
+import std.types { list_length, NonEmptyStr, List, String }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   actions_runner_release_2_334_0,
@@ -86,6 +86,7 @@ test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
   list_length(items: names) == srv3_runner_host_deploy.runner_count
     && string_contains(s: names.first(), pattern: "srv3-01")
     && list_length(items: names) > 1
+    && roster_names_are_distinct(names: names)
 }
 
 // The reconcile fixtures plant their OWN five-slot deploy row rather than
@@ -165,8 +166,56 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // so it measured the tree rather than checking a relation. The relation it was reaching for is that
 // the instance roster and the declared count cannot disagree, which holds at any width.
 test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
-  list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy))
-    == srv4_runner_host_deploy.runner_count
+  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
+  list_length(items: names) == srv4_runner_host_deploy.runner_count
+    && roster_names_are_distinct(names: names)
+}
+
+// A LENGTH IS NOT A ROSTER, AND EVERY PURE LENGTH ASSERTION IN THIS FILE HAD THIS HOLE.
+//
+// A generator emitting ONE name N times satisfies `list_length(names) == count` perfectly while
+// deploying a single runner N ways -- N units all pointing at one slot directory, one registration
+// name contending with itself. The count check cannot see it because the count is right.
+//
+// Found by silent-bear-842, who independently rewrote these rows and asked what a length assertion
+// does NOT cover before shipping. Kept as a named function rather than inlined because it belongs
+// beside every length claim, not just this one.
+fn roster_names_are_distinct(names: List<String>) -> Bool {
+  !any(names, a => list_length(items: filter(names, b => b == a)) > 1)
+}
+
+// THE INDEXING CONTRACT, PINNED ON GROUND THAT CANNOT MOVE.
+//
+// The rows this file used to carry asserted srv3-01 and srv3-06 by name -- one-based, zero-padded,
+// last index equals count. Those were real claims and they were deleted along with the width
+// literals they were entangled with, because every index expectation was a function of a width the
+// CPU axis then moved. Deriving the expectation from the width would have made it vacuous: the
+// enumerator would be checked against itself.
+//
+// An AUTHORED runner_count breaks that circle. Three is a number the allocation authority never
+// produced and never will, so this row pins one-basedness, zero-padding and the count-to-last-index
+// relation without consulting the fleet at all. That is the planted-fixture side of the
+// authority-witness / boundary-probe split: a fixture that authors its own input SHOULD carry
+// literals, and only a probe aimed at a live authority must derive its discriminator.
+//
+// Measured discriminating rather than assumed: under a planted one-off in runner_instance_names
+// (mapping over runner_count - 1) this row returns false, as do the two length rows above
+// (silent-bear-842).
+data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "fixture-host",
+  ssh_target: "fixture@203.0.113.1",
+  runner_user: "fixture",
+  job_user: "fixturejob",
+  app: gunbc_ci_github_app,
+  runner_count: 3,
+}
+
+test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
+  let names = runner_instance_names(deploy: authored_three_slot_deploy)
+  list_length(items: names) == 3
+    && string_contains(s: names.first(), pattern: "fixture-host-01")
+    && string_contains(s: names.skip(n: 2).first(), pattern: "fixture-host-03")
+    && roster_names_are_distinct(names: names)
 }
 
 // --- converge seam: the refusal must be real, not decorative ----------------------------------
