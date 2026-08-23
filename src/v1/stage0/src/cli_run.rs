@@ -6853,10 +6853,29 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
         // The refusal must be the ANNOTATION one. A fixture that refuses for an unrelated
         // reason would keep this control permanently green while the class it stands for
         // went unobserved.
+        //
+        // The expected sentence is ASKED FOR rather than spelled: it comes from the single
+        // message authority, `std_source_annotation` `annotation_attachment_refusal_message`,
+        // keyed on the typed variant `UnattachedAtScopeEnd` that this fixture provokes. A
+        // literal here would have been a positional pointer into a message -- a second
+        // spelling of a sentence one function owns, which a rewording silently invalidates
+        // (DESIGN §3). Grounded this way, a rewording moves both sides together and the
+        // check cannot rot; the variant, not the wording, is the identity being asserted.
         EntryEmissionDisposition::Refused { cause, .. } => {
-            if !cause.contains("source annotation names no subject") {
+            let expected = crate::std_source_annotation::annotation_attachment_refusal_message(
+                Rc::new(
+                    crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
+                        origin: Rc::new(crate::std_types::SourceSpan {
+                            file: String::new(),
+                            start: 0,
+                            end: 0,
+                        }),
+                    },
+                ),
+            );
+            if !cause.contains(&expected) {
                 failures.push(format!(
-                    "selftest RED refused for the wrong cause; expected the annotation refusal, got: {cause}"
+                    "selftest RED refused for the wrong cause; expected the UnattachedAtScopeEnd refusal ({expected}), got: {cause}"
                 ));
             }
         }
