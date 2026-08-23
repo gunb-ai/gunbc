@@ -3,6 +3,7 @@ module test.claim.materialization_provider_witness
 import std.types { Bool, Int, List, String }
 import std.content_hash {
   ContentHash,
+  Fnv1a64,
   content_hash_atom,
   as_content_hash_cryptographic,
   sha256_hex_digest,
@@ -240,7 +241,7 @@ test fn red_wrong_content_refuses_never_hits() -> Bool {
     req: witness_closure_request(),
     probe: ProbeFound {
       artifact: witness_complete_closure_artifact(),
-      observed_digest: content_hash_atom(value: "closure-payload-corrupt")
+      observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
     }
   )
   lookup_is_refused_wrong_content(l: poisoned) && (lookup_is_hit(l: poisoned) == false)

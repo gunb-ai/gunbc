@@ -3,7 +3,7 @@ module v2.workflow.locality_affinity
 import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
 import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.types { Int }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, Fnv1a64 }
 import v2.std.algebra { any, length }
 import v2.std.collection {
   List
@@ -54,7 +54,7 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
                 if measure_le(a: prior, b: f) && measure_le(a: f, b: prior) {
                   AffinityCollectOk {
                     footprint: fp,
-                    consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                    consumers: list_add_distinct_hash(xs: cs, v: Fnv1a64(content_hash(n: e.dependent)))
                   }
                 } else {
                   AffinityCollectRefused {
@@ -64,7 +64,7 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
               Absent =>
                 AffinityCollectOk {
                   footprint: optional_present(value: f),
-                  consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                  consumers: list_add_distinct_hash(xs: cs, v: Fnv1a64(content_hash(n: e.dependent)))
                 }
             }
           } else {

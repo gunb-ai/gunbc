@@ -239,12 +239,31 @@ test fn perturbing_one_host_moves_only_that_host() -> Bool {
     && synthetic_bytes_of(host: operator_host_srv3) != byte_size_count(b: usable_ram_of(host: operator_host_srv3))
 }
 
+// srv3 IS MEASURED AS OF 2026-08-22, so this control moved to srv2 -- which is now the fleet's
+// genuine lower-bound host, its 64 GiB upgrade having failed DDR training and been reverted the
+// same day. The property under test is unchanged: whatever a host's row carries must not exceed
+// that host's real usable RAM, because the conservation wall spends against it.
 test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamUnmeasured => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
-      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv3))
+      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv2))
+  }
+}
+
+// THE MEASURED ARM IS REAL AND UNDER 512 GiB, which is the whole point of keeping nominal and
+// usable apart. srv3 carries 512 GiB of DIMMs and the kernel reports 502.25 GiB; this asserts the
+// row carries the KERNEL figure. It goes red if anyone ever writes the Redfish nominal number
+// into this carrier -- the specific error that became possible the day the BMC started reporting
+// a bigger number than the budget had ever seen.
+test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+    HostUsableRamMeasured { bytes: b, provenance: _ } =>
+      byte_size_count(b: b) == 539282522112
+        && byte_size_count(b: b) < 549755813888
+    HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+    HostUsableRamUnmeasured => false
   }
 }
 
@@ -258,8 +277,10 @@ test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
   }
 }
 
+// Re-pointed to srv2 for the same reason as the control above: it is now the host that carries
+// the bound. The arm itself is unchanged and still reachable.
 test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
     HostUsableRamUnmeasured => false
