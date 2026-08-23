@@ -102,29 +102,25 @@ pub fn lookup_in_scope(
 }
 
 pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>>> {
-    if algebra_method_template_name(name.clone()) {
-        Rc::new(vec![])
-    } else {
-        match infer_builtin_call_type(name.clone()) {
-            Some(builtin_return) => Rc::new(vec![Rc::new(CallableCandidate {
-                identity: Rc::new(CallableIdentity::BuiltinCallable {
-                    primitive_name: name.clone(),
-                }),
-                sig: Rc::new(ResolvedFuncSig {
-                    name: name.clone(),
-                    params: Rc::new(vec![]),
-                    inferred: builtin_return.clone(),
-                    is_async: false,
-                    output_provenance: Rc::new(vec![]),
-                    variant_provenance: v1_rt::rc_empty_map::<
-                        String,
-                        Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-                    >(),
-                }),
-                is_builtin: true,
-            })]),
-            None => Rc::new(vec![]),
-        }
+    match infer_builtin_call_type(name.clone()) {
+        Some(builtin_return) => Rc::new(vec![Rc::new(CallableCandidate {
+            identity: Rc::new(CallableIdentity::BuiltinCallable {
+                primitive_name: name.clone(),
+            }),
+            sig: Rc::new(ResolvedFuncSig {
+                name: name.clone(),
+                params: Rc::new(vec![]),
+                inferred: builtin_return.clone(),
+                is_async: false,
+                output_provenance: Rc::new(vec![]),
+                variant_provenance: v1_rt::rc_empty_map::<
+                    String,
+                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                >(),
+            }),
+            is_builtin: true,
+        })]),
+        None => Rc::new(vec![]),
     }
 }
 
