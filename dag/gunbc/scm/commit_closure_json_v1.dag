@@ -1,4 +1,4 @@
-module gunbc.scm.image
+module gunbc.scm.commit_closure_json_v1
 
 import std.types { Bool, Int, List, String }
 
@@ -97,20 +97,20 @@ import gunbc.scm.object_store {
 // object. A position cannot forge an identity the way a digest could, because the identity at that
 // position is still derived from the bytes that follow it; a corrupted position names a different
 // object or no object at all, and the second refuses.
-type ImageRefusal
-  = ImageNotAnObject
-  | ImageMemberMissing { key: String }
-  | ImageMemberDuplicated { key: String }
-  | ImageMemberWrongShape { key: String }
-  | ImageFormatUnrecognized { found: String }
-  | ImageUnknownKindTag { found: String }
-  | ImageUnknownConnectiveTag { found: String }
-  | ImageUnknownBehaviorTag { found: String }
-  | ImageUnknownLabelTag { found: String }
-  | ImageEdgeTargetUnresolved { reference: String }
-  | ImageRootUnresolved { reference: String }
-  | ImageObjectCollision { identity: ObjectId }
-  | ImageUnexpectedMember { context: ImageMemberContext, key: String }
+type ClosureDocRefusal
+  = ClosureDocNotAnObject
+  | ClosureDocMemberMissing { key: String }
+  | ClosureDocMemberDuplicated { key: String }
+  | ClosureDocMemberWrongShape { key: String }
+  | ClosureDocFormatUnrecognized { found: String }
+  | ClosureDocUnknownKindTag { found: String }
+  | ClosureDocUnknownConnectiveTag { found: String }
+  | ClosureDocUnknownBehaviorTag { found: String }
+  | ClosureDocUnknownLabelTag { found: String }
+  | ClosureDocEdgeTargetUnresolved { reference: String }
+  | ClosureDocRootUnresolved { reference: String }
+  | ClosureDocObjectCollision { identity: ObjectId }
+  | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -131,14 +131,14 @@ type ImageRefusal
 // The context is a closed coproduct rather than a String because the member sets differ BY VARIANT:
 // an Atom kind carries `identity` and a Conj kind must not, so "unexpected here" is only meaningful
 // relative to which shape was being read.
-type ImageMemberContext
-  = ImageEnvelopeMembers
-  | ImageObjectRecordMembers
-  | ImageTypeKindMembers
-  | ImageAtomKindMembers
-  | ImageComputationKindMembers
-  | ImageNamedEdgeMembers
-  | ImagePositionalEdgeMembers
+type ClosureDocMemberContext
+  = ClosureDocEnvelopeMembers
+  | ClosureDocObjectRecordMembers
+  | ClosureDocTypeKindMembers
+  | ClosureDocAtomKindMembers
+  | ClosureDocComputationKindMembers
+  | ClosureDocNamedEdgeMembers
+  | ClosureDocPositionalEdgeMembers
 
 fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
   fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
@@ -157,7 +157,7 @@ fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>
 }
 
 // A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
-// required member from the same subject, and read_member refuses a non-object as ImageNotAnObject.
+// required member from the same subject, and read_member refuses a non-object as ClosureDocNotAnObject.
 // Answering an unexpected-member refusal for something that is not an object at all would report the
 // wrong cause for the wrong defect.
 fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
@@ -170,24 +170,24 @@ fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
   }
 }
 
-fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ImageMemberContext) -> ImageRefusal? {
+fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
   match unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
-    Present { value: key } => Present { value: ImageUnexpectedMember { context: context, key: key } }
+    Present { value: key } => Present { value: ClosureDocUnexpectedMember { context: context, key: key } }
   }
 }
 
-type ImageLoadOutcome
-  = ImageLoaded { store: ObjectStore, root: ObjectId }
-  | ImageRefused { cause: ImageRefusal }
+type ClosureDocLoadOutcome
+  = ClosureDocLoaded { store: ObjectStore, root: ObjectId }
+  | ClosureDocRefused { cause: ClosureDocRefusal }
 
-data image_format_tag: String = "gunbc-scm-commit-closure-v1"
+data closure_document_format_tag: String = "gunbc-scm-commit-closure-v1"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
 //
-// encode_image takes a store AND A ROOT, so what it represents is one commit's closure: a program,
+// encode_closure_document takes a store AND A ROOT, so what it represents is one commit's closure: a program,
 // identified. It therefore CANNOT represent an empty repository -- the state `gunbc init` creates --
-// because there is no root to designate and decode_image refuses a root that names no object. That
+// because there is no root to designate and decode_closure_document refuses a root that names no object. That
 // refusal is correct at this grain and must not be softened into an empty-store fallback, which
 // would be the empty-observation narrow DESIGN section 5 names: "no objects" and "could not tell
 // what the objects were" would become one state.
@@ -201,7 +201,7 @@ data image_format_tag: String = "gunbc-scm-commit-closure-v1"
 //   - REACHABILITY SCOPING. Every record the store holds is serialized, not just the closure
 //     reachable from retained subjects. That is correct while nothing produces unreachable objects,
 //     and it is the natural first garbage-collection rule once something does.
-//   - THE IDENTITY-RULE VERSION. image_format_tag versions the SCHEMA. It does not name the node
+//   - THE IDENTITY-RULE VERSION. closure_document_format_tag versions the SCHEMA. It does not name the node
 //     identity protocol the reconstruction depends on, and those are separate axes: the schema could
 //     hold still while canonicalize_node_for_content_hash or the fnv1a64 folding changed, and every
 //     stored image would then silently reconstruct to different identities. Naming the rule in the
@@ -318,7 +318,7 @@ fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
 // parents, so by the time an edge is encoded its target already holds a position. Answering some
 // plausible reference here would emit an image that decodes to a DIFFERENT program, which is exactly
 // the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
-// decoder tolerates -- ImageEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
+// decoder tolerates -- ClosureDocEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
 // a typed refusal at load rather than as a silently wrong store.
 fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
   let reference = match position_of(positions: positions, identity: e.target) {
@@ -377,7 +377,7 @@ fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
 // once and letting each root be an ordinary reference into that table is the same move at the
 // repository's grain.
 //
-// encode_image below is now one caller of this: the single-root case.
+// encode_closure_document below is now one caller of this: the single-root case.
 fn encode_object_table(store: ObjectStore) -> EncodeAcc {
   match fold(
     store_records_in_dependency_order(store: store),
@@ -390,7 +390,7 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
 }
 
 // A root that names no object in the table yields the empty reference, which decode refuses as
-// ImageRootUnresolved. It is never silently omitted from the commit list.
+// ClosureDocRootUnresolved. It is never silently omitted from the commit list.
 fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
   match position_of(positions: acc.positions, identity: root) {
     Present { value: r } => r
@@ -402,7 +402,7 @@ fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
 // bytes that cannot be loaded.
 //
 // The empty-string reference below is what an unresolvable root or edge target encodes to, and
-// decode refuses it. That is correct at the DECODER but it arrives too late: encode_image returned an
+// decode refuses it. That is correct at the DECODER but it arrives too late: encode_closure_document returned an
 // ordinary JsonValue, commit_closure_save wrote it, the filesystem write succeeded, and save answered
 // CommitClosureSaved. The user is told their repository is saved; the very next load refuses it.
 // That is the fabricated-plausible-output failure DESIGN section 5 forbids, reached through a
@@ -414,20 +414,20 @@ fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
 //
 // The refusal is computed from the SAME position table the encoding uses, so there is no second
 // notion of "resolvable" that could drift from the one decode enforces.
-type ImageEncodeOutcome
-  = ImageEncoded { value: JsonValue }
-  | ImageEncodeRefused { cause: ImageRefusal }
+type ClosureDocEncodeOutcome
+  = ClosureDocEncoded { value: JsonValue }
+  | ClosureDocEncodeRefused { cause: ClosureDocRefusal }
 
-fn encode_image_checked(store: ObjectStore, root: ObjectId) -> ImageEncodeOutcome {
+fn encode_closure_document_checked(store: ObjectStore, root: ObjectId) -> ClosureDocEncodeOutcome {
   let acc = encode_object_table(store: store)
   let root_reference = encoded_root_reference(acc: acc, root: root)
   if root_reference == "" {
-    ImageEncodeRefused { cause: ImageRootUnresolved { reference: object_id_key(identity: root) } }
+    ClosureDocEncodeRefused { cause: ClosureDocRootUnresolved { reference: object_id_key(identity: root) } }
   } else {
     match unresolved_edge_reference(acc: acc, store: store) {
       Present { value: reference } =>
-        ImageEncodeRefused { cause: ImageEdgeTargetUnresolved { reference: reference } }
-      Absent => ImageEncoded { value: encode_image(store: store, root: root) }
+        ClosureDocEncodeRefused { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
+      Absent => ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
     }
   }
 }
@@ -457,12 +457,12 @@ fn unresolved_edge_in_record(acc: EncodeAcc, record: ObjectRecord) -> String? {
   })
 }
 
-fn encode_image(store: ObjectStore, root: ObjectId) -> JsonValue {
+fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
   let acc = encode_object_table(store: store)
   let root_reference = encoded_root_reference(acc: acc, root: root)
   json_object(
     members: [
-      json_kv(key: "format", value: json_string(s: image_format_tag)),
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
       json_kv(key: "objects", value: json_array(elements: acc.objects)),
       json_kv(key: "root", value: json_string(s: root_reference)),
     ]
@@ -482,21 +482,21 @@ type MemberRead
   = MemberString { value: String }
   | MemberArray { elements: List<JsonValue> }
   | MemberObject { value: JsonValue }
-  | MemberFailed { cause: ImageRefusal }
+  | MemberFailed { cause: ClosureDocRefusal }
 
 fn read_member(v: JsonValue, key: String) -> MemberRead {
   match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => MemberFailed { cause: ImageMemberMissing { key: key } }
-    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ImageMemberDuplicated { key: key } }
-    JsonMemberNotAnObject => MemberFailed { cause: ImageNotAnObject }
+    JsonMemberAbsent => MemberFailed { cause: ClosureDocMemberMissing { key: key } }
+    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ClosureDocMemberDuplicated { key: key } }
+    JsonMemberNotAnObject => MemberFailed { cause: ClosureDocNotAnObject }
     JsonMemberFound { value: found } =>
       match found {
         JsonString { value: s } => MemberString { value: s }
         JsonArray { elements: es } => MemberArray { elements: es }
         JsonObject { members: _ } => MemberObject { value: found }
-        JsonNull => MemberFailed { cause: ImageMemberWrongShape { key: key } }
-        JsonBool { value: _ } => MemberFailed { cause: ImageMemberWrongShape { key: key } }
-        JsonNumber { lexeme: _ } => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+        JsonNull => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+        JsonBool { value: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+        JsonNumber { lexeme: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
       }
   }
 }
@@ -505,13 +505,13 @@ fn read_string_member(v: JsonValue, key: String) -> MemberRead {
   match read_member(v: v, key: key) {
     MemberString { value: s } => MemberString { value: s }
     MemberFailed { cause: c } => MemberFailed { cause: c }
-    _ => MemberFailed { cause: ImageMemberWrongShape { key: key } }
+    _ => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
   }
 }
 
 type ConnectiveDecode
   = ConnectiveDecoded { connective: Connective }
-  | ConnectiveDecodeFailed { cause: ImageRefusal }
+  | ConnectiveDecodeFailed { cause: ClosureDocRefusal }
 
 // The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
 // that supplies one is not silently carrying an ignored field into a program whose identity does not
@@ -522,19 +522,19 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
       MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: c }
-      _ => ConnectiveDecodeFailed { cause: ImageMemberWrongShape { key: "identity" } }
+      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberWrongShape { key: "identity" } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
   else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
   else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
   else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
-  else { ConnectiveDecodeFailed { cause: ImageUnknownConnectiveTag { found: tag } } }
+  else { ConnectiveDecodeFailed { cause: ClosureDocUnknownConnectiveTag { found: tag } } }
 }
 
 type BehaviorDecode
   = BehaviorDecoded { behavior: Behavior }
-  | BehaviorDecodeFailed { cause: ImageRefusal }
+  | BehaviorDecodeFailed { cause: ClosureDocRefusal }
 
 fn decode_behavior(tag: String) -> BehaviorDecode {
   if tag == "value" { BehaviorDecoded { behavior: Value } }
@@ -543,12 +543,12 @@ fn decode_behavior(tag: String) -> BehaviorDecode {
   else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
   else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
   else if tag == "match" { BehaviorDecoded { behavior: Match } }
-  else { BehaviorDecodeFailed { cause: ImageUnknownBehaviorTag { found: tag } } }
+  else { BehaviorDecodeFailed { cause: ClosureDocUnknownBehaviorTag { found: tag } } }
 }
 
 type KindDecode
   = KindDecoded { kind: NodeKind }
-  | KindDecodeFailed { cause: ImageRefusal }
+  | KindDecodeFailed { cause: ClosureDocRefusal }
 
 // THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
 // checked earlier: `identity` is required on an atom and forbidden on every other connective, so
@@ -559,7 +559,7 @@ fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
   match member_set_refusal(
     v: kind_value,
     allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
-    context: if ctag == "atom" { ImageAtomKindMembers } else { ImageTypeKindMembers }
+    context: if ctag == "atom" { ClosureDocAtomKindMembers } else { ClosureDocTypeKindMembers }
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -574,7 +574,7 @@ fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
   match member_set_refusal(
     v: kind_value,
     allowed: ["kind", "behavior"],
-    context: ImageComputationKindMembers
+    context: ClosureDocComputationKindMembers
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -593,18 +593,18 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
         match read_string_member(v: kind_value, key: "connective") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: c }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "connective" } }
+          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "connective" } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: c }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "behavior" } }
+          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "behavior" } }
         }
       } else {
-        KindDecodeFailed { cause: ImageUnknownKindTag { found: tag } }
+        KindDecodeFailed { cause: ClosureDocUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "kind" } }
+    _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "kind" } }
   }
 }
 
@@ -621,7 +621,7 @@ fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId?
 
 type LabelDecode
   = LabelDecoded { label: EdgeLabel }
-  | LabelDecodeFailed { cause: ImageRefusal }
+  | LabelDecodeFailed { cause: ClosureDocRefusal }
 
 // The member set here is the whole EDGE object, `target` included, because the label tag is what
 // closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
@@ -630,7 +630,7 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
   match member_set_refusal(
     v: edge_value,
     allowed: ["label", "name", "target"],
-    context: ImageNamedEdgeMembers
+    context: ClosureDocNamedEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent =>
@@ -638,7 +638,7 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
         MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
         MemberString { value: lexeme } =>
           LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "name" } }
+        _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "name" } }
       }
   }
 }
@@ -647,7 +647,7 @@ fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
   match member_set_refusal(
     v: edge_value,
     allowed: ["label", "target"],
-    context: ImagePositionalEdgeMembers
+    context: ClosureDocPositionalEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent => LabelDecoded { label: Positional }
@@ -663,9 +663,9 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
-        LabelDecodeFailed { cause: ImageUnknownLabelTag { found: tag } }
+        LabelDecodeFailed { cause: ClosureDocUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "label" } }
+    _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "label" } }
   }
 }
 
@@ -676,7 +676,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
 // claims, not inspection, are what establish this is right.
 type EdgeAcc {
   edges: List<StoredEdge>
-  refusal: ImageRefusal?
+  refusal: ClosureDocRefusal?
 }
 
 // THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
@@ -700,7 +700,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                   EdgeAcc {
                     edges: acc.edges,
                     refusal: Present {
-                      value: ImageEdgeTargetUnresolved { reference: reference }
+                      value: ClosureDocEdgeTargetUnresolved { reference: reference }
                     },
                   }
                 Present { value: identity } =>
@@ -712,7 +712,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
             _ =>
               EdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ImageMemberWrongShape { key: "target" } },
+                refusal: Present { value: ClosureDocMemberWrongShape { key: "target" } },
               }
           }
       }
@@ -723,10 +723,10 @@ type DecodeAcc {
   store: ObjectStore
   positions: DecodePositions
   next: Int
-  refusal: ImageRefusal?
+  refusal: ClosureDocRefusal?
 }
 
-fn decode_acc_refused(acc: DecodeAcc, cause: ImageRefusal) -> DecodeAcc {
+fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
   DecodeAcc {
     store: acc.store,
     positions: acc.positions,
@@ -742,7 +742,7 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
       match member_set_refusal(
         v: object_value,
         allowed: ["kind", "children"],
-        context: ImageObjectRecordMembers
+        context: ClosureDocObjectRecordMembers
       ) {
         Present { value: c } => decode_acc_refused(acc: acc, cause: c)
         Absent => decode_object_members(acc: acc, object_value: object_value)
@@ -784,7 +784,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                                 store: acc.store,
                                 positions: acc.positions,
                                 next: acc.next,
-                                refusal: Present { value: ImageObjectCollision { identity: i } },
+                                refusal: Present { value: ClosureDocObjectCollision { identity: i } },
                               }
                             Stored { store: next_store, identity: identity } =>
                               DecodeAcc {
@@ -801,11 +801,11 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                       }
                   }
                 _ =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ImageMemberWrongShape { key: "children" } } }
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "children" } } }
               }
           }
         _ =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ImageMemberWrongShape { key: "kind" } } }
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "kind" } } }
       }
   }
 }
@@ -824,47 +824,47 @@ fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
 
 // The format tag is checked BEFORE any object is decoded, so a file from a future format refuses as
 // a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
-fn decode_image(v: JsonValue) -> ImageLoadOutcome {
+fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_string_member(v: v, key: "format") {
-    MemberFailed { cause: c } => ImageRefused { cause: c }
+    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
     MemberString { value: format } =>
-      if format != image_format_tag {
-        ImageRefused { cause: ImageFormatUnrecognized { found: format } }
+      if format != closure_document_format_tag {
+        ClosureDocRefused { cause: ClosureDocFormatUnrecognized { found: format } }
       } else {
         match member_set_refusal(
           v: v,
           allowed: ["format", "objects", "root"],
-          context: ImageEnvelopeMembers
+          context: ClosureDocEnvelopeMembers
         ) {
-          Present { value: c } => ImageRefused { cause: c }
-          Absent => decode_image_body(v: v)
+          Present { value: c } => ClosureDocRefused { cause: c }
+          Absent => decode_closure_document_body(v: v)
         }
       }
-    _ => ImageRefused { cause: ImageMemberWrongShape { key: "format" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "format" } }
   }
 }
 
-fn decode_image_body(v: JsonValue) -> ImageLoadOutcome {
+fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_member(v: v, key: "objects") {
-    MemberFailed { cause: c } => ImageRefused { cause: c }
+    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
     MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
-            Present { value: c } => ImageRefused { cause: c }
+            Present { value: c } => ClosureDocRefused { cause: c }
             Absent =>
               match read_string_member(v: v, key: "root") {
-                MemberFailed { cause: c } => ImageRefused { cause: c }
+                MemberFailed { cause: c } => ClosureDocRefused { cause: c }
                 MemberString { value: root_reference } =>
                   match resolve_reference(positions: positions, reference: root_reference) {
                     Absent =>
-                      ImageRefused { cause: ImageRootUnresolved { reference: root_reference } }
-                    Present { value: root } => ImageLoaded { store: store, root: root }
+                      ClosureDocRefused { cause: ClosureDocRootUnresolved { reference: root_reference } }
+                    Present { value: root } => ClosureDocLoaded { store: store, root: root }
                   }
-                _ => ImageRefused { cause: ImageMemberWrongShape { key: "root" } }
+                _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "root" } }
               }
           }
       }
-    _ => ImageRefused { cause: ImageMemberWrongShape { key: "objects" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "objects" } }
   }
 }

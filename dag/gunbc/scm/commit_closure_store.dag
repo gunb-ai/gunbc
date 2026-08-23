@@ -10,7 +10,7 @@ module gunbc.scm.commit_closure_store
 // exactly when it arrives and would have pushed `init` toward inventing a phantom commit merely to
 // satisfy a carrier that demands a root.
 //
-// gunbc.scm.image is pure -- ObjectStore to JsonValue and back -- and is proven by floor witnesses
+// gunbc.scm.commit_closure_json_v1 is pure -- ObjectStore to JsonValue and back -- and is proven by floor witnesses
 // because it can be. THIS module cannot be, and the reason is structural rather than an omission:
 // Filesystem.Read and Filesystem.Write are effects, and the required floor evaluates hermetically,
 // so a witness calling them is REFUSED at the hermetic boundary before the assertion runs. Mocking
@@ -35,17 +35,17 @@ import v2.std.node {
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision, empty_store, store_node,
 }
-import gunbc.scm.image {
-  ImageRefusal,
-  ImageEncodeOutcome,
-  ImageEncoded,
-  ImageEncodeRefused,
-  encode_image_checked,
-  ImageLoadOutcome,
-  ImageLoaded,
-  ImageRefused,
-  encode_image,
-  decode_image,
+import gunbc.scm.commit_closure_json_v1 {
+  ClosureDocRefusal,
+  ClosureDocEncodeOutcome,
+  ClosureDocEncoded,
+  ClosureDocEncodeRefused,
+  encode_closure_document_checked,
+  ClosureDocLoadOutcome,
+  ClosureDocLoaded,
+  ClosureDocRefused,
+  encode_closure_document,
+  decode_closure_document,
 }
 
 // THE HOST'S THREE PARALLEL FIELDS ARE FOLDED INTO A COPRODUCT AT THE BOUNDARY, AND THIS IS THE
@@ -58,7 +58,7 @@ type CommitClosureRefusal
   = CommitClosureWriteFailed { path: String, error: String }
   | CommitClosureReadFailed { path: String, error: String }
   | CommitClosureTextNotJson { path: String }
-  | CommitClosureImageRefused { path: String, cause: ImageRefusal }
+  | CommitClosureDocumentRefused { path: String, cause: ClosureDocRefusal }
 
 type CommitClosureSaveOutcome
   = CommitClosureSaved { path: String }
@@ -79,12 +79,12 @@ type CommitClosureLoadOutcome
 // Refusing BEFORE the write also means a failed save leaves no partial file at the path at all,
 // rather than replacing a good repository with an unloadable one.
 func commit_closure_save(path: String, store: ObjectStore, root: ObjectId) -> CommitClosureSaveOutcome {
-  match encode_image_checked(store: store, root: root) {
-    ImageEncodeRefused { cause: cause } =>
+  match encode_closure_document_checked(store: store, root: root) {
+    ClosureDocEncodeRefused { cause: cause } =>
       CommitClosureSaveRefused {
-        cause: CommitClosureImageRefused { path: path, cause: cause },
+        cause: CommitClosureDocumentRefused { path: path, cause: cause },
       }
-    ImageEncoded { value: encoded } => {
+    ClosureDocEncoded { value: encoded } => {
       let written = Filesystem.Write(path: path, content: serialize_json(v: encoded))
       if written.success {
         CommitClosureSaved { path: path }
@@ -111,12 +111,12 @@ func commit_closure_load(path: String) -> CommitClosureLoadOutcome {
     match parse_json(s: read.content) {
       Absent => CommitClosureLoadRefused { cause: CommitClosureTextNotJson { path: path } }
       Present { value: parsed } =>
-        match decode_image(v: parsed) {
-          ImageRefused { cause: cause } =>
+        match decode_closure_document(v: parsed) {
+          ClosureDocRefused { cause: cause } =>
             CommitClosureLoadRefused {
-              cause: CommitClosureImageRefused { path: path, cause: cause },
+              cause: CommitClosureDocumentRefused { path: path, cause: cause },
             }
-          ImageLoaded { store: store, root: root } =>
+          ClosureDocLoaded { store: store, root: root } =>
             CommitClosureLoaded { store: store, root: root }
         }
     }

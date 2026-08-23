@@ -45,17 +45,37 @@ module gunbc.scm.commit_closure
 // is what was forged. The closure then reconstructs with the impostor in place of the real object: a
 // program the commit never named, reached through the very arm this recut adds.
 //
-// That is closed by ONE CONDITION, stated here as a condition rather than assumed:
+// That is closed by ONE CONDITION, stated here as a condition rather than assumed -- and the
+// condition is about the LOGICAL ROOT IDENTITY, not about the bytes:
 //
-//   The image's own identity MUST be derived over the wire bytes INCLUDING every absent-arm digest,
-//   and the consumer MUST obtain that identity from somewhere other than the document.
+//   The root identity DERIVED from contained structure plus uncontained child identities MUST be
+//   compared against an expected commit identity the consumer obtains from OUTSIDE the document.
 //
-// Then altering a digest alters the image identity, so a forged document is a DIFFERENT image, and
-// whoever named the image named those digests. This is ordinary Merkle closure. But note precisely
-// what changed: the predecessor's guarantee was UNCONDITIONAL -- the format had no field to lie in --
-// and this one is CONDITIONAL on the identity being derived and independently obtained. A reader of
-// this format must not inherit the old file's unconditional claim. It is strictly weaker, it is the
-// price of being able to name what is missing, and it is paid knowingly.
+// This needs no new machinery, because object_store already derives a record's identity from its
+// kind and its children's target identities. An uncontained child contributes its stated digest to
+// its parent's derived identity and transitively to the root's, so substituting Hc with Hx changes
+// the derived root. A forged document is therefore a document that does not reconstruct to the
+// commit you asked for, and the comparison catches it.
+//
+// WHY NOT HASH THE WIRE BYTES, which was this clause's first form and was wrong. Byte identity makes
+// representation detail semantic: the same logical closure emitted with a different object-table
+// order, or under a different encoding entirely, would become a DIFFERENT commit. That undoes the
+// separation this whole recut exists to make -- the logical closure is the concept, a serialization
+// is one way of writing it down. Two identities, kept apart:
+//
+//   commit identity      = the derived Merkle root over canonical logical structure
+//   publication identity = an optional digest of exact publication bytes, for corruption detection
+//                          or envelope authentication, and NEVER the semantic commit identity
+//
+// But note precisely what changed: the predecessor's guarantee was UNCONDITIONAL -- the format had no
+// field to lie in -- and this one is CONDITIONAL on an expected commit identity being obtained
+// independently. A reader of this format must not inherit the old file's unconditional claim. It is
+// strictly weaker, it is the price of being able to name what is missing, and it is paid knowingly.
+//
+// AND THE RUNG OF THE DIGEST ITSELF IS NOT AUTHENTICATION. ObjectId is fnv1a64 structural. It
+// establishes structural consistency and refuses collisions at the current local rung; it is not an
+// adversarial or cross-tenant cryptographic commitment, and calling this "Merkle" must not import
+// that stronger claim. dissolve-on: a computing cryptographic digest reachable from .dag.
 
 import std.types { Bool, Int, List, list_length }
 import gunbc.scm.object_store {
