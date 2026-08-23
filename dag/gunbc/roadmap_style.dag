@@ -28,6 +28,9 @@ import gunbc.design.state_response {
   state_var_name, state_var_ref, state_rest_decl, state_paint_rules,
   RestBinding, StateClassBinding,
 }
+import gunbc.fleet_capacity_panel {
+  capacity_subject_reserved_width, capacity_metric_reserved_width,
+}
 import gunbc.roadmap_component {
   dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
@@ -515,11 +518,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "capacity-subject" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontWeight, value: "600"),
-      decl(prop: MinWidth, value: "5rem"),
+      decl(prop: MinWidth, value: capacity_subject_reserved_width()),
     ] },
     StaticRule { selector: ClassSelector { name: "capacity-metric" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
-      decl(prop: MinWidth, value: "9rem"),
+      decl(prop: MinWidth, value: capacity_metric_reserved_width()),
     ] },
     StaticRule { selector: ClassSelector { name: "capacity-standing" }, decls: [
       role_decl(prop: Color, r: TextDimRole),

@@ -10,7 +10,10 @@ import gunbc.fleet_capacity_panel {
   fleet_committed_slot_total_ignoring_withdrawals,
   fleet_capacity_withdrawn_line,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
+  width_axis_binds_at,
+}
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 
 fn empty_workspace_html() -> String {
@@ -79,4 +82,40 @@ test fn the_summary_line_names_both_axes() -> Bool {
   string_contains(s: line, pattern: "hosts")
     && string_contains(s: line, pattern: "runtimes")
     && string_contains(s: line, pattern: "slots committed")
+}
+
+// AN UNMEASURED AXIS IS NEVER REPORTED AS BINDING, AND NEVER AS ADMITTING EITHER.
+//
+// Disk returns DiskWidthUnconstrained on every host today, and runner_slot_allocation's own reason
+// string is explicit that this is "an unmeasured axis, not a measured all-clear". Rendering it as
+// "disk admits any width" would turn an absence of observation into a positive clearance -- the
+// conflation where not-applicable and not-observed wear one symbol. The discriminating half is
+// that disk is excluded from the BINDING set: a fold that treated an unstated width as
+// satisfying the minimum would list disk beside memory and read as two independent confirmations
+// of a width only one axis actually measured.
+test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
+  let binding = host_binding_width_axes(host: operator_host_srv1)
+  let label = host_width_binding_label(host: operator_host_srv1)
+  (binding |> count) == 1
+    && string_contains(s: label, pattern: "bound by memory")
+    && string_contains(s: label, pattern: "disk unmeasured")
+    && !string_contains(s: label, pattern: "disk admits")
+}
+
+// THE BINDING AXIS IS DERIVED FROM THE COMMITTED WIDTH RATHER THAN ASSERTED BESIDE IT.
+//
+// Asserted as the relation: whatever axis is named as binding must actually sit at the committed
+// width. A label authored independently of the arithmetic could name memory while the minimum came
+// from somewhere else, and nothing downstream would catch it -- the panel would explain a number
+// using a cause that did not produce it.
+test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
+  all([operator_host_srv1, operator_host_srv3], h =>
+    all(host_binding_width_axes(host: h), a =>
+      width_axis_binds_at(standing: a, committed: gunbc_runner_slots_per_host(host: h))))
+}
+
+test fn the_panel_renders_the_binding_axis_for_every_host() -> Bool {
+  let h = empty_workspace_html()
+  string_contains(s: h, pattern: "bound by memory")
+    && string_contains(s: h, pattern: "unmeasured")
 }
