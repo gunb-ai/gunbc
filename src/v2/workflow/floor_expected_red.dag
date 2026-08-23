@@ -434,8 +434,23 @@ fn floor_expected_red_chunk_14() -> List<String> {
   Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused", tail: Empty {} } }
 }
 
+// THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element
+// type inside a list at a direct-call argument is refused. It is not. Its PAIRED CONTROL --
+// w_the_same_wrong_pair_directly_at_the_argument_is_refused, deliberately NOT enrolled -- passes
+// the identical two types at the identical position without the list, and must stay green: if it
+// ever reds, the probe has stopped measuring lists and this enrolment is meaningless.
+//
+// WHY IT IS ENROLLED RATHER THAN FIXED HERE: the gap was discovered as a live wrong argument in
+// dag/gunbc/heal_revalidation.dag (List<Fnv1a64Structural> into required_gates: List<ContentHash>),
+// and the relation's SILENCE was the only evidence of it. DESIGN 4b(4) puts the evidence in a
+// probe and the repair in production, not the reverse, so the production site is repaired in this
+// same change and the evidence moved here where anyone can reproduce it.
+//
+// NEXT-RUNG TRIGGER: declared_type_inhabitance descending into a list's element type at a
+// direct-call argument. When it lands this row goes green and the roster's self-emptying arm
+// names it for removal, at which point it becomes a permanent regression control.
 fn floor_expected_red_chunk_15() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_16() -> List<String> {

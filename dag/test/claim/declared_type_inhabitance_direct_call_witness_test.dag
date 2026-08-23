@@ -86,3 +86,32 @@ data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport 
 test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
   violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
 }
+
+// THE LIST-ELEMENT GAP, AUTHORED AS A FIXTURE SO THE PRODUCTION SITE CAN BE REPAIRED.
+// dag/gunbc/heal_revalidation.dag passed List<Fnv1a64Structural> into check_coverage_admits's
+// required_gates: List<ContentHash> -- the same mismatch as the argument beside it, one level
+// inside a list -- and this relation did NOT name it. That silence was the only evidence the
+// gap existed, which made repairing the production site look like consuming the evidence.
+// DESIGN 4b(4) separates those: a climb deletes the redundant PRODUCTION handling and KEEPS the
+// discriminating RED as enrolled evidence. So the evidence lives here, where it is reproducible
+// on demand, and the live wrong argument in an admission path is repaired.
+//
+// RED, AND CURRENTLY FAILING -- ENROLLED. A plain record at a coproduct element type inside a
+// list at a direct-call argument. The relation judges this exact pair at the argument itself
+// (the control below), and does not descend into the list, so this must refuse and does not.
+data record_element_in_list_arg_source: String = "module probe_inhabit_dc_list_elem\nimport std.types { Int, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\ntype Rec { v: Int }\nfn takes_list(xs: List<Cop>) -> Int { 1 }\nfn probe() -> Int { takes_list(xs: [Rec { v: 1 }]) }\n"
+
+test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() -> Bool {
+  violation_count(source: record_element_in_list_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE CONTROL THAT MAKES THAT RED READABLE, and it is the one that separates "the relation
+// cannot judge this pair" from "the relation cannot see inside a list". SAME two types, SAME
+// direct-call argument position, the record passed DIRECTLY rather than wrapped in a list. If
+// this refuses and the arm above does not, the list is the whole difference. If this also
+// admits, the probe proves nothing about lists and the arm above is measuring the wrong thing.
+data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_bare_elem\nimport std.types { Int, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\ntype Rec { v: Int }\nfn takes_one(x: Cop) -> Int { 1 }\nfn probe() -> Int { takes_one(x: Rec { v: 1 }) }\n"
+
+test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
+  violation_count(source: record_directly_at_coproduct_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+}

@@ -152,7 +152,7 @@ fn classify_heal_revalidation_admission(
         coverage: coverage,
         required_head: healed_head,
         required_roster: as_content_hash_structural(structural: required_roster),
-        required_gates: required_gates
+        required_gates: required_gates |> map(g => as_content_hash_structural(structural: g))
       ) {
         HealRevalidationAdmittedExactCoverage { healed_head: healed_head }
       } else {
