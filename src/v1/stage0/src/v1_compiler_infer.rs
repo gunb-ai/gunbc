@@ -153,6 +153,7 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::AdmitCallersEntry::*;
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
@@ -190,26 +191,26 @@ use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    decl_ref_coords_label, default_ident_span, diagnostic_frontier_occurrence_key,
-    diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
-    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property_string, float_type, fn_admit_callers, foreach_body,
-    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
-    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
-    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
-    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_default_value, param_node_name_at, param_node_type_expr,
+    admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
+    arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
+    build_newline_index, cast_expr, cast_target, container_expected_arity, decl_ref_coords_label,
+    default_ident_span, diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
+    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
+    is_child_accessor_in_model, is_compiler_error, is_container_type, is_error_diagnostic,
+    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
@@ -220,10 +221,11 @@ pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclaredFuncEnv,
-    DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
-    FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind, VarBindingKind,
+    AdmitCallersEntry, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1126,11 +1128,21 @@ pub fn constructor_call_admission_diags(
     } else {
         match (*func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
-    Some(permitted) => match caller_decl_coords(scope.clone()) {
+    Some(entries) => {
+            let uninterpretable = admit_callers_entry_uninterpretable_spans(entries.clone());
+if ((uninterpretable.clone().len() as i64) > 0) {
+                Rc::new({ let mut __result = Vec::new(); for entry_span in uninterpretable.iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::AdmitCallersEntryNotDeclRef {
+    constructor_decl_name: identity.decl_name.clone(),
+    span: entry_span.clone(),
+}), scope.module_name.clone())); } __result })
+            } else {
+                {
+                    let permitted = admit_callers_entry_coords(entries.clone());
+match caller_decl_coords(scope.clone()) {
     Some(caller) => if { let mut __found = false; for p in permitted.iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
-            Rc::new(vec![])
-        } else {
-            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: caller.module_path.clone(),
@@ -1138,7 +1150,7 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())])
-        },
+                    },
     None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
@@ -1147,6 +1159,9 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())]),
+}
+}
+            }
 },
     None => Rc::new(vec![]),
 },
