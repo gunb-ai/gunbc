@@ -11695,7 +11695,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
-         known_red_host_effect_refused={} over_cost_line_diagnostic={}",
+         known_red_host_effect_refused={} known_red_runtime_errored={} \
+         known_red_observation_unreadable={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.receipt_identities,
@@ -11714,6 +11715,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_passed_over_budget,
         outcome.known_red_host_tool_unresolved_held,
         outcome.known_red_host_effect_refused,
+        outcome.known_red_runtime_errored.len(),
+        outcome.known_red_observation_unreadable.len(),
         outcome.over_cost_line_diagnostic
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
@@ -11766,6 +11769,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
+    for errored in &outcome.known_red_runtime_errored {
+        eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
+    }
+    for unreadable in &outcome.known_red_observation_unreadable {
+        eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
@@ -11776,16 +11785,20 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.)
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It said seven until `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// landed here — the same drift, caught this time by the sentence warning about itself.)
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()
         && outcome.host_tool_unresolved.is_empty()
+        && outcome.known_red_runtime_errored.is_empty()
+        && outcome.known_red_observation_unreadable.is_empty()
         && outcome.route_gap.is_empty()
         && outcome.stale_route_gap.is_empty()
 }

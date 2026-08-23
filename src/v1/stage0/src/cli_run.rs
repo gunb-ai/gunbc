@@ -14861,10 +14861,19 @@ impl CiWitnessVerdict {
     /// unresolved host tool is an infra gap whose remedy is provisioning, not witness cost.
     /// Enrollment cannot hold a claim that was never decided.
     ///
-    /// The counting side already refuses exactly that absorption — `expected_red_arm` gives
-    /// `BudgetRefused` and `HostToolUnresolved` their own arms rather than folding them into
-    /// `Held`. So the bug was not a missing rule; it was a SECOND, coarser copy of a join this
-    /// file already performs correctly (DESIGN §3). This now derives from that one authority:
+    /// The counting side refuses that absorption — `expected_red_arm` gives `BudgetRefused`,
+    /// `HostToolUnresolved`, `RuntimeErrored` and `ObservationUnreadable` their own arms rather
+    /// than folding them into `Held`. So the bug was not a missing rule; it was a SECOND,
+    /// coarser copy of a join this file already performs correctly (DESIGN §3). This now
+    /// derives from that one authority:
+    ///
+    /// THIS SENTENCE WAS FALSE FOR THE TWO ARMS ADDED LAST, and is corrected here rather than
+    /// quietly widened. The original repair split out budget interruption and unresolved host
+    /// tools, then described itself as having refused the absorption GENERALLY, while
+    /// `expected_red_arm` still read `Fail | NotBool | RuntimeError => Held`. Two of four
+    /// non-verdict outcomes stayed folded, and the comment claiming otherwise is the reason
+    /// nobody looked again — an unexecuted claim standing where an executed one appeared to be.
+    /// It was found by a cross-derivation check refusing a real run, not by review.
     /// only `Held` — enrolled AND semantically failed — renders as KNOWN-RED, and every other
     /// arm falls through to the outcome's own token, so the console says what the ledger says.
     ///
@@ -16407,6 +16416,12 @@ enum ExpectedRedArm {
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
     BudgetRefused,
+    /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
+    /// claim was never decided, so there is no expected failure for the enrollment to hold.
+    RuntimeErrored,
+    /// Enrolled and ANSWERED WITH SOMETHING THAT IS NOT A VERDICT. Same reason again — a
+    /// non-Bool observation is unreadable as agreement or disagreement.
+    ObservationUnreadable,
     /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
     ///
     /// This arm exists because the row is true on two axes at once and the other three arms
@@ -16576,12 +16591,19 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
         (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::RuntimeError { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, false) => {
-            ClaimDisposition::ObservationUnreadableBeforeVerdict
-        }
-        (ClaimOutcome::RuntimeError { .. }, false) => ClaimDisposition::RuntimeErroredBeforeVerdict,
+        // EXPECTATION IS NOT CONSULTED FOR EITHER OF THESE, and it used to be. Both arms
+        // returned `KnownRedHeld` when the row was enrolled, while the correct disposition sat
+        // one line below for the unenrolled case. That was one state collapsed onto another
+        // already spelled correctly beside it — no missing vocabulary, just a wrong selection.
+        //
+        // `Held` asserts the claim RAN AND FAILED as predicted. A claim that threw, or answered
+        // with something that is not a verdict, produced no verdict to agree with. This file
+        // already settled the principle when the same defect was repaired for budget
+        // interruption and unresolved host tools: ENROLLMENT CANNOT HOLD A CLAIM THAT WAS NEVER
+        // DECIDED. A runtime error is not a semantic verdict either, and the principle does not
+        // distinguish being cut off at a budget from throwing.
+        (ClaimOutcome::NotBool { .. }, _) => ClaimDisposition::ObservationUnreadableBeforeVerdict,
+        (ClaimOutcome::RuntimeError { .. }, _) => ClaimDisposition::RuntimeErroredBeforeVerdict,
         (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
         (ClaimOutcome::HostToolUnresolved { .. }, _) => {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
@@ -16601,9 +16623,11 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
             completion: BudgetCompletion::CompletedOverBudget,
             ..
         } => ExpectedRedArm::PassedOverBudget,
-        ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
-            ExpectedRedArm::Held
-        }
+        ClaimOutcome::Fail => ExpectedRedArm::Held,
+        // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
+        // enrollment predicts a failing verdict, and only a failing verdict can hold it.
+        ClaimOutcome::RuntimeError { .. } => ExpectedRedArm::RuntimeErrored,
+        ClaimOutcome::NotBool { .. } => ExpectedRedArm::ObservationUnreadable,
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
         ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
     }
@@ -40560,6 +40584,15 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
+    /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
+    /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
+    /// a witness that no longer returns a Bool. Neither is the enrolled failure, and holding
+    /// either lets an enrollment cover a witness that has not actually run since the day it was
+    /// enrolled.
+    pub known_red_runtime_errored: Vec<String>,
+    /// See `known_red_runtime_errored`.
+    pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     /// THE ROUTE HAD NO ARM — a sixth blocking cause, and the one this floor previously
@@ -41888,6 +41921,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        known_red_runtime_errored: Vec::new(),
+        known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
         stale_route_gap: Vec::new(),
@@ -41959,6 +41994,8 @@ pub fn run_required_floor(
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
     let mut known_red_host_effect_refused: usize = 0;
+    let mut known_red_runtime_errored_count: usize = 0;
+    let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
     // "is this enrollment still real", which is exactly how a skip list rots.
@@ -42308,6 +42345,32 @@ pub fn run_required_floor(
                     }
                     continue;
                 }
+                // A THROW IS NOT THE ENROLLED FAILURE. Same shape as the three arms above and
+                // for the same reason: enrollment asserts an expected VERDICT, and a claim that
+                // threw produced none. Held here would keep a witness enrolled forever on the
+                // strength of an error, which is the exact rot this lane exists to surface.
+                ExpectedRedArm::RuntimeErrored => {
+                    known_red_runtime_errored_count += 1;
+                    let detail = match &result {
+                        ClaimOutcome::RuntimeError { message } => {
+                            format!("runtime error: {message}")
+                        }
+                        other => format!("{other:?}"),
+                    };
+                    outcome.known_red_runtime_errored.push(format!(
+                        "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}.                          Enrollment asserts an expected verdict; a claim that threw produced                          none. Repair the witness or its subject, then re-read the enrollment                          — do not read this as the enrolled failure.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::ObservationUnreadable => {
+                    known_red_observation_unreadable_count += 1;
+                    outcome.known_red_observation_unreadable.push(format!(
+                        "{} is enrolled as expected-red but returned something that is NOT A                          VERDICT ({:?}), so it is neither the enrolled failure nor a repayment.                          Enrollment asserts an expected verdict; an unreadable observation is                          none. Make the witness return a Bool, then re-read the enrollment.",
+                        claim.qualified, result
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -42482,12 +42545,15 @@ pub fn run_required_floor(
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
          budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
-         not budget)",
+         not budget); {} RUNTIME-ERRORED (threw, so never decided); {} returned a \
+         NON-VERDICT (unreadable, so never decided)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
         known_red_passed_over_budget,
-        known_red_host_tool_unresolved
+        known_red_host_tool_unresolved,
+        known_red_runtime_errored_count,
+        known_red_observation_unreadable_count
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
