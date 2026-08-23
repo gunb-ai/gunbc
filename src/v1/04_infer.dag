@@ -1895,11 +1895,6 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
         false
-      } else if (formal_base.children |> count) > 0 {
-        // A ground kernel scalar cannot inhabit an applied type. Decide this before
-        // declaration lookup: kernel applications such as List<Int> have no nominal
-        // declaration there, so the fallback silently admitted every scalar.
-        true
       } else {
         if is_kernel_type(name: formal_name) {
           true

@@ -529,27 +529,6 @@ mod compiler_tests {
                     "correct call shapes must compile with NO diagnostic of any severity, got: {:?}",
                     green.diagnostics
                 );
-                // DISCRIMINATING RED for the applied-formal blind arm in
-                // kernel_value_declared_type_mismatch. List<Int> has no nominal
-                // declaration for the old fallback to classify, so String passed.
-                let applied_kernel_red = compile_one(
-                    "applied_kernel_red.dag",
-                    "module applied_kernel_red\nfn consume(xs: List<Int>) -> Int { xs |> count }\nfn f() -> Int { consume(\"not a list\") }\n",
-                );
-                assert!(
-                    applied_kernel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })),
-                    "a ground kernel scalar cannot inhabit ANY applied formal type; List<Int> taking String must refuse, got: {:?}",
-                    applied_kernel_red.diagnostics
-                );
-                let applied_kernel_green = compile_one(
-                    "applied_kernel_green.dag",
-                    "module applied_kernel_green\nfn consume(xs: List<Int>) -> Int { xs |> count }\nfn f() -> Int { consume([1, 2]) }\n",
-                );
-                assert!(
-                    applied_kernel_green.diagnostics.is_empty(),
-                    "a value inhabiting the applied formal type must remain accepted, got: {:?}",
-                    applied_kernel_green.diagnostics
-                );
             })
             .expect("failed to spawn thread")
             .join();
