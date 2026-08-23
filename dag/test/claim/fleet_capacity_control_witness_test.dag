@@ -8,13 +8,14 @@ import gunbc.fleet_capacity_control {
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
   WithdrawnForMaintenance, WithdrawnToReduceSpend, WithdrawnForObservedFault,
   withdrawal_admits_automatic_restore,
-  capacity_admission_in, capacity_admission_admits, capacity_admission_line,
+  fleet_capacity_admission_in, fleet_capacity_admission_admits, fleet_capacity_admission_line,
   CapacityAdmitted, CapacityRefusedHostWithdrawn, CapacityRefusedProviderWithdrawn,
   withdrawn_hosts, withdrawn_providers,
   CapacityControlRequest, CutHost, CutProviderRuntime, CutProviderAccountBinding,
   RestoreHost, RestoreProviderRuntime,
-  apply_capacity_control, capacity_control_is_actuated, capacity_control_outcome_line,
-  ControlApplied, ControlUnbound, ControlRejected,
+  apply_capacity_control, capacity_control_is_planned, capacity_control_outcome_line,
+  ControlPlanned, ControlUnbound, ControlRejected,
+  host_is_withdrawn, provider_is_withdrawn,
   active_host_count, active_provider_count,
 }
 
@@ -38,7 +39,7 @@ fn admission_label(
   host: HostIdentity,
   provider: ProviderKind,
 ) -> String {
-  match capacity_admission_in(
+  match fleet_capacity_admission_in(
     host_rows: hosts, provider_rows: providers, host: host, provider: provider,
   ) {
     CapacityAdmitted => "admitted"
@@ -115,12 +116,44 @@ test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool {
     provider: ClaudeCliProvider,
     cause: WithdrawnToReduceSpend { detail: "rotating" as NonEmptyStr },
   })
-  !capacity_control_is_actuated(outcome: account)
-    && capacity_control_is_actuated(outcome: runtime)
+  !capacity_control_is_planned(outcome: account)
+    && capacity_control_is_planned(outcome: runtime)
     && string_contains(s: capacity_control_outcome_line(outcome: account), pattern: "account binding")
 }
 
-// CUTTING A RUNTIME AND CUTTING A HOST ARE DIFFERENT ACTUATIONS, NOT ONE CONTROL WITH AN ARGUMENT.
+// THE CONTROL PLANS AND DOES NOT APPLY, AND THIS IS THE WITNESS THAT JOINS THE TWO (review 54905).
+//
+// This is the shape the reviewer named, and it is the one that catches the failure the earlier
+// revision shipped: call the control, then READ THE ROSTER. An arm reporting "applied" while the
+// roster reader still answers false is fabricated plausible output, and no amount of comparing
+// outcome strings to each other can see it -- the previous witnesses compared requests against
+// each other and were all green while the control lied.
+//
+// The assertion is deliberately that the host is STILL NOT withdrawn. Planning is what happened;
+// withdrawal takes authoring a roster row and committing it, so a green here means the control is
+// honest about the boundary rather than that it failed.
+test fn planning_a_cut_does_not_withdraw_anything_by_itself() -> Bool {
+  let outcome = apply_capacity_control(request: CutHost {
+    host: operator_host_srv3,
+    cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
+  })
+  capacity_control_is_planned(outcome: outcome)
+    && !host_is_withdrawn(host: operator_host_srv3)
+    && string_contains(s: capacity_control_outcome_line(outcome: outcome), pattern: "plan:")
+    && string_contains(s: capacity_control_outcome_line(outcome: outcome),
+                       pattern: "add to withdrawn_hosts")
+}
+
+test fn planning_a_runtime_cut_does_not_withdraw_it_by_itself() -> Bool {
+  let outcome = apply_capacity_control(request: CutProviderRuntime {
+    provider: CodexCliProvider,
+    cause: WithdrawnToReduceSpend { detail: "quota" as NonEmptyStr },
+  })
+  capacity_control_is_planned(outcome: outcome)
+    && !provider_is_withdrawn(provider: CodexCliProvider)
+}
+
+// CUTTING A RUNTIME AND CUTTING A HOST ARE DIFFERENT PLANS, NOT ONE CONTROL WITH AN ARGUMENT.
 test fn the_two_cut_controls_actuate_distinctly() -> Bool {
   let cut_host = capacity_control_outcome_line(outcome: apply_capacity_control(
     request: CutHost {

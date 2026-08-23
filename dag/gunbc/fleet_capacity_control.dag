@@ -112,6 +112,14 @@ fn provider_withdrawal_for(provider: ProviderKind) -> ProviderCapacityWithdrawal
   provider_withdrawal_in(rows: withdrawn_providers, provider: provider)
 }
 
+// THESE TWO REMAIN AS PREDICATES RATHER THAN BEING DISSOLVED INTO THEIR OPTION READERS
+// (review 54905). The reviewer is right that Present => true / Absent => false is predicate
+// dissolution and would be blocking in std. It is kept here because both callers -- the counts
+// below and the dispatch gate in gunbc.dispatch_selection -- genuinely want the BOOLEAN and not
+// the row: the gate filters offers and has no use for the cause. Dissolving would push a match
+// over an Option whose Present payload is discarded into every call site, which is the same
+// discard spelled more times. The Option readers are exported beside them for callers that need
+// the cause, so nothing is forced through the lossy surface.
 fn host_is_withdrawn(host: HostIdentity) -> Bool {
   match host_withdrawal_for(host: host) {
     Present { value: _ } => true
@@ -145,7 +153,7 @@ type CapacityAdmission
 // so reporting the provider would name a cause whose repair changes nothing about this host. The
 // same precedence is why the two refusals are distinct arms -- an operator reading "provider
 // withdrawn" about a host that is down would restore the provider and see no capacity return.
-fn capacity_admission_in(
+fn fleet_capacity_admission_in(
   host_rows: List<HostCapacityWithdrawal>,
   provider_rows: List<ProviderCapacityWithdrawal>,
   host: HostIdentity,
@@ -162,8 +170,8 @@ fn capacity_admission_in(
   }
 }
 
-fn capacity_admission(host: HostIdentity, provider: ProviderKind) -> CapacityAdmission {
-  capacity_admission_in(
+fn fleet_capacity_admission(host: HostIdentity, provider: ProviderKind) -> CapacityAdmission {
+  fleet_capacity_admission_in(
     host_rows: withdrawn_hosts,
     provider_rows: withdrawn_providers,
     host: host,
@@ -171,7 +179,7 @@ fn capacity_admission(host: HostIdentity, provider: ProviderKind) -> CapacityAdm
   )
 }
 
-fn capacity_admission_admits(admission: CapacityAdmission) -> Bool {
+fn fleet_capacity_admission_admits(admission: CapacityAdmission) -> Bool {
   match admission {
     CapacityAdmitted => true
     CapacityRefusedHostWithdrawn { host: _, cause: _ } => false
@@ -185,7 +193,7 @@ fn capacity_admission_admits(admission: CapacityAdmission) -> Bool {
 // operator would act on. A line that said only "srv3/Codex unavailable" would leave the reader to
 // work out which of the two to restore, which is precisely the distinction the coproduct above
 // exists to preserve.
-fn capacity_admission_line(admission: CapacityAdmission) -> String {
+fn fleet_capacity_admission_line(admission: CapacityAdmission) -> String {
   match admission {
     CapacityAdmitted => "active"
     CapacityRefusedHostWithdrawn { host: h, cause: c } =>
@@ -250,14 +258,29 @@ type CapacityControlRequest
   | RestoreHost { host: HostIdentity }
   | RestoreProviderRuntime { provider: ProviderKind }
 
-// A CONTROL THAT CANNOT BE SERVED REFUSES BY NAMING ITS OWN NEXT STEP, NOT BY REPORTING FAILURE.
+// NOTHING HERE APPLIES ANYTHING, AND THE OUTCOME VOCABULARY SAYS SO (review 54905, 2026-08-23).
 //
-// ControlUnbound is not an error state -- the request is well-formed and the operator is right to
-// want it. It is a declared boundary of what this build actuates, carrying the axis it would need
-// to bind, so the refusal is actionable rather than merely negative (DESIGN section 4b(2): a class
-// below its ceiling names its next-rung trigger).
+// An earlier revision of this type had a ControlApplied arm returning "host srv3 withdrawn
+// (maintenance)" for four of the five requests. That was fabricated plausible output in the sense
+// DESIGN section 5 forbids: the rosters are module-scope data rows, so a caller that applied a cut
+// and then read host_is_withdrawn saw false immediately after being told the cut succeeded. The
+// sibling witness asserting the rosters stay empty made the two claims jointly inconsistent by
+// construction, and the witnesses could not catch it because they only compared strings between
+// requests rather than joining the control to the roster reader.
+//
+// WHAT ACTUALLY HAPPENS IS PLANNING, SO THAT IS WHAT THE OUTCOME NAMES. Withdrawing capacity means
+// authoring a roster row and committing it -- deliberately, because a withdrawal must face review
+// like any other change to what the fleet does. So the control emits the EDIT that would effect
+// the request, and applying it is the commit. This is the same plan/apply split the fleet converge
+// path already uses, and it is honest at the only point that matters: no arm claims an effect that
+// has not occurred.
+//
+// THE TWO NON-PLANNING ARMS ARE DISTINCT BECAUSE THEIR CAUSES ARE. ControlUnbound means no
+// mechanism exists to serve a well-formed request -- the account axis, where there is no offer to
+// remove. ControlRejected means the request itself was refused. Collapsing them would tell an
+// operator to rephrase a request that was never the problem.
 type CapacityControlOutcome
-  = ControlApplied { effect: String }
+  = ControlPlanned { roster_edit: String }
   | ControlUnbound { axis: NonEmptyStr, trigger: NonEmptyStr }
   | ControlRejected { reason: NonEmptyStr }
 
@@ -268,14 +291,17 @@ data capacity_control_account_axis_trigger: NonEmptyStr = "dispatch_selection Ad
 fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOutcome {
   match request {
     CutHost { host: h, cause: c } =>
-      ControlApplied {
-        effect: join(["host ", h as String, " withdrawn (",
-                      withdrawal_cause_label(cause: c), ")"], ""),
+      ControlPlanned {
+        roster_edit: join(["add to withdrawn_hosts: host ", h as String, " (",
+                           withdrawal_cause_label(cause: c), ") ",
+                           withdrawal_cause_detail(cause: c) as String], ""),
       }
     CutProviderRuntime { provider: p, cause: c } =>
-      ControlApplied {
-        effect: join(["provider runtime ", provider_kind_label(kind: p), " withdrawn (",
-                      withdrawal_cause_label(cause: c), ")"], ""),
+      ControlPlanned {
+        roster_edit: join(["add to withdrawn_providers: runtime ",
+                           provider_kind_label(kind: p), " (",
+                           withdrawal_cause_label(cause: c), ") ",
+                           withdrawal_cause_detail(cause: c) as String], ""),
       }
     CutProviderAccountBinding { provider: _, account: _, cause: _ } =>
       ControlUnbound {
@@ -283,29 +309,30 @@ fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOut
         trigger: capacity_control_account_axis_trigger,
       }
     RestoreHost { host: h } =>
-      ControlApplied { effect: join(["host ", h as String, " restored"], "") }
+      ControlPlanned {
+        roster_edit: join(["remove from withdrawn_hosts: host ", h as String], ""),
+      }
     RestoreProviderRuntime { provider: p } =>
-      ControlApplied {
-        effect: join(["provider runtime ", provider_kind_label(kind: p), " restored"], ""),
+      ControlPlanned {
+        roster_edit: join(["remove from withdrawn_providers: runtime ",
+                           provider_kind_label(kind: p)], ""),
       }
   }
 }
 
-fn capacity_control_is_actuated(outcome: CapacityControlOutcome) -> Bool {
+// NAMED FOR PLANNING RATHER THAN ACTUATION, BECAUSE THAT IS WHAT IT DECIDES. A predicate called
+// is_actuated over a function that actuates nothing is the same fabrication one layer out.
+fn capacity_control_is_planned(outcome: CapacityControlOutcome) -> Bool {
   match outcome {
-    ControlApplied { effect: _ } => true
+    ControlPlanned { roster_edit: _ } => true
     ControlUnbound { axis: _, trigger: _ } => false
     ControlRejected { reason: _ } => false
   }
 }
 
-// THE TWO NON-ACTUATING OUTCOMES ARE DISTINCT AND A CONSUMER MUST BE ABLE TO TELL THEM APART.
-// Unbound means this build cannot serve a legitimate request; Rejected means the request itself
-// was refused. Collapsing them to "did not apply" would tell an operator to rephrase a request
-// that was never the problem.
 fn capacity_control_outcome_line(outcome: CapacityControlOutcome) -> String {
   match outcome {
-    ControlApplied { effect: e } => e
+    ControlPlanned { roster_edit: e } => join(["plan: ", e], "")
     ControlUnbound { axis: a, trigger: t } =>
       join(["not wired on this build -- axis: ", a as String, "; needs: ", t as String], "")
     ControlRejected { reason: r } => join(["rejected: ", r as String], "")
