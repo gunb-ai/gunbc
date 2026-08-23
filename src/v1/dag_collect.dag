@@ -17,6 +17,7 @@ import v1.compiler.dag_collect_support {
 }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.emit_core_support { to_string }
 
 
 fn is_import_slot_node(n: Node) -> Bool {

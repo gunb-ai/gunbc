@@ -67,7 +67,7 @@ import v1.std.core {
   DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
   default_ident_span, node_name_span,
 }
-import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
+import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport, map_has }
 import v1.compiler.infer_types {
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
