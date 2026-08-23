@@ -3011,42 +3011,61 @@ pub fn literal_introduction_type_mismatch(
     actual_expr: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    match (*actual_expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
-        {
-            let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
-                unreachable!()
-            };
+    {
+        let expected_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            formal.clone(),
+        );
+        match (*actual_expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
             {
-                let expected_identity = type_reference_identity(
-                    formal.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                );
-                if admits_integer_numeral(expected_identity.clone()) {
-                    false
-                } else {
-                    match (*expected_type_head_exposure(formal.clone(), scope.clone())).clone() {
-                        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                            if matches!(view.as_ref(), TypeHeadView::KernelScalarHead { .. }) =>
+                let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                {
+                    let expected_identity = type_reference_identity(
+                        formal.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
+                    if (is_kernel_type(expected_name.clone())
+                        || admits_integer_numeral(expected_identity.clone()))
+                    {
+                        false
+                    } else {
+                        match (*expected_type_head_exposure(formal.clone(), scope.clone())).clone()
                         {
-                            let TypeHeadView::KernelScalarHead {
-                                type_identity: _, ..
-                            } = view.as_ref()
-                            else {
-                                unreachable!()
-                            };
-                            false
+                            TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                                if matches!(
+                                    view.as_ref(),
+                                    TypeHeadView::KernelScalarHead { .. }
+                                ) =>
+                            {
+                                let TypeHeadView::KernelScalarHead {
+                                    type_identity: _, ..
+                                } = view.as_ref()
+                                else {
+                                    unreachable!()
+                                };
+                                false
+                            }
+                            _ => true,
                         }
-                        _ => true,
                     }
                 }
             }
+            ExprData::ExprLiteral { value: _, .. } => {
+                if is_kernel_type(expected_name.clone()) {
+                    false
+                } else {
+                    exposure_is_application(expected_type_head_exposure(
+                        formal.clone(),
+                        scope.clone(),
+                    ))
+                }
+            }
+            _ => false,
         }
-        ExprData::ExprLiteral { value: _, .. } => {
-            exposure_is_application(expected_type_head_exposure(formal.clone(), scope.clone()))
-        }
-        _ => false,
     }
 }
 
