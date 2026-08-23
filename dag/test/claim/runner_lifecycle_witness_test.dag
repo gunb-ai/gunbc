@@ -22,9 +22,10 @@ import gunbc.runner_lifecycle {
   DiskHeadroomUnobserved,
   host_runner_capacity_converged,
   HostRunnerCapacityReceipt,
-  runner_slot_instance_name,
   runner_slot_unit_name,
 }
+import gunbc.build_cache_instance { runner_slot_instance_name, runner_slot_index_suffix }
+import gunbc.runner_incarnation { runner_slot_incarnation }
 import gunbc.host_disk_observation {
   DiskObserved,
   DiskUnobserved,
@@ -157,4 +158,36 @@ test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bo
   !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 5))
+}
+
+// THE COLLISION ROW. Before the suffix fork was dissolved, runner_incarnation enumerated indices 1
+// through 8 and returned the literal "00" for everything above, while the other four sites derived
+// the pad. So at index 9 the fleet had two answers -- srv3-09 and srv3-00 -- and worse, EVERY index
+// above 8 produced that same "00", meaning two distinct slots would contend for one registration in
+// the GitHub runner namespace. This row goes red against the enumerator and green against the
+// derived rule, and it is written at 9 because that is the first index where they differed.
+test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_range() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
+  (runner_slot_incarnation(host: operator_host_srv3, slot_index: 9, unit_active: true).registration_name as String)
+    == runner_slot_instance_name(slot: slot)
+    && runner_slot_instance_name(slot: slot) == "srv3-09"
+}
+
+// NON-COLLISION, STATED AS THE PROPERTY RATHER THAN AS TWO SAMPLES. Two different indices above the
+// old enumerated range must not share a name. Under the enumerator both were "00"; under the derived
+// rule they differ. Without this row the one above is satisfied by any function that happens to
+// return "srv3-09" at 9, including another bucket with one more arm.
+test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bool {
+  runner_slot_index_suffix(index: 9) != runner_slot_index_suffix(index: 10)
+    && runner_slot_index_suffix(index: 10) != runner_slot_index_suffix(index: 11)
+    && runner_slot_index_suffix(index: 9) == "09"
+    && runner_slot_index_suffix(index: 10) == "10"
+}
+
+// THE UNCHANGED-BELOW-THE-RANGE CONTROL. The consolidation must not move any name the fleet actually
+// uses today, so the committed range keeps its existing spelling.
+test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool {
+  runner_slot_index_suffix(index: 1) == "01"
+    && runner_slot_index_suffix(index: 5) == "05"
+    && runner_slot_index_suffix(index: 6) == "06"
 }

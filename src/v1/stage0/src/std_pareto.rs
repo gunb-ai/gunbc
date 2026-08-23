@@ -117,7 +117,7 @@ pub fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
 }
 
 pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> DominanceVerdict {
-    tally_verdict(comparisons.clone().iter().cloned().fold(
+    tally_verdict(comparisons.iter().cloned().fold(
         DominanceTally {
             saw_better: false,
             saw_worse: false,
@@ -164,7 +164,6 @@ pub fn verdict_is_incomparable(v: DominanceVerdict) -> bool {
 
 pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
     verdicts
-        .clone()
         .iter()
         .cloned()
         .fold(false, |acc: bool, v: DominanceVerdict| {
@@ -470,7 +469,7 @@ pub fn compare_pair(
     b: Rc<ParetoEntry>,
     axes: Rc<Vec<Rc<SelectionAxis>>>,
 ) -> Rc<PairStanding> {
-    pair_from_accum(axes.clone().iter().cloned().fold(
+    pair_from_accum(axes.iter().cloned().fold(
         Rc::new(PairAccum {
             refusal_causes: no_names(),
             a_worse_somewhere: false,
@@ -483,8 +482,7 @@ pub fn compare_pair(
 }
 
 pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationRef>) -> i64 {
-    axes.clone()
-        .iter()
+    axes.iter()
         .cloned()
         .fold(0, |acc: i64, ax: Rc<SelectionAxis>| {
             if declaration_ref_eq(ax.identity.clone(), id.clone()) {
@@ -506,7 +504,6 @@ pub fn axes_have_duplicate_identity(axes: Rc<Vec<Rc<SelectionAxis>>>) -> bool {
 
 pub fn count_entry_identity(field: Rc<Vec<Rc<ParetoEntry>>>, id: Rc<DeclarationRef>) -> i64 {
     field
-        .clone()
         .iter()
         .cloned()
         .fold(0, |acc: i64, e: Rc<ParetoEntry>| {
@@ -612,7 +609,7 @@ pub fn entry_standing(
                 })
             } else {
                 standing_from_accum(
-                    field.clone().iter().cloned().fold(
+                    field.iter().cloned().fold(
                         Rc::new(FieldAccum {
                             refusal_causes: no_names(),
                             dominators: no_dominators(),
@@ -629,15 +626,15 @@ pub fn entry_standing(
 }
 
 pub fn dominator_names(dominators: Rc<Vec<Rc<Domination>>>) -> Rc<Vec<String>> {
-    dominators.clone().iter().cloned().fold(
-        no_names(),
-        |acc: Rc<Vec<String>>, d: Rc<Domination>| {
+    dominators
+        .iter()
+        .cloned()
+        .fold(no_names(), |acc: Rc<Vec<String>>, d: Rc<Domination>| {
             v1_rt::concat(
                 acc,
                 one_name(declaration_ref_display_key(d.candidate.clone())),
             )
-        },
-    )
+        })
 }
 
 pub fn pareto_label(s: Rc<ParetoStanding>) -> String {

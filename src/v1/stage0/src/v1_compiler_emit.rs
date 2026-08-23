@@ -3,6 +3,7 @@
 
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
+use self::FileEmissionRefusal::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
 use self::TcoExprShape::*;
@@ -50,7 +51,7 @@ pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
-    is_declared_container_alias_spelling, is_unit_like, node_is_collection,
+    is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
     resolved_type,
 };
@@ -109,8 +110,8 @@ pub use crate::v1_std_core::{
     let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality,
+    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
+    transport_verb, tuple_type_name, unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
@@ -158,7 +159,7 @@ pub fn derive_module_imports(
     {
         let has_async = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if ((item.uses.clone().len() as i64) > 0) {
                     __found = true;
                     break;
@@ -173,11 +174,11 @@ pub fn derive_module_imports(
                 let mut __result = Vec::new();
                 for rule in Rc::new({
                     let mut __result = Vec::new();
-                    for rule in import_rules.clone().iter().cloned() {
+                    for rule in import_rules.iter().cloned() {
                         if match (*rule.trigger.clone()).clone() {
                             ImportTrigger::TypeUsageTrigger { type_name: t, .. } => {
                                 let mut __found = false;
-                                for n in type_names.clone().iter().cloned() {
+                                for n in type_names.iter().cloned() {
                                     if (n.clone() == t.clone()) {
                                         __found = true;
                                         break;
@@ -189,7 +190,7 @@ pub fn derive_module_imports(
                             ImportTrigger::DeriveMacroTrigger { macro_name: _, .. } => false,
                             ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
                                 let mut __found = false;
-                                for n in type_names.clone().iter().cloned() {
+                                for n in type_names.iter().cloned() {
                                     if (n.clone() == c.clone()) {
                                         __found = true;
                                         break;
@@ -229,7 +230,7 @@ pub fn collect_type_names_from_items(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
+        for item in items.iter().cloned() {
             __result.extend(
                 (*collect_type_names_from_node(item.clone(), source_indices.clone()))
                     .iter()
@@ -437,7 +438,7 @@ pub fn emit_simple_string_interp(
         let interp = spec.string_interp.clone();
         let has_interpolations = {
             let mut __found = false;
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 if match (*p.clone()).clone() {
                     StringPart::Interpolation { expr: _, .. } => true,
                     _ => false,
@@ -454,7 +455,7 @@ pub fn emit_simple_string_interp(
             } => {
                 let fmt_parts = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => {
                                 let base = escape_string_literal_body(v.clone());
@@ -482,7 +483,7 @@ pub fn emit_simple_string_interp(
                 });
                 let fmt_str = Rc::new({
                     let mut __result = Vec::new();
-                    for p in fmt_parts.clone().iter().cloned() {
+                    for p in fmt_parts.iter().cloned() {
                         __result.push(p.format_segment.clone());
                     }
                     __result
@@ -492,7 +493,7 @@ pub fn emit_simple_string_interp(
                     let mut __result = Vec::new();
                     for a in Rc::new({
                         let mut __result = Vec::new();
-                        for p in fmt_parts.clone().iter().cloned() {
+                        for p in fmt_parts.iter().cloned() {
                             __result.push(p.arg_expr.clone());
                         }
                         __result
@@ -522,7 +523,7 @@ pub fn emit_simple_string_interp(
             InterpStyle::InlineExpr => {
                 let segments = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => {
                                 let base = escape_string_literal_body(v.clone());
@@ -673,7 +674,7 @@ pub fn order_typed_call_args(
     {
         let has_unnamed = {
             let mut __found = false;
-            for arg in args.clone().iter().cloned() {
+            for arg in args.iter().cloned() {
                 if (arg_name_at(arg.clone(), scope.type_env.clone().source_indices.clone()) == None)
                 {
                     __found = true;
@@ -688,7 +689,7 @@ pub fn order_typed_call_args(
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
                 None => args.clone(),
                 Some(sig) => {
-                    let arg_map = args.clone().iter().cloned().fold(
+                    let arg_map = args.iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
                         |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                             let n = arg_name_at(
@@ -737,7 +738,7 @@ pub fn order_typed_call_args(
                     });
                     let leftovers = Rc::new({
                         let mut __result = Vec::new();
-                        for arg in args.clone().iter().cloned() {
+                        for arg in args.iter().cloned() {
                             if {
                                 let n = arg_name_at(
                                     arg.clone(),
@@ -1081,7 +1082,7 @@ pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
             );
             let pascal_parts = Rc::new({
                 let mut __result = Vec::new();
-                for p in parts.clone().iter().cloned() {
+                for p in parts.iter().cloned() {
                     __result.push(capitalize_first(p.clone()));
                 }
                 __result
@@ -1197,7 +1198,6 @@ pub fn escape_python_interp_text(s: String) -> String {
 
 pub fn apply_escape_pairs(s: String, pairs: Rc<Vec<Rc<EscapePair>>>) -> String {
     pairs
-        .clone()
         .iter()
         .cloned()
         .fold(s.clone(), |acc: String, pair: Rc<EscapePair>| {
@@ -1984,7 +1984,7 @@ pub fn service_has_rest(
         let from_fallback = is_rest_transport(fallback_transport.clone(), source_indices.clone());
         let from_ops = {
             let mut __found = false;
-            for op in op_children.clone().iter().cloned() {
+            for op in op_children.iter().cloned() {
                 if if (op.transport.clone() != None) {
                     is_rest_transport(
                         op.transport.clone().clone().unwrap(),
@@ -2008,7 +2008,7 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
         let from_fallback = is_shell_transport(fallback_transport.clone());
         let from_ops = {
             let mut __found = false;
-            for op in op_children.clone().iter().cloned() {
+            for op in op_children.iter().cloned() {
                 if if (op.transport.clone() != None) {
                     is_shell_transport(op.transport.clone().clone().unwrap())
                 } else {
@@ -2033,7 +2033,7 @@ pub fn service_has_file(
         let from_fallback = is_file_transport(fallback_transport.clone(), source_indices.clone());
         let from_ops = {
             let mut __found = false;
-            for op in op_children.clone().iter().cloned() {
+            for op in op_children.iter().cloned() {
                 if if (op.transport.clone() != None) {
                     is_file_transport(
                         op.transport.clone().clone().unwrap(),
@@ -2067,7 +2067,7 @@ pub fn service_has_rest_auth(
         };
         let from_ops = {
             let mut __found = false;
-            for op in op_children.clone().iter().cloned() {
+            for op in op_children.iter().cloned() {
                 if if (op.transport.clone() != None) {
                     {
                         let t = op.transport.clone().clone().unwrap();
@@ -2096,7 +2096,7 @@ pub fn extract_modifier_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in properties.clone().iter().cloned() {
+        for p in properties.iter().cloned() {
             __result.extend(
                 (*match field_init_operation_modifier(p.clone(), source_indices.clone()) {
                     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
@@ -2360,7 +2360,7 @@ pub fn emit_unified_service_def(
         );
         let methods = Rc::new({
             let mut __result = Vec::new();
-            for op_node in op_children.clone().iter().cloned() {
+            for op_node in op_children.iter().cloned() {
                 __result.push(emit_unified_operation_method(
                     safe_name.clone(),
                     transport.clone(),
@@ -3302,7 +3302,7 @@ pub fn emit_tco_match_go(
         let body_depth = (case_depth.clone() + 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
-            for arm in arms.clone().iter().cloned() {
+            for arm in arms.iter().cloned() {
                 __result.push({
                     let bindings =
                         emit_go_match_arm_bindings(arm.clone(), body_depth.clone(), si.clone());
@@ -3427,7 +3427,7 @@ pub fn emit_unified_tco_match(
                 _ => {
                     let arm_strs = Rc::new({
                         let mut __result = Vec::new();
-                        for arm in arm_list.clone().iter().cloned() {
+                        for arm in arm_list.iter().cloned() {
                             __result.push(emit_unified_tco_match_arm(
                                 arm.clone(),
                                 fn_name.clone(),
@@ -3874,7 +3874,7 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 let base = v1_rt::substring(&name, 0, (name_len.clone() - suffix_len.clone()));
                 if {
                     let mut __found = false;
-                    for r in keywords.clone().iter().cloned() {
+                    for r in keywords.iter().cloned() {
                         if (r.clone() == base.clone()) {
                             __found = true;
                             break;
@@ -3903,7 +3903,7 @@ pub fn emit_suffix_escape_ident(
     {
         let is_reserved = {
             let mut __found = false;
-            for r in keywords.clone().iter().cloned() {
+            for r in keywords.iter().cloned() {
                 if (r.clone() == converted.clone()) {
                     __found = true;
                     break;
@@ -4200,15 +4200,6 @@ pub fn render_target_name(target: RenderTarget) -> String {
     }
 }
 
-pub fn unmodeled_file_transport_missing_fact() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "the file transport dispatch supplies only the operation name and an indent depth; emitting this operation requires the declared verb, the resolved path template, the operation input bindings, the payload/content input, the declared output type, and the failure/effect semantics".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn is_file_transport_after_dispatch_precedence(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4221,6 +4212,303 @@ pub fn is_file_transport_after_dispatch_precedence(
         } else {
             is_file_transport(t.clone(), source_indices.clone())
         }
+    }
+}
+
+pub fn child_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in ch.properties.clone().iter().cloned() {
+            if (field_init_node_name_at(p.clone(), source_indices.clone())
+                == "from_key".to_string())
+            {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                Some(s.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+    {
+        let is_product = is_product_type(n.clone());
+        if ((is_product.clone() && (n.ident_span.clone() == None))
+            && ((n.children.clone().len() as i64) == 1))
+        {
+            match n.children.clone().first().cloned() {
+                Some(field_node) => resolved_type(field_node.clone()),
+                None => n.clone(),
+            }
+        } else {
+            n.clone()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FileEmissionRefusal {
+    FileTargetNotModeled { target_name: String },
+    FileVerbNotModeled { verb: String },
+    FilePathNotStaticallyRenderable,
+    FileWriteMissingContentInput { verb: String },
+    FileOutputKeyNotModeled { key: String },
+    FileOutputShapeNotModeled,
+}
+
+pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    FileEmissionRefusal::FileTargetNotModeled { target_name: t, .. } => v1_rt::concat(v1_rt::concat("file transport emission is modeled for the rust target only; target '".to_string(), t.clone()), "' has no file realization handler, so no operation carrying `transport file` is emitted for it".to_string()),
+    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list and write_owner_only, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
+    FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
+    FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
+    FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content".to_string()),
+    FileEmissionRefusal::FileOutputShapeNotModeled => "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering".to_string(),
+}
+}
+
+pub fn file_transport_verb_delete() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "delete".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_verb_list() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "list".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_verb_write_owner_only() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "write_owner_only".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_transport_declared_verb(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match transport_verb(t.clone(), source_indices.clone()) {
+        Some(v) => match (*v.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                Some(s.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn file_operation_has_content_input(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for p in op_node.params.clone().iter().cloned() {
+            if (param_node_name_at(p.clone(), source_indices.clone()) == "content".to_string()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn is_modeled_file_output_channel(key: String) -> bool {
+    ((((((((key.clone() == "write_success".to_string())
+        || (key.clone() == "success".to_string()))
+        || (key.clone() == "bytes_written".to_string()))
+        || (key.clone() == "bytes".to_string()))
+        || (key.clone() == "byte_count".to_string()))
+        || (key.clone() == "path".to_string()))
+        || (key.clone() == "error".to_string()))
+        || (key.clone() == "content".to_string()))
+}
+
+pub fn file_output_channel_fields(op_node: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let rt = resolved_type(op_node.clone());
+        if is_product_type(rt.clone()) {
+            rt.children.clone()
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn file_output_channel_of_field(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match child_from_key(ch.clone(), source_indices.clone()) {
+        Some(k) => k.clone(),
+        None => authored_name_at(source_indices.clone(), ch.clone()),
+    }
+}
+
+pub fn file_operation_output_channels(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for ch in file_output_channel_fields(op_node.clone()).iter().cloned() {
+            __result.push(file_output_channel_of_field(
+                ch.clone(),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn file_transport_path_is_renderable(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match transport_base_path(t.clone(), source_indices.clone()) {
+        Some(p) => match (*p.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                true
+            }
+            ExprData::ExprStringInterp => true,
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn file_emission_verb_refusal(
+    op_node: Rc<Node>,
+    verb: Option<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FileEmissionRefusal>> {
+    match verb.clone() {
+        Some(v) => {
+            if ((v.clone() == file_transport_verb_delete())
+                || (v.clone() == file_transport_verb_list()))
+            {
+                None
+            } else {
+                if (v.clone() == file_transport_verb_write_owner_only()) {
+                    if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
+                        None
+                    } else {
+                        Some(Rc::new(FileEmissionRefusal::FileWriteMissingContentInput {
+                            verb: v.clone(),
+                        }))
+                    }
+                } else {
+                    Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
+                        verb: v.clone(),
+                    }))
+                }
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn file_emission_refusal(
+    op_node: Rc<Node>,
+    t: Rc<Node>,
+    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FileEmissionRefusal>> {
+    match target.clone() {
+        RenderTarget::Rust => {
+            if !file_transport_path_is_renderable(t.clone(), source_indices.clone()) {
+                Some(Rc::new(
+                    FileEmissionRefusal::FilePathNotStaticallyRenderable,
+                ))
+            } else {
+                {
+                    let verb = file_transport_declared_verb(t.clone(), source_indices.clone());
+                    let verb_refusal = file_emission_verb_refusal(
+                        op_node.clone(),
+                        verb.clone(),
+                        source_indices.clone(),
+                    );
+                    match verb_refusal.clone() {
+                        Some(r) => Some(r.clone()),
+                        None => {
+                            if !is_product_type(resolved_type(op_node.clone())) {
+                                Some(Rc::new(FileEmissionRefusal::FileOutputShapeNotModeled))
+                            } else {
+                                {
+                                    let unmodeled = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for k in file_operation_output_channels(
+                                            op_node.clone(),
+                                            source_indices.clone(),
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if !is_modeled_file_output_channel(k.clone()) {
+                                                __result.push(k);
+                                            }
+                                        }
+                                        __result
+                                    });
+                                    match unmodeled.clone().first().cloned() {
+                                        Some(k) => Some(Rc::new(
+                                            FileEmissionRefusal::FileOutputKeyNotModeled {
+                                                key: k.clone(),
+                                            },
+                                        )),
+                                        None => None,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => Some(Rc::new(FileEmissionRefusal::FileTargetNotModeled {
+            target_name: render_target_name(target.clone()),
+        })),
     }
 }
 
@@ -4242,19 +4530,28 @@ pub fn unmodeled_file_transport_operation_diagnostics(
                     (*{
                         let t = effective_operation_transport(op_node.clone(), fallback.clone());
                         if is_file_transport_after_dispatch_precedence(t.clone(), si.clone()) {
-                            Rc::new(vec![make_error_node(
-                                Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
-                                    transport_kind: "file".to_string(),
-                                    service: service_name.clone(),
-                                    operation: authored_name(env.clone(), op_node.clone()),
-                                    declaring_module: module_name.clone(),
-                                    target: render_target_name(target.clone()),
-                                    missing_realization_fact: unmodeled_file_transport_missing_fact(
-                                    ),
-                                    span: op_node.span.clone(),
-                                }),
-                                module_name.clone(),
-                            )])
+                            match file_emission_refusal(
+                                op_node.clone(),
+                                t.clone(),
+                                target.clone(),
+                                si.clone(),
+                            ) {
+                                Some(refusal) => Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "file".to_string(),
+                                        service: service_name.clone(),
+                                        operation: authored_name(env.clone(), op_node.clone()),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: file_emission_refusal_fact(
+                                            refusal.clone(),
+                                        ),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                None => Rc::new(vec![]),
+                            }
                         } else {
                             Rc::new(vec![])
                         }
@@ -4310,7 +4607,11 @@ pub fn unmodeled_file_transport_diagnostics(
     })
 }
 
-pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+pub fn emit_unmodeled_file_transport_refusal_with_cause(
+    op_name: String,
+    target: RenderTarget,
+    refusal: Rc<FileEmissionRefusal>,
+) -> String {
     emit_error_expr(
         v1_rt::concat(
             v1_rt::concat(
@@ -4326,9 +4627,19 @@ pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarg
                 ),
                 ") -- ".to_string(),
             ),
-            unmodeled_file_transport_missing_fact(),
+            file_emission_refusal_fact(refusal.clone()),
         ),
         target.clone(),
+    )
+}
+
+pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_unmodeled_file_transport_refusal_with_cause(
+        op_name.clone(),
+        target.clone(),
+        Rc::new(FileEmissionRefusal::FileTargetNotModeled {
+            target_name: render_target_name(target.clone()),
+        }),
     )
 }
 
@@ -4337,7 +4648,7 @@ pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) ->
         let spec = language_spec(target.clone());
         let param_strs = Rc::new({
             let mut __result = Vec::new();
-            for p in param_names.clone().iter().cloned() {
+            for p in param_names.iter().cloned() {
                 __result.push(apply_type_template1(
                     spec.annotations.clone().lambda_param_untyped.clone(),
                     emit_ident(p.clone(), target.clone()),
@@ -5085,7 +5396,7 @@ pub fn emit_params_shared(
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(emit_param_shared(
                     p.clone(),
                     target.clone(),
@@ -5205,7 +5516,7 @@ pub fn emit_typed_string_interp_unified(
         let interp = spec.string_interp.clone();
         let has_interpolations = {
             let mut __found = false;
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 if match (*p.clone()).clone() {
                     StringPart::Interpolation { expr: _, .. } => true,
                     _ => false,
@@ -5222,7 +5533,7 @@ pub fn emit_typed_string_interp_unified(
             } => {
                 let fmt_parts = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => {
                                 let base = escape_string_literal_body(v.clone());
@@ -5246,7 +5557,7 @@ pub fn emit_typed_string_interp_unified(
                 });
                 let fmt_str = Rc::new({
                     let mut __result = Vec::new();
-                    for p in fmt_parts.clone().iter().cloned() {
+                    for p in fmt_parts.iter().cloned() {
                         __result.push(p.format_segment.clone());
                     }
                     __result
@@ -5256,7 +5567,7 @@ pub fn emit_typed_string_interp_unified(
                     let mut __result = Vec::new();
                     for a in Rc::new({
                         let mut __result = Vec::new();
-                        for p in fmt_parts.clone().iter().cloned() {
+                        for p in fmt_parts.iter().cloned() {
                             __result.push(p.arg_expr.clone());
                         }
                         __result
@@ -5286,7 +5597,7 @@ pub fn emit_typed_string_interp_unified(
             InterpStyle::InlineExpr => {
                 let segments = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => {
                                 let base = escape_string_literal_body(v.clone());
@@ -5330,7 +5641,7 @@ pub fn emit_typed_record_lit_unified(
                     {
                         let field_strs = Rc::new({
                             let mut __result = Vec::new();
-                            for f in fields.clone().iter().cloned() {
+                            for f in fields.iter().cloned() {
                                 __result.push(v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -5371,7 +5682,7 @@ pub fn emit_typed_record_lit_unified(
                     {
                         let field_strs = Rc::new({
                             let mut __result = Vec::new();
-                            for f in fields.clone().iter().cloned() {
+                            for f in fields.iter().cloned() {
                                 __result.push(v1_rt::concat(
                                     v1_rt::concat(
                                         emit_export_ident(
@@ -5444,7 +5755,7 @@ pub fn emit_typed_call_unified(
         let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
-            for a in ordered_args.clone().iter().cloned() {
+            for a in ordered_args.iter().cloned() {
                 __result.push(recurse(arg_value(a.clone())));
             }
             __result
@@ -5556,7 +5867,7 @@ pub fn emit_algebra_method_call_unified(
                 let function_name = bridge_method_name_unified(method_name.clone(), target.clone());
                 let arg_strs = Rc::new({
                     let mut __result = Vec::new();
-                    for a in args.clone().iter().cloned() {
+                    for a in args.iter().cloned() {
                         __result.push(recurse(arg_value(a.clone())));
                     }
                     __result
@@ -5591,7 +5902,7 @@ pub fn emit_plain_method_call_unified(
         let recv_str = recurse(receiver.clone());
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
-            for a in args.clone().iter().cloned() {
+            for a in args.iter().cloned() {
                 __result.push(recurse(arg_value(a.clone())));
             }
             __result
@@ -5636,7 +5947,7 @@ pub fn emit_typed_method_call_unified(
                     let var_name = service_var_name(svc_name.clone());
                     let arg_strs = Rc::new({
                         let mut __result = Vec::new();
-                        for a in args.clone().iter().cloned() {
+                        for a in args.iter().cloned() {
                             __result.push(recurse(arg_value(a.clone())));
                         }
                         __result
@@ -5690,7 +6001,7 @@ pub fn emit_typed_method_call_unified(
                         let var_name = service_var_name(svc_name.clone());
                         let arg_strs = Rc::new({
                             let mut __result = Vec::new();
-                            for a in args.clone().iter().cloned() {
+                            for a in args.iter().cloned() {
                                 __result.push(recurse(arg_value(a.clone())));
                             }
                             __result
@@ -5784,7 +6095,7 @@ pub fn emit_unified_variant_pattern(
                     {
                         let binding_strs = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in field_bindings.clone().iter().cloned() {
+                            for fb in field_bindings.iter().cloned() {
                                 __result.push({
                                     let pat_str = emit_unified_pattern(
                                         field_binding_pattern(fb.clone()),
@@ -5918,7 +6229,7 @@ pub fn emit_go_match_arm_bindings(
             } else {
                 Rc::new({
                     let mut __result = Vec::new();
-                    for fb in fbs.clone().iter().cloned() {
+                    for fb in fbs.iter().cloned() {
                         __result.push(v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -5965,7 +6276,7 @@ pub fn emit_typed_match_go(
         let body_depth = (case_depth.clone() + 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
-            for arm in arms.clone().iter().cloned() {
+            for arm in arms.iter().cloned() {
                 __result.push({
                     let bindings = emit_go_match_arm_bindings(
                         arm.clone(),
@@ -6045,7 +6356,7 @@ pub fn emit_typed_match_unified(
             let body_depth = (case_depth.clone() + 1);
             let arm_strs = Rc::new({
                 let mut __result = Vec::new();
-                for arm in arms.clone().iter().cloned() {
+                for arm in arms.iter().cloned() {
                     __result.push({
                         let body_str = emit_match_arm_body_stmt(
                             target.clone(),
@@ -6531,7 +6842,7 @@ pub fn emit_typed_tco_reassign_shared(
     {
         let arg_values = Rc::new({
             let mut __result = Vec::new();
-            for a in args.clone().iter().cloned() {
+            for a in args.iter().cloned() {
                 __result.push(arg_value(a.clone()));
             }
             __result
@@ -6571,7 +6882,7 @@ pub fn emit_typed_tco_reassign_shared(
         });
         let filtered_arg_values = Rc::new({
             let mut __result = Vec::new();
-            for pair in pairs.clone().iter().cloned() {
+            for pair in pairs.iter().cloned() {
                 __result.push(
                     match arg_values
                         .clone()
@@ -6589,14 +6900,14 @@ pub fn emit_typed_tco_reassign_shared(
         });
         let ordered_args = Rc::new({
             let mut __result = Vec::new();
-            for av in filtered_arg_values.clone().iter().cloned() {
+            for av in filtered_arg_values.iter().cloned() {
                 __result.push(recurse(av.clone()));
             }
             __result
         });
         let param_names = Rc::new({
             let mut __result = Vec::new();
-            for pair in pairs.clone().iter().cloned() {
+            for pair in pairs.iter().cloned() {
                 __result.push(emit_ident(
                     param_node_name_at(pair.1.clone(), source_indices.clone()),
                     target.clone(),
