@@ -16,6 +16,7 @@ import extdeps.memory.types {
   Registered,
   bit_width,
   dram_generation_ddr4,
+  MonolithicDie,
 }
 import extdeps.memory.training { LrdimmDataBufferMrep, module_executes_step }
 import std.measure { ByteSize, byte_size }
@@ -255,6 +256,7 @@ data lrdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 4),
   rank_count: 4,
 }
@@ -269,6 +271,7 @@ data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 4),
   rank_count: 2,
 }
