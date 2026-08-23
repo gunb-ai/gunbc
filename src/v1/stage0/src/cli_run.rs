@@ -42669,7 +42669,10 @@ pub fn run_required_floor(
     // AND THE PARTITION MUST BE EXACT. With the reverse join above, every enrolled identity was
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
-    // it fails loudly if a later edit adds a third arm that quietly swallows rows.
+    // it fails loudly if a later edit adds a third arm that quietly swallows rows — which is
+    // exactly what it did to the edit that added `runtime_errored` and `observation_unreadable`,
+    // catching an incomplete change one site short. The sum is the reason those two arms could
+    // not be added quietly, and it is why this invariant is worth more than the six names in it.
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
     if !roster_join_only
@@ -42679,20 +42682,25 @@ pub fn run_required_floor(
             + known_red_passed_over_budget
             + known_red_host_tool_unresolved
             + known_red_host_effect_refused
+            + known_red_runtime_errored_count
+            + known_red_observation_unreadable_count
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
              budget_refused={} passed_over_budget={} host_tool_unresolved={} \
-             host_effect_refused={} roster={} — every enrolled identity must be exactly one of \
-             held, now-passing, budget-refused, passed-over-budget, host-tool-unresolved, or \
-             host-effect-refused",
+             host_effect_refused={} runtime_errored={} observation_unreadable={} roster={} — \
+             every enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, host-tool-unresolved, host-effect-refused, runtime-errored, or \
+             observation-unreadable",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
             known_red_host_tool_unresolved,
             known_red_host_effect_refused,
+            known_red_runtime_errored_count,
+            known_red_observation_unreadable_count,
             expected_red_roster.len()
         ));
     }
