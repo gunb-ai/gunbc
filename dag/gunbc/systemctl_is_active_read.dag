@@ -3,40 +3,19 @@ module gunbc.systemctl_is_active_read
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.systemd.systemctl
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-  operation_argv_cause_label,
+import gunbc.host_effect { HostEffectTransport }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec {
+  HostOperationObserved,
+  HostOperationRefused,
+  host_operation_exec,
+  host_operation_materialize_argv,
+  systemctl_is_active_host_operation,
 }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec {
-  typed_argv_exec_over_fleet_ssh,
-  typed_argv_exec_over_ssh,
-  typed_argv_shell_safe_refusal_argv,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
-
-data systemctl_is_active_path: String = "dag/extdeps/systemd/systemctl.dag"
-data systemctl_is_active_service: String = "systemd.Systemctl"
-data systemctl_is_active_operation: String = "IsActive"
 
 type UnitIsActiveCapture =
     UnitIsActiveCaptured { state: NonEmptyStr, active: Bool }
   | UnitIsActiveCaptureRefused { reason: String }
-
-fn systemctl_is_active_operation_argv(unit: NonEmptyStr) -> ArgvMaterialization {
-  shell_materialize_operation_argv(
-    systemctl_is_active_path,
-    systemctl_is_active_service,
-    systemctl_is_active_operation,
-    [operation_argv_bind_text(name: "unit", text: unit as String)]
-  )
-}
 
 fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActiveCapture {
   let trimmed = trim(state)
@@ -47,64 +26,27 @@ fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActi
   }
 }
 
-fn systemctl_is_active_read_local(unit: NonEmptyStr) -> UnitIsActiveCapture {
-  let result = systemd.Systemctl.IsActive(unit: unit)
-  unit_is_active_capture_from_result(state: result.state, active: result.active)
-}
-
-fn unit_is_active_capture_from_outcome(outcome: TypedArgvExecOutcome) -> UnitIsActiveCapture {
-  match outcome {
-    TypedArgvExecConverged { result: r } =>
-      unit_is_active_capture_from_result(state: r.stdout, active: r.success)
-    TypedArgvExecRefused { reason: why } => UnitIsActiveCaptureRefused { reason: why }
-  }
-}
-
-fn systemctl_is_active_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> UnitIsActiveCapture {
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } => UnitIsActiveCaptureRefused { reason: why }
-    Absent => unit_is_active_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
-  }
-}
-
-fn systemctl_is_active_read_ssh(host: NonEmptyStr, unit: NonEmptyStr) -> UnitIsActiveCapture {
-  match systemctl_is_active_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } => systemctl_is_active_read_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitIsActiveCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn systemctl_is_active_read_fleet_ssh(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  unit: NonEmptyStr,
-) -> UnitIsActiveCapture {
-  match systemctl_is_active_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      unit_is_active_capture_from_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitIsActiveCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
+// THE READ SAYS WHERE AND WHAT, NEVER HOW. The four transport arms that used to live here -- local
+// call, ssh argv, fleet argv, emit refusal -- are gone: they were this file's copy of a dispatch that
+// belongs in the realization layer, and gunbc.host_operation_exec now owns it once for every seam.
+// What remains is this file's real content: the decoder that turns one observation into a typed capture.
 fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitIsActiveCapture {
-  match transport {
-    LocalShell => systemctl_is_active_read_local(unit: unit)
-    SshShell { ssh_host: h } => systemctl_is_active_read_ssh(host: h, unit: unit)
-    FleetSsh { target: t, context: c } => systemctl_is_active_read_fleet_ssh(target: t, context: c, unit: unit)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      UnitIsActiveCaptureRefused {
-        reason: "systemctl is-active refused EmitArtifactThenThinRun transport",
-      }
+  match host_operation_exec(transport: transport, operation: systemctl_is_active_host_operation(unit: unit)) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      unit_is_active_capture_from_result(state: out, active: ok)
+    HostOperationRefused { operation: _, reason: why } =>
+      UnitIsActiveCaptureRefused { reason: why }
   }
 }
 
+// THE OPERATION'S IDENTITY IS NO LONGER SPELLED HERE. The path/service/operation rows and the argv
+// materializer that read them moved to gunbc.host_operation_exec with the operation row itself --
+// keeping a copy beside this decoder would have left the same operation named in two files, which is
+// the section 3 fork this cut exists to close. This witness now materializes through the same row the
+// read executes, so it can no longer pass against an identity the read does not use.
 fn systemctl_is_active_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
   let authority = ["systemctl", "is-active", unit as String]
-  match systemctl_is_active_operation_argv(unit: unit) {
+  match host_operation_materialize_argv(operation: systemctl_is_active_host_operation(unit: unit)) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

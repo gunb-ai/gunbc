@@ -214,7 +214,7 @@ test fn witness_runner_slot_enforcement_committed_is_fail_closed() -> Bool {
 }
 
 fn witness_show_property_local_read_holds() -> Bool {
-  match systemctl_show_property_read_local(
+  match systemctl_show_property_read(transport: LocalShell, 
     unit: "actions-runner@srv1-01.service" as NonEmptyStr,
     property: MemoryMax,
   ) {
@@ -232,9 +232,11 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
 }
 
 test fn witness_show_property_injection_metachar_refused() -> Bool {
-  match systemctl_show_property_operation_argv(
-    unit: "foo\"; rm -rf /" as NonEmptyStr,
-    property: MemoryMax,
+  match host_operation_materialize_argv(
+    operation: systemctl_show_property_host_operation(
+      unit: "foo\"; rm -rf /" as NonEmptyStr,
+      property: MemoryMax,
+    ),
   ) {
     ArgvMaterialized { argv: argv } =>
       match typed_argv_shell_safe_refusal_argv(argv: argv) {
