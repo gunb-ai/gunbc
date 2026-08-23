@@ -41,6 +41,7 @@ import gunbc.runner_slot_provision {
   runner_slot_member_from_instance_name,
 }
 import gunbc.membership_reconcile { membership_added_count }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
@@ -256,4 +257,36 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
     d => d.runner_count <= declared_runner_count_for(host: d.host_label as HostIdentity)
       && d.runner_count > 0
   )
+}
+
+
+// --- the fabric carve reaches the provisioning target --------------------------------------------
+
+// THE DESIRED SET MUST NOT CONTAIN srv3-06, AND THIS IS THE ROW THAT SAYS SO.
+//
+// desired_runner_slot_members built 1..runner_count until 2026-08-23, which meant converge would
+// have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
+// reconcile would have seen it as an ordinary missing member, so apply would have done it with no
+// refusal anywhere. The width says how many slots exist; it does not say what they are for.
+test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
+  let names = map(
+    desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    m => runner_slot_member_key(m: m) as String,
+  )
+  (any(names, n => n == "srv3-06") == false)
+    && any(names, n => n == "srv3-05")
+    && any(names, n => n == "srv3-07")
+}
+
+// THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
+// that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
+// no fabric member and loses nothing.
+test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
+  list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy))
+    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    && list_length(items: desired_runner_slot_members(deploy: srv4_runner_host_deploy))
+         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
+         == gunbc_runner_slots_per_host(host: operator_host_srv1)
 }

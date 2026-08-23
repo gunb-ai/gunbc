@@ -17,7 +17,7 @@ import gunbc.membership_reconcile {
 import gunbc.ownership { Ownership }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy,
-  runner_instance_names,
+  runner_index_seq,
 }
 import extdeps.github.actions_runner {
   ActionsRunnerBinaryArtifact,
@@ -27,6 +27,8 @@ import extdeps.github.actions_runner {
   actions_runner_slot_extract_script,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_slot_allocation { identity_is_fabric_execution_member }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.command_runner {
   ProcessOutcome,
@@ -76,10 +78,54 @@ fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMem
   }
 }
 
+// THE FABRIC SLOT IS NOT A PROVISIONING TARGET, AND UNTIL 2026-08-23 IT WAS ONE.
+//
+// This mapped runner_instance_names straight through, so desired was 1..runner_count and nothing
+// asked what any of those slots was FOR. gunbc.runner_slot_allocation authors srv3-06 as
+// SlotServesFabricExecution, so the desired set proposed installing a GitHub Actions runner ON TOP
+// OF THE FABRIC EXECUTION SLOT -- and reconcile would have seen it as an ordinary missing member,
+// so apply would have done it with no refusal anywhere.
+//
+// That is the count-as-authority failure runner_slot_allocation exists to prevent, reintroduced one
+// layer above it. Its own note records the first occurrence: purpose was derived by comparing index
+// against count, so the fabric slot MOVED WITH THE WIDTH -- at width 7, srv3-07 would have become
+// fabric and srv3-06 would have been silently handed back to Actions, relabelling a slot that may be
+// running work. The carve was made an AUTHORED identity so a width change could not do that. This
+// module then consumed the width and ignored the carve, reaching the same outcome by the other road.
+//
+// THE FILTER IS ON THE FABRIC ROLE, NOT ON COMMITTED MEMBERSHIP, and that choice is load-bearing.
+// Filtering on runner_slot_membership would ask the allocation authority whether each index is
+// within the host's committed width -- which is the same question runner_count already answered, and
+// which yields ZERO desired members for any host the fleet model does not know. The reconcile
+// fixtures deliberately plant their own synthetic deploy row (host_label "wfix") precisely so their
+// expected counts are literals authored beside a known input rather than a restatement of the live
+// fleet; routing desired through the global width authority would have silently emptied them and
+// turned four exact-count fixtures green-by-vacuity.
+//
+// So the width still comes from the deploy row, which already derives it from
+// gunbc_runner_slots_per_host, and this function removes exactly the identities that are spoken for.
+// Two questions, two answers: how many slots does this host carry, and which of them are Actions
+// runners.
+//
+// It works on INDICES rather than on rendered names, so the fabric identity is compared as an
+// identity and never by parsing a slot number back out of a string it was just formatted into.
+//
+// CONSEQUENCE ON THE FLEET: srv3 desires twenty against a committed width of twenty-one. srv1, srv2
+// and srv4 carry no fabric member and are unchanged.
 fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
+  let host = deploy.host_label as HostIdentity
   map(
-    runner_instance_names(deploy: deploy),
-    n => runner_slot_member_from_instance_name(instance_name: n),
+    filter(
+      runner_index_seq(n: deploy.runner_count),
+      i => !identity_is_fabric_execution_member(
+        identity: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
+    i => runner_slot_member_from_instance_name(
+      instance_name: runner_slot_instance_name(
+        slot: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
   )
 }
 
