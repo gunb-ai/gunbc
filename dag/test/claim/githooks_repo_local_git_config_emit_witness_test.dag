@@ -11,36 +11,36 @@ import gunbc.githooks_repo_local_git_config_emit {
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.repo_local_git_config {
-  reconcile_install_argv,
+  reconcile_install_command,
   generated_artifact_merge_driver_key,
   generated_artifact_merge_driver_value,
   core_hooks_path_key,
   core_hooks_path_value,
   RepoLocalGitConfigBinding,
 }
-import extdeps.exec.command { ArgvCommand, shell_command_render, shell_quote }
+import extdeps.exec.command { shell_command_render, shell_quote }
 import std.disposition { Scaffold }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_converge_shell_uses_reconcile_install_argv() -> Bool {
+test fn witness_converge_shell_uses_reconcile_install_command() -> Bool {
   let shell = emit_repo_local_git_config_converge_shell()
   let merge_cmd = shell_command_render(
-    command: ArgvCommand { argv: reconcile_install_argv(
+    command: reconcile_install_command(
       binding: RepoLocalGitConfigBinding {
         key: generated_artifact_merge_driver_key,
         value: generated_artifact_merge_driver_value,
       }
-    ) }
+    )
   )
   let hooks_cmd = shell_command_render(
-    command: ArgvCommand { argv: reconcile_install_argv(
+    command: reconcile_install_command(
       binding: RepoLocalGitConfigBinding {
         key: core_hooks_path_key,
         value: core_hooks_path_value,
       }
-    ) }
+    )
   )
   string_contains(s: shell, pattern: merge_cmd)
     && string_contains(s: shell, pattern: hooks_cmd)

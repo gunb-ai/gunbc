@@ -19,7 +19,6 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.algebra { Empty }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
 import extdeps.shell.exec {
@@ -102,11 +101,14 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // composition depends on running it through a local shell first, which is why the former
 // SSH-only shell_command_render / shell_exec_via_bash / retained_runtime heredoc hop is gone.
 //
-// EMPTY ARGV REFUSES rather than defaulting. A command with no words names no program to
-// execute, and inventing one would be the fabricated output DESIGN section 5 forbids.
-// command_over_transport never produces an empty argv on either arm (SshExec always prepends
-// sshpass/ssh/target/opts), so this arm is reachable only from a caller-constructed empty
-// ArgvCommand on LocalExec.
+// THE EMPTY-ARGV REFUSAL IS GONE BECAUSE THE STATE IS GONE, which is a climb and not a relaxation
+// (DESIGN section 4b: structurally impossible beats mechanically preventable). Both run sites used
+// to match list_head on the argv and refuse HeadAbsent with "empty argv: a command with no words
+// names no program to execute". extdeps.exec.command ArgvCommand now carries `program: NonEmptyStr`
+// beside `arguments`, so a command with no program has no representation to arrive here in -- the
+// arm was not deleted for convenience, it became unreachable and an unreachable refusal arm is
+// exactly the dead vocabulary this repository removes. What it protected against is now refused one
+// layer earlier, by the type.
 //
 // THE BUILT/REFUSED DISTINCTION SURVIVES THE COLLAPSE, on purpose, as its own match arm rather
 // than being folded into the exit-code decision below. A command that command_over_transport could
@@ -126,34 +128,25 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
     CommandOverTransportRefused { cause: c } =>
       exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
     CommandOverTransportBuilt { command: over } =>
-      match list_head(xs: over.argv) {
-        HeadAbsent =>
-          exit_failure(reason: "empty argv: a command with no words names no program to execute")
-        HeadFound { value: program } => {
-          let run = shell.Exec.RunArgv(
-            program: program as NonEmptyStr,
-            arguments: process_argv_expansion(
-              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
-            ),
-          )
-          if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
-            ExitSuccess
-          } else {
-            exit_failure(reason: concat("command failed: ", run.stderr))
-          }
+      {
+        let run = shell.Exec.RunArgv(
+          program: over.program,
+          arguments: process_argv_expansion(
+            surface: cli_surface_of_literal_words(words: over.arguments)
+          ),
+        )
+        if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: concat("command failed: ", run.stderr))
         }
       }
   }
 }
 
-// The operands are everything after the program. A missing tail is the one-word command, whose
-// operand list is empty -- not an error, and not the same state as an empty argv.
-fn argv_operands(command: ArgvCommand) -> List<String> {
-  match list_tail(xs: command.argv) {
-    TailAbsent => Empty
-    TailFound { tail: rest } => rest
-  }
-}
+// argv_operands IS DELETED, not moved: it existed to recover the operands by dropping the head of a
+// flat word list, and the carrier now carries them as their own field. A helper that re-derives a
+// fact the type states is the second representation DESIGN section 2 removes.
 
 // Capture variant (CONVERGE acceptance, host-key enrollment): same admitted transport,
 // but the caller receives the process observation instead of a collapsed ProcessExit —
@@ -224,28 +217,21 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
         stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
       }
     CommandOverTransportBuilt { command: over } =>
-      match list_head(xs: over.argv) {
-        HeadAbsent =>
-          ProcessRefused {
-            exit_code: 0 - 1,
-            stderr: "empty argv: a command with no words names no program to execute",
-          }
-        HeadFound { value: program } => {
-          let run = shell.Exec.RunArgv(
-            program: program as NonEmptyStr,
-            arguments: process_argv_expansion(
-              surface: cli_surface_of_literal_words(words: argv_operands(command: over))
-            ),
-          )
-          classify_process_observation(
-            policy: ExitZeroSucceeds,
-            observation: process_observation(
-              exit_code: run.exit_code,
-              stdout: run.stdout,
-              stderr: run.stderr,
-            ),
-          )
-        }
+      {
+        let run = shell.Exec.RunArgv(
+          program: over.program,
+          arguments: process_argv_expansion(
+            surface: cli_surface_of_literal_words(words: over.arguments)
+          ),
+        )
+        classify_process_observation(
+          policy: ExitZeroSucceeds,
+          observation: process_observation(
+            exit_code: run.exit_code,
+            stdout: run.stdout,
+            stderr: run.stderr,
+          ),
+        )
       }
   }
 }
@@ -279,7 +265,7 @@ fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
 // extdeps.filesystem.filesystem_io carries typed owner observation.
 fn stat_owner_name_capture(path: String) -> ProcessOutcome {
   run_shell_command_capture(
-    command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
+    command: stat_owner_user_name_command(path: path),
     transport: LocalExec,
   )
 }

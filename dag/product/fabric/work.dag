@@ -89,7 +89,7 @@ type WorkContract {
 // Capability and trust-domain references are declared HERE, on the
 // requirement side, and imported by supply rather than redeclared there.
 // Fungibility - selection's first and load-bearing step - compares a Work's
-// requirements against an Offer's capabilities, so the two sides of that
+// requirements against a SupplierOffer's capabilities, so the two sides of that
 // comparison are two readings of one fact. Typing them separately would make
 // the comparison need a coercion, and a coercion between two spellings of one
 // concept is where the divergence starts.
@@ -100,7 +100,7 @@ type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
 
 // Shape and HardRequirements moved here when product.compute_fabric was deleted at
 // the root. They are the only load-bearing content that module had: what a WorkSpec
-// requires and what an Offer offers is a work-side fact, and shape_material below
+// requires and what a SupplierOffer offers is a work-side fact, and shape_material below
 // already destructures the axis deliberately, so the axis wall lives beside the
 // carrier rather than one module away. The rest of that module -- Fabric, Program,
 // ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was

@@ -1,10 +1,16 @@
 # E0308 repartition on current main (mechanism grain, M=1)
 
+**CORRECTED 2026-08-23:** this is an E0308 projection, not mechanism grain. `A-clone = 12` reaches
+E0277 and E0599 too and has cross-code population 22. All percentages below are code-local shares,
+not mechanism shares; the cost/staffing inference is withdrawn. See
+[`rustc_mechanism_partition_2026-08-23.md`](../rustc_mechanism_partition_2026-08-23.md). That
+population is at this stamp's `967b5bc1b92` ref, not the current certified `98b18cdc81e` board.
+
 ## Completeness standing (reporting convention adopted 2026-08-22)
 
 ```
 VISIBLE CANARY        coded rustc rows: 315 | subject: 03_ingest closure (M=1) | ref: 967b5bc1b92
-                      canonical E0308 sites: 154
+                      E0308 mismatch projections: 154
 DIAGNOSTIC COVERAGE   standing: PARTIAL
   known censor        LexMatchThunk.apply / generic-instantiation failure (E0599 aborts before
                       inference reaches the expressions behind it)
@@ -22,13 +28,13 @@ censor is removed the board will RISE, and that is diagnostic completion, not re
 | entry | `src/v2/compiler/03_ingest.dag` (M=1) |
 | producer | `curated_cargo_probe_one+emit+seedlink+cargo`, `CSSL_STD_SEED_LINK=1`, shim `""` |
 | emitted roster | 177 files, 503 emit diagnostics (same roster count as the 2026-08-21 run — same subject) |
-| raw E0308 blocks | **128** (40.6% of **315** coded rows; `CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`) |
-| canonical sites | **154** |
+| raw E0308 blocks | **128** (`CARGO_ERROR_TOTAL=329`, `HISTOGRAM_SUM=330`; different grains, no share) |
+| mismatch projections | **154** |
 | clusters | 14 + residue |
-| unclassified residue | **7 (4.5%)**, printed in full; residue arm known-positive |
+| unclassified residue | **7**, printed in full; residue arm known-positive |
 | classifier | `docs/probes/e0308_classify_sites.py` (committed; re-runnable over the published raw log) |
 
-### Coded-row count corrected 316 → 315 (2026-08-22), and one derived percentage moved
+### Coded-row count corrected 316 → 315 (2026-08-22)
 
 The stamp and the receipt both reported **316** coded rustc rows. The published raw log yields
 **315**, which is also what this board's own name in the receipt's series table already said
@@ -43,35 +49,33 @@ So 330 = 329 real error blocks + 1 summary line. Subtracting only the 14 uncoded
 to 315 independently (`grep -o '^error\[E[0-9]*\]' | sort | uniq -c`), so the two agree.
 `CARGO_ERROR_TOTAL=329` = 315 coded + 14 uncoded is the third agreeing reading.
 
-**Derived percentages that moved:** exactly one. The E0308 share of the coded board is
-128 / 315 = **40.6%**, not 128 / 316 = 40.5%. Every other percentage in this stamp and in the
-receipt is denominated in the **154 canonical sites**, not in coded rows, so no cluster share, the
-95.5% classified figure, or the 4.5% residue figure changes. The 128, the 154, the cluster counts,
-the histogram and every disposition are unaffected — this was a denominator arithmetic slip, not a
-measurement error.
+No percentage is derived. Raw blocks, coded rows, and mismatch projections are different units,
+and this code-local M=1 closure is not the membership of any mechanism that crosses rustc codes.
+The 128, the 154, the cluster counts, the histogram and every disposition are unaffected — this
+was a denominator arithmetic slip, not a measurement error.
 
-## Clusters (site grain, this subject only) — every one a CANDIDATE root
+## Clusters (projection grain, this subject only) — every one a CANDIDATE root
 
 Repartitioned 2026-08-22 after a keying defect found by review; R1's four delta values are published as four, because a two-bucket rollup erases the element arm and element depth is a separate producer root; precedence between delta-keyed,
 carrier-keyed and context-keyed arms is now declared in the classifier and in the receipt's
 *keying ruling*, not left to source order.
 
-| cluster | sites | % |
-|---|---:|---:|
-| R1 bare↔`Rc` wrap (17 outer / 10 type-argument / 5 element / 2 outer-of-container) | 34 | 22.1% |
-| R2 Optional surface fork | 24 | 15.6% |
-| D alias arity / generic argument count | 16 | 10.4% |
-| T3 collection carrier fork | 14 | 9.1% |
-| A-clone generic `Clone` bound absent | 12 | 7.8% |
-| ARG-ORDER call argument order | 11 | 7.1% |
-| B3 modeled `Nat` vs native integer | 10 | 6.5% |
-| RESIDUE | 7 | 4.5% |
-| C carrier collapses to `()` | 6 | 3.9% |
-| B2 `Bool` vs `bool`/variant | 6 | 3.9% |
-| ELEM-COLL element vs its own collection (**NEW**) | 5 | 3.2% |
-| W `Witness<_>` type argument | 5 | 3.2% |
-| DIAG diagnostic carrier fork | 3 | 1.9% |
-| BOX-WRAP `Box` wrap decision (**NEW**) | 1 | 0.6% |
+| cluster | projections |
+|---|---:|
+| R1 bare↔`Rc` wrap (17 outer / 10 type-argument / 5 element / 2 outer-of-container) | 34 |
+| R2 Optional surface fork | 24 |
+| D alias arity / generic argument count | 16 |
+| T3 collection carrier fork | 14 |
+| A-clone generic `Clone` bound absent | 12 |
+| ARG-ORDER call argument order | 11 |
+| B3 modeled `Nat` vs native integer | 10 |
+| RESIDUE | 7 |
+| C carrier collapses to `()` | 6 |
+| B2 `Bool` vs `bool`/variant | 6 |
+| ELEM-COLL element vs its own collection (**NEW**) | 5 |
+| W `Witness<_>` type argument | 5 |
+| DIAG diagnostic carrier fork | 3 |
+| BOX-WRAP `Box` wrap decision (**NEW**) | 1 |
 
 ## Carrier flags (beside the root, not a category)
 
@@ -92,11 +96,13 @@ the mismatch and no pair-keyed rule can recover it.
   `v2_compiler_tokenize.rs`, now fails at `E0599` before inference reaches those expressions.
 - **New:** ELEM-COLL (4), BOX-WRAP (1).
 
-## Cost shape
+## Cost shape inside E0308 only — staffing inference withdrawn
 
-Four clusters cover 57% of sites; six more are single- or two-file and cover another 49. Tail = 7
+This code-local projection supplies mechanism vocabulary, not a population or ranking. Cross-code
+membership is required before any root's completion or relative size can be stated.
+Four candidates cover 57% of E0308 manifestations; six more are single- or two-file and cover another 49. Tail = 7
 residue sites in 5 files. This is a small number of producer decisions with wide fanout, not a site-by-site
-tail — the same shape the 2026-08-21 board reported on a different population.
+tail inside this code. It does not rank cross-code mechanisms.
 
 ## The 182 in the commissioning brief
 

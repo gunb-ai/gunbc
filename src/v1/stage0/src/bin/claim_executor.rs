@@ -10225,9 +10225,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
@@ -11668,9 +11677,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // fourth term would be a decoration -- a category whose red is unreachable, read as
     // coverage by anyone scanning the line.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} \
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
          — every discovered site is exactly one of these",
-        outcome.sites_offered, outcome.claims_planned, outcome.declined_long_module
+        outcome.sites_offered,
+        outcome.claims_planned,
+        outcome.declined_long_module,
+        outcome.declined_fixture_member
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
