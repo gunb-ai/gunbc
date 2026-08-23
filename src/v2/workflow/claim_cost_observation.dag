@@ -1,0 +1,135 @@
+module v2.workflow.claim_cost_observation
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.workflow.floor_terminal_ledger { ClaimAttemptTerminal }
+
+// ONE COST FACT, TWO EXECUTION POLICIES. The required floor and the off-path measurement
+// instrument answer different questions, but they mint this same coproduct rather than parallel
+// "floor cost" and "measurement cost" authorities. Exact fields and lower-bound fields have
+// different names by construction: a censored interrupt cannot be copied into an ordinary
+// `cpu_ms` column and silently become a completion cost.
+type ObservationCoordinates {
+  commit: String
+  prepared_subject_digest: String
+  witness_identity: String
+  executor_binary_identity: String
+  workflow_and_job_identity: String
+  execution_policy_identity: String
+}
+
+// PURPOSE IS CLOSED AND WRAPPED, not a String flag. In particular a measurement binding cannot
+// inhabit RequiredFloorObservation below, so a successful measurement attempt cannot certify a
+// required-floor run even when commit and subject happen to agree.
+type ObservationBinding
+  = RequiredFloorGateBinding { coordinates: ObservationCoordinates }
+  | CostMeasurementBinding { coordinates: ObservationCoordinates }
+
+type ExactCompletionCost {
+  binding: ObservationBinding
+  exact_cpu_ms: Int
+  exact_wall_ms: Int
+  terminal_result: ClaimAttemptTerminal
+}
+
+type RightCensoredCost {
+  binding: ObservationBinding
+  cpu_lower_bound_ms: Int
+  wall_lower_bound_ms: Int
+  censored_by_policy: String
+}
+
+type ClaimCostObservation
+  = ExactCompletionCostObserved { exact: ExactCompletionCost }
+  | RightCensoredCostObserved { censored: RightCensoredCost }
+  | CostObservationUnavailable { binding: ObservationBinding, cause: String }
+
+type RequiredFloorObservation { exact: ExactCompletionCost }
+
+type RequiredFloorObservationAdmission
+  = RequiredFloorObservationAdmitted { observation: RequiredFloorObservation }
+  | RequiredFloorObservationRefused { cause: String }
+
+fn cost_observation_for_required_floor(
+  observation: ClaimCostObservation,
+) -> RequiredFloorObservationAdmission {
+  match observation {
+    ExactCompletionCostObserved { exact: exact } =>
+      match exact.binding {
+        RequiredFloorGateBinding { coordinates: _ } =>
+          RequiredFloorObservationAdmitted {
+            observation: RequiredFloorObservation { exact: exact }
+          }
+        CostMeasurementBinding { coordinates: _ } =>
+          RequiredFloorObservationRefused {
+            cause: "cost-measurement-purpose-cannot-certify-required-floor"
+          }
+      }
+    RightCensoredCostObserved { censored: _ } =>
+      RequiredFloorObservationRefused { cause: "right-censored-cost-cannot-certify-required-floor" }
+    CostObservationUnavailable { binding: _, cause: _ } =>
+      RequiredFloorObservationRefused { cause: "unavailable-cost-cannot-certify-required-floor" }
+  }
+}
+
+// Remedy sizing consumes exact completions only. The result refuses on the FIRST censored or
+// unavailable member rather than returning a partial partition that could be quoted as though it
+// described the input population. `population`, `exact`, and `censored` remain separate counts in
+// the refusal so every board must state its denominator.
+type RemedyPartition
+  = RemedyPartitionExact { exact: List<ExactCompletionCost> }
+  | RemedyPartitionRefused {
+      population: Int
+      exact: Int
+      censored: Int
+      cause: String
+    }
+
+fn remedy_partition_loop(
+  remaining: List<ClaimCostObservation>,
+  exact: List<ExactCompletionCost>,
+  population: Int,
+  exact_count: Int,
+  censored_count: Int,
+) -> RemedyPartition {
+  match remaining {
+    Empty {} => RemedyPartitionExact { exact: exact }
+    Cons { head: observation, tail: tail } =>
+      match observation {
+        ExactCompletionCostObserved { exact: completed } =>
+          remedy_partition_loop(
+            remaining: tail,
+            exact: Cons { head: completed, tail: exact },
+            population: population + 1,
+            exact_count: exact_count + 1,
+            censored_count: censored_count,
+          )
+        RightCensoredCostObserved { censored: _ } =>
+          RemedyPartitionRefused {
+            population: population + 1,
+            exact: exact_count,
+            censored: censored_count + 1,
+            cause: "exact-completion-observations-required",
+          }
+        CostObservationUnavailable { binding: _, cause: _ } =>
+          RemedyPartitionRefused {
+            population: population + 1,
+            exact: exact_count,
+            censored: censored_count,
+            cause: "cost-observation-unavailable",
+          }
+      }
+  }
+}
+
+fn remedy_partition(observations: List<ClaimCostObservation>) -> RemedyPartition {
+  remedy_partition_loop(
+    remaining: observations,
+    exact: Empty {},
+    population: 0,
+    exact_count: 0,
+    censored_count: 0,
+  )
+}

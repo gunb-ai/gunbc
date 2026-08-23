@@ -40516,21 +40516,130 @@ pub enum RequiredFloorDisposition {
 /// line is the diagnostic predicate applied to the measurement, not a stored property of
 /// the row -- a stored flag is a second representation of a comparison the policy already
 /// owns, and it is what lets a summary disagree with its own members.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObservationCoordinates {
+    pub commit: String,
+    pub prepared_subject_digest: String,
+    pub witness_identity: String,
+    pub executor_binary_identity: String,
+    pub workflow_and_job_identity: String,
+    pub execution_policy_identity: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ObservationBinding {
+    RequiredFloorGate(ObservationCoordinates),
+    CostMeasurement(ObservationCoordinates),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExactCompletionCost {
+    pub binding: ObservationBinding,
+    pub exact_cpu_ms: u64,
+    pub exact_wall_ms: u64,
+    pub terminal_result: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RightCensoredCost {
+    pub binding: ObservationBinding,
+    pub cpu_lower_bound_ms: u64,
+    pub wall_lower_bound_ms: u64,
+    pub censored_by_policy: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClaimCostObservation {
+    ExactCompletionCost(ExactCompletionCost),
+    RightCensoredCost(RightCensoredCost),
+    CostObservationUnavailable {
+        binding: ObservationBinding,
+        cause: String,
+    },
+}
+
+/// Remedy sizing is deliberately partial over the observation coproduct: exact completions are
+/// accepted, while a lower bound or unavailable reading refuses the WHOLE input population.
+/// Returning a partial partition would let its caller quote the exact subset as though it were
+/// the denominator and would recreate the interrupt-point-as-cost error downstream.
+pub fn remedy_partition(
+    observations: &[ClaimCostObservation],
+) -> Result<Vec<&ExactCompletionCost>, String> {
+    let mut exact = Vec::with_capacity(observations.len());
+    for observation in observations {
+        match observation {
+            ClaimCostObservation::ExactCompletionCost(cost) => exact.push(cost),
+            ClaimCostObservation::RightCensoredCost(_) => {
+                return Err(format!(
+                    "RemedyPartitionRefused: exact completion observations required; \
+                     population={} exact={} censored=1",
+                    observations.len(),
+                    exact.len()
+                ));
+            }
+            ClaimCostObservation::CostObservationUnavailable { cause, .. } => {
+                return Err(format!(
+                    "RemedyPartitionRefused: cost observation unavailable; population={} \
+                     exact={} cause={cause}",
+                    observations.len(),
+                    exact.len()
+                ));
+            }
+        }
+    }
+    Ok(exact)
+}
+
 #[derive(Clone)]
 pub struct WitnessExecutionOccurrence {
     pub identity: String,
     pub module_path: String,
-    pub outcome: String,
-    pub wall_nanos: u128,
-    pub cpu_nanos: u128,
-    /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
-    /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
-    /// claim has no cost to be over, and inferring that from the duration would make a slow
-    /// claim and a killed one the same fact.
-    pub verdict_reached: bool,
+    pub observation: ClaimCostObservation,
     /// The policy line this claim was measured against -- an INPUT, not a derivation, and
     /// carried per row because a future per-claim line must not silently re-judge old rows.
     pub cost_line_ms: u64,
+}
+
+#[cfg(test)]
+mod claim_cost_observation_law {
+    use super::*;
+
+    fn coordinates() -> ObservationCoordinates {
+        ObservationCoordinates {
+            commit: "fixture-commit".into(),
+            prepared_subject_digest: "fixture-subject".into(),
+            witness_identity: "test.claim.fixture.planted_slow_claim".into(),
+            executor_binary_identity: "fixture-executor".into(),
+            workflow_and_job_identity: "fixture-workflow/fixture-job".into(),
+            execution_policy_identity: "fixture-policy".into(),
+        }
+    }
+
+    #[test]
+    fn remedy_partition_accepts_exact_control_and_refuses_censored_twin() {
+        let exact = ClaimCostObservation::ExactCompletionCost(ExactCompletionCost {
+            binding: ObservationBinding::CostMeasurement(coordinates()),
+            exact_cpu_ms: 7,
+            exact_wall_ms: 8,
+            terminal_result: "returned-false".into(),
+        });
+        assert_eq!(
+            remedy_partition(std::slice::from_ref(&exact))
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let censored = ClaimCostObservation::RightCensoredCost(RightCensoredCost {
+            binding: ObservationBinding::CostMeasurement(coordinates()),
+            cpu_lower_bound_ms: 5,
+            wall_lower_bound_ms: 6,
+            censored_by_policy: "fixture-tiny-finite-policy".into(),
+        });
+        let refusal = remedy_partition(&[censored]).unwrap_err();
+        assert!(refusal.contains("exact completion observations required"));
+        assert!(refusal.contains("population=1 exact=0 censored=1"));
+    }
 }
 
 /// The occurrence's terminal outcome as a stable receipt token.
@@ -42036,6 +42145,16 @@ pub fn run_required_floor(
         );
     }
     let claims_planned = claims.len();
+    let executor_binary_identity = floor_discovery_snapshot::floor_tool_identity()?;
+    let workflow_and_job_identity = format!(
+        "{}/{}",
+        std::env::var("GITHUB_WORKFLOW").unwrap_or_else(|_| "local".to_string()),
+        std::env::var("GITHUB_JOB").unwrap_or_else(|_| "local".to_string())
+    );
+    let execution_policy_identity = format!(
+        "required-floor:cpu={}ms;wall={}ms",
+        claim_cpu_safety_limit_ms, claim_wall_safety_limit_ms
+    );
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
@@ -42276,13 +42395,40 @@ pub fn run_required_floor(
         // over-cost population, its count and the identity-grain receipt are all folds over
         // `outcome.claim_cost` computed after the loop -- so the summary cannot disagree with
         // its own members, and there is no separately incremented tally to drift.
+        let observation_binding = ObservationBinding::RequiredFloorGate(ObservationCoordinates {
+            commit: commit.to_string(),
+            prepared_subject_digest: prepared.subject_digest.clone(),
+            witness_identity: claim.qualified.clone(),
+            executor_binary_identity: executor_binary_identity.clone(),
+            workflow_and_job_identity: workflow_and_job_identity.clone(),
+            execution_policy_identity: execution_policy_identity.clone(),
+        });
+        let cost_observation = match &terminality {
+            ClaimTerminality::VerdictReached {
+                observed_cpu_ms,
+                observed_wall_ms,
+                ..
+            } => ClaimCostObservation::ExactCompletionCost(ExactCompletionCost {
+                binding: observation_binding,
+                exact_cpu_ms: *observed_cpu_ms,
+                exact_wall_ms: *observed_wall_ms,
+                terminal_result: witness_execution_outcome_label(&result).to_string(),
+            }),
+            ClaimTerminality::SafetyInterrupted {
+                elapsed_cpu_at_least_ms,
+                elapsed_wall_at_least_ms,
+                ..
+            } => ClaimCostObservation::RightCensoredCost(RightCensoredCost {
+                binding: observation_binding,
+                cpu_lower_bound_ms: *elapsed_cpu_at_least_ms,
+                wall_lower_bound_ms: *elapsed_wall_at_least_ms,
+                censored_by_policy: execution_policy_identity.clone(),
+            }),
+        };
         outcome.claim_cost.push(WitnessExecutionOccurrence {
             identity: claim.qualified.clone(),
             module_path: claim.module_path.clone(),
-            outcome: witness_execution_outcome_label(&result).to_string(),
-            wall_nanos: receipt.wall_nanos,
-            cpu_nanos: receipt.cpu_nanos,
-            verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
+            observation: cost_observation,
             cost_line_ms: claim.cost_line_ms,
         });
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
@@ -43015,18 +43161,20 @@ pub fn run_required_floor(
     let over_cost_members: Vec<&WitnessExecutionOccurrence> = outcome
         .claim_cost
         .iter()
-        .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
+        .filter(|row| observed_cost_ms(row, cost_basis).is_some_and(|ms| ms > row.cost_line_ms))
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
     for row in &over_cost_members {
-        eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
-            row.identity,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
-            row.cost_line_ms,
-            row.outcome
-        );
+        if let ClaimCostObservation::ExactCompletionCost(cost) = &row.observation {
+            eprintln!(
+                "[over-cost] {} exact_wall_ms={} exact_cpu_ms={} line_ms={} outcome={}",
+                row.identity,
+                cost.exact_wall_ms,
+                cost.exact_cpu_ms,
+                row.cost_line_ms,
+                cost.terminal_result
+            );
+        }
     }
     if let Some(path) = claim_cost_path {
         write_required_floor_claim_cost_tsv(&path, &outcome.claim_cost, cost_basis)?;
@@ -43137,12 +43285,17 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
 /// comparison; the other rides in the receipt beside it as a remedy discriminator (high wall
 /// with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O,
 /// subprocess or scheduling). It is not a second threshold.
-fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> u64 {
-    let exact = match basis {
-        RequiredFloorCostBasis::CpuCost => row.cpu_nanos,
-        RequiredFloorCostBasis::WallCost => row.wall_nanos,
+fn observed_cost_ms(
+    row: &WitnessExecutionOccurrence,
+    basis: RequiredFloorCostBasis,
+) -> Option<u64> {
+    let ClaimCostObservation::ExactCompletionCost(exact) = &row.observation else {
+        return None;
     };
-    (exact / 1_000_000) as u64
+    Some(match basis {
+        RequiredFloorCostBasis::CpuCost => exact.exact_cpu_ms,
+        RequiredFloorCostBasis::WallCost => exact.exact_wall_ms,
+    })
 }
 
 /// The identity-grain cost receipt: one row for EVERY executed claim, not only the over-cost
@@ -43173,19 +43326,78 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+        "identity\tmodule\tcost_observation_kind\tterminal_result\texact_wall_ms\t\
+         exact_cpu_ms\twall_lower_bound_ms\tcpu_lower_bound_ms\tcensored_by_policy\t\
+         observation_purpose\tcommit\tprepared_subject_digest\texecutor_binary_identity\t\
+         workflow_and_job_identity\texecution_policy_identity\tcost_line_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
+        let (kind, terminal, exact_wall, exact_cpu, lower_wall, lower_cpu, censored_by, binding) =
+            match &row.observation {
+                ClaimCostObservation::ExactCompletionCost(cost) => (
+                    "exact-completion",
+                    cost.terminal_result.as_str(),
+                    cost.exact_wall_ms.to_string(),
+                    cost.exact_cpu_ms.to_string(),
+                    String::new(),
+                    String::new(),
+                    "",
+                    &cost.binding,
+                ),
+                ClaimCostObservation::RightCensoredCost(cost) => (
+                    "right-censored",
+                    "",
+                    String::new(),
+                    String::new(),
+                    cost.wall_lower_bound_ms.to_string(),
+                    cost.cpu_lower_bound_ms.to_string(),
+                    cost.censored_by_policy.as_str(),
+                    &cost.binding,
+                ),
+                ClaimCostObservation::CostObservationUnavailable { binding, cause } => (
+                    "unavailable",
+                    cause.as_str(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    "",
+                    binding,
+                ),
+            };
+        let (purpose, coordinates) = match binding {
+            ObservationBinding::RequiredFloorGate(coordinates) => {
+                ("required-floor-gate", coordinates)
+            }
+            ObservationBinding::CostMeasurement(coordinates) => ("cost-measurement", coordinates),
+        };
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
-            row.outcome,
-            row.verdict_reached,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            kind,
+            terminal.replace(['\t', '\n'], " "),
+            exact_wall,
+            exact_cpu,
+            lower_wall,
+            lower_cpu,
+            censored_by.replace(['\t', '\n'], " "),
+            purpose,
+            coordinates.commit.replace(['\t', '\n'], " "),
+            coordinates
+                .prepared_subject_digest
+                .replace(['\t', '\n'], " "),
+            coordinates
+                .executor_binary_identity
+                .replace(['\t', '\n'], " "),
+            coordinates
+                .workflow_and_job_identity
+                .replace(['\t', '\n'], " "),
+            coordinates
+                .execution_policy_identity
+                .replace(['\t', '\n'], " "),
             row.cost_line_ms
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;

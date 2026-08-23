@@ -236,6 +236,69 @@ pub fn publish_terminal_ledger(
     Ok(published)
 }
 
+/// Read one published terminal ledger through the `.dag` grammar and derive exactly its
+/// budget-refused identities. The grammar verifies binding, footer population and row digest;
+/// this seed seam only transports the resulting closed arm.
+pub fn budget_refused_population_from_ledger(
+    source_roots: &[String],
+    text: &str,
+    expected_repository_snapshot: &str,
+    expected_prepared_subject: &str,
+) -> Result<Vec<String>, String> {
+    let ctx = build_ledger_wire_ctx(source_roots)?;
+    let args = vec![
+        (Some("text".to_string()), str_value(text)),
+        (
+            Some("expected_repository_snapshot".to_string()),
+            str_value(expected_repository_snapshot),
+        ),
+        (
+            Some("expected_prepared_subject".to_string()),
+            str_value(expected_prepared_subject),
+        ),
+    ];
+    let value = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "budget_refused_population_from_ledger",
+            &args,
+            false,
+        )
+    })
+    .map_err(|e| format!("COST-MEASUREMENT REFUSAL cause=LedgerReadFailed detail={e}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err("COST-MEASUREMENT REFUSAL cause=LedgerReadShape".to_string());
+    };
+    if ctx.sym_eq(variant_name, "BudgetRefusedPopulationRefused") {
+        return Err(format!(
+            "COST-MEASUREMENT REFUSAL cause={}",
+            variant_field(&fields, &ctx, "cause").unwrap_or_else(|| "unreadable-cause".into())
+        ));
+    }
+    if !ctx.sym_eq(variant_name, "BudgetRefusedPopulationDerived") {
+        return Err("COST-MEASUREMENT REFUSAL cause=LedgerReadUnknownArm".to_string());
+    }
+    let identities = fields
+        .iter()
+        .find_map(|(symbol, value)| ctx.sym_eq(*symbol, "identities").then_some(value))
+        .ok_or_else(|| "COST-MEASUREMENT REFUSAL cause=LedgerPopulationAbsent".to_string())?;
+    let Value::List(items) = identities else {
+        return Err("COST-MEASUREMENT REFUSAL cause=LedgerPopulationNotList".to_string());
+    };
+    items
+        .iter()
+        .map(|value| match value {
+            Value::Str(identity) => Ok(identity.to_string()),
+            _ => Err("COST-MEASUREMENT REFUSAL cause=LedgerIdentityNotString".to_string()),
+        })
+        .collect()
+}
+
 enum Render {
     Text(String),
     Refused {

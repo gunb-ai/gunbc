@@ -657,6 +657,56 @@ fn readback_digest_agrees(readback: LedgerReadback) -> Bool {
   }
 }
 
+// THE MEASUREMENT POPULATION IS DERIVED FROM ONE COMPLETE LEDGER, never transcribed from a
+// console count or copied into a roster. Binding agreement is checked before any identity is
+// returned. The footer count is compared with the parsed population and the digest is recomputed;
+// a truncated or edited ledger therefore refuses instead of becoming a shorter measurement run.
+type BudgetRefusedPopulation
+  = BudgetRefusedPopulationDerived { identities: List<String> }
+  | BudgetRefusedPopulationRefused { cause: String }
+
+fn budget_refused_population_from_ledger(
+  text: String,
+  expected_repository_snapshot: String,
+  expected_prepared_subject: String,
+) -> BudgetRefusedPopulation {
+  let readback = parse_ledger(text: text)
+  match readback {
+    LedgerUnreadable { reason: reason, at: _ } =>
+      BudgetRefusedPopulationRefused { cause: reason as String }
+    LedgerRead {
+      repository_snapshot: snapshot,
+      prepared_subject: subject,
+      roster_identity: _,
+      rows: rows,
+      footer_row_count_wire: count,
+      footer_digest: _,
+    } =>
+      if snapshot != expected_repository_snapshot {
+        BudgetRefusedPopulationRefused { cause: "repository-snapshot-disagrees" }
+      } else {
+        if subject != expected_prepared_subject {
+          BudgetRefusedPopulationRefused { cause: "prepared-subject-disagrees" }
+        } else {
+          if count != rows.length() as String {
+            BudgetRefusedPopulationRefused { cause: "footer-row-count-disagrees" }
+          } else {
+            if !readback_digest_agrees(readback: readback) {
+              BudgetRefusedPopulationRefused { cause: "ledger-row-digest-disagrees" }
+            } else {
+              BudgetRefusedPopulationDerived {
+                identities: map(
+                  filter(rows, row => row.terminal_tag == "budget-refused"),
+                  row => row.qualified,
+                )
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
 // THE DISPOSITION SURVIVES THE ROUND TRIP, AND THIS IS THE PROPERTY THE ARTIFACT EXISTS FOR.
 //
 // A file that preserved identities but lost what happened to them would satisfy every structural

@@ -1,0 +1,83 @@
+module v2.workflow.claim_cost_observation_test
+
+import v2.std.algebra { Cons, Empty }
+import v2.workflow.claim_cost_observation {
+  ObservationCoordinates,
+  CostMeasurementBinding,
+  ExactCompletionCost,
+  ExactCompletionCostObserved,
+  RightCensoredCost,
+  RightCensoredCostObserved,
+  RemedyPartitionExact,
+  RemedyPartitionRefused,
+  RequiredFloorObservationRefused,
+  cost_observation_for_required_floor,
+  remedy_partition,
+}
+import v2.workflow.floor_terminal_ledger {
+  Returned,
+  ObservedVerdict,
+}
+
+fn fixture_coordinates() -> ObservationCoordinates {
+  ObservationCoordinates {
+    commit: "fixture-commit",
+    prepared_subject_digest: "fixture-subject",
+    witness_identity: "test.claim.fixture.planted_slow_claim",
+    executor_binary_identity: "fixture-executor",
+    workflow_and_job_identity: "fixture-workflow/fixture-job",
+    execution_policy_identity: "fixture-policy",
+  }
+}
+
+fn fixture_exact() -> ExactCompletionCost {
+  ExactCompletionCost {
+    binding: CostMeasurementBinding { coordinates: fixture_coordinates() },
+    exact_cpu_ms: 7,
+    exact_wall_ms: 8,
+    terminal_result: Returned { observation: ObservedVerdict { holds: true } },
+  }
+}
+
+test fn remedy_partition_accepts_exact_completion_control() -> Bool {
+  match remedy_partition(observations: Cons {
+    head: ExactCompletionCostObserved { exact: fixture_exact() },
+    tail: Empty {},
+  }) {
+    RemedyPartitionExact { exact: Cons { head: _, tail: Empty {} } } => true
+    _ => false
+  }
+}
+
+test fn remedy_partition_refuses_right_censored_cost() -> Bool {
+  match remedy_partition(observations: Cons {
+    head: RightCensoredCostObserved {
+      censored: RightCensoredCost {
+        binding: CostMeasurementBinding { coordinates: fixture_coordinates() },
+        cpu_lower_bound_ms: 5,
+        wall_lower_bound_ms: 6,
+        censored_by_policy: "fixture-tiny-finite-policy",
+      }
+    },
+    tail: Empty {},
+  }) {
+    RemedyPartitionRefused {
+      population: 1,
+      exact: 0,
+      censored: 1,
+      cause: "exact-completion-observations-required",
+    } => true
+    _ => false
+  }
+}
+
+test fn cost_measurement_observation_cannot_certify_required_floor() -> Bool {
+  match cost_observation_for_required_floor(
+    observation: ExactCompletionCostObserved { exact: fixture_exact() },
+  ) {
+    RequiredFloorObservationRefused {
+      cause: "cost-measurement-purpose-cannot-certify-required-floor"
+    } => true
+    _ => false
+  }
+}
