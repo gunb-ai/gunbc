@@ -1,6 +1,6 @@
 module gunbc.heal_revalidation
 
-import std.content_hash { Fnv1a64Structural }
+import std.content_hash { Fnv1a64Structural, as_content_hash_structural }
 import std.types { CommitSha, NonEmptyStr }
 import gunbc.merge_admission {
   CheckCoverage,
@@ -151,7 +151,7 @@ fn classify_heal_revalidation_admission(
       if check_coverage_admits(
         coverage: coverage,
         required_head: healed_head,
-        required_roster: required_roster,
+        required_roster: as_content_hash_structural(structural: required_roster),
         required_gates: required_gates
       ) {
         HealRevalidationAdmittedExactCoverage { healed_head: healed_head }
