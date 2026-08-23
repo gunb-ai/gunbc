@@ -81,9 +81,14 @@ fn witness_allocation_conserves(
   }
 }
 
+// THE HOST FIGURE IS READ FROM THE HOST THIS ROW NAMES, rather than being a 125 GiB literal beside
+// a LIVE runner pool for srv1. Those two inputs were consistent only while srv1 happened to be a
+// 125 GiB machine; the 2026-08-22 upgrade made the literal describe a different computer than the
+// pool did, and the row went red for that mismatch rather than for anything about conservation.
+// Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
 test fn allocation_conserves_when_pools_fit() -> Bool {
   witness_allocation_conserves(
-    host: byte_size(134217728000),
+    host: usable_ram_of(host: operator_host_srv1),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
     runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
@@ -264,12 +269,28 @@ test fn perturbing_one_host_moves_only_that_host() -> Bool {
 // genuine lower-bound host, its 64 GiB upgrade having failed DDR training and been reverted the
 // same day. The property under test is unchanged: whatever a host's row carries must not exceed
 // that host's real usable RAM, because the conservation wall spends against it.
+// THE BOUND ARM HAS NO LIVE OCCUPANT ANY MORE, AND THAT IS NOT THE SAME AS BEING DEAD. Every
+// enrolled host now carries its own measured /proc/meminfo MemTotal, so nothing in the fleet sits on
+// HostUsableRamConservativeLowerBound. This row and middle_arm_is_a_bound_not_a_measurement below
+// used to reach that arm through srv2 and now cannot.
+//
+// THE REPAIR IS A CONSTRUCTED FIXTURE, NOT A DELETION. Three questions decide whether a guard should
+// exist and only the first two matter here: the mechanism exists (the variant is in the type and
+// host_usable_ram_or_refusal still handles it), and it is reachable from what a fixture may author.
+// Only current occupancy is zero, which is a quiet guard rather than a dead one -- a fifth host
+// enrolled tomorrow with no read of its own lands on exactly this arm. Deleting the rows because the
+// population is momentarily empty would remove the wall along with its occupant.
+data bound_arm_fixture: HostUsableRam = HostUsableRamConservativeLowerBound {
+  bytes: byte_size(134217728000),
+  basis: "CONSTRUCTED FIXTURE, not a fleet row. It reproduces the shape the deleted fleet-wide bound had -- the MemTotal-shaped figure captured on srv3 on 2026-07-16 -- so the two controls below keep an authored subject after every real host was promoted to a measurement.",
+}
+
 test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
+  match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamUnmeasured => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
-      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv2))
+      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv1))
   }
 }
 
@@ -301,11 +322,25 @@ test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
 // Re-pointed to srv2 for the same reason as the control above: it is now the host that carries
 // the bound. The arm itself is unchanged and still reachable.
 test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
-  match gunbc_ci_host_usable_ram_for(host: operator_host_srv2) {
+  match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
     HostUsableRamUnmeasured => false
   }
+}
+
+// AND EVERY REAL HOST IS NOW ON THE MEASURED ARM, which is the claim the two fixture-backed controls
+// above can no longer make. This is the row that would go red if a future host were enrolled without
+// its own read, or if one of these four were quietly demoted back to a borrowed figure.
+test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h => match gunbc_ci_host_usable_ram_for(host: h) {
+      HostUsableRamMeasured { bytes: _, provenance: _ } => true
+      HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+      HostUsableRamUnmeasured => false
+    }
+  )
 }
 
 data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
