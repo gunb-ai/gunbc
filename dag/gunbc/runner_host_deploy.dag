@@ -17,6 +17,8 @@ import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_p
 import gunbc.fleet_intent { fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { runner_slot_index_suffix }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 data runner_host_deploy_citation: String = "VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path literals and void_note twins were deleted — ctrl is a dead repo, not a live upstream. Runner slot materialization is owned in gunbc.runner_slot_provision / gunbc.runner_lifecycle on host_effect_apply. runner_host_installer_command_argv remains a legacy argv builder taking installer_path as a parameter; it is not an authority row citing ctrl."
 
@@ -47,13 +49,35 @@ type RunnerHostDeploy {
 
 data srv4_runner_count_disk_cap_note: String = "srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06). runner_count on srv4_runner_host_deploy now names the materialization target width (6 after the 2026-08-17 16GiB ruling, matching srv3), and disk binding moves to APPLY-TIME preflight in gunbc.runner_lifecycle runner_width_disk_preflight — not a silent row pin and never an absorbing fallback to 5 when disk is unobservable.\n\nFACT unchanged: NVMe is a Samsung 970 EVO 500GB against 2TB on srv1-3; every ephemeral runner keeps a _work tree plus caches. gunbc.runner_lifecycle runner_slot_disk_budget_per_slot (~38GB per slot; the charge is per-slot, so the total demanded at apply falls with the 2026-08-17 move from width 7 to 6) is the conservative charge used at apply; sufficient observed headroom proceeds, insufficient REFUSES, unobservable REFUSES.\n\ngunbc.ci_runner_placement still models RAM only for solver admission; memory admits 6 for srv4 at the 16GiB slot (7 at the superseded 14GiB slot). The disk gate is no longer this note or host_disk_admitted_width reading runner_count as a cap — it is the observed preflight arm vivid-eagle-131's apply_wet path must invoke before slot ADD."
 
+data runner_count_derives_from_committed_width_note: String = "runner_count IS DERIVED, NOT AUTHORED, AND THAT CLOSES A FORK THAT WOULD HAVE SILENTLY EATEN A WIDTH CHANGE. These rows carried a literal 6 while gunbc.runner_slot_allocation gunbc_runner_slots_per_host independently answered the same question -- how many slots does this host carry -- so one concept had two authorings and the deploy side was the one nobody re-derived. The cost was not hypothetical: the 2026-08-23 CPU-axis change moved committed width to 21 on srv3 and srv4, and with the literal in place PROVISIONING WOULD STILL HAVE STOOD UP SIX. The allocation model and the materialization path would have disagreed about the fleet with no diagnostic anywhere, which is exactly the roster-versus-prose failure gunbc.runner_slot_allocation width_is_a_minimum_over_axes_note records for srv4.\n\nTHE DIRECTION IS DELIBERATE. Width is decided by the conservation and admission axes and materialization CONSUMES that decision; a deploy row is not a place to re-decide it. The disk question that the old srv4 note worried about is unaffected and still lives where it belongs -- apply-time gunbc.runner_lifecycle runner_width_disk_preflight refuses on insufficient or unobservable headroom rather than lowering the count here.\n\nsrv1 AND srv2 NOW HAVE ROWS, closing the gap this note declared on 2026-08-23. All four hosts are modeled for materialization and every row derives its width from the same authority, so the fleet is covered rather than partially covered."
+
+data legacy_pair_deploy_rows_note: String = "srv1 AND srv2 ARE MODELED FOR MATERIALIZATION AS OF 2026-08-23, closing a gap that made the width authority unactionable on half the fleet. Until this row pair existed only srv3 and srv4 had deploy rows, so gunbc_runner_slots_per_host could say srv1 carries twenty-one slots and NOTHING COULD ACT ON IT -- the number was real and there was no provisioning target to hand it to.\n\nTHE ADDRESSES ARE MEASURED, NOT ASSUMED. Both were read over SSH on 2026-08-23 by connecting and asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188. That matters because this lane started the night with 192.168.1.183 and .184 for these two, which are their BMC addresses rather than their host addresses, and an ssh_target pointing at a management controller would fail in a way that looks like an unreachable host rather than a wrong row.\n\nBOTH CARRY INTERACTIVE SESSIONS AND THAT IS ALREADY PRICED. gunbc.session_residency places session containers on exactly these two hosts, and the conservation wall charges each of them a sessions slice out of the same RAM before any width is admitted -- which is why srv2 commits five where srv3 and srv4 commit twenty-one. Nothing here re-decides that; the row consumes the width the admission axes produced.\n\nsrv1 AND srv2 DIFFER FROM EACH OTHER FOR A HARDWARE REASON, not a policy one: srv1 took the 64 GiB DIMM upgrade and srv2's failed memory training and was reverted, so srv1 is bound by cores at twenty-one and srv2 by memory at five. Two rows that look identical here resolve to very different widths, and that is the derivation working rather than an inconsistency."
+
+data srv1_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "srv1",
+  ssh_target: "briansrls@192.168.1.185",
+  runner_user: "briansrls",
+  job_user: "ghrunner",
+  app: gunbc_ci_github_app,
+  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv1),
+}
+
+data srv2_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "srv2",
+  ssh_target: "briansrls@192.168.1.188",
+  runner_user: "briansrls",
+  job_user: "ghrunner",
+  app: gunbc_ci_github_app,
+  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv2),
+}
+
 data srv3_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv3",
   ssh_target: "briansrls@192.168.1.221",
   runner_user: "briansrls",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: 6,
+  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv3),
 }
 
 data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
@@ -62,8 +86,35 @@ data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   runner_user: "briansrls",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: 6,
+  runner_count: gunbc_runner_slots_per_host(host: operator_host_srv4),
 }
+
+type RunnerHostDeployResolution
+  = RunnerHostDeployFound { deploy: RunnerHostDeploy }
+  | RunnerHostDeployUnmodeled { host: HostIdentity }
+
+data runner_host_deploy_for_refuses_note: String = "AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW. This dispatch is the seam where a width becomes a provisioning target, and the tempting failure arm is to hand an unclassified host whichever row is nearest -- which would provision it against another machine's ssh_target, runner user and slot count. RunnerHostDeployUnmodeled names the host and carries no deploy, so a caller cannot proceed by accident; the four enrolled hosts are the whole population and a fifth is a row someone must author, not a default someone inherits.\n\nThis mirrors gunbc.runner_slot_allocation gunbc_runner_slots_per_host_unknown_note, which answers zero slots for an unknown host on the same reasoning: an unclassified machine is unknown, not typical."
+
+fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
+  if (host as String) == (operator_host_srv1 as String) {
+    RunnerHostDeployFound { deploy: srv1_runner_host_deploy }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    RunnerHostDeployFound { deploy: srv2_runner_host_deploy }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    RunnerHostDeployFound { deploy: srv3_runner_host_deploy }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    RunnerHostDeployFound { deploy: srv4_runner_host_deploy }
+  } else {
+    RunnerHostDeployUnmodeled { host: host }
+  }
+}
+
+data fleet_runner_host_deploys: List<RunnerHostDeploy> = [
+  srv1_runner_host_deploy,
+  srv2_runner_host_deploy,
+  srv3_runner_host_deploy,
+  srv4_runner_host_deploy,
+]
 
 // runner_count names slots via runner_instance_names / runner_index_seq but does NOT reach
 // runner_host_installer_command_argv — install-actions-runner.sh has no slot-count parameter

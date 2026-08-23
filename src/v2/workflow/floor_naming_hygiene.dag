@@ -135,4 +135,17 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
   )
 }
 
+// The sidecar rule read in its second direction. `floor_test_marked_decl_allowed_in_entry`
+// answers where a `test`-marked decl MAY live; this answers what a file claiming that place
+// OWES. Without it a `*_test.dag` file that declares none enrolls zero rows and no consumer
+// can tell that apart from a file whose rows were all excluded -- the floor reports nothing
+// missing because nothing asked.
+fn floor_entry_is_barren_test_sidecar(entry_path: String, content: String) -> Bool {
+  if floor_entry_requires_test_sidecar(entry_path: entry_path) {
+    length(xs: floor_discovery_scan_test_decl_names(content: content)) == 0
+  } else {
+    false
+  }
+}
+
 data floor_naming_hygiene_note: String = "Single authority for floor witness sidecar placement + test-decl name scan predicates. Host discovery walks files and projects rows; these pure fns decide whether an entry placement is admissible and which decls a *_test.dag enrolls.\n\nCORRECTED WITH THE DELETION IT DESCRIBES (gunbc#8155): this note previously claimed two things that stopped being true in the same change that edited this file. It said the module lives here rather than in floor_discovery_producer so that \"orphan/filename hygiene resolve stays free of the Filesystem service closure\" -- there is no longer an orphan census OR a filename-hygiene resolve to keep free of anything, since the `__`-basename rule and the whole-corpus orphan-helper walk are both deleted. It also declared it would dissolve the HAND-Rust mirrors in cli_run.rs check_floor_filename_hygiene and the SIDECAR_PLACEMENT_RULES suffix checks once dual-run equivalence receipts went green -- the filename half of that obligation is discharged by deletion rather than by dissolution, and no receipt was ever needed for a rule with a zero-row population.\n\nWHAT REMAINS TRUE: the sidecar placement predicates and the test-decl line scan are still the single authority for their own questions, and the line scan is still a SECOND PARSER. Its replacement is not a refactor of this module: it needs the canonical parser to retain the authored `test` marker, which v1_compiler_parse.rs drop_leading_test_marker discards, and `test` cannot become a lex keyword because it is a live module-path segment (test.claim.*, extdeps.test.*). The prerequisite is named by v2.workflow.realization_attempt test_marker_capture_note: a GrammarExpr contextual-keyword terminal, which does not exist yet."
