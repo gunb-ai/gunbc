@@ -54,9 +54,11 @@ import gunbc.spark.serving_observed_members {
 import gunbc.spark.serving_terminal_health {
   spark_serving_health_is_converged,
   spark_serving_health_wire,
+  spark_serving_residency_wire,
 }
 import gunbc.spark.serving_observe {
   spark_serving_observe_terminal_health,
+  spark_serving_observe_residency,
   spark_serving_observe_host_via_locus,
   spark_serving_observe_user_unit_pair,
   spark_serving_observe_runtime_materialization,
@@ -260,6 +262,11 @@ fn spark_serving_converge_slice_would_apply_verdict(
 // longer free. Whether terminal evidence is owed on EVERY convergence or on a declared cadence is an
 // evidence-frequency policy, and it needs its own carrier rather than being settled here by whichever
 // call site happened to be written first.
+// THE CONVERGED RECEIPT CARRIES WHERE THE GENERATION RAN, not merely that it ran.
+// unit_outcome=active is a PLACEMENT fact and nvidia_driver=580 is a PREREQUISITE fact; neither
+// says the model was in accelerator memory. Residency is the behaviour fact, and it is read only
+// on the converged arm below -- after a converged verdict, within keep_alive of the generation
+// that verdict proves.
 fn spark_serving_terminal_health_verdict(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -267,7 +274,12 @@ fn spark_serving_terminal_health_verdict(
 ) -> String {
   let health = spark_serving_observe_terminal_health(context: context, host: host)
   if spark_serving_health_is_converged(health: health) {
-    join([converged_verdict, " ", spark_serving_health_wire(health: health)], "")
+    join([
+      converged_verdict, " ", spark_serving_health_wire(health: health),
+      " ", spark_serving_residency_wire(
+        r: spark_serving_observe_residency(context: context, host: host, health: health),
+      ),
+    ], "")
   } else {
     join([converged_verdict, "-but-", spark_serving_health_wire(health: health)], "")
   }

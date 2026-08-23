@@ -18,6 +18,8 @@ import gunbc.membership_reconcile {
 import gunbc.ownership { Ownership, Ensured }
 import extdeps.git
 import extdeps.git.inspect
+import extdeps.exec.command { ArgvCommand }
+import extdeps.git { git_config_local_set_command }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_config_value }
 import extdeps.git {
   shape_git_config_local_argv,
@@ -99,6 +101,14 @@ fn repo_local_git_config_reconcile(
 
 fn reconcile_install_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
   shape_git_config_local_argv(key: binding.key, value: binding.value)
+}
+
+// THE COMMAND FORM OF THE SAME INSTALL. The hook emitter renders one command to text and the
+// actuator hands words to a transport; both now derive from extdeps.git git_config_local_set_args,
+// so neither re-spells --local. The emitter previously wrapped this argv in a hand-written
+// ArgvCommand record, which is the construction extdeps.exec.command's seal removes.
+fn reconcile_install_command(binding: RepoLocalGitConfigBinding) -> ArgvCommand {
+  git_config_local_set_command(key: binding.key, value: binding.value)
 }
 
 fn reconcile_read_back_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
