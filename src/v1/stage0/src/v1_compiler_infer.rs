@@ -53,6 +53,7 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
+pub use crate::v1_compiler_coercion::{decl_file_realizes_natively, type_reference_decl_file};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -3160,31 +3161,56 @@ pub fn declared_type_inhabitance(
                             reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
                         })
                     } else {
-                        if kernel_value_declared_type_mismatch(
+                        if declared_realizes_as_kernel_numeric(
                             declared.clone(),
                             produced.clone(),
-                            scope.type_env.clone(),
                             source_indices.clone(),
                         ) {
-                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
-                            })
+                            Rc::new(InhabitanceVerdict::Inhabits)
                         } else {
-                            if coproduct_payload_where_parent_required(
+                            if kernel_value_declared_type_mismatch(
                                 declared.clone(),
                                 produced.clone(),
-                                scope.clone(),
+                                scope.type_env.clone(),
+                                source_indices.clone(),
                             ) {
                                 Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                    reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
+                                    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
                                 })
                             } else {
-                                Rc::new(InhabitanceVerdict::Inhabits)
+                                if coproduct_payload_where_parent_required(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    scope.clone(),
+                                ) {
+                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                        reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
+                                    })
+                                } else {
+                                    Rc::new(InhabitanceVerdict::Inhabits)
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn declared_realizes_as_kernel_numeric(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let produced_name = authored_name_at(source_indices.clone(), produced.clone());
+        let produced_is_kernel_numeric = ((produced_name.clone() == "Int".to_string())
+            || (produced_name.clone() == "Float".to_string()));
+        if (produced_is_kernel_numeric.clone() == false) {
+            false
+        } else {
+            decl_file_realizes_natively(type_reference_decl_file(declared.clone()))
         }
     }
 }
