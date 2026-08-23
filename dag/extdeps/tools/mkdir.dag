@@ -3,6 +3,7 @@ module extdeps.tools.mkdir
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -45,4 +46,29 @@ fn mkdir_parents_args(path: String) -> List<String> {
 // door existed.
 fn mkdir_parents_argv(path: String) -> List<String> {
   concat([mkdir_binary_path as String], mkdir_parents_args(path: path))
+}
+
+// The ArgvCommand form, admitted on extdeps.exec.command argv_command. `mkdir_parents_argv` above
+// stays for the transports whose shape splits bin_path from args; this is the same fact addressed
+// as one command, so neither caller re-spells the flag.
+fn mkdir_parents_command(path: String) -> ArgvCommand {
+  mkdir_parents_command_at(mkdir_binary: mkdir_binary_path, path: path)
+}
+
+// THE PROGRAM IS A PARAMETER ON THIS ONE FORM, AND THAT IS NOT A HOLE IN THE PATH RULE. A caller
+// spelling a bare name is normally declining to say which binary it means; there is one live case
+// where it is saying something else. gunbc.bmc_netboot_serve runs mkdir on an OpenBMC image over
+// ssh, where mkdir is a BusyBox APPLET, and this repository has not observed where that image
+// installs it. Writing /usr/bin/mkdir there would be a guess whose failure mode is a hard spawn
+// error on a live BMC, so that site keeps PATH resolution DELIBERATELY and says so at the call
+// site, rather than the guess being made here on its behalf.
+//
+// THERE ARE TWO SUCH CALLERS, NOT ONE, and the second is why this paragraph no longer says "every
+// other caller" takes the absolute path. gunbc.busybox_bmc_build runs its whole command sequence
+// under LocalExec on whichever machine the operator invoked the cross-build from -- a developer box
+// or a runner image, never a host this repository has read -- so it cites this form for the same
+// reason and says so at its own call site. The wrapper above remains the default for callers that
+// reach a modeled fleet host; it is simply not the majority-by-assertion this note once claimed.
+fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(program: mkdir_binary, arguments: ["-p", path])
 }

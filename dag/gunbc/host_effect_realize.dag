@@ -199,7 +199,9 @@ import gunbc.build_cache_provision_verdict {
   provision_build_cache_verdict,
 }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
-import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, argv_words }
+import extdeps.tools.stat { stat_inode_command }
+import extdeps.tools.findutils { find_symlink_target_glob_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.build_cache_ensure {
@@ -226,19 +228,19 @@ import gunbc.build_cache_endpoint_observe {
   ListenerNone,
   ListenerAmbiguous,
   ListenerUndecided,
-  boot_id_read_argv,
-  endpoint_path_kind_argv,
-  proc_net_unix_read_argv,
+  boot_id_read_command,
+  endpoint_path_kind_command,
+  proc_net_unix_read_command,
   EndpointInodeLookup,
   ListenInodeFound,
   NoListenEntryAtPath,
   InodeLookupUndecided,
   listen_inode_at_path,
   fd_holder_of_find_output,
-  owner_cgroup_argv,
-  owner_proc_stat_argv,
-  owner_principal_argv,
-  owner_executable_argv,
+  owner_cgroup_command,
+  owner_proc_stat_command,
+  owner_principal_command,
+  owner_executable_command,
   path_kind_of_stat_read,
   survey_build_cache_endpoint,
 }
@@ -3977,8 +3979,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
 
 data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
 
-fn build_cache_host_read(argv: List<String>, transport: HostEffectTransport) -> HostRead {
-  match build_cache_host_read_observed(argv: argv, transport: transport) {
+fn build_cache_host_read(command: ArgvCommand, transport: HostEffectTransport) -> HostRead {
+  match build_cache_host_read_observed(command: command, transport: transport) {
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
         HostReadText { text: o.stdout }
@@ -4005,14 +4007,18 @@ type BuildCacheReadResult
 
 data every_read_is_one_argv_note: String = "EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and must not grow, so an observation added as a concat-built bash body would have grown precisely the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means the observation lands in the direction the dissolve-on points, and the remaining concat-shell body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect does than it was."
 
+// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason bmc_netboot_run_bmc now does: a
+// List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
+// was doing exactly that ("stat", "-c", "%i", ...). The ssh arms still need the flat vector, which
+// they derive here with argv_words instead of receiving pre-flattened.
 fn build_cache_host_read_observed(
-  argv: List<String>,
+  command: ArgvCommand,
   transport: HostEffectTransport,
 ) -> BuildCacheReadResult {
   match transport {
     LocalShell =>
       match run_shell_command_capture(
-        command: ArgvCommand { argv: argv },
+        command: command,
         transport: LocalExec,
       ) {
         ProcessOutputPresent { text: t } =>
@@ -4028,8 +4034,8 @@ fn build_cache_host_read_observed(
             observed: ShellExecObserved { exit_code: code, success: false, stdout: "", stderr: err },
           }
       }
-    SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
+    SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       BuildCacheReadRefused {
         reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
@@ -4057,7 +4063,7 @@ fn build_cache_path_kind_read(
   match instance.endpoint {
     SccacheServerTcpPort { port: _ } => PathKindNoFilesystemPath
     SccacheServerUnixSocket { path: p } =>
-      match build_cache_host_read_observed(argv: endpoint_path_kind_argv(path: p), transport: transport) {
+      match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
           path_kind_of_stat_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
         BuildCacheReadRan { observed: o } =>
@@ -4086,7 +4092,7 @@ fn build_cache_listen_inode_read(
       }
     SccacheServerUnixSocket { path: p } =>
       listen_inode_at_path(
-        read: build_cache_host_read(argv: proc_net_unix_read_argv(), transport: transport),
+        read: build_cache_host_read(command: proc_net_unix_read_command(), transport: transport),
         path: p,
       )
   }
@@ -4117,7 +4123,7 @@ fn build_cache_fd_holder_read(
 data holder_walk_runs_on_the_unlistened_socket_too_note: String = "WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is either stale (nothing holds it) or held open by a process that is not listening (unlinking severs it). Those two states are indistinguishable without asking whether any descriptor resolves to the file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and collapse them in the direction that unlinks a live process's socket."
 
 fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
-  match build_cache_host_read_observed(argv: ["stat", "-c", "%i", "--", path as String], transport: transport) {
+  match build_cache_host_read_observed(command: stat_inode_command(path: path as String), transport: transport) {
     BuildCacheReadRefused { reason: _ } => none
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
@@ -4143,8 +4149,8 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
         }
       }
     }
-    SshShell { ssh_host: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -4152,15 +4158,25 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
   }
 }
 
-fn socket_inode_holder_argv(inode: NonEmptyStr) -> List<String> {
-  ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", concat("socket:?", concat(inode as String, "?"))]
+// THE `?` WILDCARDS ARE THE BRACKETS, and they are load-bearing rather than sloppy: -lname takes a
+// GLOB, so the literal brackets of `socket:[12345]` would be read as a character class and match
+// nothing. extdeps.tools.findutils carries that fact beside the flags; this function keeps the
+// QUESTION -- which descriptor anywhere in /proc still resolves to this socket's inode -- which is
+// the caller's, not findutils'.
+fn socket_inode_holder_command(inode: NonEmptyStr) -> ArgvCommand {
+  find_symlink_target_glob_command(
+    search_root: "/proc",
+    max_depth: 3,
+    path_glob: "*/fd/*",
+    link_target_glob: concat("socket:?", concat(inode as String, "?")),
+  )
 }
 
 fn build_cache_endpoint_reads(
   instance: BuildCacheInstance,
   transport: HostEffectTransport,
 ) -> BuildCacheEndpointReads {
-  let boot_id = build_cache_host_read(argv: boot_id_read_argv(), transport: transport)
+  let boot_id = build_cache_host_read(command: boot_id_read_command(), transport: transport)
   let path_kind = build_cache_path_kind_read(instance: instance, transport: transport)
   let listen_inode = build_cache_listen_inode_read(instance: instance, transport: transport)
   let listener = build_cache_fd_holder_read(listen_inode: listen_inode, instance: instance, transport: transport)
@@ -4171,10 +4187,10 @@ fn build_cache_endpoint_reads(
         path_kind: path_kind,
         listen_inode: listen_inode,
         listener: listener,
-        owner_cgroup: build_cache_host_read(argv: owner_cgroup_argv(pid: pid), transport: transport),
-        owner_proc_stat: build_cache_host_read(argv: owner_proc_stat_argv(pid: pid), transport: transport),
-        owner_principal: build_cache_host_read(argv: owner_principal_argv(pid: pid), transport: transport),
-        owner_executable: build_cache_host_read(argv: owner_executable_argv(pid: pid), transport: transport),
+        owner_cgroup: build_cache_host_read(command: owner_cgroup_command(pid: pid), transport: transport),
+        owner_proc_stat: build_cache_host_read(command: owner_proc_stat_command(pid: pid), transport: transport),
+        owner_principal: build_cache_host_read(command: owner_principal_command(pid: pid), transport: transport),
+        owner_executable: build_cache_host_read(command: owner_executable_command(pid: pid), transport: transport),
       }
     ListenerNone =>
       build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
@@ -4234,7 +4250,7 @@ fn build_cache_unlink_then_ensure(
             applied: effect_intent,
           }
         StaleSocketUnlinkCommandReady { command: cmd } =>
-          match build_cache_host_read_observed(argv: cmd.argv, transport: transport) {
+          match build_cache_host_read_observed(command: cmd, transport: transport) {
             BuildCacheReadRefused { reason: why } =>
               NotConverged {
                 reason: join(["host_effect_apply: EnsureBuildCacheInstance could not run the admitted stale-socket unlink -- ", why], ""),

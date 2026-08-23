@@ -11,7 +11,6 @@ module test.claim.scm_load_standing_witness
 // everything onto one standing would satisfy any single-arm assertion and is caught only here.
 
 import std.types { Bool, Int, List }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
@@ -150,22 +149,4 @@ test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
     && standing_eq(a: malformed, b: LoadDocumentMalformed)
     && !standing_may_supersede_generation(standing: collision)
     && standing_may_supersede_generation(standing: malformed)
-}
-
-fn load_standing_witness_main() -> ProcessExit {
-  if !an_incomplete_closure_loads_partial_and_a_complete_one_does_not() {
-    ExitFailure { code: 1, reason: "an_incomplete_closure_loads_partial_and_a_complete_one_does_not" }
-  } else if !a_partial_load_is_never_supersedable() {
-    ExitFailure { code: 1, reason: "a_partial_load_is_never_supersedable" }
-  } else if !malformed_is_the_only_standing_that_permits_replacement() {
-    ExitFailure { code: 1, reason: "malformed_is_the_only_standing_that_permits_replacement" }
-  } else if !only_an_unrecognized_format_is_a_protocol_gap() {
-    ExitFailure { code: 1, reason: "only_an_unrecognized_format_is_a_protocol_gap" }
-  } else if !an_unresolved_position_is_malformed_not_fetchable() {
-    ExitFailure { code: 1, reason: "an_unresolved_position_is_malformed_not_fetchable" }
-  } else if !an_honest_collision_is_its_own_standing_and_never_supersedes() {
-    ExitFailure { code: 1, reason: "an_honest_collision_is_its_own_standing_and_never_supersedes" }
-  } else {
-    ExitSuccess
-  }
 }
