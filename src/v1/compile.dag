@@ -59,7 +59,7 @@ import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 
 import v1.compiler.infer_types { algebra_field_kind_name }
 
-import v1.compiler.emit_core_support { EmitResult, escape_json_string, to_string }
+import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics }
 
 import v1.compiler.emit_rust { emit_rust }
