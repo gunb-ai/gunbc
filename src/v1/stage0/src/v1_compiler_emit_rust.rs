@@ -172,16 +172,13 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
-use crate::v1_std_core::TransportKind::{
-    FileTransport, LocalTransport, RestTransport, ShellTransport,
-};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
+    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
@@ -203,7 +200,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
+    NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
