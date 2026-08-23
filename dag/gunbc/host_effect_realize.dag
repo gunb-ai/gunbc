@@ -8,6 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_re
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, EnsureBuildCacheInstance, ProvisionCodexRuntime,
+  EnsureCompilePoolSlice,
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
@@ -95,7 +96,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
+import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
@@ -260,13 +261,42 @@ import gunbc.live_deploy.operations {
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
+  systemctl_start_command,
 }
+import extdeps.jobserver { jobserver_config }
+import gunbc.fleet_host_budget {
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
+  CompilePoolResolution,
+  CompilePoolUnresolved,
+  compile_pool_bytes_for,
+  gunbc_compile_pool_placement,
+}
+import gunbc.compile_pool_ensure {
+  EnsureCompilePoolAdmission,
+  EnsureCompilePoolAlreadyConverged,
+  EnsureCompilePoolAdmitted,
+  EnsureCompilePoolRefused,
+  CompilePoolEnsureRefusal,
+  EnsurePoolTopologyUndeclared,
+  EnsurePoolSizingUnresolved,
+  EnsureCachePlacementUnknown,
+  EnsurePoolSliceUnobservable,
+  EnsurePoolSliceNamedDoesNotMatch,
+  admit_ensure_compile_pool_slice,
+  compile_pool_ensure_is_converged,
+}
+import gunbc.compile_pool_observe { observe_compile_pool_slice }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
+
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.srv3_boot_once_cd {
   srv3_boot_once_apply_read_back_sleep,
 }
 import extdeps.filesystem.filesystem_io
-import std.measure { second_count }
+import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
 import extdeps.provisioning.ubuntu_install_media_fetch {
@@ -333,6 +363,7 @@ type ResolvedHostEffectCell =
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | ProvisionBuildCacheOnHost { node: ComputeHost, desired: BuildCacheInstance }
   | ProvisionCodexRuntimeOnHost { node: ComputeHost }
+  | EnsureCompilePoolSliceOnHost { node: ComputeHost }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
@@ -400,6 +431,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           ProvisionBuildCacheOnHost { node: n, desired: d }
         ProvisionCodexRuntime {} =>
           ProvisionCodexRuntimeOnHost { node: n }
+        EnsureCompilePoolSlice {} =>
+          EnsureCompilePoolSliceOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
@@ -439,6 +472,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               ProvisionBuildCacheOnHost { node: n, desired: d }
             ProvisionCodexRuntime {} =>
               ProvisionCodexRuntimeOnHost { node: n }
+            EnsureCompilePoolSlice {} =>
+              EnsureCompilePoolSliceOnHost { node: n }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
             Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
             Srv3SeededInstallMediaToolchainEnsure =>
@@ -505,6 +540,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         ProvisionCodexRuntime {} =>
           IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        EnsureCompilePoolSlice {} =>
+          IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
@@ -522,6 +559,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ProvisionCodexRuntime {} =>
               IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureCompilePoolSlice {} =>
+              IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3SeededInstallMediaRemaster =>
@@ -3675,6 +3714,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_provision_build_cache(effect_intent: intent)
     ProvisionCodexRuntimeOnHost { node: _ } =>
       realize_provision_codex_runtime(effect_intent: intent)
+    EnsureCompilePoolSliceOnHost { node: _ } =>
+      realize_ensure_compile_pool_slice(transport: transport, effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     HostnameReadOnHost { node: _ } =>
@@ -3853,6 +3894,8 @@ fn host_effect_apply_gated(
           realize_provision_build_cache(effect_intent: intent)
         ProvisionCodexRuntimeOnHost { node: _ } =>
           realize_provision_codex_runtime(effect_intent: intent)
+        EnsureCompilePoolSliceOnHost { node: _ } =>
+          realize_ensure_compile_pool_slice(transport: transport, effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         HostnameReadOnHost { node: _ } =>
@@ -3946,6 +3989,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureCompilePoolSliceOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -4349,6 +4393,283 @@ fn build_cache_ensure_step(
 }
 
 data already_converged_evidence_is_the_observation_note: String = "THE ALREADY-CONVERGED ARM RETURNS ShellEffectApplied WITH exit_code 0 AND NO SHELL HAVING RUN, and that is worth stating because it looks like a fabricated receipt and is not. HostEffectEvidence has two arms and neither names an observation, so the evidence carrier cannot yet distinguish 'a command ran and succeeded' from 'a read established that nothing needed to run'. What the receipt carries is the observation itself -- the unit found owning the endpoint -- rather than invented command output, so a reader sees WHY it converged. DISSOLVE-ON: a HostEffectEvidence arm for an observation-grounded convergence, at which point this arm names it and the exit_code 0 goes away. Until then the honest thing is to say so here rather than let the zero read as a process exit."
+
+// THE COMPILE-POOL SLICE GETS ITS OWN EFFECT RATHER THAN RIDING THE CACHE ENSURE, AND THE SEAM IS THE POINT.
+// gunbc.compile_pool_ensure admit_ensure_compile_pool_slice refuses on TOPOLOGY before it observes anything,
+// and gunbc_compile_pool_placement is CompilePoolInRunnerSlots today, so folding this admission into
+// realize_provision_build_cache_body as a precondition would make EnsureBuildCacheInstance refuse on every
+// host in the fleet. A lane that halts another lane to express a dependency has chosen the wrong seam: the
+// pool is a separate desired state with a separate unit file, so it is a separate effect whose refusal costs
+// nothing that was already converging. (Parent ruling, warm-tern-755, 2026-08-23.)
+//
+// WHAT IT ANSWERS TODAY, so this is not read as a description of a working fleet: EnsurePoolTopologyUndeclared,
+// on every host, naming gunbc_compile_pool_placement as the cause. That is the correct answer and the landing
+// state -- no host has a managed slice, and the flip of that row is the change this converger exists to make
+// possible. gunbc_compile_pool_placement's own dissolution trigger says to flip it in the same change that
+// converges the managed unit AND ITS SLICE; the unit had a converger and the slice had none.
+//
+// THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
+// its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
+// pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
+// gunbc.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// would mint a second answer to a question that already has one authority, so the effect names the target host
+// and the derivation happens here from that host's own facts.
+// WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
+// slice to read, and the observation is a parameter the admission takes whether or not it consults it -- it
+// refuses on topology first. The subject is therefore the slice gunbc.host_layout names, which makes the read
+// a true statement about the host (that unit really is what a managed pool would be called there) rather than
+// a fabricated subject, and keeps the read unconditional so it cannot become a function of the answer it
+// feeds. It also produces a real finding for free: on a host where the topology says no pool is managed and
+// the slice nevertheless exists, the reading is there in the observation rather than being unasked. Note the
+// layout row and the topology row are two authorities on ONE question -- whether a managed pool is declared --
+// and they disagree today; that disagreement is a standing hazard recorded on this PR, not something this
+// function resolves.
+fn compile_pool_observation_subject(placement: CompilePoolPlacement) -> NonEmptyStr {
+  match placement {
+    CompilePoolSliceDeclared { slice_unit: declared } => declared as NonEmptyStr
+    CompilePoolInRunnerSlots => gunbc_managed_compile_pool_slice
+  }
+}
+
+fn compile_pool_ensure_refusal_detail(reason: CompilePoolEnsureRefusal) -> String {
+  match reason {
+    EnsurePoolTopologyUndeclared { detail: d } => d as String
+    EnsurePoolSizingUnresolved { detail: d } => d as String
+    EnsureCachePlacementUnknown { detail: d } => d as String
+    EnsurePoolSliceUnobservable { detail: d } => d as String
+    EnsurePoolSliceNamedDoesNotMatch { declared: dec, observed: obs } =>
+      join(
+        ["the declared compile-pool slice is ", dec as String, " but the host answers for ", obs as String],
+        "",
+      )
+  }
+}
+
+fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
+  concat("/etc/systemd/system/", slice_unit as String)
+}
+
+// THE BYTES INSTALLED ARE THE BYTES THE ADMISSION ADMITTED. EnsureCompilePoolAdmitted already carries the
+// SystemdUnitFile gunbc.build_cache_unit rendered from the derived size, so this serializes THAT value rather
+// than re-rendering from the same inputs. Re-rendering would be a second construction of one artifact, and
+// the failure it admits is not hypothetical: the admission could be granted against one size and the file
+// written from another with nothing between them to notice.
+//
+// Install then daemon-reload then START -- never restart. Stopping a slice kills every process in it
+// (systemd.slice(5)), so restarting the compile pool would terminate the compilers it exists to hold, which
+// is the opposite of converging it. `start` on an already-active slice re-applies the unit's resource
+// directives and kills nothing.
+fn compile_pool_slice_install_body(slice_unit: NonEmptyStr, slice_unit_file: SystemdUnitFile) -> String {
+  join([
+    "set -euo pipefail",
+    "_gunbc_stage=\"$(mktemp -d)\"",
+    "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
+    join(["cat > \"$_gunbc_stage/", slice_unit as String, "\" <<'__GUNBC_COMPILE_POOL_SLICE__'"], ""),
+    concat(serialize_systemd_unit_file(file: slice_unit_file), "__GUNBC_COMPILE_POOL_SLICE__"),
+    join(["sudo -n install -m 0644 \"$_gunbc_stage/", slice_unit as String, "\" ", compile_pool_slice_system_path(slice_unit: slice_unit)], ""),
+    systemctl_daemon_reload_command(privileged: true),
+    systemctl_start_command(unit: slice_unit, privileged: true),
+    "",
+  ], "\n")
+}
+
+data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
+
+fn compile_pool_ensure_admission_for(
+  node: ComputeHost,
+  transport: HostEffectTransport,
+) -> EnsureCompilePoolAdmission {
+  let placement = gunbc_compile_pool_placement
+  let instance = ci_cache_instance(host: node.identity)
+  let survey = survey_build_cache_endpoint(
+    instance: instance,
+    reads: build_cache_endpoint_reads(instance: instance, transport: transport),
+  )
+  admit_ensure_compile_pool_slice(
+    topology: placement,
+    sizing: compile_pool_sizing_for_host(node: node, placement: placement),
+    cache_placement: survey.placement,
+    observed: observe_compile_pool_slice(
+      transport: transport,
+      slice_unit: compile_pool_observation_subject(placement: placement),
+    ),
+  )
+}
+
+// The size is DERIVED here from the target host's own facts rather than travelling on the effect, through the
+// same compile_pool_bytes_for gunbc.ci_runner_placement uses to shrink the runner pool. The two must agree or
+// the host stops conserving, and they agree because there is one derivation, not because two call sites were
+// kept in step.
+fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
+  match compute_host_primary_cpu(host: node) {
+    Absent =>
+      CompilePoolUnresolved {
+        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
+      }
+    Present { value: cpu } =>
+      compile_pool_bytes_for(
+        placement: placement,
+        nproc: cpu_facts_threads(cpu: cpu),
+        host: compute_host_ram_bytes_total(host: node),
+        citation: jobserver_config,
+      )
+  }
+}
+
+// The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
+// FRESH observation of the host rather than from the state we just wrote. A read-back that reused the
+// preflight observation would green on evidence it produced -- the exact defect
+// provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
+// the post-state can differ. Convergence is claimed only when the second admission answers
+// EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+fn compile_pool_slice_install_step(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  slice_unit_file: SystemdUnitFile,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let observed = run_shell_transport(
+    script: retained_srvn(
+      body: shell_exec_via_bash(body: compile_pool_slice_install_body(slice_unit: slice_unit, slice_unit_file: slice_unit_file)),
+      reason: "srvN compile-pool slice install (managed cgroup parent for cache-miss compilers)",
+    ),
+    transport: transport,
+  )
+  if observed.success == false {
+    NotConverged {
+      reason: join(
+        [
+          "host_effect_apply: EnsureCompilePoolSlice ran its install and the shell exited ",
+          to_string(observed.exit_code),
+          ": ",
+          if observed.stderr == "" { observed.stdout } else { observed.stderr },
+        ],
+        "",
+      ),
+      applied: effect_intent,
+    }
+  } else {
+    let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+    if compile_pool_ensure_is_converged(admission: after) {
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: observed.exit_code,
+          stdout: join(
+            [
+              "CompilePoolSliceReceipt: converged unit=",
+              slice_unit as String,
+              " memory.max=memory.high=",
+              to_string(byte_size_count(b: sized)),
+              " (re-observed after install; the admission answered already-converged)",
+            ],
+            "",
+          ),
+          stderr: observed.stderr,
+        },
+        applied: effect_intent,
+      }
+    } else {
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: EnsureCompilePoolSlice installed ",
+            slice_unit as String,
+            " and the read-back did not converge -- ",
+            compile_pool_admission_diagnostic(admission: after),
+          ],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    }
+  }
+}
+
+fn compile_pool_admission_diagnostic(admission: EnsureCompilePoolAdmission) -> String {
+  match admission {
+    EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: _ } =>
+      join(["the slice ", u as String, " is converged"], "")
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: _, slice_unit_file: _ } =>
+      join(
+        ["the slice ", u as String, " is still admitted for writing, so the installed unit did not take effect on the host"],
+        "",
+      )
+    EnsureCompilePoolRefused { reason: r } => compile_pool_ensure_refusal_detail(reason: r)
+  }
+}
+
+fn realize_ensure_compile_pool_slice(
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.target {
+    BmcController { node: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: EnsureCompilePoolSlice requires a HostOs target; fail-closed.",
+        applied: effect_intent,
+      }
+    HostOs { node: node } =>
+      match transport {
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: EnsureCompilePoolSlice cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+            applied: effect_intent,
+          }
+        LocalShell => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        SshShell { ssh_host: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        FleetSsh { target: _, context: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+      }
+  }
+}
+
+fn realize_ensure_compile_pool_slice_body(
+  node: ComputeHost,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match compile_pool_ensure_admission_for(node: node, transport: transport) {
+    EnsureCompilePoolRefused { reason: r } =>
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: EnsureCompilePoolSlice refused before writing anything -- ",
+            compile_pool_ensure_refusal_detail(reason: r),
+          ],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: b } =>
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: 0,
+          stdout: join(
+            [
+              "CompilePoolSliceReceipt: already_converged unit=",
+              u as String,
+              " memory.max=memory.high=",
+              to_string(byte_size_count(b: b)),
+              " (observed on the host; no unit written, no start issued)",
+            ],
+            "",
+          ),
+          stderr: "",
+        },
+        applied: effect_intent,
+      }
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: b, slice_unit_file: f } =>
+      compile_pool_slice_install_step(
+        node: node,
+        slice_unit: u,
+        sized: b,
+        slice_unit_file: f,
+        transport: transport,
+        effect_intent: effect_intent,
+      )
+  }
+}
 
 fn build_cache_already_converged(
   unit: NonEmptyStr,

@@ -1,0 +1,123 @@
+module test.claim.compile_pool_ensure_wiring_witness
+
+import gunbc.host_toolchain_ensure { host_toolchain_ensure_effect, CompilePool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS MODULE IS FOR: gunbc.compile_pool_ensure was proven over fixtures and computed by nothing --
+// its only caller was its own test module -- so an admission named as the wall between a host and an
+// unbounded compile pool was green without ever being asked a question. These witnesses assert the parts of
+// the wiring that make it reachable, and the parts of the observation that decide what it is asked.
+
+// REACHABILITY, not shape: the entrypoint a person or a converge pass actually calls must produce the effect,
+// and the effect must resolve to a cell that dispatches to the realizer. Asserting the arm exists on the
+// coproduct would prove nothing -- it existed before this change too, with nothing routing to it.
+test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
+  match host_toolchain_ensure_effect(kind: CompilePool, host: "srv1" as HostIdentity) {
+    EnsureCompilePoolSlice {} => true
+    _ => false
+  }
+}
+
+test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
+  match resolve_host_effect_cell(target: HostOs { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
+    EnsureCompilePoolSliceOnHost { node: _ } => true
+    _ => false
+  }
+}
+
+// The BMC arm is the discriminating negative: a slice is an in-band systemd fact, so a Redfish target must
+// refuse rather than resolve. Without it the routing witness above would pass on a fold that resolved
+// everything to the same cell.
+test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
+  match resolve_host_effect_cell(target: BmcController { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
+    IncompatibleCell { reason: why } => string_contains(s: why, pattern: "EnsureCompilePoolSlice")
+    _ => false
+  }
+}
+
+// THE LIVE TOPOLOGY TRIPWIRE, and it reads the REAL gunbc_compile_pool_placement rather than a fixture, so it
+// is a claim about this fleet. It asserts a REFUSAL today: the row is CompilePoolInRunnerSlots, so no host has
+// a managed slice and every convergence attempt refuses naming that row. When the row flips to
+// CompilePoolSliceDeclared this witness reds -- deliberately, in the same change that shrinks runner_pool --
+// and at that point it becomes an assertion that the pool converges rather than being deleted.
+test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
+  let a = admit_ensure_compile_pool_slice(
+    topology: gunbc_compile_pool_placement,
+    sizing: compile_pool_bytes_for(
+      placement: gunbc_compile_pool_placement,
+      nproc: hardware_thread_count(count: 128),
+      host: byte_size(134317047808),
+      citation: jobserver_config,
+    ),
+    cache_placement: ServerPlacementAbsent,
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+  )
+  match a {
+    EnsureCompilePoolRefused { reason: r } =>
+      match r {
+        EnsurePoolTopologyUndeclared { detail: d } =>
+          string_contains(s: d as String, pattern: "gunbc_compile_pool_placement")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// INFINITY IS NOT A SIZE, AND THIS IS THE RED THAT MATTERS MOST IN THE OBSERVATION. `systemctl show
+// --property=MemoryMax --value` answers `infinity` both for a unit the manager never heard of and for a
+// loaded slice with no ceiling. Reading either as a magnitude would let a slice with NO LIMIT be reported as
+// a sized pool, which is the unbounded charge the managed slice exists to replace -- reported as its own
+// remedy. The refusal is what keeps the two apart.
+test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptured { value: "infinity" },
+  ) {
+    CompilePoolLimitRefused { observation: o } =>
+      match o {
+        CompilePoolObservationUnavailable { reason: _ } => true
+        _ => false
+      }
+    CompilePoolLimitBytes { bytes: _ } => false
+  }
+}
+
+// The paired positive control: a real byte count must decode, or the refusal above would be satisfied by a
+// decoder that refuses everything.
+test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptured { value: "17179869184" },
+  ) {
+    CompilePoolLimitBytes { bytes: b } => byte_size_count(b: b) == 17179869184
+    CompilePoolLimitRefused { observation: _ } => false
+  }
+}
+
+// A read that could not run is UNAVAILABLE, never ABSENT. The two have opposite remedies -- install the slice
+// versus fix the reach -- and folding an unreadable manager into "the slice is not there" would send a
+// converger to write a unit on a host it cannot see.
+test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" },
+  ) {
+    CompilePoolLimitRefused { observation: o } =>
+      match o {
+        CompilePoolObservationUnavailable { reason: _ } => true
+        CompilePoolSliceAbsent { slice_unit: _ } => false
+        CompilePoolSliceObserved { slice_unit: _, limits: _ } => false
+      }
+    CompilePoolLimitBytes { bytes: _ } => false
+  }
+}
+
+// The load-state argv the transport materializes must be the argv extdeps.systemd.systemctl declares. Without
+// this the operation could drift from its own authority and every reading above would be of the wrong unit.
+test fn witness_load_state_operation_argv_matches_its_authority() -> Bool {
+  systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc_managed_compile_pool_slice)
+}
