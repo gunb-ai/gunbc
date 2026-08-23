@@ -377,23 +377,29 @@ data srv4_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   rows: srv4_memory_population.rows,
 }
 
+// EACH HOST'S EXPECTATION IS NAMED because it has more than one consumer. It was previously
+// inline in fleet_dimm_verdicts below, and the witness that reads these same live observations
+// re-authored its own copy -- so when srv1's population moved from Hynix to Samsung, the
+// production row moved and the witness copy did not, and the required floor went red on two
+// claims whose subject had not changed at all. A second authoring of one fact is the defect;
+// naming the row is what removes the place for the copy to live.
+data srv1_dimm_expectation: HostDimmExpectation =
+  HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
+data srv2_dimm_expectation: HostDimmExpectation =
+  HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 }
+
+data srv3_dimm_expectation: HostDimmExpectation =
+  HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
+data srv4_dimm_expectation: HostDimmExpectation =
+  HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
 data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
-  dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
-    observation: srv1_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-    observation: srv2_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
-    observation: srv3_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
-    observation: srv4_dimm_observation,
-  ),
+  dimm_reconcile_verdict(expectation: srv1_dimm_expectation, observation: srv1_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv2_dimm_expectation, observation: srv2_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv3_dimm_expectation, observation: srv3_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv4_dimm_expectation, observation: srv4_dimm_observation),
 ]
 
 // THE PROCESSOR HALF IS UNOBSERVED ON EVERY HOST. gunbc.fleet_intent's
