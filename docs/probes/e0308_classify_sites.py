@@ -369,10 +369,13 @@ def main(path, out):
                      ["file", "line", "col", "expected", "found", "delta", "root", "reason",
                       "carrier_flags", "callee", "callee_kind", "msg"]) + "\n")
     print("raw E0308 blocks: %d" % len(blocks))
-    print("canonical sites : %d" % len(sites))
+    print("mismatch projections: %d" % len(sites))
     hist = collections.Counter(s["root"] for s in sites)
+    # Counts only. This classifier sees one error code in one overlapping M=1 closure at one
+    # revision. A percentage would mistake this code-local projection for a closed mechanism
+    # population and make it look comparable with another code, closure, or revision.
     for r, n in hist.most_common():
-        print("  %-12s %4d  %5.1f%%" % (r, n, 100.0 * n / len(sites)))
+        print("  %-12s %4d" % (r, n))
     flagged = collections.Counter(s["carrier_flags"] for s in sites if s.get("carrier_flags"))
     if flagged:
         print("\nCarrier flags (evidence beside the root, not a category):")
