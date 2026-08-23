@@ -1,0 +1,135 @@
+module test.claim.fleet_hardware_standing_panel_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import product.placement_supply { HostIdentity }
+import product.installed_bom_reconcile {
+  DimmReconcileVerdict, ProcessorReconcileVerdict,
+  DimmPopulationConfirmed, DimmPopulationRefused,
+  DimmObservationHostMismatch, DimmPopulationUnconfirmed,
+  ProcessorModelConfirmed, ProcessorModelUnconfirmed,
+  DimmCountMatches, DimmCountDiffers,
+}
+import gunbc.fleet_hardware_standing_panel {
+  HardwareStanding, HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled,
+  hardware_standing_label, dimm_standing, processor_standing,
+  dimm_detail, hardware_axis_summary, standing_count,
+  fleet_dimm_standings, fleet_processor_standings,
+  fleet_hardware_summary_line, fleet_hardware_outstanding_line,
+}
+
+fn a_host() -> HostIdentity { "srv3" }
+fn other_host() -> HostIdentity { "srv4" }
+
+// THE PROCESSOR AXIS IS UNREAD ON EVERY HOST, AND THE PANEL MUST SAY SO RATHER THAN CONFIRM IT.
+//
+// This is the load-bearing row in the file. The fleet's processor is modeled intent -- every
+// in-tree consumer agrees on the part -- and no dmidecode receipt has ever been supplied for any
+// host. A panel that mapped "no contradiction found" to Confirmed would render four confirmations
+// of a fact no instrument has measured, on a page the operator reads to decide what is true about
+// their machines. The distinction between "read and agreed" and "never read" is the entire reason
+// HardwareStanding has a third value.
+test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool {
+  let standings = fleet_processor_standings()
+  (standings |> count) == 4
+    && standing_count(standings: standings, wanted: HardwareUnread) == 4
+    && standing_count(standings: standings, wanted: HardwareConfirmed) == 0
+}
+
+// THE POSITIVE CONTROL ON THE SAME AXIS PAIR: memory IS read, and IS confirmed.
+//
+// Without this, the assertion above is satisfied by a panel that renders everything as unread --
+// which would be just as wrong, in the direction that makes a healthy fleet look unmeasured. The
+// two axes disagreeing is what proves the mapping discriminates rather than answering a constant.
+test fn the_memory_axis_is_confirmed_on_every_host() -> Bool {
+  let standings = fleet_dimm_standings()
+  (standings |> count) == 4
+    && standing_count(standings: standings, wanted: HardwareConfirmed) == 4
+    && standing_count(standings: standings, wanted: HardwareUnread) == 0
+}
+
+// EACH VERDICT VARIANT MAPS TO ITS OWN STANDING, PROVEN ON AUTHORED VERDICTS.
+//
+// The live tree currently exercises only two of the four standings, so a mapping that collapsed
+// Refused into Misfiled would pass every assertion above. These verdicts are authored here rather
+// than read from the fleet precisely so the two unoccupied arms are still discriminated.
+test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool {
+  let confirmed = dimm_standing(verdict: DimmPopulationConfirmed { host: a_host(), stick_count: 8 })
+  let refused = dimm_standing(verdict: DimmPopulationRefused {
+    host: a_host(),
+    discrepancies: [],
+    count: DimmCountDiffers { expected: 8, observed: 6 },
+  })
+  let misfiled = dimm_standing(verdict: DimmObservationHostMismatch {
+    expectation_host: a_host(),
+    observation_host: other_host(),
+  })
+  let unread = dimm_standing(verdict: DimmPopulationUnconfirmed {
+    host: a_host(),
+    cause: "no reading taken" as NonEmptyStr,
+  })
+  confirmed == HardwareConfirmed
+    && refused == HardwareRefused
+    && misfiled == HardwareMisfiled
+    && unread == HardwareUnread
+    && (confirmed != refused) && (refused != misfiled) && (misfiled != unread)
+}
+
+// THE FOUR STANDINGS DO NOT SHARE A WIRE WORD.
+// A label function collapsing two still renders a plausible row, and the collapse would surface
+// only as an operator acting on the wrong remedy.
+test fn the_four_standings_do_not_share_a_wire_word() -> Bool {
+  let all = [HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled]
+  let labels = map(all, s => hardware_standing_label(standing: s))
+  (labels |> count) == 4
+    && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
+}
+
+// A REFUSAL NAMES BOTH INDEPENDENT AXES, BECAUSE EITHER CAN BE THE WHOLE STORY.
+//
+// A population can hold the right count of the wrong part or the wrong count of the right one. The
+// verdict separates them, so the detail line must not fold them into one number -- an operator told
+// only "3 discrepancies" does not know whether sticks are missing.
+test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool {
+  let detail = dimm_detail(verdict: DimmPopulationRefused {
+    host: a_host(),
+    discrepancies: [],
+    count: DimmCountDiffers { expected: 8, observed: 6 },
+  })
+  string_contains(s: detail, pattern: "expected 8")
+    && string_contains(s: detail, pattern: "read 6")
+    && string_contains(s: detail, pattern: "discrepancies")
+}
+
+// THE SUMMARY IS PER AXIS, AND A SINGLE FLEET FRACTION WOULD BE THE DEFECT.
+//
+// Collapsed today, the summary would read "4 of 8 confirmed" -- arithmetically true and useless.
+// Memory is fully read; the processor axis has never been measured once. Those are a solved problem
+// beside an unstarted one, and averaging them hides both.
+test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Bool {
+  let line = fleet_hardware_summary_line()
+  string_contains(s: line, pattern: "4 of 4 memory confirmed")
+    && string_contains(s: line, pattern: "0 of 4 processor confirmed")
+    && !string_contains(s: line, pattern: "of 8")
+}
+
+// AN AXIS SUMMARY COUNTS CONFIRMATIONS, NOT ROWS.
+// Authored rather than read from the fleet: the live rosters are all-confirmed and all-unread, so
+// a mixed population is the only input that separates counting confirmations from counting members.
+test fn an_axis_summary_counts_confirmations_not_members() -> Bool {
+  let mixed = [HardwareConfirmed, HardwareUnread, HardwareRefused, HardwareConfirmed]
+  let line = hardware_axis_summary(axis: "memory", standings: mixed)
+  string_contains(s: line, pattern: "2 of 4 memory confirmed")
+}
+
+// THE OUTSTANDING LINE IS ABSENT WHEN NOTHING CONTRADICTS, AND THAT IS THE CURRENT FLEET STATE.
+//
+// Present-with-zero would be a standing row of noise that trains the reader to skip the line on the
+// day it carries a number. Unread must NOT count toward it: nothing has been contradicted by a
+// reading nobody took, and treating an unmeasured axis as a contradiction would put the panel in a
+// permanent alarm state that the operator cannot clear by fixing anything.
+test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count() -> Bool {
+  match fleet_hardware_outstanding_line() {
+    Present { value: _ } => false
+    Absent => standing_count(standings: fleet_processor_standings(), wanted: HardwareUnread) == 4
+  }
+}

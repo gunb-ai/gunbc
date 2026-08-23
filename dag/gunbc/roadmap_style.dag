@@ -28,6 +28,9 @@ import gunbc.design.state_response {
   state_var_name, state_var_ref, state_rest_decl, state_paint_rules,
   RestBinding, StateClassBinding,
 }
+import gunbc.fleet_hardware_standing_panel {
+  hardware_subject_reserved_width, hardware_standing_reserved_width,
+}
 import gunbc.roadmap_component {
   dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
@@ -485,6 +488,68 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontStyle, value: "italic"),
       decl(prop: FontSize, value: scale_var(t: text_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "fleet-hardware-standing" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-heading" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-outstanding" }, decls: [
+      role_decl(prop: Color, r: SalienceRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-subject" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-axis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: hardware_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-cell" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_standing_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-confirmed" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-refused" }, decls: [
+      role_decl(prop: Color, r: SalienceRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-misfiled" }, decls: [
+      role_decl(prop: Color, r: SalienceRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-unread" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontStyle, value: "italic"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-detail" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
