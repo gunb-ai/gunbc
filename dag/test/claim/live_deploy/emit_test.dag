@@ -701,6 +701,17 @@ test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
     && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
+test fn probe_ab_twin_disjoint_minus_two_live_positives() -> Bool {
+  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  !string_contains(s: live_apply, pattern: "--set-path")
+    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
 
 fn unmeasured_client_target() -> DeploymentHostTarget {

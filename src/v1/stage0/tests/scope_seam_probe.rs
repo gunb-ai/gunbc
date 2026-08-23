@@ -46,6 +46,13 @@ fn probe() {
                 "witness_spec_targets_srv1",
                 "witness_spec_listen_port_is_8080",
                 "witness_apply_script_contains_systemd_and_tailscale",
+                // A/B ARM: the same row with the two LIVE-side POSITIVE conjuncts removed.
+                // Dropping them leaves `live_retract` unused (its render disappears) but NOT
+                // `live_apply`, which the must-keep `--set-path` disjointness conjunct still
+                // uses. So the delta measures 4 renders -> 3, not 4 -> 2. The four
+                // disjointness conjuncts are untouched: their absence once shipped a
+                // production-destroying apply.
+                "probe_ab_twin_disjoint_minus_two_live_positives",
             ] {
                 let q = format!("{emit_entry}.{f}");
                 let t0 = std::time::Instant::now();
