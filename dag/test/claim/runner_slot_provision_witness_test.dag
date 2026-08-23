@@ -1,7 +1,7 @@
 module test.claim.runner_slot_provision
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr, List }
+import std.types { list_length, NonEmptyStr, List, String }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   actions_runner_release_2_334_0,
@@ -9,8 +9,14 @@ import extdeps.github.actions_runner {
   actions_runner_download_url,
 }
 import gunbc.runner_host_deploy {
+  srv1_runner_host_deploy,
+  srv2_runner_host_deploy,
   srv3_runner_host_deploy,
   srv4_runner_host_deploy,
+  runner_host_deploy_for,
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+  fleet_runner_host_deploys,
   runner_host_installer_command_argv,
   runner_instance_names,
   gunbc_ci_github_app,
@@ -25,10 +31,19 @@ import gunbc.runner_slot_provision {
   RunnerSlotEnumerationMismatch,
   RunnerSlotMember,
   runner_slot_provision_has_width_increase,
+  RunnerSlotObservation,
+  RunnerSlotsObserved,
+  RunnerSlotsUnobserved,
+  RunnerSlotConvergeVerdict,
+  RunnerSlotConvergePlanned,
+  RunnerSlotConvergeRefused,
+  runner_slot_converge_verdict,
+  runner_slot_member_from_instance_name,
 }
 import gunbc.membership_reconcile { membership_added_count }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count }
 import gunbc.fleet_host_budget { declared_runner_count_for }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
@@ -55,17 +70,30 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
     && (string_contains(s: rendered, pattern: "CTRL_RUNNER_SLOT") == false)
 }
 
-test fn witness_srv3_deploy_row_names_six_slots() -> Bool {
-  list_length(items: runner_instance_names(deploy: srv3_runner_host_deploy)) == 6
-    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).first(), pattern: "srv3-01")
-    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 5).first(), pattern: "srv3-06")
+// THE NAMING IS WHAT THIS ROW CHECKS; THE WIDTH LITERAL IT USED TO CARRY IS GONE.
+//
+// It read `== 6` on both the count and the last instance name, which was a measurement copied from
+// the tree the day it was written. The 2026-08-23 CPU-axis change moved srv3 to twenty-one and the
+// row went red without a single thing about instance NAMING having changed -- which is the tell that
+// the literal was never the claim (DESIGN section 5: a measurement copied from the same current tree
+// is not an oracle).
+//
+// What survives is the part a fixture can falsify independently of width: the roster is exactly as
+// long as the row says it is, it is one-based, and it is zero-padded. Width itself is asserted where
+// width is decided, not restated here.
+test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
+  let names = runner_instance_names(deploy: srv3_runner_host_deploy)
+  list_length(items: names) == srv3_runner_host_deploy.runner_count
+    && string_contains(s: names.first(), pattern: "srv3-01")
+    && list_length(items: names) > 1
+    && roster_names_are_distinct(names: names)
 }
 
 // The reconcile fixtures plant their OWN five-slot deploy row rather than
 // reading the live fleet, so the expected counts below are exact literals
 // authored beside a known input — not a restatement of whatever width the
 // fleet happens to declare. srv3's real width is asserted separately, by
-// witness_srv3_deploy_row_names_six_slots.
+// witness_srv3_deploy_row_names_its_declared_slots.
 fn fixture_five_slot_deploy() -> RunnerHostDeploy {
   RunnerHostDeploy {
     host_label: "wfix",
@@ -134,7 +162,188 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   }
 }
 
-test fn witness_srv4_runner_count_six_materialization_target() -> Bool {
-  srv4_runner_host_deploy.runner_count == 6
-    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy)) == 6
+// SAME CORRECTION AS srv3 ABOVE, and the same reason: this row pinned six on both sides of an `&&`,
+// so it measured the tree rather than checking a relation. The relation it was reaching for is that
+// the instance roster and the declared count cannot disagree, which holds at any width.
+test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
+  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
+  list_length(items: names) == srv4_runner_host_deploy.runner_count
+    && roster_names_are_distinct(names: names)
+}
+
+// A LENGTH IS NOT A ROSTER, AND EVERY PURE LENGTH ASSERTION IN THIS FILE HAD THIS HOLE.
+//
+// A generator emitting ONE name N times satisfies `list_length(names) == count` perfectly while
+// deploying a single runner N ways -- N units all pointing at one slot directory, one registration
+// name contending with itself. The count check cannot see it because the count is right.
+//
+// Found by silent-bear-842, who independently rewrote these rows and asked what a length assertion
+// does NOT cover before shipping. Kept as a named function rather than inlined because it belongs
+// beside every length claim, not just this one.
+fn roster_names_are_distinct(names: List<String>) -> Bool {
+  !any(names, a => list_length(items: filter(names, b => b == a)) > 1)
+}
+
+// THE INDEXING CONTRACT, PINNED ON GROUND THAT CANNOT MOVE.
+//
+// The rows this file used to carry asserted srv3-01 and srv3-06 by name -- one-based, zero-padded,
+// last index equals count. Those were real claims and they were deleted along with the width
+// literals they were entangled with, because every index expectation was a function of a width the
+// CPU axis then moved. Deriving the expectation from the width would have made it vacuous: the
+// enumerator would be checked against itself.
+//
+// An AUTHORED runner_count breaks that circle. Three is a number the allocation authority never
+// produced and never will, so this row pins one-basedness, zero-padding and the count-to-last-index
+// relation without consulting the fleet at all. That is the planted-fixture side of the
+// authority-witness / boundary-probe split: a fixture that authors its own input SHOULD carry
+// literals, and only a probe aimed at a live authority must derive its discriminator.
+//
+// Measured discriminating rather than assumed: under a planted one-off in runner_instance_names
+// (mapping over runner_count - 1) this row returns false, as do the two length rows above
+// (silent-bear-842).
+data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
+  host_label: "fixture-host",
+  ssh_target: "fixture@203.0.113.1",
+  runner_user: "fixture",
+  job_user: "fixturejob",
+  app: gunbc_ci_github_app,
+  runner_count: 3,
+}
+
+test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
+  let names = runner_instance_names(deploy: authored_three_slot_deploy)
+  list_length(items: names) == 3
+    && string_contains(s: names.first(), pattern: "fixture-host-01")
+    && string_contains(s: names.skip(n: 2).first(), pattern: "fixture-host-03")
+    && roster_names_are_distinct(names: names)
+}
+
+// --- converge seam: the refusal must be real, not decorative ----------------------------------
+
+data converge_seam_witness_note: String = "THESE FOUR ROWS EXIST BECAUSE THE REFUSAL ARM IS THE ENTIRE POINT OF THE SEAM. An observation type with an Unobserved arm that nothing can drive is a decoration -- permanently green by construction and worse than absent, because it gets cited as coverage. The fixture below authors the unobserved state directly, so the arm has a RED that a fixture may produce, and the planned control beside it stops the refusal being satisfied by refusing always."
+
+data unobserved_fixture: RunnerSlotObservation = RunnerSlotsUnobserved {
+  reason: "FIXTURE: the base-directory listing refused" as NonEmptyStr,
+}
+
+data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
+  members: [
+    runner_slot_member_from_instance_name(instance_name: "srv1-01"),
+    runner_slot_member_from_instance_name(instance_name: "srv1-02"),
+  ],
+}
+
+// THE DISCRIMINATING RED. An unreadable host must not produce a plan, because a plan built on an
+// unread population proposes installing every desired slot onto a machine whose real state nobody
+// saw. This is the arm that turns a silent overwrite into a stop.
+test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Absent => false
+    Present { value: artifact } =>
+      match runner_slot_converge_verdict(
+        host: operator_host_srv1,
+        deploy: srv1_runner_host_deploy,
+        artifact: artifact,
+        observation: unobserved_fixture,
+      ) {
+        RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
+        RunnerSlotConvergePlanned { host: _, plan: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL, without which the row above is satisfied by a seam that refuses everything.
+// srv1 commits twenty-one and two slots are observed, so a plan must be produced AND must propose
+// adding the nineteen that are missing.
+test fn an_observed_host_plans_the_missing_slots() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Absent => false
+    Present { value: artifact } =>
+      match runner_slot_converge_verdict(
+        host: operator_host_srv1,
+        deploy: srv1_runner_host_deploy,
+        artifact: artifact,
+        observation: observed_two_fixture,
+      ) {
+        RunnerSlotConvergePlanned { host: _, plan: p } =>
+          runner_slot_provision_has_width_increase(plan: p)
+            && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
+        RunnerSlotConvergeRefused { host: _, reason: _ } => false
+      }
+  }
+}
+
+// EVERY ENROLLED HOST RESOLVES TO A DEPLOY ROW, which is the gap this change closed. Before it,
+// srv1 and srv2 had no row at all, so the width authority could say twenty-one and nothing could
+// act on it.
+test fn every_enrolled_host_has_a_deploy_row() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h => match runner_host_deploy_for(host: h) {
+      RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
+      RunnerHostDeployUnmodeled { host: _ } => false
+    }
+  )
+}
+
+// AND AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW -- the arm that stops a
+// fifth machine being provisioned against srv4's ssh_target and slot count.
+test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
+  match runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
+    RunnerHostDeployFound { deploy: _ } => false
+  }
+}
+
+// NO DEPLOY ROW OUT-COMMITS THE MEMORY BUDGET, and this is a join between two authorities rather
+// than a restatement of one.
+//
+// runner_count derives from gunbc.runner_slot_allocation gunbc_runner_slots_per_host, which is the
+// MINIMUM over the memory, CPU and disk axes. gunbc.fleet_host_budget declared_runner_count_for is
+// the memory axis alone, computed from the pool budget and the per-runner cgroup cap by a different
+// route. Asserting equality between them would be wrong as well as vacuous -- since the 2026-08-23
+// CPU-axis change the CPU axis binds first on srv1, srv3 and srv4, so the two numbers legitimately
+// differ (twenty-one committed against a memory admission of twenty-seven or twenty-nine).
+//
+// The relation that must hold in every case is the inequality: materialization may commit fewer
+// slots than memory would admit, never more. That is falsifiable -- a deploy row raised past its
+// memory admission fails here -- and it does not collapse into f(x) == f(x).
+test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
+  all(
+    fleet_runner_host_deploys,
+    d => d.runner_count <= declared_runner_count_for(host: d.host_label as HostIdentity)
+      && d.runner_count > 0
+  )
+}
+
+
+// --- the fabric carve reaches the provisioning target --------------------------------------------
+
+// THE DESIRED SET MUST NOT CONTAIN srv3-06, AND THIS IS THE ROW THAT SAYS SO.
+//
+// desired_runner_slot_members built 1..runner_count until 2026-08-23, which meant converge would
+// have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
+// reconcile would have seen it as an ordinary missing member, so apply would have done it with no
+// refusal anywhere. The width says how many slots exist; it does not say what they are for.
+test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
+  let names = map(
+    desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    m => runner_slot_member_key(m: m) as String,
+  )
+  (any(names, n => n == "srv3-06") == false)
+    && any(names, n => n == "srv3-05")
+    && any(names, n => n == "srv3-07")
+}
+
+// THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
+// that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
+// no fabric member and loses nothing.
+test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
+  list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy))
+    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    && list_length(items: desired_runner_slot_members(deploy: srv4_runner_host_deploy))
+         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
+         == gunbc_runner_slots_per_host(host: operator_host_srv1)
 }
