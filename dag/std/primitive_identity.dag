@@ -20,6 +20,8 @@ data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance a
 
 data primitive_d0_refusal_execution_note: String = "Five PrimitiveJoinViolation variants typed at D0. Three detectors execute with RED witnesses: primitive_surface_missing_identity_violation, primitive_realization_unknown_primitive_violation, primitive_duplicate_semantic_definition_violation. Two scaffold detectors execute on planted inputs only (terminal join expands population-wide detection): primitive_surface_joins_two_identities_violation, primitive_incompatible_invocation_assignment_violation."
 
+data primitive_identity_d2_note: String = "D2 (primitive projection authority): the join gains the question a callable-resolution wall actually asks -- given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two ONE authority or genuinely two. primitive_projection_for_declaration is total over every DeclarationRef; ProjectionFidelity separates a host-realized seam from a modeled projection from a divergent one, and only the first two mean one authority. Consumer: the bare-call candidate collector in gunbc#8952, whose first corpus run refused 1215 sites across five names precisely because a modeled std surface and the primitive it projects were two co-candidates with no relation between them. D2 also replaces the prose open denominator with a counted one: primitive_undisposed_surface_symbol_count enumerates, at symbol grain, how far the five-surface census is from the terminal bar. It does NOT close that bar -- see primitive_undisposed_residue_note."
+
 data primitive_identity_d0_note: String = "D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract. primitive_surface_census_derived reads five live authorities including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. Open denominator receipt: primitive_d0_open_denominator_receipt. Dissolve-on: feature:primitive-realization-single-authority."
 
 data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface drift audit (review 45947 class): AlgebraTemplate — CLOSED, all_algebra_field_templates flat_maps all_algebra_profiles (2c9c01351). EmitHandler — single authority, rt_function_registry with derived rt_functions/rt_ref_map_functions projections (no parallel roster). BuiltinRegistry — OPEN parallel enumeration: builtin_registry_surface_names hand list beside builtin_function_registry Map (witness cannot map_keys Node at runtime; builtin_registry_surface_names_note). PrimitiveContractRow — OPEN parallel enumeration: primitive_contract_roster hand list beside *_contract data rows (primitive_contract_roster_note). D0 mutation control on those two surfaces discovers drift only when the hand list is updated, not when the primary authority grows alone."
@@ -299,6 +301,23 @@ fn primitive_identity_lookup(
     })
 }
 
+data primitive_identity_for_symbol_note: String = "The census join. It asks the D0 surface-scoped alias table first, then the DECLARED population by canonical name. The second arm is not a spelling rule: an authored symbol joins only if a PrimitiveDefinition for that canonical name has been declared in primitive_declared_definitions, so a surface that grows a new symbol nobody has declared stays UNJOINED and is counted by primitive_undisposed_surface_symbol_count rather than being admitted on the strength of matching itself."
+
+fn primitive_identity_for_symbol(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+) -> PrimitiveIdentity? {
+  match primitive_identity_lookup(authority: authority, authored_symbol: authored_symbol) {
+    Present { value: id } => Present { value: id }
+    Absent =>
+      if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
+        Present { value: primitive_identity_slug(name: authored_symbol) }
+      } else {
+        none
+      }
+  }
+}
+
 fn registry_contains_symbol(sym: String) -> Bool {
   builtin_registry_surface_names() |> any(name => name == sym)
 }
@@ -322,7 +341,7 @@ fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
         authority: BuiltinRegistry,
         authored_symbol: sym,
         authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
-        primitive: primitive_identity_lookup(authority: BuiltinRegistry, authored_symbol: sym),
+        primitive: primitive_identity_for_symbol(authority: BuiltinRegistry, authored_symbol: sym),
         provenance: DerivedFromAuthority,
       )
     )
@@ -339,7 +358,7 @@ fn primitive_contract_surface_rows() -> List<PrimitiveSurfaceRow> {
           decl_name: concat(contract.name, "_contract"),
           field_name: "name",
         ),
-        primitive: primitive_identity_lookup(
+        primitive: primitive_identity_for_symbol(
           authority: PrimitiveContractRow,
           authored_symbol: contract.name,
         ),
@@ -355,7 +374,7 @@ fn primitive_algebra_surface_rows() -> List<PrimitiveSurfaceRow> {
         authority: AlgebraTemplate,
         authored_symbol: template.name,
         authority_ref: decl_ref(module_path: "std.algebra", decl_name: "all_algebra_field_templates"),
-        primitive: primitive_identity_lookup(authority: AlgebraTemplate, authored_symbol: template.name),
+        primitive: primitive_identity_for_symbol(authority: AlgebraTemplate, authored_symbol: template.name),
         provenance: DerivedFromAuthority,
       )
     )
@@ -368,7 +387,7 @@ fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
         authority: EmitHandler,
         authored_symbol: entry.name,
         authority_ref: decl_ref(module_path: "extdeps.languages.rust.emit", decl_name: "rt_function_registry"),
-        primitive: primitive_identity_lookup(authority: EmitHandler, authored_symbol: entry.name),
+        primitive: primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name),
         provenance: DerivedFromAuthority,
       )
     )
@@ -384,7 +403,7 @@ fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
           module_path: "gunbc.v1_interpreter_primitive_surface",
           decl_name: "v1_interpreter_primitive_arms",
         ),
-        primitive: primitive_identity_lookup(
+        primitive: primitive_identity_for_symbol(
           authority: InterpreterDispatch,
           authored_symbol: arm.authored_spelling as String,
         ),
@@ -735,4 +754,409 @@ fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
         true
       }
     })
+}
+
+// ---------------------------------------------------------------------------
+// Primitive projection: is a DECLARATION the modeled surface of a PRIMITIVE?
+// ---------------------------------------------------------------------------
+
+data primitive_projection_identity_key_note: String = "The projection is keyed on std.decl_ref DeclarationRef, which is the namespace layer's own identity for a declaration (DESIGN section 3: namespace supplies declaration identity, this carrier supplies semantic primitive identity). No new identity type is minted here. The alternative shape considered and refused was a per-declaration marker row beside each fn: it is a second representation scattered across modules rather than one authority, it keys on a bare name inside a module scope so two same-named declarations collapse into one, and it has no room for a fidelity distinction. Module qualification answers the second; this single carrier answers the first; ProjectionFidelity answers the third."
+
+data primitive_projection_fidelity_note: String = "HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the primitive are ONE authority, so a candidate collector must not report them as two. They are kept apart because they are different facts with different futures, and averaging them into one flag would erase the difference. A HostRealizedSeam body is a SELF-CALL (v2.std.decl_index decl_facts is decl_facts(pool_roots: pool_roots)): it is correct by construction, because a body that could never survive being reached is exactly what a declared host seam should look like -- reaching it recurses to the evaluation-budget refusal. A ModeledProjection body is REAL CODE that the builtin arm intercepts ahead of user-fn dispatch (v2.std.algebra length has a genuine fold_list body no bare call reaches): it is dead code that looks live, and someone will eventually edit it believing it runs. This carrier makes that observable rather than folklore. Repairing the dead-code half is NOT this carrier's job and is not claimed here."
+
+type ProjectionFidelity
+  = HostRealizedSeam
+  | ModeledProjection
+  | DivergentProjection { divergence: NonEmptyStr }
+
+type PrimitiveProjection {
+  primitive: PrimitiveIdentity
+  declaration: DeclarationRef
+  fidelity: ProjectionFidelity
+}
+
+type PrimitiveProjectionAnswer
+  = DeclarationProjectsPrimitive {
+      identity: PrimitiveIdentity
+      fidelity: ProjectionFidelity
+    }
+  | DeclarationProjectsNoPrimitive
+
+type PrimitiveJoinProjectionViolation
+  = ProjectionNamesUnknownPrimitive {
+      declaration: DeclarationRef
+      identity: PrimitiveIdentity
+    }
+  | DuplicateProjectionForDeclaration { declaration: DeclarationRef }
+
+data primitive_declared_population_note: String = "The declared semantic-primitive population. It is the join's denominator: a projection row or a surface row naming an identity that is not declared here REFUSES rather than being admitted on the strength of its spelling. It is NOT yet the whole primitive vocabulary -- primitive_undisposed_surface_symbol_count measures what is still undeclared, and the roadmap node primitive-identity-join keeps population-wide closure as its terminal bar."
+
+data primitive_length: PrimitiveIdentity = primitive_identity_slug(name: "length")
+data primitive_map_insert: PrimitiveIdentity = primitive_identity_slug(name: "map_insert")
+data primitive_map_get: PrimitiveIdentity = primitive_identity_slug(name: "map_get")
+data primitive_empty_map: PrimitiveIdentity = primitive_identity_slug(name: "empty_map")
+data primitive_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "decl_facts")
+data primitive_export_signature_facts: PrimitiveIdentity = primitive_identity_slug(name: "export_signature_facts")
+data primitive_data_decl_type_facts: PrimitiveIdentity = primitive_identity_slug(name: "data_decl_type_facts")
+data primitive_concept_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts")
+data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts_live")
+
+fn primitive_definition_of(name: String) -> PrimitiveDefinition {
+  PrimitiveDefinition {
+    identity: primitive_identity_slug(name: name),
+    semantic_contract: PrimitiveSemanticContract { canonical_name: name as NonEmptyStr },
+  }
+}
+
+data primitive_projection_target_canonical_names: List<String> = [
+  "length",
+  "map_insert",
+  "map_get",
+  "empty_map",
+  "decl_facts",
+  "export_signature_facts",
+  "data_decl_type_facts",
+  "concept_decl_facts",
+  "concept_decl_facts_live",
+]
+
+fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
+  concat(
+    primitive_d0_definitions,
+    primitive_projection_target_canonical_names |> map(name => primitive_definition_of(name: name))
+  )
+}
+
+fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
+  primitive_declared_definitions()
+    |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
+}
+
+data primitive_projection_roster_note: String = "One row per declaration that is the modeled surface of a declared primitive. Every row was established by READING THE DECLARATION, not by matching its name: the HostRealizedSeam rows are declarations whose whole body is a self-call, and the ModeledProjection rows are declarations with a real body that the builtin arm intercepts ahead of. The single DivergentProjection row is v2.std.collection map_get, whose declared return type is Outcome<Optional<V>> against the primitive's Optional<V>; it is carried rather than omitted because omission and divergence are different answers -- omission means nobody has looked, divergence means someone looked and found two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for the first two fidelities and must keep refusing on the third."
+
+fn primitive_projection_row(
+  primitive: PrimitiveIdentity,
+  module_path: String,
+  decl_name: String,
+  fidelity: ProjectionFidelity,
+) -> PrimitiveProjection {
+  PrimitiveProjection {
+    primitive: primitive,
+    declaration: decl_ref(module_path: module_path, decl_name: decl_name),
+    fidelity: fidelity,
+  }
+}
+
+fn primitive_projection_roster() -> List<PrimitiveProjection> {
+  [
+    primitive_projection_row(
+      primitive: primitive_decl_facts,
+      module_path: "v2.std.decl_index",
+      decl_name: "decl_facts",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_export_signature_facts,
+      module_path: "v2.std.decl_index",
+      decl_name: "export_signature_facts",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_data_decl_type_facts,
+      module_path: "v2.std.decl_index",
+      decl_name: "data_decl_type_facts",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_concept_decl_facts,
+      module_path: "v2.std.concept_index",
+      decl_name: "concept_decl_facts",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_concept_decl_facts_live,
+      module_path: "v2.std.concept_index",
+      decl_name: "concept_decl_facts_live",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_empty_map,
+      module_path: "v2.std.collection",
+      decl_name: "empty_map_primitive_delegate",
+      fidelity: HostRealizedSeam,
+    ),
+    primitive_projection_row(
+      primitive: primitive_length,
+      module_path: "v2.std.algebra",
+      decl_name: "length",
+      fidelity: ModeledProjection,
+    ),
+    primitive_projection_row(
+      primitive: primitive_map_insert,
+      module_path: "v2.std.collection",
+      decl_name: "map_insert",
+      fidelity: ModeledProjection,
+    ),
+    primitive_projection_row(
+      primitive: primitive_empty_map,
+      module_path: "v2.std.collection",
+      decl_name: "empty_map",
+      fidelity: ModeledProjection,
+    ),
+    primitive_projection_row(
+      primitive: primitive_map_get,
+      module_path: "v2.std.collection",
+      decl_name: "map_get",
+      fidelity: DivergentProjection {
+        divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as NonEmptyStr,
+      },
+    ),
+  ]
+}
+
+data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer, and a declaration nobody has classified answers DeclarationProjectsNoPrimitive rather than failing to answer. Absence and divergence are therefore different states at the consumer, which is the distinction a boolean suppress flag could not carry."
+
+fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
+  primitive_projection_roster()
+    |> fold(init: DeclarationProjectsNoPrimitive, f: fn(acc, row) {
+      match acc {
+        DeclarationProjectsPrimitive { identity: _, fidelity: _ } => acc
+        DeclarationProjectsNoPrimitive =>
+          if declaration_ref_eq(a: row.declaration, b: declaration) {
+            DeclarationProjectsPrimitive { identity: row.primitive, fidelity: row.fidelity }
+          } else {
+            acc
+          }
+      }
+    })
+}
+
+fn projection_fidelity_is_one_authority(fidelity: ProjectionFidelity) -> Bool {
+  match fidelity {
+    HostRealizedSeam => true
+    ModeledProjection => true
+    DivergentProjection { divergence: _ } => false
+  }
+}
+
+fn declaration_and_primitive_are_one_authority(
+  declaration: DeclarationRef,
+  primitive: PrimitiveIdentity,
+) -> Bool {
+  match primitive_projection_for_declaration(declaration: declaration) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationProjectsPrimitive { identity: id, fidelity: fidelity } =>
+      primitive_identity_eq(left: id, right: primitive)
+        && projection_fidelity_is_one_authority(fidelity: fidelity)
+  }
+}
+
+fn primitive_projection_unknown_primitive_violations_in(
+  rows: List<PrimitiveProjection>
+) -> List<PrimitiveJoinProjectionViolation> {
+  rows
+    |> fold(init: [], f: fn(acc, row) {
+      if primitive_identity_is_declared(identity: row.primitive) {
+        acc
+      } else {
+        concat(
+          [ProjectionNamesUnknownPrimitive { declaration: row.declaration, identity: row.primitive }],
+          acc
+        )
+      }
+    })
+}
+
+fn primitive_projection_declaration_row_count_in(
+  rows: List<PrimitiveProjection>,
+  declaration: DeclarationRef,
+) -> Int {
+  count(
+    rows
+      |> filter(fn(row) { declaration_ref_eq(a: row.declaration, b: declaration) })
+  )
+}
+
+fn primitive_projection_duplicate_declaration_violations_in(
+  rows: List<PrimitiveProjection>
+) -> List<PrimitiveJoinProjectionViolation> {
+  rows
+    |> fold(init: [], f: fn(acc, row) {
+      if primitive_projection_declaration_row_count_in(rows: rows, declaration: row.declaration) > 1 {
+        concat([DuplicateProjectionForDeclaration { declaration: row.declaration }], acc)
+      } else {
+        acc
+      }
+    })
+}
+
+fn primitive_projection_violation_count_in(rows: List<PrimitiveProjection>) -> Int {
+  count(primitive_projection_unknown_primitive_violations_in(rows: rows))
+    + count(primitive_projection_duplicate_declaration_violations_in(rows: rows))
+}
+
+fn primitive_projection_violation_count() -> Int {
+  primitive_projection_violation_count_in(rows: primitive_projection_roster())
+}
+
+fn primitive_projection_roster_row_count() -> Int {
+  count(primitive_projection_roster())
+}
+
+fn primitive_projection_one_authority_row_count() -> Int {
+  count(
+    primitive_projection_roster()
+      |> filter(fn(row) { projection_fidelity_is_one_authority(fidelity: row.fidelity) })
+  )
+}
+
+fn primitive_projection_divergent_row_count() -> Int {
+  count(
+    primitive_projection_roster()
+      |> filter(fn(row) { !projection_fidelity_is_one_authority(fidelity: row.fidelity) })
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Typed, counted residue: what the population-wide join has NOT disposed of
+// ---------------------------------------------------------------------------
+
+data primitive_undisposed_residue_note: String = "What remains is a COUNTED DISPOSITION at symbol grain, not a sentence. A prose 'the denominator is still open' has no size, so it never ranks for closing; primitive_surface_symbol_dispositions enumerates every distinct authored symbol on the five-surface census as either SymbolJoinsDeclaredPrimitive or SymbolUndisposed, and primitive_undisposed_surface_symbol_count is a number the next session re-derives by running it. TERMINAL BAR, unchanged and owned by roadmap node primitive-identity-join: primitive_undisposed_surface_symbol_count reaches zero, at which point every surface row joins exactly one declared identity. This carrier does NOT claim that bar; it makes the distance to it observable."
+
+type PrimitiveSymbolDisposition
+  = SymbolJoinsDeclaredPrimitive {
+      authored_symbol: NonEmptyStr
+      identity: PrimitiveIdentity
+    }
+  | SymbolUndisposed { authored_symbol: NonEmptyStr }
+
+fn primitive_surface_distinct_symbols() -> List<String> {
+  primitive_surface_census_derived()
+    |> fold(init: [], f: fn(acc, row) {
+      let sym = row.authored_symbol as String
+      if acc |> any(seen => seen == sym) {
+        acc
+      } else {
+        concat(acc, [sym])
+      }
+    })
+}
+
+fn primitive_symbol_disposition(authored_symbol: String) -> PrimitiveSymbolDisposition {
+  if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
+    SymbolJoinsDeclaredPrimitive {
+      authored_symbol: authored_symbol as NonEmptyStr,
+      identity: primitive_identity_slug(name: authored_symbol),
+    }
+  } else {
+    SymbolUndisposed { authored_symbol: authored_symbol as NonEmptyStr }
+  }
+}
+
+fn primitive_surface_symbol_dispositions() -> List<PrimitiveSymbolDisposition> {
+  primitive_surface_distinct_symbols()
+    |> map(sym => primitive_symbol_disposition(authored_symbol: sym))
+}
+
+fn primitive_symbol_disposition_is_undisposed(d: PrimitiveSymbolDisposition) -> Bool {
+  match d {
+    SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: _ } => false
+    SymbolUndisposed { authored_symbol: _ } => true
+  }
+}
+
+fn primitive_surface_distinct_symbol_count() -> Int {
+  count(primitive_surface_distinct_symbols())
+}
+
+fn primitive_undisposed_surface_symbol_count() -> Int {
+  count(
+    primitive_surface_symbol_dispositions()
+      |> filter(fn(d) { primitive_symbol_disposition_is_undisposed(d: d) })
+  )
+}
+
+fn primitive_disposed_surface_symbol_count() -> Int {
+  count(
+    primitive_surface_symbol_dispositions()
+      |> filter(fn(d) { !primitive_symbol_disposition_is_undisposed(d: d) })
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The other direction: given a SYMBOL on a surface, does any runtime row join it?
+// ---------------------------------------------------------------------------
+
+data primitive_runtime_coverage_note: String = "The projection query asks, of a DECLARATION, which primitive it projects. This asks the opposite and the two catch different defects. A primitive registered on the typecheck surface with NO row on any runtime-bearing surface typechecks clean at every call site and answers NoSuchFunction when one is actually evaluated -- the class gunbc#8952 found in emit_map_has by probing, where every one of its 21 live call sites happened to reach a same-named declaration through its own import closure so nobody noticed. The projection direction is blind to it BY CONSTRUCTION, because the defect is a primitive with no declaration rather than a declaration with a divergent primitive.
+
+WHAT THIS ANSWERS AND WHAT IT DOES NOT. It reports a CENSUS FACT: no InterpreterDispatch row and no EmitHandler row on the derived five-surface census joins this authored symbol. It does NOT adjudicate that no runtime exists -- a dispatch site the interpreter roster does not enumerate would be invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1_interpreter_primitive_surface records for itself. Read the answer as the denominator saying nothing joins, not as the interpreter saying nothing runs."
+
+type PrimitiveSurfaceRuntimeCoverage
+  = RuntimeRowOnInterpreterDispatch
+  | RuntimeRowOnEmitHandlerOnly
+  | NoRuntimeRowOnAnySurface
+
+fn surface_rows_carry_symbol_on(
+  rows: List<PrimitiveSurfaceRow>,
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+) -> Bool {
+  rows |> any(fn(row) {
+    row.authority == authority && (row.authored_symbol as String) == authored_symbol
+  })
+}
+
+fn primitive_runtime_coverage_in(
+  rows: List<PrimitiveSurfaceRow>,
+  authored_symbol: String,
+) -> PrimitiveSurfaceRuntimeCoverage {
+  if surface_rows_carry_symbol_on(
+    rows: rows,
+    authority: InterpreterDispatch,
+    authored_symbol: authored_symbol,
+  ) {
+    RuntimeRowOnInterpreterDispatch
+  } else if surface_rows_carry_symbol_on(
+    rows: rows,
+    authority: EmitHandler,
+    authored_symbol: authored_symbol,
+  ) {
+    RuntimeRowOnEmitHandlerOnly
+  } else {
+    NoRuntimeRowOnAnySurface
+  }
+}
+
+fn primitive_runtime_coverage(authored_symbol: String) -> PrimitiveSurfaceRuntimeCoverage {
+  primitive_runtime_coverage_in(
+    rows: primitive_surface_census_derived(),
+    authored_symbol: authored_symbol,
+  )
+}
+
+fn primitive_runtime_coverage_is_absent(coverage: PrimitiveSurfaceRuntimeCoverage) -> Bool {
+  match coverage {
+    RuntimeRowOnInterpreterDispatch => false
+    RuntimeRowOnEmitHandlerOnly => false
+    NoRuntimeRowOnAnySurface => true
+  }
+}
+
+fn registry_symbols_without_runtime_row_in(rows: List<PrimitiveSurfaceRow>) -> List<String> {
+  rows
+    |> filter(fn(row) { row.authority == BuiltinRegistry })
+    |> map(row => row.authored_symbol as String)
+    |> filter(fn(sym) {
+      primitive_runtime_coverage_is_absent(
+        coverage: primitive_runtime_coverage_in(rows: rows, authored_symbol: sym)
+      )
+    })
+}
+
+fn registry_symbols_without_runtime_row() -> List<String> {
+  registry_symbols_without_runtime_row_in(rows: primitive_surface_census_derived())
+}
+
+fn registry_symbols_without_runtime_row_count() -> Int {
+  count(registry_symbols_without_runtime_row())
 }
