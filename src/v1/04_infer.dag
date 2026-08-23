@@ -2216,6 +2216,14 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // SOURCE-LEVEL, NOT EMISSION. decl_file_realizes_natively takes only decl_file; the neighbouring
 // lookup_checkpoint takes a RenderTarget and would have made an emission fact answer a
 // source-level question, which is why it is deliberately not the surface used here.
+// INTERIM, AND THE ROW THAT DISSOLVES IT IS v2.workflow.floor_expected_red chunk_14.
+// This decides that a kernel numeral inhabits Nat by asking whether Nat's DECLARING MODULE is
+// kernel-backed -- a REALIZATION fact answering a TYPING question. It fails closed on unknown
+// identity and is measured behaviour-preserving against main, so it is not unsound; it is
+// UNDER-SPECIFIC, and it grants literal syntax module-wide permission to inhabit anything whose
+// implementation eventually mentions a numeric carrier. The durable model is an
+// expected-type-directed literal introduction judgment -- a type admits a numeral because it
+// SUPPLIES one, not because its module realizes natively. Do not build on this predicate.
 fn declared_realizes_as_kernel_numeric(
   declared: Node,
   produced: Node,

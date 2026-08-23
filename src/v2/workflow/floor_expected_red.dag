@@ -426,7 +426,36 @@ fn floor_expected_red_chunk_13() -> List<String> {
 // application EXPANDS TO, so there is no missing arm for exhaustiveness checking or review to see.
 // Located, with a reproducing input; the admitting branch has NOT been read and no line is named.
 //
-// NEXT-RUNG TRIGGER: that predicate repaired so a kernel value at a type application refuses. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
+// NEXT-RUNG TRIGGER, TWO PARTS. The mechanical one: that predicate repaired so a kernel value at
+// a type application refuses. The MODEL one, which is what the durable repair looks like and is
+// recorded here so the interim is never cited as the design:
+//
+// declared_realizes_as_kernel_numeric decides that 40 inhabits Nat by consulting
+// v1.compiler.coercion decl_file_realizes_natively -- i.e. because Nat's DECLARING MODULE is
+// kernel-backed. That is a REALIZATION fact standing in for a TYPING fact, and it amounts to
+// peeling the applied type until a scalar appears. It is not unsound: it fails closed on unknown
+// identity, and the admit is measured behaviour-preserving-or-narrowing against main. It is
+// UNDER-SPECIFIC. It answers "this module's numerics are kernel-backed" where the question is
+// "does this type admit this literal", and it therefore grants literal syntax module-wide
+// permission to inhabit anything whose implementation eventually mentions a numeric carrier.
+// The two answers coincide today for Nat and Int and stop coinciding the moment a module
+// declares a numeric type that should NOT take bare literals.
+//
+// THE DURABLE MODEL IS AN EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT: 40 inhabits Nat
+// because Nat SUPPLIES A NUMERAL INTRODUCTION, not because its module realizes natively. Lean is
+// the worked precedent -- numerals elaborate against the expected type through an OfNat
+// obligation, and literal introduction is kept separate from coercion insertion. When that lands,
+// declared_realizes_as_kernel_numeric and its consumption of decl_file_realizes_natively dissolve;
+// they are the interim, and this row is their dissolution trigger.
+//
+// TWO CONSTRAINTS ON WHOEVER BUILDS IT, both live in this repository rather than hypothetical.
+// A judgment that peels a declared type to its representation defeats abstraction walls that
+// already hold: TransparentAlias may be exposed; OpaqueType, SoleConstructorCarrier, Refinement
+// and Brand MAY NOT -- sole_constructor is a real, executing construction wall and a peeling
+// judgment walks through it silently. And exposure must derive a canonical view ONCE per type
+// identity and cache it, with cycle detection and a measured expansion budget: recursive aliases
+// can loop, renormalizing at every use site is expensive, and this corpus is already living on a
+// per-witness cost line. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
 // reds the build and names them for removal, at which point they become permanent regression
 // controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
 // regression; it is the dissolution event.
