@@ -19,6 +19,7 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet_intent { fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { runner_slot_index_suffix }
 
 data runner_host_deploy_citation: String = "VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path literals and void_note twins were deleted — ctrl is a dead repo, not a live upstream. Runner slot materialization is owned in gunbc.runner_slot_provision / gunbc.runner_lifecycle on host_effect_apply. runner_host_installer_command_argv remains a legacy argv builder taking installer_path as a parameter; it is not an authority row citing ctrl."
 
@@ -161,8 +162,7 @@ fn runner_host_installer_command(
 }
 
 fn runner_instance_name(deploy: RunnerHostDeploy, index: Int) -> String {
-  let two = if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
-  join([deploy.host_label as String, "-", two], "")
+  join([deploy.host_label as String, "-", runner_slot_index_suffix(index: index)], "")
 }
 
 fn runner_index_seq(n: Int) -> List<Int> {
