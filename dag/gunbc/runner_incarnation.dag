@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority, Terminal }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
 data runner_incarnation_authority_disposition: Disposition = SingleAuthority
@@ -134,34 +134,12 @@ type LocalRunnerSlotIncarnation {
   registration_name: NonEmptyStr
 }
 
-fn slot_suffix(slot_index: Nat) -> String {
-  if slot_index == 1 {
-    "01"
-  } else if slot_index == 2 {
-    "02"
-  } else if slot_index == 3 {
-    "03"
-  } else if slot_index == 4 {
-    "04"
-  } else if slot_index == 5 {
-    "05"
-  } else if slot_index == 6 {
-    "06"
-  } else if slot_index == 7 {
-    "07"
-  } else if slot_index == 8 {
-    "08"
-  } else {
-    "00"
-  }
-}
-
 fn runner_slot_incarnation(
   host: HostIdentity,
   slot_index: Nat,
   unit_active: Bool,
 ) -> LocalRunnerSlotIncarnation {
-  let registration_name = join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
+  let registration_name = join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
   LocalRunnerSlotIncarnation {
     slot: RunnerSlotIdentity { host: host, slot_index: slot_index },
     unit: join(["actions-runner@", registration_name as String, ".service"], "") as NonEmptyStr,
