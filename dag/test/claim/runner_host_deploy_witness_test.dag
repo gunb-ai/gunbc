@@ -3,6 +3,8 @@ module test.claim.runner_host_deploy
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.exec.command { shell_command_render }
+import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
+import extdeps.systemd.systemctl { systemctl_program }
 import gunbc.runner_host_deploy {
   srv4_runner_host_deploy,
   gunbc_ci_github_app,
@@ -89,6 +91,20 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // the instances the roster names, one per slot, zero-padded and one-based. That relation is what
 // would break if the two ever diverged, and it holds at any width. The name changes with it, since
 // a row called _six_ that no longer asserts six is worse than either.
+//
+// THE INVOCATION CONJUNCT NAMED ITS PROGRAMS AND #8919 MOVED THEM UNDER IT. It read
+// "'sudo' 'systemctl' 'enable' '--now'" -- correct against the hand-built argv this row was written
+// for, and false the moment runner_enable_command_argv started routing through
+// extdeps.systemd.systemctl systemctl_enable_now_command, which mints through the sealed
+// argv_command with sudo_binary_path as the program and inserts sudo's non-interactive flag. The
+// spelling was a THIRD authoring of facts extdeps.sudo.elevation and extdeps.systemd.systemctl
+// already own, so it rotted exactly the way a re-spelling does (DESIGN section 3).
+//
+// The two conjuncts now cite those authorities instead of re-spelling them, and they are split
+// because they assert different things: that activation ELEVATES non-interactively, and that it
+// reaches systemctl's enable --now. `enable` and `--now` stay literal because they are systemctl's
+// own operands, spelled inline by the builder rather than derived from any row -- so they remain
+// discriminating, and a command that listed the units without the verb still fails here.
 test fn srv4_enables_its_declared_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
   let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
@@ -103,7 +119,17 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
          s: enable,
          pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
        )
-    && string_contains(s: enable, pattern: "'sudo' 'systemctl' 'enable' '--now'")
+    && string_contains(
+         s: enable,
+         pattern: concat(
+           concat("'", sudo_binary_path as String),
+           concat("' '", concat(sudo_non_interactive_flag as String, "'")),
+         ),
+       )
+    && string_contains(
+         s: enable,
+         pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+       )
 }
 
 data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
