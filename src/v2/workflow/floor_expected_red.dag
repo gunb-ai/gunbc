@@ -350,7 +350,7 @@ fn floor_expected_red_chunk_04() -> List<String> {
 }
 
 fn floor_expected_red_chunk_05() -> List<String> {
-            Cons { head: "test.claim.samsung_dram_module.four_rank_by_four_is_realizable_on_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_mismatch_fails_closed", tail: Cons { head: "test.claim.samsung_dram_module.same_capacity_at_one_rank_by_eight_is_not_realizable", tail:      Empty {} } } }
+            Cons { head: "test.claim.samsung_dram_module.capacity_is_thirty_two_gibibytes", tail: Cons { head: "test.claim.samsung_dram_module.four_rank_by_four_is_realizable_on_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_is_ddr4", tail: Cons { head: "test.claim.samsung_dram_module.generation_mismatch_fails_closed", tail: Cons { head: "test.claim.samsung_dram_module.manufacturer_grounds_on_the_single_vendor_authority", tail: Cons { head: "test.claim.samsung_dram_module.organization_derives_eighteen_dies_per_rank", tail: Cons { head: "test.claim.samsung_dram_module.required_die_density_derives_four_gigabit", tail: Cons { head: "test.claim.samsung_dram_module.row_axes_match_the_labelled_module_organization", tail: Cons { head: "test.claim.samsung_dram_module.same_capacity_at_one_rank_by_eight_is_not_realizable", tail:      Empty {} } } } } } } } } }
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {

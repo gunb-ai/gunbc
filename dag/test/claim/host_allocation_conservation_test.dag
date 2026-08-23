@@ -371,26 +371,102 @@ fn conserves_at_width_charging(host: HostIdentity, slots: Int, control_plane: By
   )
 }
 
-// THE LITERAL IS A SEARCH BOUND, NOT A WIDTH ENUMERATION, and the distinction matters because a
-// sibling PR deleted bucketed width enumerators for being exactly the wrong shape. Those buckets
-// answered "which slots does width N have" and silently returned nothing for a width they could not
-// spell. This is the range a probe SEARCHES for the largest admissible width.
+// THE SEARCH REFUSES WHEN IT SATURATES INSTEAD OF REPORTING ITS OWN CEILING. This probe searches a
+// bounded range for the largest admissible width, and until 2026-08-23 it folded 1..8 and returned
+// whatever the last admissible element was -- so a host that admits MORE than the bound got the
+// bound back, as a number, indistinguishable from a real answer.
 //
-// IT RAN 1..8 UNTIL 2026-08-23 AND THAT BOUND HAD SILENTLY STOPPED BEING WIDE ENOUGH. The old note
-// called 8 "deliberately wider than any host can reach", which was true at 125 GiB of usable RAM and
-// became false the moment the DIMM upgrade took three hosts to about 502 GiB and memory admission to
-// 29. A search bound that the subject has outgrown does not fail loudly -- it returns its own
-// ceiling, so every host would have reported exactly 8 and the rows below would have been comparing
-// the bound to itself. That is the failure mode this comment now exists to flag rather than the one
-// it originally described: the bound must stay strictly above the largest admissible width, and 40
-// is chosen against a measured maximum of 29 rather than against a guess.
-fn admitted_width_charging(host: HostIdentity, control_plane: ByteSize) -> Int {
-  fold(
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+// THAT IS AN ABSORBING FALLBACK AND IT ALREADY FIRED. The old comment called 8 "deliberately wider
+// than any host can reach", which was true when written and stopped being true the moment the DIMM
+// upgrade took three hosts to about 502 GiB and memory admission to 29. From then until now, srv3
+// and srv4 reported exactly 8 here and the rows below were comparing the bound to itself. Nothing
+// went red for the right reason; the failure arrived as an unrelated-looking inequality.
+//
+// SO RAISING 8 TO 40 IS NOT THE FIX, it is the same defect one upgrade away. The fold now answers
+// with a typed verdict: WidthSearchFound when the largest admissible width is strictly inside the
+// range, and WidthSearchSaturated -- naming the host and the bound -- when the top of the range is
+// still admissible, because at that point the search has not measured a width, it has run out of
+// room to look. A consumer cannot mistake the second for the first, which is the whole point.
+type WidthSearchResult
+  = WidthSearchFound { slots: Int }
+  | WidthSearchSaturated { host: HostIdentity, bound: Int }
+
+data width_search_bound: Int = 40
+
+fn width_search_range() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+}
+
+// THE RANGE AND ITS TOP ARE PARAMETERS SO THE REFUSAL HAS AN AUTHORABLE RED. No real host admits 40
+// slots, so a saturation arm written against the standard range alone could never be driven red by
+// any input -- it would be permanently green by construction and worse than absent, because it would
+// be cited as coverage for a case nothing can reach. Taking the range as an argument moves the
+// question to what a FIXTURE may author: saturation_refuses_rather_than_reporting_the_ceiling below
+// hands a real host a deliberately short range and gets the refusal.
+fn admitted_width_search_within(host: HostIdentity, control_plane: ByteSize, range: List<Int>, bound: Int) -> WidthSearchResult {
+  let best = fold(
+    range,
     init: 0,
-    f: (best, w) =>
-      if conserves_at_width_charging(host: host, slots: w, control_plane: control_plane) { w } else { best }
+    f: (acc, w) =>
+      if conserves_at_width_charging(host: host, slots: w, control_plane: control_plane) { w } else { acc }
   )
+  if best == bound {
+    WidthSearchSaturated { host: host, bound: bound }
+  } else {
+    WidthSearchFound { slots: best }
+  }
+}
+
+fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSearchResult {
+  admitted_width_search_within(
+    host: host,
+    control_plane: control_plane,
+    range: width_search_range(),
+    bound: width_search_bound
+  )
+}
+
+// THE DISCRIMINATING RED. srv3 admits 29, so a search bounded at 3 is exactly the state the old fold
+// silently reported as a width -- and this row is the executed proof that it now refuses instead.
+// The positive control beside it is what stops the refusal from being satisfied by refusing always.
+test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
+  let short = match admitted_width_search_within(
+    host: operator_host_srv3, control_plane: byte_size(0), range: [1, 2, 3], bound: 3
+  ) {
+    WidthSearchSaturated { host: h, bound: b } => (h as String) == (operator_host_srv3 as String) && b == 3
+    WidthSearchFound { slots: _ } => false
+  }
+  let roomy = match admitted_width_search_within(
+    host: operator_host_srv2, control_plane: byte_size(0), range: [1, 2, 3, 4, 5, 6, 7, 8], bound: 8
+  ) {
+    WidthSearchFound { slots: n } => n == 5
+    WidthSearchSaturated { host: _, bound: _ } => false
+  }
+  short && roomy
+}
+
+// AND THE FLEET DOES NOT SATURATE THE REAL BOUND TODAY. This is the quiet guard: mechanism exists,
+// it is reachable from this operation's own denominator (the row above proves it), and nothing
+// currently occupies it. If a future upgrade takes a host past 40 this goes red, which is the entire
+// reason the arm is typed rather than absorbed.
+test fn no_enrolled_host_saturates_the_standard_search_bound() -> Bool {
+  all(
+    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    h => match admitted_width_search(host: h, control_plane: byte_size(0)) {
+      WidthSearchFound { slots: _ } => true
+      WidthSearchSaturated { host: _, bound: _ } => false
+    }
+  )
+}
+
+// The rows below assert widths, so they need the number; this projection is where the refusal is
+// converted, and it converts to a value NO host can legitimately admit rather than to the bound.
+// A saturating search therefore fails its assertion loudly instead of passing at the ceiling.
+fn admitted_width_charging(host: HostIdentity, control_plane: ByteSize) -> Int {
+  match admitted_width_search(host: host, control_plane: control_plane) {
+    WidthSearchFound { slots: n } => n
+    WidthSearchSaturated { host: _, bound: _ } => 0 - 1
+  }
 }
 
 data control_plane_probe_bytes: ByteSize = byte_size(2147483648)
