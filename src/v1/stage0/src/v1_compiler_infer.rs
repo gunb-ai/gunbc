@@ -151,6 +151,19 @@ pub use crate::v1_compiler_infer_types::{
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
+use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
+    CyclicTypeHead, ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
+};
+use crate::v1_compiler_type_head_exposure::TypeHeadView::{
+    ApplicationHead, CallableHead, CoproductHead, KernelScalarHead, ProductHead,
+};
+use crate::v1_compiler_type_head_exposure::TypeParameterRelation::NominalParameterRelation;
+pub use crate::v1_compiler_type_head_exposure::{
+    admits_integer_numeral, type_declaration_identity_key,
+};
+pub use crate::v1_compiler_type_head_exposure::{
+    TypeHeadExposure, TypeHeadView, TypeParameterRelation,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AdmitCallersEntry::*;
@@ -2811,11 +2824,65 @@ pub fn infer_expr(
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
-    with_expected_where_refinement_diags(
-        infer_expr_body(texpr.clone(), scope.clone(), expected.clone()),
-        expected.clone(),
-        scope.clone(),
-    )
+    {
+        let with_refinement = with_expected_where_refinement_diags(
+            infer_expr_body(texpr.clone(), scope.clone(), expected.clone()),
+            expected.clone(),
+            scope.clone(),
+        );
+        match expected.clone() {
+            Some(expected_ty) => {
+                if expression_directed_type_mismatch(
+                    expected_ty.clone(),
+                    texpr.clone(),
+                    with_refinement.typed.clone(),
+                    scope.clone(),
+                ) {
+                    Rc::new(InferResult {
+                        typed: with_refinement.typed.clone(),
+                        diagnostics: v1_rt::concat(
+                            with_refinement.diagnostics.clone(),
+                            Rc::new(vec![type_mismatch_error(
+                                node_type_shape(
+                                    expected_ty.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                node_type_shape(
+                                    resolved_type(with_refinement.typed.clone()),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                texpr.span.clone(),
+                                scope.module_name.clone(),
+                            )]),
+                        ),
+                    })
+                } else {
+                    with_refinement.clone()
+                }
+            }
+            None => with_refinement.clone(),
+        }
+    }
+}
+
+pub fn expression_directed_type_mismatch(
+    formal: Rc<Node>,
+    actual_expr: Rc<Node>,
+    actual_typed: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: _, .. } => {
+            (literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone())
+                || kernel_value_declared_type_mismatch(
+                    formal.clone(),
+                    resolved_type(actual_typed.clone()),
+                    scope.type_env.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+        }
+        _ => false,
+    }
 }
 
 pub fn kernel_value_declared_type_mismatch(
@@ -2888,6 +2955,92 @@ pub fn kernel_value_declared_type_mismatch(
                 }
             }
         }
+    }
+}
+
+pub fn expected_type_head_exposure(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<TypeHeadExposure> {
+    {
+        let identity = type_reference_identity(
+            formal.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        match v1_rt::map_get(
+            &scope
+                .type_env
+                .clone()
+                .symbol_index
+                .clone()
+                .type_head_exposures
+                .clone(),
+            identity.clone(),
+        ) {
+            Some(exposure) => exposure.clone(),
+            None => exposure_view_for_node(
+                formal.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+        }
+    }
+}
+
+pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
+    match (*exposure.clone()).clone() {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+        {
+            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn literal_introduction_type_mismatch(
+    formal: Rc<Node>,
+    actual_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+        {
+            let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            {
+                let expected_identity = type_reference_identity(
+                    formal.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                if admits_integer_numeral(expected_identity.clone()) {
+                    false
+                } else {
+                    match (*expected_type_head_exposure(formal.clone(), scope.clone())).clone() {
+                        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                        {
+                            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                                unreachable!()
+                            };
+                            true
+                        }
+                        TypeHeadExposure::StuckTypeHead { cause: _, .. } => true,
+                        TypeHeadExposure::CyclicTypeHead { path: _, .. } => true,
+                        TypeHeadExposure::MalformedApplicationHead { cause: _, .. } => true,
+                        _ => false,
+                    }
+                }
+            }
+        }
+        ExprData::ExprLiteral { value: _, .. } => {
+            exposure_is_application(expected_type_head_exposure(formal.clone(), scope.clone()))
+        }
+        _ => false,
     }
 }
 
@@ -3511,12 +3664,16 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if (structured_application_site_type_mismatch_with_peeled(
+                                if ((literal_introduction_type_mismatch(
+                                    formal_subst.clone(),
+                                    actual_expr.clone(),
+                                    scope.clone(),
+                                ) || structured_application_site_type_mismatch_with_peeled(
                                     formal_subst.clone(),
                                     formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
-                                )
+                                ))
                                     || direct_call_structured_record_literal_resolved_type_mismatch(
                                         formal.clone(),
                                         actual_expr.clone(),
@@ -10160,12 +10317,16 @@ pub fn infer_record_lit_structural(
                                         scope.type_env.clone(),
                                         scope.module_name.clone(),
                                     );
-                                    if kernel_value_declared_type_mismatch(
+                                    if (literal_introduction_type_mismatch(
+                                        expected_node.clone(),
+                                        field_init_node_value(fi.clone()),
+                                        scope.clone(),
+                                    ) || kernel_value_declared_type_mismatch(
                                         formal_peeled.clone(),
                                         actual_peeled.clone(),
                                         scope.type_env.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    ) {
+                                    )) {
                                         Rc::new(vec![type_mismatch_error(
                                             node_type_shape(
                                                 formal_peeled.clone(),
@@ -17386,6 +17547,179 @@ pub fn transparent_alias_representatives(
     }
 }
 
+pub fn node_declaration_file(n: Rc<Node>) -> String {
+    match n.ident_span.clone() {
+        Some(sp) => sp.file.clone(),
+        None => "".to_string(),
+    }
+}
+
+pub fn node_declaration_identity(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    type_declaration_identity_key(
+        node_declaration_file(n.clone()),
+        authored_name_at(source_indices.clone(), n.clone()),
+    )
+}
+
+pub fn type_reference_identity(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            node_declaration_identity(rt.clone(), source_indices.clone())
+        }
+        _ => node_declaration_identity(n.clone(), source_indices.clone()),
+    }
+}
+
+pub fn nominal_parameter_relation(argument: Rc<Node>) -> TypeParameterRelation {
+    TypeParameterRelation::NominalParameterRelation
+}
+
+pub fn nominal_parameter_relations(arguments: Rc<Vec<Rc<Node>>>) -> Rc<Vec<TypeParameterRelation>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for argument in arguments.iter().cloned() {
+            __result.push(nominal_parameter_relation(argument.clone()));
+        }
+        __result
+    })
+}
+
+pub fn application_argument_identities(
+    arguments: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for ch in arguments.iter().cloned() {
+            __result.push(type_reference_identity(
+                child_type_node(ch.clone()),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn exposure_view_for_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeHeadExposure> {
+    {
+        let identity = node_declaration_identity(n.clone(), source_indices.clone());
+        match (identity.clone() == "::".to_string()) {
+            true => Rc::new(TypeHeadExposure::StuckTypeHead {
+                cause: "declaration identity unavailable".to_string(),
+            }),
+            false => match ((n.type_annotation.clone() != None)
+                || ((n.properties.clone().len() as i64) > 0))
+            {
+                true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: identity.clone(),
+                }),
+                false => match n.connective.clone() {
+                    Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::CallableHead {
+                            type_identity: identity.clone(),
+                        }),
+                    }),
+                    Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::CoproductHead {
+                            type_identity: identity.clone(),
+                        }),
+                    }),
+                    Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::ProductHead {
+                            type_identity: identity.clone(),
+                        }),
+                    }),
+                    Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
+                        true => {
+                            let constructor_name =
+                                authored_name_at(source_indices.clone(), n.clone());
+                            match (constructor_name.clone() == "".to_string()) {
+                                true => Rc::new(TypeHeadExposure::MalformedApplicationHead {
+                                    cause: "application has no constructor identity".to_string(),
+                                }),
+                                false => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                                    view: Rc::new(TypeHeadView::ApplicationHead {
+                                        constructor_identity: type_declaration_identity_key(
+                                            node_declaration_file(n.clone()),
+                                            constructor_name.clone(),
+                                        ),
+                                        argument_identities: application_argument_identities(
+                                            n.children.clone(),
+                                            source_indices.clone(),
+                                        ),
+                                        parameter_relations: nominal_parameter_relations(
+                                            n.children.clone(),
+                                        ),
+                                    }),
+                                }),
+                            }
+                        }
+                        false => {
+                            let name = authored_name_at(source_indices.clone(), n.clone());
+                            match is_kernel_type(name.clone()) {
+                                true => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                                    view: Rc::new(TypeHeadView::KernelScalarHead {
+                                        type_identity: identity.clone(),
+                                    }),
+                                }),
+                                false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                                    type_identity: identity.clone(),
+                                }),
+                            }
+                        }
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub fn declaration_head_exposure(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeHeadExposure> {
+    match item.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: target, .. }) => {
+            exposure_view_for_node(target.clone(), source_indices.clone())
+        }
+        _ => exposure_view_for_node(item.clone(), source_indices.clone()),
+    }
+}
+
+pub fn type_head_exposure_census(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeHeadExposure>>> {
+    module_nodes.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
+        |acc: Rc<HashMap<String, Rc<TypeHeadExposure>>>, module_node: Rc<Node>| {
+            module_items(module_node.clone()).iter().cloned().fold(
+                acc,
+                |by_identity: Rc<HashMap<String, Rc<TypeHeadExposure>>>, item: Rc<Node>| {
+                    let identity = node_declaration_identity(item.clone(), source_indices.clone());
+                    match (identity.clone() == "::".to_string()) {
+                        true => by_identity.clone(),
+                        false => v1_rt::rc_map_insert(
+                            by_identity.clone(),
+                            identity.clone(),
+                            declaration_head_exposure(item.clone(), source_indices.clone()),
+                        ),
+                    }
+                },
+            )
+        },
+    )
+}
+
 pub fn transparent_alias_representative(index: Rc<SymbolIndex>, name: String) -> String {
     match v1_rt::map_get(&index.transparent_alias_rep.clone(), name.clone()) {
         Some(rep) => rep.clone(),
@@ -17465,6 +17799,10 @@ pub fn build_symbol_index_census_raw_nodes(
                 module_nodes.clone(),
                 source_indices.clone(),
                 corpus_item_counts.clone(),
+            ),
+            type_head_exposures: type_head_exposure_census(
+                module_nodes.clone(),
+                source_indices.clone(),
             ),
         })
     }
@@ -18058,6 +18396,7 @@ pub fn census_with_resolved_fn_sigs(
             global_bare: global2.clone(),
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
+            type_head_exposures: index.type_head_exposures.clone(),
         })
     }
 }
@@ -18114,6 +18453,10 @@ pub fn symbol_index_with_bare_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 tree.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
+            ),
+            type_head_exposures: v1_rt::rc_map_merge(
+                tree.type_head_exposures.clone(),
+                closure.type_head_exposures.clone(),
             ),
         })
     }
@@ -18189,6 +18532,10 @@ pub fn symbol_index_with_qualified_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 fill.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
+            ),
+            type_head_exposures: v1_rt::rc_map_merge(
+                fill.type_head_exposures.clone(),
+                closure.type_head_exposures.clone(),
             ),
         })
     }

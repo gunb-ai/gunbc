@@ -1887,7 +1887,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   )
   match expected {
     Present { value: expected_ty } =>
-      if literal_introduction_type_mismatch(formal: expected_ty, actual_expr: texpr, scope: scope) {
+      if expression_directed_type_mismatch(
+        formal: expected_ty,
+        actual_expr: texpr,
+        actual_typed: with_refinement.typed,
+        scope: scope
+      ) {
         InferResult {
           typed: with_refinement.typed,
           diagnostics: concat(with_refinement.diagnostics, [type_mismatch_error(
@@ -1899,6 +1904,25 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         }
       } else { with_refinement }
     Absent => with_refinement
+  }
+}
+
+fn expression_directed_type_mismatch(
+  formal: Node,
+  actual_expr: Node,
+  actual_typed: Node,
+  scope: InferScope
+) -> Bool {
+  match actual_expr.expr_data {
+    ExprLiteral { value: _ } =>
+      literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
+        || kernel_value_declared_type_mismatch(
+          formal: formal,
+          actual: resolved_type(n: actual_typed),
+          type_env: scope.type_env,
+          source_indices: scope.type_env.source_indices
+        )
+    _ => false
   }
 }
 
