@@ -1,0 +1,326 @@
+module product.workload_simulation
+
+import std.types { NonEmptyStr, List, Bool, Int }
+import std.nat { Nat, nat_min, nat_max, nat_range_inclusive }
+import std.measure {
+  MoneyAmountMicro,
+  money_amount_micro,
+  money_amount_micro_count,
+  measure_add,
+  measure_scale_fraction_floor,
+  measure_le,
+}
+
+// MONEY IS A CARRIER HERE, NOT A Nat WITH ITS UNIT IN THE FIELD NAME.
+// std.measure's own note states the rule this module initially broke: an amount is never
+// "folded into a bare amount with the unit in the field name". Every money field below is
+// MoneyAmountMicro, and every money operation goes through measure_add, measure_le or
+// measure_scale_fraction_floor. The point is not tidiness. This model's central arithmetic
+// multiplies a RATE by a DURATION and adds the result to a RUNNING TOTAL, and on bare Nat
+// all three are the same type -- which is exactly how the billing quantum came to be applied
+// to a slot's concurrency instead of a job's duration, typechecking the whole way. Scaling a
+// money measure by a count is now the only spelling that compiles, and adding a slot count
+// to a total has none.
+//
+// COUNTS STAY Nat AND THAT IS DELIBERATE. Slots, jobs, capacity and the occupancy permille
+// are dimensionless tallies, not money; giving them a money carrier would be the same error
+// pointed the other way.
+
+// WHAT DEMAND SHAPE MAKES OWNING CHEAPER THAN RENTING, AND AT WHAT OCCUPANCY.
+//
+// The broker's routing question is per job: which admissible lane is cheapest right now.
+// product.fabric.supply already answers that, and this module does not restate it. The
+// question HERE is the other one, and fusing the two is the mistake that makes a cost
+// optimizer confidently wrong: given that a committed lane EXISTS, routing sends work to
+// it because its marginal cost is near zero; but whether that commitment should exist at
+// all is decided against its TOTAL cost divided by how much of it demand actually fills.
+// Route on marginal, acquire on allocated. This module computes both and never lets one
+// answer for the other.
+//
+// DETERMINISTIC, NOT STOCHASTIC, AND THAT IS NOT A LIMITATION.
+// Execution here is bounded and forward, so there is no sampling and no seed. That is the
+// right shape anyway: a simulation whose number moves between runs cannot be a regression
+// control, and the honest treatment of demand uncertainty is not one random draw but a
+// SWEEP over declared shapes. One fitted arrival curve would produce a precise number
+// nobody can falsify. A swept family produces a frontier, and the frontier is the answer.
+
+// ---------------------------------------------------------------------------------------
+// ARRIVAL
+// ---------------------------------------------------------------------------------------
+
+// Concurrency over a slot grid. A slot is whatever period the caller denominates in; the
+// fold never reads a clock.
+type ArrivalShape
+  = FlatArrival { concurrent: Nat }
+  | DiurnalArrival { trough: Nat, peak: Nat, period_slots: Nat, busy_slots: Nat }
+  | BurstyArrival { base: Nat, burst: Nat, every_slots: Nat, burst_width: Nat }
+
+fn arrival_label(s: ArrivalShape) -> NonEmptyStr {
+  match s {
+    FlatArrival { concurrent } => "flat",
+    DiurnalArrival { trough, peak, period_slots, busy_slots } => "diurnal",
+    BurstyArrival { base, burst, every_slots, burst_width } => "bursty",
+  }
+}
+
+// Peak-to-average is the axis that decides how much committed capacity sits idle, so the
+// shapes are parameterized by it rather than by a distribution nobody measured.
+fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
+  match s {
+    FlatArrival { concurrent } => concurrent,
+    DiurnalArrival { trough, peak, period_slots, busy_slots } => if period_slots == 0 {
+        trough
+      } else {
+        if (slot % period_slots) < busy_slots { peak } else { trough }
+      },
+    BurstyArrival { base, burst, every_slots, burst_width } => if every_slots == 0 {
+        base
+      } else {
+        if (slot % every_slots) < burst_width { burst } else { base }
+      },
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// SUPPLY LANES
+// ---------------------------------------------------------------------------------------
+
+// A COMMITMENT HAS NO HOME ON SupplierOffer, AND THAT ABSENCE IS WHY THIS TYPE EXISTS.
+//
+// product.fabric.supply's SupplierOffer carries a quote and a quantity bound: what a unit costs
+// and how many are available. It does NOT carry what is owed whether or not a single job
+// runs, because the core deliberately models a posted ask and not a tariff. A monthly
+// dedicated host, an annual licence and a colo cage are all that missing number, and a
+// simulation that dropped it would price owned capacity at its marginal cost and conclude
+// that owning is always free.
+type SupplyLane {
+  label: NonEmptyStr
+  capacity: Nat
+  variable_per_slot: MoneyAmountMicro
+  committed_per_slot: MoneyAmountMicro
+  billing_quantum_slots: Nat
+}
+
+// Rounding UP a partial quantum, exactly as suppliers bill. A lane with quantum 0 is
+// continuous and is billed what it used -- the modeled advantage of owned capacity.
+// THE QUANTUM ROUNDS A JOB'S DURATION, NEVER A SLOT'S CONCURRENCY.
+// This distinction is the whole reason the function exists and an earlier revision got it
+// backwards: it passed the number of jobs running in a slot as the used_slots argument, so
+// a 60-slot quantum billed two concurrent jobs as sixty rather than billing each of the two
+// for sixty. Same arithmetic, wrong subject -- concurrency and duration are different
+// magnitudes and only one of them is what a supplier's minimum increment applies to. The
+// error survived typechecking because both are Nat, and execution is what caught it.
+//
+// ONE SLOT IS ONE JOB'S RUNTIME IN THIS MODEL, stated here as an assumption rather than
+// left implicit. Every job occupies exactly one slot, so each placed job bills whichever is
+// larger, its one slot or the supplier's whole minimum increment. Jobs of differing
+// duration are NOT modeled and cannot be until arrivals carry a duration alongside a count;
+// that is the next extension, and until it lands a quantum finer than one slot is
+// indistinguishable from continuous billing here.
+fn billed_slots_per_job(quantum_slots: Nat) -> Nat {
+  nat_max(a: quantum_slots, b: 1)
+}
+
+// ---------------------------------------------------------------------------------------
+// PLACEMENT
+// ---------------------------------------------------------------------------------------
+
+// Lanes are consumed in the order given, which the caller sorts by variable cost. That is
+// cheapest-admissible-marginal, the same ordering product.fabric.supply describes, and
+// owned capacity leading is a CONSEQUENCE of its near-zero variable cost rather than a
+// preference arm. Nothing widens when a lane fills: the next lane is simply the next
+// cheapest ask.
+type PlacementAccum {
+  remaining: Nat
+  variable_spend: MoneyAmountMicro
+  placed_committed: Nat
+  placed_variable: Nat
+  unplaced: Nat
+}
+
+// A lane is committed exactly when something is owed per slot regardless of use. Reading the
+// count to ask "is this greater than zero" is a predicate on the value, not arithmetic across
+// units, so it does not reintroduce the mixing the carrier exists to forbid.
+fn lane_is_committed(lane: SupplyLane) -> Bool {
+  money_amount_micro_count(m: lane.committed_per_slot) > 0
+}
+
+fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
+  let taken = nat_min(a: acc.remaining, b: lane.capacity)
+  let billed = taken * billed_slots_per_job(quantum_slots: lane.billing_quantum_slots)
+  PlacementAccum {
+    remaining: acc.remaining - taken,
+    variable_spend: measure_add(
+      a: acc.variable_spend,
+      b: measure_scale_fraction_floor(m: lane.variable_per_slot, num: billed, den: 1),
+    ),
+    placed_committed: if lane_is_committed(lane: lane) { acc.placed_committed + taken } else { acc.placed_committed },
+    placed_variable: if lane_is_committed(lane: lane) { acc.placed_variable } else { acc.placed_variable + taken },
+    unplaced: acc.unplaced,
+  }
+}
+
+fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
+  let seeded = PlacementAccum {
+    remaining: concurrent,
+    variable_spend: money_amount_micro(count: 0),
+    placed_committed: 0,
+    placed_variable: 0,
+    unplaced: 0,
+  }
+  let filled = fold(lanes, init: seeded, f: (acc, lane) => place_on_lane(acc: acc, lane: lane))
+  PlacementAccum {
+    remaining: 0,
+    variable_spend: filled.variable_spend,
+    placed_committed: filled.placed_committed,
+    placed_variable: filled.placed_variable,
+    unplaced: filled.remaining,
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// THE RUN
+// ---------------------------------------------------------------------------------------
+
+type RunAccum {
+  variable_spend: MoneyAmountMicro
+  committed_slot_jobs: Nat
+  variable_slot_jobs: Nat
+  unplaced_slot_jobs: Nat
+  peak_concurrency: Nat
+  total_concurrency: Nat
+}
+
+fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum {
+  RunAccum {
+    variable_spend: measure_add(a: acc.variable_spend, b: placed.variable_spend),
+    committed_slot_jobs: acc.committed_slot_jobs + placed.placed_committed,
+    variable_slot_jobs: acc.variable_slot_jobs + placed.placed_variable,
+    unplaced_slot_jobs: acc.unplaced_slot_jobs + placed.unplaced,
+    peak_concurrency: if concurrent > acc.peak_concurrency { concurrent } else { acc.peak_concurrency },
+    total_concurrency: acc.total_concurrency + concurrent,
+  }
+}
+
+fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> MoneyAmountMicro {
+  fold(
+    lanes,
+    init: money_amount_micro(count: 0),
+    f: (acc, lane) => measure_add(
+      a: acc,
+      b: measure_scale_fraction_floor(m: lane.committed_per_slot, num: slots, den: 1),
+    ),
+  )
+}
+
+fn lane_capacity_total(lanes: List<SupplyLane>) -> Nat {
+  fold(lanes, init: 0, f: (acc, lane) => acc + lane.capacity)
+}
+
+fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
+  fold(lanes, init: 0, f: (acc, lane) => if lane_is_committed(lane: lane) { acc + lane.capacity } else { acc })
+}
+
+// UNPLACED WORK IS REPORTED, NEVER ABSORBED. A slot whose demand exceeds every lane's
+// bound leaves work unplaced; the run says so rather than silently widening a bound or
+// quietly dropping the job, either of which would make the total look affordable by
+// pricing work that never ran.
+type SimulationResult {
+  arrival: NonEmptyStr
+  slots: Nat
+  variable_spend: MoneyAmountMicro
+  committed_spend: MoneyAmountMicro
+  total_spend: MoneyAmountMicro
+  committed_slot_jobs: Nat
+  variable_slot_jobs: Nat
+  unplaced_slot_jobs: Nat
+  peak_concurrency: Nat
+  total_concurrency: Nat
+  committed_occupancy_permille: Nat
+}
+
+fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slot: Nat) -> RunAccum {
+  let concurrent = concurrency_at(s: shape, slot: slot)
+  run_step(acc: acc, placed: place_slot(lanes: lanes, concurrent: concurrent), concurrent: concurrent)
+}
+
+// nat_max keeps the empty-run case from needing a branch in two places below. On the grid,
+// slots == 0 yields the single index 0, whose slot the fold places zero work into anyway.
+// On the occupancy quotient, a zero denominator needs no branch either: no committed
+// capacity and no slots both force committed_slot_jobs to zero, so the quotient is zero
+// either way and nat_max only keeps the division total.
+fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> SimulationResult {
+  let grid = nat_range_inclusive(lo: 0, hi: nat_max(a: slots, b: 1) - 1)
+  let seeded = RunAccum {
+    variable_spend: money_amount_micro(count: 0),
+    committed_slot_jobs: 0,
+    variable_slot_jobs: 0,
+    unplaced_slot_jobs: 0,
+    peak_concurrency: 0,
+    total_concurrency: 0,
+  }
+  let run = fold(grid, init: seeded, f: (acc, slot) => run_one_slot(acc: acc, shape: shape, lanes: lanes, slot: slot))
+  let committed = lane_committed_total(lanes: lanes, slots: slots)
+  let committed_capacity = committed_capacity_total(lanes: lanes)
+  SimulationResult {
+    arrival: arrival_label(s: shape),
+    slots: slots,
+    variable_spend: run.variable_spend,
+    committed_spend: committed,
+    total_spend: measure_add(a: run.variable_spend, b: committed),
+    committed_slot_jobs: run.committed_slot_jobs,
+    variable_slot_jobs: run.variable_slot_jobs,
+    unplaced_slot_jobs: run.unplaced_slot_jobs,
+    peak_concurrency: run.peak_concurrency,
+    total_concurrency: run.total_concurrency,
+    committed_occupancy_permille: (run.committed_slot_jobs * 1000) / nat_max(a: committed_capacity * slots, b: 1),
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// THE VERDICT
+// ---------------------------------------------------------------------------------------
+
+// The acquisition question, asked against ALLOCATED cost. Two runs over identical arrivals:
+// one portfolio holding the commitment, one renting everything. The commitment is worth
+// having exactly when it costs less in total -- not when it is cheaper per job, which it
+// always is once bought, and which is the comparison that talks operators into capacity
+// they cannot fill.
+type AcquisitionVerdict
+  = CommitmentPaysOff { saved: MoneyAmountMicro, occupancy_permille: Nat }
+  | CommitmentCostsMore { excess: MoneyAmountMicro, occupancy_permille: Nat }
+  | CommitmentBreaksEven { occupancy_permille: Nat }
+  | VerdictRefusedUnplacedWork { unplaced_slot_jobs: NonEmptyStr }
+
+// std.measure carries add, scale and compare but no subtraction, and the gap is principled:
+// Nat-backed measures cannot represent a negative result, so a general difference would need
+// a refusal arm for the case where the subtrahend is larger. Here both call sites have
+// already established the ordering with measure_le, so the difference is total by
+// construction and the guard belongs in the caller's branch rather than in a carrier.
+fn money_difference(larger: MoneyAmountMicro, smaller: MoneyAmountMicro) -> MoneyAmountMicro {
+  money_amount_micro(count: money_amount_micro_count(m: larger) - money_amount_micro_count(m: smaller))
+}
+
+fn acquisition_verdict(with_commitment: SimulationResult, all_rented: SimulationResult) -> AcquisitionVerdict {
+  if with_commitment.unplaced_slot_jobs > 0 || all_rented.unplaced_slot_jobs > 0 {
+    VerdictRefusedUnplacedWork {
+      unplaced_slot_jobs: "A portfolio left work unplaced, so the two totals price different amounts of work and cannot be compared. Raise a lane's bound or admit the demand cannot be served; do not read the cheaper number.",
+    }
+  } else {
+    if !measure_le(a: all_rented.total_spend, b: with_commitment.total_spend) {
+      CommitmentPaysOff {
+        saved: money_difference(larger: all_rented.total_spend, smaller: with_commitment.total_spend),
+        occupancy_permille: with_commitment.committed_occupancy_permille,
+      }
+    } else {
+      if !measure_le(a: with_commitment.total_spend, b: all_rented.total_spend) {
+        CommitmentCostsMore {
+          excess: money_difference(larger: with_commitment.total_spend, smaller: all_rented.total_spend),
+          occupancy_permille: with_commitment.committed_occupancy_permille,
+        }
+      } else {
+        CommitmentBreaksEven { occupancy_permille: with_commitment.committed_occupancy_permille }
+      }
+    }
+  }
+}

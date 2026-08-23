@@ -171,14 +171,19 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
   }
 }
 
+// THE IDEMPOTENCY CLAIM TAKES POPULATIONS RATHER THAN COUNTS, because the property it asserts --
+// re-applying a converged fleet plans nothing -- is false in general for a count. A host holding
+// {01,02,04,05} has count 4 and is NOT converged at width 5; a count-shaped claim would compare 4
+// against a width and conclude work remains at 05, which is already registered, while 03 goes
+// unplanned forever. Convergence is set equality and this signature now says so.
 fn runner_capacity_reapply_plans_zero_additions(
   srv3_width: Int,
   srv4_width: Int,
-  observed_srv3: Int,
-  observed_srv4: Int,
+  observed_srv3: List<RunnerSlotIdentity>,
+  observed_srv4: List<RunnerSlotIdentity>,
 ) -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: srv3_width, observed_width: observed_srv3).length() == 0
-    && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed_width: observed_srv4).length() == 0
+  addition_actions(host: operator_host_srv3, requested_width: srv3_width, observed: observed_srv3).length() == 0
+    && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed: observed_srv4).length() == 0
 }
 
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {

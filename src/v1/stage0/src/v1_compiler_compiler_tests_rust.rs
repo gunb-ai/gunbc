@@ -81,7 +81,7 @@ pub fn ct_coercion_tests() -> String {
         let entries = extract_coercion_tests();
         let test_fns = Rc::new({
             let mut __result = Vec::new();
-            for e in entries.clone().iter().cloned() {
+            for e in entries.iter().cloned() {
                 __result.push(render_coercion_test_rust(e.clone()));
             }
             __result
