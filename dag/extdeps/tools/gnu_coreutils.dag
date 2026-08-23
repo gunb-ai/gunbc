@@ -1,6 +1,6 @@
 module extdeps.tools.gnu_coreutils
 
-import std.types { NonEmptyStr, String, List, FilePath }
+import std.types { NonEmptyStr, FilePath, String, List }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -20,7 +20,6 @@ data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 // with the operands they apply to. Re-adding a flags literal here would re-fork it.
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
-data rm_force_recursive_flags: NonEmptyStr = "-rf"
 
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
@@ -80,4 +79,98 @@ fn whoami_command() -> ArgvCommand {
 // executing", and a non-symlink there is a broken assumption, not empty output.
 fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program, arguments: [path])
+}
+
+// install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
+// here are the ones that manual defines: -d creates each named directory, -m sets the mode,
+// -o and -g set owner and group at creation. Owner-at-creation is why this repository installs
+// rather than copying and fixing up: the wrongly-owned intermediate state has no moment in
+// which to exist. install does NOT create missing parents — that is upstream behaviour, stated
+// here so a caller does not assume otherwise (emit's serve_binary_parent_was_a_literal_note is
+// the receipt for what assuming it costs).
+data coreutils_install_directory_flag: NonEmptyStr = "-d"
+data coreutils_install_mode_flag: NonEmptyStr = "-m"
+data coreutils_install_owner_flag: NonEmptyStr = "-o"
+data coreutils_install_group_flag: NonEmptyStr = "-g"
+data coreutils_install_binary_name: NonEmptyStr = "install"
+
+fn coreutils_install_directory_argv(mode: NonEmptyStr, path: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_directory_flag as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    path,
+  ]
+}
+
+fn coreutils_install_file_owned_argv(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  source: String,
+  dest: String,
+) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    coreutils_install_owner_flag as String,
+    owner as String,
+    coreutils_install_group_flag as String,
+    group as String,
+    source,
+    dest,
+  ]
+}
+
+fn coreutils_install_directory_owned_argv(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  path: String,
+) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_directory_flag as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    coreutils_install_owner_flag as String,
+    owner as String,
+    coreutils_install_group_flag as String,
+    group as String,
+    path,
+  ]
+}
+
+// rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
+// repository and the distinction between them is load-bearing, not stylistic: -f removes a file
+// and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY
+// directory and REFUSES a non-empty one, which is a fail-closed precondition rather than a
+// weaker rm -r; -rf removes a tree. Choosing -rf where -d was meant turns a loud refusal into
+// silent destruction, so the three carry separate names rather than a flags parameter a caller
+// fills in.
+data coreutils_rm_binary_name: NonEmptyStr = "rm"
+data coreutils_rm_force_flag: NonEmptyStr = "-f"
+data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"
+data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
+
+fn coreutils_rm_force_argv(paths: List<String>) -> List<String> {
+  concat([coreutils_rm_binary_name as String, coreutils_rm_force_flag as String], paths)
+}
+
+fn coreutils_rm_empty_directory_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_empty_directory_flag as String,
+    path,
+  ]
+}
+
+fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_force_recursive_flags as String,
+    path,
+  ]
 }
