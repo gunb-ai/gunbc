@@ -3661,6 +3661,37 @@ pub fn direct_call_structured_application_mismatch_diags(
     }
 }
 
+pub fn direct_call_argument_inhabitance_diags(
+    plan: Rc<Vec<Rc<CallFormalApplication>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for app in plan.iter().cloned() {
+            __result.extend(
+                (*match app.matched_arg.clone() {
+                    Some(ta) => {
+                        let actual_expr = arg_value(ta.clone());
+                        declared_type_obligation_diags(
+                            Rc::new(DeclaredTypeObligation {
+                                position: DeclaredTypePosition::PositionDirectCallArgument,
+                                declared: app.formal_subst.clone(),
+                                produced: resolved_type(actual_expr.clone()),
+                                span: actual_expr.span.clone(),
+                            }),
+                            scope.clone(),
+                        )
+                    }
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn container_element_nominal_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -6901,6 +6932,11 @@ pub fn infer_expr_body(
                                             call_application_plan.clone(),
                                             scope.clone(),
                                         );
+                                    let inhabitance_arg_diags =
+                                        direct_call_argument_inhabitance_diags(
+                                            call_application_plan.clone(),
+                                            scope.clone(),
+                                        );
                                     Rc::new(InferResult {
                                         typed: make_named_expr_node(
                                             func_name.clone(),
@@ -6923,7 +6959,10 @@ pub fn infer_expr_body(
                                                 arg_shape_diags.clone(),
                                                 v1_rt::concat(
                                                     arg_compat_diags.clone(),
-                                                    structured_arg_diags.clone(),
+                                                    v1_rt::concat(
+                                                        structured_arg_diags.clone(),
+                                                        inhabitance_arg_diags.clone(),
+                                                    ),
                                                 ),
                                             ),
                                         ),
