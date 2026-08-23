@@ -12857,12 +12857,46 @@ pub fn parse_expr_bp_no_brace(
     min_bp: i64,
 ) -> Rc<ExprResult> {
     {
+        let tok = token_stream_first(tokens.clone());
+        let next = token_stream_first(token_stream_advance(tokens.clone(), 1));
         let r = parse_prefix(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return r;
         }
-        let lhs = r.expr.clone();
-        parse_expr_loop_no_brace(r.tokens.clone(), r.ctx.clone(), lhs.clone(), min_bp.clone())
+        let parsed = parse_expr_loop_no_brace(
+            r.tokens.clone(),
+            r.ctx.clone(),
+            r.expr.clone(),
+            min_bp.clone(),
+        );
+        let leading_ident_brace = (match tok.clone() {
+            Some(t) => is_ident_shape(t.shape.clone()),
+            None => false,
+        } && tok_is_lbrace(next.clone()));
+        if ((((min_bp.clone() == 0) && leading_ident_brace.clone())
+            && !has_err(parsed.err.clone()))
+            && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
+        {
+            {
+                let span = token_span(tok.clone());
+                let lhs = make_named_expr_node(
+                    tok.clone().unwrap().text.clone(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    span.clone(),
+                    span.clone(),
+                );
+                parse_expr_loop_no_brace(
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    lhs.clone(),
+                    min_bp.clone(),
+                )
+            }
+        } else {
+            parsed
+        }
     }
 }
 

@@ -4572,10 +4572,24 @@ fn parse_expr_no_brace(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 }
 
 fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprResult {
+  let tok = token_stream_first(stream: tokens)
+  let next = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  let lhs = r.expr
-  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
+  let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+  let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
+  if min_bp == 0 && leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) {
+    let span = token_span(tok: tok)
+    let lhs = make_named_expr_node(name: tok.value.text, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span)
+    parse_expr_loop_no_brace(
+      tokens: token_stream_advance(stream: tokens, n: 1),
+      ctx: ctx,
+      lhs: lhs,
+      min_bp: min_bp
+    )
+  } else {
+    parsed
+  }
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
