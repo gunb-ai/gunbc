@@ -1,0 +1,27 @@
+module test.claim.claim_cost_observation_type_wall_witness_test
+
+// The wall's RED remains authorable at the compiler-fixture boundary even though it is
+// unrepresentable in accepted source: the negative arm passes List<RightCensoredCost> to a
+// function whose parameter is List<ExactCompletionCost>. If remedy_partition widens back to the
+// observation coproduct, the planted program compiles and this witness reds.
+fn exact_population_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.cost_exact\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { ExactCompletionCost, RemedyPartition, remedy_partition }\nfn size(xs: List<ExactCompletionCost>) -> RemedyPartition { remedy_partition(exact: xs) }",
+    "src/claim_cost_exact_control.rs",
+    [],
+    [],
+  )
+}
+
+fn censored_population_refuses_to_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.cost_censored\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { RightCensoredCost, RemedyPartition, remedy_partition }\nfn size(xs: List<RightCensoredCost>) -> RemedyPartition { remedy_partition(exact: xs) }",
+    "src/claim_cost_censored_red.rs",
+    [],
+    [],
+  )
+}
+
+test fn remedy_partition_parameter_is_exact_completion_only() -> Bool {
+  exact_population_compiles() && censored_population_refuses_to_compile()
+}

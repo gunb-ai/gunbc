@@ -78,28 +78,28 @@ fn cost_observation_for_required_floor(
 // unavailable member rather than returning a partial partition that could be quoted as though it
 // described the input population. `population`, `exact`, and `censored` remain separate counts in
 // the refusal so every board must state its denominator.
-type RemedyPartition
-  = RemedyPartitionExact { exact: List<ExactCompletionCost> }
-  | RemedyPartitionRefused {
+type ExactCompletionPopulationAdmission
+  = ExactCompletionPopulationAdmitted { exact: List<ExactCompletionCost> }
+  | ExactCompletionPopulationRefused {
       population: Int
       exact: Int
       censored: Int
       cause: String
     }
 
-fn remedy_partition_loop(
+fn exact_completion_population_loop(
   remaining: List<ClaimCostObservation>,
   exact: List<ExactCompletionCost>,
   population: Int,
   exact_count: Int,
   censored_count: Int,
-) -> RemedyPartition {
+) -> ExactCompletionPopulationAdmission {
   match remaining {
-    Empty {} => RemedyPartitionExact { exact: exact }
+    Empty {} => ExactCompletionPopulationAdmitted { exact: exact }
     Cons { head: observation, tail: tail } =>
       match observation {
         ExactCompletionCostObserved { exact: completed } =>
-          remedy_partition_loop(
+          exact_completion_population_loop(
             remaining: tail,
             exact: Cons { head: completed, tail: exact },
             population: population + 1,
@@ -107,14 +107,14 @@ fn remedy_partition_loop(
             censored_count: censored_count,
           )
         RightCensoredCostObserved { censored: _ } =>
-          RemedyPartitionRefused {
+          ExactCompletionPopulationRefused {
             population: population + 1,
             exact: exact_count,
             censored: censored_count + 1,
             cause: "exact-completion-observations-required",
           }
         CostObservationUnavailable { binding: _, cause: _ } =>
-          RemedyPartitionRefused {
+          ExactCompletionPopulationRefused {
             population: population + 1,
             exact: exact_count,
             censored: censored_count,
@@ -124,12 +124,23 @@ fn remedy_partition_loop(
   }
 }
 
-fn remedy_partition(observations: List<ClaimCostObservation>) -> RemedyPartition {
-  remedy_partition_loop(
+fn exact_completion_population(
+  observations: List<ClaimCostObservation>,
+) -> ExactCompletionPopulationAdmission {
+  exact_completion_population_loop(
     remaining: observations,
     exact: Empty {},
     population: 0,
     exact_count: 0,
     censored_count: 0,
   )
+}
+
+// SIZING IS CONSTRUCTION-SAFE: there is no censored arm to match because the parameter cannot
+// contain one. The dynamic observation coproduct must first pass exact_completion_population;
+// callers cannot accidentally feed an interrupt point into remedy sizing as an ordinary cost.
+type RemedyPartition { exact: List<ExactCompletionCost> }
+
+fn remedy_partition(exact: List<ExactCompletionCost>) -> RemedyPartition {
+  RemedyPartition { exact: exact }
 }

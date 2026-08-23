@@ -40562,7 +40562,7 @@ pub enum ClaimCostObservation {
 /// accepted, while a lower bound or unavailable reading refuses the WHOLE input population.
 /// Returning a partial partition would let its caller quote the exact subset as though it were
 /// the denominator and would recreate the interrupt-point-as-cost error downstream.
-pub fn remedy_partition(
+pub fn exact_completion_population(
     observations: &[ClaimCostObservation],
 ) -> Result<Vec<&ExactCompletionCost>, String> {
     let mut exact = Vec::with_capacity(observations.len());
@@ -40588,6 +40588,20 @@ pub fn remedy_partition(
         }
     }
     Ok(exact)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RemedyPartition<'a> {
+    pub exact: Vec<&'a ExactCompletionCost>,
+}
+
+/// The sizing function cannot receive a censored observation: callers must first project the
+/// dynamic coproduct through `exact_completion_population`, whose refused arm cannot be mistaken
+/// for a partial sizing result.
+pub fn remedy_partition(exact: &[ExactCompletionCost]) -> RemedyPartition<'_> {
+    RemedyPartition {
+        exact: exact.iter().collect(),
+    }
 }
 
 #[derive(Clone)]
@@ -40623,12 +40637,9 @@ mod claim_cost_observation_law {
             exact_wall_ms: 8,
             terminal_result: "returned-false".into(),
         });
-        assert_eq!(
-            remedy_partition(std::slice::from_ref(&exact))
-                .unwrap()
-                .len(),
-            1
-        );
+        let admitted = exact_completion_population(std::slice::from_ref(&exact)).unwrap();
+        let owned: Vec<ExactCompletionCost> = admitted.into_iter().cloned().collect();
+        assert_eq!(remedy_partition(&owned).exact.len(), 1);
 
         let censored = ClaimCostObservation::RightCensoredCost(RightCensoredCost {
             binding: ObservationBinding::CostMeasurement(coordinates()),
@@ -40636,7 +40647,7 @@ mod claim_cost_observation_law {
             wall_lower_bound_ms: 6,
             censored_by_policy: "fixture-tiny-finite-policy".into(),
         });
-        let refusal = remedy_partition(&[censored]).unwrap_err();
+        let refusal = exact_completion_population(&[censored]).unwrap_err();
         assert!(refusal.contains("exact completion observations required"));
         assert!(refusal.contains("population=1 exact=0 censored=1"));
     }

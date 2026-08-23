@@ -8,10 +8,11 @@ import v2.workflow.claim_cost_observation {
   ExactCompletionCostObserved,
   RightCensoredCost,
   RightCensoredCostObserved,
-  RemedyPartitionExact,
-  RemedyPartitionRefused,
+  RemedyPartition,
+  ExactCompletionPopulationRefused,
   RequiredFloorObservationRefused,
   cost_observation_for_required_floor,
+  exact_completion_population,
   remedy_partition,
 }
 import v2.workflow.floor_terminal_ledger {
@@ -40,17 +41,16 @@ fn fixture_exact() -> ExactCompletionCost {
 }
 
 test fn remedy_partition_accepts_exact_completion_control() -> Bool {
-  match remedy_partition(observations: Cons {
-    head: ExactCompletionCostObserved { exact: fixture_exact() },
+  match remedy_partition(exact: Cons {
+    head: fixture_exact(),
     tail: Empty {},
   }) {
-    RemedyPartitionExact { exact: Cons { head: _, tail: Empty {} } } => true
-    _ => false
+    RemedyPartition { exact: Cons { head: _, tail: Empty {} } } => true
   }
 }
 
 test fn remedy_partition_refuses_right_censored_cost() -> Bool {
-  match remedy_partition(observations: Cons {
+  match exact_completion_population(observations: Cons {
     head: RightCensoredCostObserved {
       censored: RightCensoredCost {
         binding: CostMeasurementBinding { coordinates: fixture_coordinates() },
@@ -61,7 +61,7 @@ test fn remedy_partition_refuses_right_censored_cost() -> Bool {
     },
     tail: Empty {},
   }) {
-    RemedyPartitionRefused {
+    ExactCompletionPopulationRefused {
       population: 1,
       exact: 0,
       censored: 1,
