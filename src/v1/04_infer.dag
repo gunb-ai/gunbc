@@ -65,6 +65,7 @@ import v1.std.core {
   error_type,
   is_container_type, container_expected_arity,
   DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
+  AdmitCallersEntry, admit_callers_entry_uninterpretable_spans, admit_callers_entry_coords,
   default_ident_span, node_name_span,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
@@ -739,7 +740,20 @@ fn constructor_call_admission_diags(
     ) {
       ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
         match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
-          Present { value: permitted } =>
+          Present { value: entries } =>
+            let uninterpretable = admit_callers_entry_uninterpretable_spans(entries: entries)
+            if uninterpretable |> count > 0 {
+              uninterpretable |> map(entry_span =>
+                make_error_node(
+                  diagnostic: AdmitCallersEntryNotDeclRef {
+                    constructor_decl_name: identity.decl_name,
+                    span: entry_span
+                  },
+                  module_name: scope.module_name
+                )
+              )
+            } else {
+              let permitted = admit_callers_entry_coords(entries: entries)
               match caller_decl_coords(scope: scope) {
                 Present { value: caller } =>
                   if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
@@ -774,6 +788,7 @@ fn constructor_call_admission_diags(
                     )
                   ]
               }
+            }
           Absent => []
         }
       NotAdmissionBearingReference => []
