@@ -1,7 +1,7 @@
 module test.claim.host_disk_reclaim_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.measure { byte_size }
+import std.measure { byte_size, second_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv4 }
@@ -21,6 +21,8 @@ import gunbc.host_disk_reclaim {
   slot_repack_decisions,
   slot_has_interrupted_fetch_residue,
   reclaim_fragmentation_gate_packs,
+  reclaim_diag_max_age,
+  reclaim_tmp_pack_min_age,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -122,4 +124,15 @@ test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool 
   slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 3))
     && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 3))
     && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 0)) == false
+}
+
+// THE TWO AGE FLOORS CARRY A DURATION, AND THIS ASSERTS THE RELATION RATHER THAN THE SECONDS. The
+// script authors them as "3 days" and "1 day", so the durable fact is that the diagnostic-log floor
+// is three times the interrupted-fetch floor and both are positive. Asserting 259200 instead would
+// be a change detector against a number transcribed from the same arithmetic that produced it --
+// the oracle failure DESIGN section 5 names -- and it would go red on a correct unit refactor while
+// staying green if both floors were wrong by the same factor.
+test fn the_age_floors_keep_their_authored_ratio() -> Bool {
+  second_count(s: reclaim_diag_max_age) == 3 * second_count(s: reclaim_tmp_pack_min_age)
+    && second_count(s: reclaim_tmp_pack_min_age) > 0
 }
