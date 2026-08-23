@@ -110,6 +110,72 @@ type ImageRefusal
   | ImageEdgeTargetUnresolved { reference: String }
   | ImageRootUnresolved { reference: String }
   | ImageObjectCollision { identity: ObjectId }
+  | ImageUnexpectedMember { context: ImageMemberContext, key: String }
+
+// THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
+// this writer may have meant". So once the tag matches, every JSON object in the document has a
+// closed, variant-specific member set and anything else is a typed refusal.
+//
+// Silently ignoring an unknown member lets a writer state a fact the reader discards while still
+// returning a successful load -- and re-encoding then deletes that fact. That is not forward
+// compatibility, it is successful information loss, which is exactly the fabricated-plausible-output
+// failure DESIGN section 5 forbids: the document loaded, so nothing anywhere reports that a claim in
+// it was thrown away.
+//
+// It does foreclose additive evolution WITHIN a version, and that is the intended cost: a schema
+// that grows a member grows a new format tag, and a decoder that supports both says so by admitting
+// both tags. An open extension point, if one is ever genuinely needed, is a declared member with
+// declared namespacing and retention rules -- never every unrecognized key promoted to one by
+// default.
+//
+// The context is a closed coproduct rather than a String because the member sets differ BY VARIANT:
+// an Atom kind carries `identity` and a Conj kind must not, so "unexpected here" is only meaningful
+// relative to which shape was being read.
+type ImageMemberContext
+  = ImageEnvelopeMembers
+  | ImageObjectRecordMembers
+  | ImageTypeKindMembers
+  | ImageAtomKindMembers
+  | ImageComputationKindMembers
+  | ImageNamedEdgeMembers
+  | ImagePositionalEdgeMembers
+
+fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
+  fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
+}
+
+fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if member_key_allowed(allowed: allowed, key: m.key) {
+        none
+      } else {
+        Present { value: m.key }
+      }
+  }
+}
+
+// A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
+// required member from the same subject, and read_member refuses a non-object as ImageNotAnObject.
+// Answering an unexpected-member refusal for something that is not an object at all would report the
+// wrong cause for the wrong defect.
+fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
+  match v {
+    JsonObject { members: ms } =>
+      fold(ms, init: none, f: fn(found, m) {
+        unexpected_member_step(found: found, m: m, allowed: allowed)
+      })
+    _ => none
+  }
+}
+
+fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ImageMemberContext) -> ImageRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } => Present { value: ImageUnexpectedMember { context: context, key: key } }
+  }
+}
 
 type ImageLoadOutcome
   = ImageLoaded { store: ObjectStore, root: ObjectId }
@@ -484,6 +550,41 @@ type KindDecode
   = KindDecoded { kind: NodeKind }
   | KindDecodeFailed { cause: ImageRefusal }
 
+// THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
+// checked earlier: `identity` is required on an atom and forbidden on every other connective, so
+// "unexpected" has no meaning until the connective tag has been read. Checking it before building
+// means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
+// silently played no part in the node that resulted.
+fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
+  match member_set_refusal(
+    v: kind_value,
+    allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
+    context: if ctag == "atom" { ImageAtomKindMembers } else { ImageTypeKindMembers }
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_connective(kind_value: kind_value, tag: ctag) {
+        ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
+      }
+  }
+}
+
+fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
+  match member_set_refusal(
+    v: kind_value,
+    allowed: ["kind", "behavior"],
+    context: ImageComputationKindMembers
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_behavior(tag: btag) {
+        BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
+      }
+  }
+}
+
 fn decode_kind(kind_value: JsonValue) -> KindDecode {
   match read_string_member(v: kind_value, key: "kind") {
     MemberFailed { cause: c } => KindDecodeFailed { cause: c }
@@ -491,21 +592,13 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
       if tag == "type" {
         match read_string_member(v: kind_value, key: "connective") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: c }
-          MemberString { value: ctag } =>
-            match decode_connective(kind_value: kind_value, tag: ctag) {
-              ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
-              ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
-            }
+          MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
           _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "connective" } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: c }
-          MemberString { value: btag } =>
-            match decode_behavior(tag: btag) {
-              BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
-              BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
-            }
+          MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
           _ => KindDecodeFailed { cause: ImageMemberWrongShape { key: "behavior" } }
         }
       } else {
@@ -530,19 +623,45 @@ type LabelDecode
   = LabelDecoded { label: EdgeLabel }
   | LabelDecodeFailed { cause: ImageRefusal }
 
+// The member set here is the whole EDGE object, `target` included, because the label tag is what
+// closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
+// whose name went nowhere.
+fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
+  match member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "name", "target"],
+    context: ImageNamedEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "name") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+        MemberString { value: lexeme } =>
+          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+        _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "name" } }
+      }
+  }
+}
+
+fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
+  match member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "target"],
+    context: ImagePositionalEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent => LabelDecoded { label: Positional }
+  }
+}
+
 fn decode_label(edge_value: JsonValue) -> LabelDecode {
   match read_string_member(v: edge_value, key: "label") {
     MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
     MemberString { value: tag } =>
       if tag == "named" {
-        match read_string_member(v: edge_value, key: "name") {
-          MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
-          MemberString { value: lexeme } =>
-            LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-          _ => LabelDecodeFailed { cause: ImageMemberWrongShape { key: "name" } }
-        }
+        decode_named_label(edge_value: edge_value)
       } else if tag == "positional" {
-        LabelDecoded { label: Positional }
+        decode_positional_label(edge_value: edge_value)
       } else {
         LabelDecodeFailed { cause: ImageUnknownLabelTag { found: tag } }
       }
@@ -607,7 +726,31 @@ type DecodeAcc {
   refusal: ImageRefusal?
 }
 
+fn decode_acc_refused(acc: DecodeAcc, cause: ImageRefusal) -> DecodeAcc {
+  DecodeAcc {
+    store: acc.store,
+    positions: acc.positions,
+    next: acc.next,
+    refusal: Present { value: cause },
+  }
+}
+
 fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match member_set_refusal(
+        v: object_value,
+        allowed: ["kind", "children"],
+        context: ImageObjectRecordMembers
+      ) {
+        Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+        Absent => decode_object_members(acc: acc, object_value: object_value)
+      }
+  }
+}
+
+fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -688,29 +831,40 @@ fn decode_image(v: JsonValue) -> ImageLoadOutcome {
       if format != image_format_tag {
         ImageRefused { cause: ImageFormatUnrecognized { found: format } }
       } else {
-        match read_member(v: v, key: "objects") {
-          MemberFailed { cause: c } => ImageRefused { cause: c }
-          MemberArray { elements: object_values } =>
-            match decode_object_table(object_values: object_values) {
-              DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
-                match refusal {
-                  Present { value: c } => ImageRefused { cause: c }
-                  Absent =>
-                    match read_string_member(v: v, key: "root") {
-                      MemberFailed { cause: c } => ImageRefused { cause: c }
-                      MemberString { value: root_reference } =>
-                        match resolve_reference(positions: positions, reference: root_reference) {
-                          Absent =>
-                            ImageRefused { cause: ImageRootUnresolved { reference: root_reference } }
-                          Present { value: root } => ImageLoaded { store: store, root: root }
-                        }
-                      _ => ImageRefused { cause: ImageMemberWrongShape { key: "root" } }
-                    }
-                }
-            }
-          _ => ImageRefused { cause: ImageMemberWrongShape { key: "objects" } }
+        match member_set_refusal(
+          v: v,
+          allowed: ["format", "objects", "root"],
+          context: ImageEnvelopeMembers
+        ) {
+          Present { value: c } => ImageRefused { cause: c }
+          Absent => decode_image_body(v: v)
         }
       }
     _ => ImageRefused { cause: ImageMemberWrongShape { key: "format" } }
+  }
+}
+
+fn decode_image_body(v: JsonValue) -> ImageLoadOutcome {
+  match read_member(v: v, key: "objects") {
+    MemberFailed { cause: c } => ImageRefused { cause: c }
+    MemberArray { elements: object_values } =>
+      match decode_object_table(object_values: object_values) {
+        DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
+          match refusal {
+            Present { value: c } => ImageRefused { cause: c }
+            Absent =>
+              match read_string_member(v: v, key: "root") {
+                MemberFailed { cause: c } => ImageRefused { cause: c }
+                MemberString { value: root_reference } =>
+                  match resolve_reference(positions: positions, reference: root_reference) {
+                    Absent =>
+                      ImageRefused { cause: ImageRootUnresolved { reference: root_reference } }
+                    Present { value: root } => ImageLoaded { store: store, root: root }
+                  }
+                _ => ImageRefused { cause: ImageMemberWrongShape { key: "root" } }
+              }
+          }
+      }
+    _ => ImageRefused { cause: ImageMemberWrongShape { key: "objects" } }
   }
 }

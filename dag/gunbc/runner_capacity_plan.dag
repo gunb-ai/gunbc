@@ -7,6 +7,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equ
 import gunbc.fleet_intent_network {
   operator_host_srv3, operator_host_srv4,
 }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
   RosterObserved,
@@ -14,14 +15,19 @@ import gunbc.fleet_runner_connectivity {
   runner_slot_connectivity_verdict_for_incarnation,
   materialized_width_for_host,
   local_incarnations_for_host,
-  roster_is_converged_seven_fixture,
+  RegistrationSlotDecoding,
+  RegistrationNamesCommittedSlot,
+  RegistrationNamesNoCommittedSlot,
+  decode_registration_slot,
   SlotConnectivityDetached,
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
 }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
+  identity_in_list,
   host_github_slot_count,
   host_fabric_slot_count,
   runner_slot_membership,
@@ -34,7 +40,7 @@ import gunbc.runner_slot_allocation {
   SlotServesFabricExecution,
 }
 
-data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. The desired GitHub population is the host's committed exact members filtered by GitHub purpose, so a fabric execution member anywhere in the index range is simply not in it and this plan can never add one. Additions are the desired members not represented by the current observed-side approximation, which is still a dense local prefix rather than a decoded roster — that approximation is the remaining rung, recorded in slot_enumeration_narrow_class_note. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
+data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. The desired GitHub population is the host's committed exact members filtered by GitHub purpose, so a fabric execution member anywhere in the index range is simply not in it and this plan can never add one. Additions are the desired members not represented by the OBSERVED GitHub population, which is now DECODED FROM THE ROSTER by observed_github_slot_identities rather than synthesized as a dense local prefix — the previous form measured local systemd incarnations and handed them to a check about GitHub registrations, two populations behind one name. The remaining rung is one layer further out and is a different fact: organization_runner_roster_evidence is a declared Scaffold returning the pinned 2026-08-06 incident corpus, so the decode is real and total while the observation it decodes is still a constant. Recorded in slot_enumeration_narrow_class_note. The admission ceiling DERIVES from gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is refused instead of admitted and left unfulfilled. The plan is not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
 type RunnerCapacityAction
   = RunnerSlotAdd { to: RunnerSlotIdentity }
@@ -87,11 +93,88 @@ data slot_enumeration_narrow_class_note: String = "ERROR CLASS: A PLANNER'S ENUM
 
 
 
-fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
-  map(
-    local_incarnations_for_host(host: host, width: materialized_width_for_host(host: host)),
-    inc => inc.slot
-  )
+// THE OBSERVATION IS NOW DECODED FROM THE ROSTER, WHICH IS WHAT MAKES THE REFUSAL BELOW REACHABLE.
+// It previously synthesized a dense local prefix from materialized_width_for_host and never read
+// RosterObserved.registrations at all, so every host observed exactly 01..05, no observation could
+// ever carry a fabric index, and validate_observed_github_slot_members reconciled unconditionally --
+// a real wall whose production input could not express the state it refuses. The deeper defect was
+// not staleness but CATEGORY: local systemd incarnations were standing in for GitHub registrations,
+// two populations behind one name, undetectable because both are lists of slot identities.
+//
+// THIS DECODES AN OBSERVATION THAT IS NOT YET AN OBSERVATION, AND SAYING SO HERE IS THE OBLIGATION.
+// The roster reaching this function comes from organization_runner_roster_evidence, a declared
+// Scaffold returning the pinned 2026-08-06 incident corpus. So the planner does NOT observe GitHub
+// today; it decodes a constant, correctly. That is worth landing -- a correct decoder over a fixture
+// becomes a correct decoder over reality on the day the producer lands, and the category error is
+// closed either way -- but a reader who takes "the planner observes GitHub" from this code will be
+// wrong until that Scaffold dissolves. The gap count went from two to one, not from one to zero.
+//
+// AND THE NAME FORK BELOW IS A PRECONDITION FOR THAT DAY, NOT AN ADJACENT TIDY-UP. Against a fixture
+// whose names were authored to match, three name builders agreeing is trivially true. Against a live
+// roster, a registration created by a different builder decodes as naming no committed slot -- which
+// under-counts, which is the exact narrow this function exists to close, one layer inside the fix.
+//
+// THE FOREIGN ARM REFUSES RATHER THAN DROPPING, AND THAT IS THE LOAD-BEARING CHOICE. The obvious
+// shape is to skip a registration whose name resolves to no committed slot and keep folding. That is
+// the empty-observation narrow one layer inside the fix: a dropped member is an under-count, an
+// under-count reads as a host with slots missing, and the planner would propose ADDING a slot that
+// GitHub already holds. So a name the fleet cannot account for stops the line with its own name in
+// the diagnostic. If the org legitimately carries non-fleet registrations, that is a modeling gap to
+// surface loudly rather than a case to absorb, and this refusal is how it surfaces.
+type ObservedGitHubSlotPopulation
+  = GitHubSlotPopulationObserved { identities: List<RunnerSlotIdentity> }
+  | GitHubSlotPopulationUnreadable { reason: String }
+  | GitHubSlotPopulationForeignRegistration { registration_name: NonEmptyStr }
+  | GitHubSlotPopulationDuplicateRegistration { slot: RunnerSlotIdentity }
+
+// A POPULATION IS A SET, AND A FOLD OVER A LIST IS NOT ONE UNLESS IT SAYS SO. Two registrations
+// decoding to the same identity would otherwise count twice, and the count is what addition_actions
+// derives additions from -- so a duplicate inflates the observed width and plans one fewer addition
+// than convergence needs. That is the same over-counting failure this decode was written to remove,
+// arriving by a second route. GitHub can hold two registrations under one name after a re-register,
+// so this is a reachable state rather than a hypothetical.
+fn accumulate_decoded_registration(
+  host: HostIdentity,
+  acc: ObservedGitHubSlotPopulation,
+  reg: GitHubSelfHostedRunnerRegistration,
+) -> ObservedGitHubSlotPopulation {
+  match acc {
+    GitHubSlotPopulationUnreadable { reason: r } => GitHubSlotPopulationUnreadable { reason: r }
+    GitHubSlotPopulationDuplicateRegistration { slot: d } =>
+      GitHubSlotPopulationDuplicateRegistration { slot: d }
+    GitHubSlotPopulationForeignRegistration { registration_name: n } =>
+      GitHubSlotPopulationForeignRegistration { registration_name: n }
+    GitHubSlotPopulationObserved { identities: ids } =>
+      match decode_registration_slot(reg: reg) {
+        RegistrationNamesNoCommittedSlot { registration_name: n } =>
+          GitHubSlotPopulationForeignRegistration { registration_name: n }
+        RegistrationNamesCommittedSlot { slot: slot } =>
+          if (slot.host as String) == (host as String) {
+            if identity_in_list(identity: slot, members: ids) {
+              GitHubSlotPopulationDuplicateRegistration { slot: slot }
+            } else {
+              GitHubSlotPopulationObserved { identities: concat(ids, [slot]) }
+            }
+          } else {
+            GitHubSlotPopulationObserved { identities: ids }
+          }
+      }
+  }
+}
+
+fn observed_github_slot_identities(
+  host: HostIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+) -> ObservedGitHubSlotPopulation {
+  match roster {
+    RosterReadUnavailable { reason: r } => GitHubSlotPopulationUnreadable { reason: r }
+    RosterObserved { observed_on: _, registrations: regs } =>
+      fold(
+        regs,
+        init: GitHubSlotPopulationObserved { identities: [] },
+        f: (acc, reg) => accumulate_decoded_registration(host: host, acc: acc, reg: reg)
+      )
+  }
 }
 
 
@@ -137,23 +220,62 @@ fn connectivity_replace_action(
   }
 }
 
+// THIS FOLD SILENTLY DROPPED AN OBSERVED REGISTRATION WITH NO LOCAL UNIT, AND IT BECAME ABLE TO DO
+// SO ONLY WHEN THE OBSERVATION BECAME REAL. connectivity_replace_action asks
+// find_local_incarnation_for_slot, which searches a DENSE LOCAL PREFIX bounded by
+// materialized_width_for_host. While `observed` was synthesized FROM that same prefix, every
+// observed slot had a local incarnation by construction and Absent could only ever mean "healthy,
+// no action needed". Decoding the roster broke that identity: measured on the converged fixture,
+// srv4 observes SIX GitHub registrations against FIVE local incarnations and this fold returned
+// ZERO actions -- srv4-06 is registered with GitHub, has no local unit, and the planner said
+// nothing about it at all.
+//
+// THAT IS THE REGISTRATION-WITHOUT-INCARNATION CASE, the one gunbc.fleet_runner_connectivity records
+// as having no arm in RunnerSlotConnectivityVerdict. It was previously UNSAYABLE, which is a
+// modeling gap; routed through here it became SAYABLE AND DROPPED, which is strictly worse, because
+// a gap that cannot be expressed at least cannot be mistaken for an answer. So the arm refuses.
+//
+// THE OPTION IS REPLACED BECAUSE IT WAS ALREADY CARRYING TWO MEANINGS AND WOULD NOW CARRY THREE.
+// `none` meant "roster unavailable"; the new state is "an observed registration has no local
+// incarnation", and folding it into the same Absent is the state-space conflation that produced this
+// defect one level down.
+type ConnectivityActionsOutcome
+  = ConnectivityActionsPlanned { actions: List<RunnerCapacityAction> }
+  | ConnectivityActionsRosterUnavailable { reason: String }
+  | ConnectivityActionsUnaccountedRegistration { slot: RunnerSlotIdentity }
+
+fn accumulate_connectivity_action(
+  roster: OrganizationRunnerRosterEvidence,
+  acc: ConnectivityActionsOutcome,
+  slot: RunnerSlotIdentity,
+) -> ConnectivityActionsOutcome {
+  match acc {
+    ConnectivityActionsRosterUnavailable { reason: r } => ConnectivityActionsRosterUnavailable { reason: r }
+    ConnectivityActionsUnaccountedRegistration { slot: s } => ConnectivityActionsUnaccountedRegistration { slot: s }
+    ConnectivityActionsPlanned { actions: acts } =>
+      match find_local_incarnation_for_slot(slot: slot) {
+        Absent => ConnectivityActionsUnaccountedRegistration { slot: slot }
+        Present { value: _ } =>
+          match connectivity_replace_action(slot: slot, roster: roster) {
+            Present { value: a } => ConnectivityActionsPlanned { actions: concat(acts, [a]) }
+            Absent => ConnectivityActionsPlanned { actions: acts }
+          }
+      }
+  }
+}
+
 fn connectivity_actions_for_observed(
   roster: OrganizationRunnerRosterEvidence,
   observed: List<RunnerSlotIdentity>,
-) -> List<RunnerCapacityAction>? {
+) -> ConnectivityActionsOutcome {
   match roster {
-    RosterReadUnavailable { reason: r } => none
+    RosterReadUnavailable { reason: r } => ConnectivityActionsRosterUnavailable { reason: r }
     RosterObserved { observed_on: _, registrations: _ } =>
-      Present {
-        value: flat_map(
-          observed,
-          slot =>
-            match connectivity_replace_action(slot: slot, roster: roster) {
-              Present { value: a } => [a]
-              Absent => []
-            }
-        )
-      }
+      fold(
+        observed,
+        init: ConnectivityActionsPlanned { actions: [] },
+        f: (acc, slot) => accumulate_connectivity_action(roster: roster, acc: acc, slot: slot)
+      )
   }
 }
 
@@ -200,19 +322,36 @@ fn desired_github_identities(host: HostIdentity, requested_width: Int) -> List<R
   )
 }
 
+// THE SUBTRACTION TAKES A SET, AND UNTIL THIS COMMIT IT TOOK A COUNT. The desired side has been an
+// exact identity set for a while; the difference against it was still `id.slot_index > observed_width`
+// -- a DENSE PREFIX comparison against a cardinal. That is correct only if the observed population is
+// always slots 1..n with no holes, which is the assumption this whole module has been dismantling.
+//
+// MAKING THE OBSERVATION HONEST IS WHAT MADE THIS HARMFUL. While the observed side was a synthesized
+// dense prefix the count DID describe a prefix, so the comparison was accidentally right. Decoding
+// the real roster produces holes -- against the corpus the planner consumes, srv3 and srv4 each hold
+// {01,02,04,05} with 03 missing -- and a count of 4 then means something the comparison cannot read.
+// Measured on srv3 before this fix: desired {01..05} minus "index > 4" planned an addition of 05,
+// WHICH IS ALREADY REGISTERED, and never planned 03, WHICH IS THE ONE ACTUALLY MISSING. Fail-closed
+// on the registration gate, but unable to converge, and proposing work against a live slot.
+//
+// THE COUNT IS UNCHANGED BY THE FIX AND THAT IS THE WHOLE WARNING. srv3 plans one addition before and
+// one after; srv4 plans two and two. Only the IDENTITIES differ. A witness asserting add COUNTS would
+// have passed both the broken and the repaired planner without flickering, which is why the rows for
+// this assert which slots are added rather than how many.
 fn addition_actions(
   host: HostIdentity,
   requested_width: Int,
-  observed_width: Int,
+  observed: List<RunnerSlotIdentity>,
 ) -> List<RunnerCapacityAction> {
   fold(
     desired_github_identities(host: host, requested_width: requested_width),
     init: [],
     f: (acc, id) =>
-      if id.slot_index > observed_width {
-        concat(acc, [RunnerSlotAdd { to: id }])
-      } else {
+      if identity_in_list(identity: id, members: observed) {
         acc
+      } else {
+        concat(acc, [RunnerSlotAdd { to: id }])
       }
   )
 }
@@ -228,17 +367,12 @@ fn admit_runner_capacity_width(host: HostIdentity, requested: Int) -> WidthAdmis
   }
 }
 
-fn observed_materialized_width_for_plan(
-  host: HostIdentity,
-  roster: OrganizationRunnerRosterEvidence,
-) -> Int {
-  if roster_is_converged_seven_fixture(roster: roster)
-    && ((host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String)) {
-    7
-  } else {
-    materialized_width_for_host(host: host)
-  }
-}
+// observed_materialized_width_for_plan IS DELETED. It decided an observed width by comparing a
+// roster provenance string to the literal "converged-seven-fixture" and answering 7 for srv3/srv4 --
+// a test fixture reaching into the production planner through a string compare, and the same root as
+// the synthesized observation above. The observed width is now the LENGTH of the decoded population,
+// so it is a projection of the observation rather than a second authority for it, and a width the
+// roster does not support has no way to be asserted.
 
 type SlotPopulationVerdict
   = SlotPopulationReconciled
@@ -341,7 +475,38 @@ fn plan_runner_capacity_host(
   roster: OrganizationRunnerRosterEvidence,
 ) -> HostCapacityPlanOutcome {
   let admission = admit_runner_capacity_width(host: host, requested: requested_width)
-  let observed_width = observed_materialized_width_for_plan(host: host, roster: roster)
+  match observed_github_slot_identities(host: host, roster: roster) {
+    GitHubSlotPopulationUnreadable { reason: r } =>
+      HostCapacityPlanRefused {
+        reason: join(["runner roster read unavailable, refusing to plan against an observation that could not be taken: ", r], "")
+      }
+    GitHubSlotPopulationDuplicateRegistration { slot: d } =>
+      HostCapacityPlanRefused {
+        reason: join(["the organization holds more than one self-hosted runner registration decoding to slot ", runner_slot_instance_name(slot: d), ", so the observed population is not a set and its count would over-state the slots actually held"], "")
+      }
+    GitHubSlotPopulationForeignRegistration { registration_name: n } =>
+      HostCapacityPlanRefused {
+        reason: join(["the organization holds a self-hosted runner registration that resolves to no committed fleet slot, so the observed population cannot be accounted for and planning would either add a slot GitHub already holds or silently under-count: ", n as String], "")
+      }
+    GitHubSlotPopulationObserved { identities: observed } =>
+      plan_runner_capacity_host_against_observation(
+        host: host,
+        requested_width: requested_width,
+        roster: roster,
+        admission: admission,
+        observed: observed,
+      )
+  }
+}
+
+fn plan_runner_capacity_host_against_observation(
+  host: HostIdentity,
+  requested_width: Int,
+  roster: OrganizationRunnerRosterEvidence,
+  admission: WidthAdmission,
+  observed: List<RunnerSlotIdentity>,
+) -> HostCapacityPlanOutcome {
+  let observed_width = length(observed)
   match admission {
     WidthRefused { requested: _, cause: _ } =>
       HostCapacityPlanReady {
@@ -354,16 +519,20 @@ fn plan_runner_capacity_host(
         }
       }
     WidthAdmitted { width: admitted } =>
-      match validate_observed_github_slot_members(host: host, observed: observed_slot_identities(host: host)) {
+      match validate_observed_github_slot_members(host: host, observed: observed) {
         SlotPopulationRefused { reason: r } =>
           HostCapacityPlanRefused { reason: r }
         SlotPopulationReconciled =>
-          match connectivity_actions_for_observed(roster: roster, observed: observed_slot_identities(host: host)) {
-            Absent =>
+          match connectivity_actions_for_observed(roster: roster, observed: observed) {
+            ConnectivityActionsRosterUnavailable { reason: _ } =>
               HostCapacityPlanRefused {
                 reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
               }
-            Present { value: repairs } =>
+            ConnectivityActionsUnaccountedRegistration { slot: s } =>
+              HostCapacityPlanRefused {
+                reason: join(["GitHub holds a registration for slot ", runner_slot_instance_name(slot: s), " that has no local runner incarnation, so this host's population cannot be accounted for: planning against it would either ignore a live registration or propose adding a slot GitHub already holds"], "")
+              }
+            ConnectivityActionsPlanned { actions: repairs } =>
               HostCapacityPlanReady {
                 plan: RunnerCapacityHostPlan {
                   host: host,
@@ -372,7 +541,7 @@ fn plan_runner_capacity_host(
                   observed_width: observed_width,
                   actions: concat(
                     repairs,
-                    addition_actions(host: host, requested_width: admitted, observed_width: observed_width)
+                    addition_actions(host: host, requested_width: admitted, observed: observed)
                   ),
                 }
               }

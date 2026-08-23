@@ -1,7 +1,7 @@
 module v2.test.claim.operand_flow_witness
 
 import std.measure { byte_size, byte_size_count }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, Fnv1a64 }
 import v2.std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -42,7 +42,7 @@ data operand_flow_consumer_b_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data operand_flow_shared_hash: ContentHash = content_hash(n: operand_flow_shared_node)
+data operand_flow_shared_hash: ContentHash = Fnv1a64(content_hash(n: operand_flow_shared_node))
 
 data operand_flow_edge_a: DependencyView = DependencyView {
   source: operand_flow_shared_node,

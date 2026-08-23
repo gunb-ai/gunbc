@@ -1,7 +1,7 @@
 module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size, bit_width }
-import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4 }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, MonolithicDie }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -23,6 +23,7 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(4),
 
   rank_count: 1,
@@ -36,6 +37,7 @@ data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(8),
 
   rank_count: 2,
