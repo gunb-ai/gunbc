@@ -2070,6 +2070,118 @@ fn coproduct_variant_payload_admits_type_name(
 // makes "the actual is one of this coproduct's payload types" undecidable from the declaration
 // alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
 // forbids a fabricated success.
+// ONE OBLIGATION, ONE AUTHORITY. The grammar has fourteen type positions and twelve of them
+// can receive a source value. Before this carrier each position that judged anything judged it
+// with its own local chain of else-if predicates, which is one rule in N representations: a
+// position added later inherits nothing, and a rule fixed at one position stays broken at the
+// rest. A DeclaredTypeObligation names WHERE the obligation arose, WHAT was declared and WHAT
+// was produced; declared_type_inhabitance is the single relation that decides; the position
+// travels with the obligation so the diagnostic can locate the refusal without the decision
+// procedure forking per position.
+type DeclaredTypePosition
+  = PositionRecordLiteralField
+  | PositionListElement
+  | PositionMapValue
+  | PositionDataInitializer
+  | PositionDeclaredReturn
+  | PositionLetAnnotation
+  | PositionVariantPayload
+  | PositionGenericTypeArgument
+  | PositionCastTarget
+  | PositionParameterDefault
+  | PositionCallableReturn
+  | PositionDirectCallArgument
+
+type DeclaredTypeObligation {
+  position: DeclaredTypePosition
+  declared: Node
+  produced: Node
+  span: SourceSpan
+}
+
+// UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. Each reason names something the
+// modeled facts genuinely cannot settle at this seam. A position that has not been wired yet is
+// NOT undecidable -- it is a missing obligation producer, and it is absent from the census
+// rather than present with a verdict. Reading "we did not look" as "it cannot be decided" is
+// the rung inflation DESIGN 4b names, applied to this relation's own self-description.
+type InhabitanceUndecidableReason
+  = UndecidableGenericFormal
+  | UndecidableOptionalCarrier
+  | UndecidableFormalUnresolved
+  | UndecidableProducedIdentityErased
+
+type InhabitanceRefusalReason
+  = RefusedPayloadAtParent
+  | RefusedKernelAtStructured
+
+type InhabitanceVerdict
+  = Inhabits
+  | InhabitanceRefused { reason: InhabitanceRefusalReason }
+  | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+
+fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+  match position {
+    PositionRecordLiteralField => "record literal field"
+    PositionListElement => "list element"
+    PositionMapValue => "map value"
+    PositionDataInitializer => "data initializer"
+    PositionDeclaredReturn => "declared return"
+    PositionLetAnnotation => "let annotation"
+    PositionVariantPayload => "variant payload"
+    PositionGenericTypeArgument => "generic type argument"
+    PositionCastTarget => "cast target"
+    PositionParameterDefault => "parameter default"
+    PositionCallableReturn => "callable return"
+    PositionDirectCallArgument => "direct call argument"
+  }
+}
+
+// THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
+// them: coproduct_payload_where_parent_required already peels transparent aliases through
+// transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
+// tree and this relation inherits it instead of re-deriving a second answer.
+fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
+  let declared = obligation.declared
+  let produced = obligation.produced
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let declared_is_generic = (declared.params |> count) > 0
+  if either_optional {
+    InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if declared_is_generic {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if declared_name == "" {
+    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+  } else if produced_name == "" {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedPayloadAtParent }
+  } else {
+    Inhabits
+  }
+}
+
+// The obligation carries its own position, so ONE emitter locates every refusal. A per-position
+// diagnostic function would be the N-representation problem moved one layer down.
+fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  match declared_type_inhabitance(obligation: obligation, scope: scope) {
+    Inhabits => []
+    InhabitanceUndecidable { reason: _ } => []
+    InhabitanceRefused { reason: _ } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeNotInhabited {
+          position: declared_type_position_label(position: obligation.position),
+          expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+          got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+  }
+}
+
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -4602,7 +4714,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope, expected: elem_expected))
       let typed_elements = elem_results |> map(r => r.typed)
-      let elem_diags = flat_map(elem_results, r => r.diagnostics)
+      let elem_inhabitance_diags = match elem_expected {
+        Present { value: declared_elem } =>
+          flat_map(typed_elements, te =>
+            declared_type_obligation_diags(
+              obligation: DeclaredTypeObligation {
+                position: PositionListElement,
+                declared: declared_elem,
+                produced: resolved_type(n: te),
+                span: te.span
+              },
+              scope: scope
+            )
+          )
+        Absent => []
+      }
+      let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
           Present { value: r } => resolved_type(n: r.typed)

@@ -187,6 +187,7 @@ type CompilerDiagnostic
       permitted_callers: List<String>,
       span: SourceSpan
     }
+  | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -325,6 +326,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
       permitted_callers: _,
       span: s
     } => s
+    DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -396,6 +398,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
         join(permitted, separator: ", "),
         "]"
       )
+    DeclaredTypeNotInhabited { position: pos, expected: e, got: g, span: _ } =>
+      concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
