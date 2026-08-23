@@ -59,6 +59,7 @@ import gunbc.spark.serving_member_realization {
   spark_serving_install_effects_include,
 }
 import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.runner_slot_provision { RunnerSlotMember }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
@@ -408,6 +409,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
                 spark_plan: full_plan,
                 spark_rows: spark_rows,
                 observed_spark: observed_members,
+                observed_slots: [],
               ),
             }
         }
@@ -440,12 +442,14 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   spark_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
   spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
   observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> FleetConvergePlanArtifact {
   let subject = fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
       observed_spark: observed_spark,
+      observed_slots: observed_slots,
     )
     let timer_plan = timer_retirement_plan(observed: observed_timers)
     let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -457,6 +461,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_timers: observed_timers,
       observed_caps: observed_caps,
       observed_spark: observed_spark,
+      observed_slots: observed_slots,
     )
     let planned_generation = prior_generation + 1
     let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows))

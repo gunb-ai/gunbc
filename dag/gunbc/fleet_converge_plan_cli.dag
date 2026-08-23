@@ -10,6 +10,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
+import gunbc.runner_slot_provision {
+  RunnerSlotsObserved,
+  RunnerSlotsUnobserved,
+  observe_runner_slot_members_wet,
+}
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
@@ -131,12 +136,19 @@ func fleet_converge_plan_wet() -> ProcessExit
     GenerationAdmitted { generation: prior_generation } => {
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
+  match observe_runner_slot_members_wet() {
+    RunnerSlotsUnobserved { host: _, reason: why } =>
+      exit_failure(
+        reason: concat("fleet_converge_plan: RunnerSlotsUnobserved — ", why as String),
+      )
+    RunnerSlotsObserved { members: observed_slots } =>
   match fleet_converge_plan_artifact(
     host: host,
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
     observed_spark: [],
+    observed_slots: observed_slots,
   ) {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
@@ -216,6 +228,7 @@ func fleet_converge_plan_wet() -> ProcessExit
   }
     }
   }
+  }
 }
 
 func fleet_converge_apply_wet() -> ProcessExit
@@ -265,12 +278,19 @@ func fleet_converge_apply_wet() -> ProcessExit
             } else {
               let observed_timers = observe_timer_members_wet()
               let observed_caps = observe_cap_members_wet()
+              match observe_runner_slot_members_wet() {
+                RunnerSlotsUnobserved { host: _, reason: why } =>
+                  exit_failure(
+                    reason: concat("fleet_converge_apply: RunnerSlotsUnobserved — ", why as String),
+                  )
+                RunnerSlotsObserved { members: observed_slots } =>
               if !fleet_converge_member_set_fingerprint_matches(
                 planned_fingerprint_text: read_member_fp.content,
                 host: observed_host,
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
                 observed_spark: [],
+                observed_slots: observed_slots,
               ) {
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
@@ -279,6 +299,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
                 observed_spark: [],
+                observed_slots: observed_slots,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(
@@ -314,5 +335,6 @@ func fleet_converge_apply_wet() -> ProcessExit
       }
       }
     }
+  }
   }
 }

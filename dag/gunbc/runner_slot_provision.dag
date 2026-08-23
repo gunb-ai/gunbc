@@ -27,6 +27,15 @@ import extdeps.github.actions_runner {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_host_budget { declared_runner_count_for }
+import gunbc.command_runner {
+  ProcessOutcome,
+  ProcessOutputPresent,
+  ProcessOutputAbsent,
+  ProcessRefused,
+  run_shell_command_capture,
+  LocalExec,
+}
+import extdeps.exec.command { ArgvCommand }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
@@ -171,4 +180,64 @@ fn runner_slot_provision_plan(
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
   membership_added_count(plan: plan.membership) > 0
+}
+
+// --- observation: the third converge member family -------------------------------------------
+
+data runner_slot_observation_refuses_note: String = "AN UNREADABLE HOST REFUSES; AN EMPTY HOST DOES NOT. These are different states and collapsing them is the empty-observation narrow: rendering 'I could not enumerate the slots' as 'this host has no slots' makes the reconcile propose ADDING every desired slot to a machine whose real population was never read, which on apply means installing over a live fleet. RunnerSlotsUnobserved carries the host and the cause; RunnerSlotsObserved with an empty list is a genuine answer about a genuinely empty host.\n\nTHE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY. gunbc.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish 'no such unit' from 'could not run the test'. Those are tolerable for caps because an absent drop-in is the common real state; they are not tolerable for slots, where absent means 'provision it'.\n\nENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect exist' can only ever return a subset of what I already intended, so an out-of-band slot -- one nobody desired -- would be invisible and could never be reported as MemberRemoved. Listing the base directory is what makes the observed population independent of the desired one, which is the whole point of a reconcile."
+
+func observe_runner_slot_members_wet() -> RunnerSlotObservation
+  uses net: Network
+{
+  match run_shell_command_capture(
+    command: ArgvCommand { argv: ["ls", "-1", actions_runner_base_dir] },
+    transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: code, stderr: err } =>
+      RunnerSlotsUnobserved {
+        host: "" as HostIdentity,
+        reason: concat(
+          concat("could not enumerate ", actions_runner_base_dir),
+          concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", err)
+        ) as NonEmptyStr,
+      }
+    ProcessOutputAbsent =>
+      RunnerSlotsUnobserved {
+        host: "" as HostIdentity,
+        reason: concat(
+          concat("enumerating ", actions_runner_base_dir),
+          " produced no output at all -- not an empty listing, which would be an empty string. A command that yields nothing has not answered the question, and treating it as 'no slots' would propose installing every desired slot onto a host whose population was never read."
+        ) as NonEmptyStr,
+      }
+    ProcessOutputPresent { text: t } =>
+      RunnerSlotsObserved {
+        members: map(
+          filter(t.split("\n"), l => trim(l) != ""),
+          l => runner_slot_member_from_instance_name(instance_name: trim(l)),
+        ),
+      }
+  }
+}
+
+type RunnerSlotConvergeVerdict
+  = RunnerSlotConvergePlanned { host: HostIdentity, plan: RunnerSlotProvisionPlan }
+  | RunnerSlotConvergeRefused { host: HostIdentity, reason: NonEmptyStr }
+
+data runner_slot_converge_verdict_note: String = "THE REFUSAL ARM IS THE REASON THIS FUNCTION EXISTS RATHER THAN CALLERS COMPOSING THE TWO HALVES THEMSELVES. A caller holding an observation and a deploy row can always pass the observed members straight into runner_slot_provision_plan, and the unobserved case would then be a list nobody looked at. Routing both through one verdict means the only way to reach a plan is to have actually read the host, and an unmodeled host or an unreadable directory produces a refusal that names which it was."
+
+fn runner_slot_converge_verdict(
+  host: HostIdentity,
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observation: RunnerSlotObservation,
+) -> RunnerSlotConvergeVerdict {
+  match observation {
+    RunnerSlotsUnobserved { host: _, reason: r } =>
+      RunnerSlotConvergeRefused { host: host, reason: r }
+    RunnerSlotsObserved { members: obs } =>
+      RunnerSlotConvergePlanned {
+        host: host,
+        plan: runner_slot_provision_plan(deploy: deploy, artifact: artifact, observed: obs),
+      }
+  }
 }
