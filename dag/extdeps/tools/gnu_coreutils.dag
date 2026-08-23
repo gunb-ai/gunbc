@@ -1,9 +1,10 @@
 module extdeps.tools.gnu_coreutils
 
-import std.types { NonEmptyStr, FilePath }
+import std.types { NonEmptyStr, FilePath, String, List }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -19,9 +20,169 @@ data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 // with the operands they apply to. Re-adding a flags literal here would re-fork it.
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
-data rm_force_recursive_flags: NonEmptyStr = "-rf"
 
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
 data min_coreutils_version: VersionConstraint = ">= 8.0"
 
+// THE COREUTILS ARGV BUILDERS. Each is one utility's one operation, cited to the manual anchored at
+// the top of this module, admitted by name on extdeps.exec.command argv_command. They exist because
+// every one of these was previously hand-spelled at a call site as a bare word list, which is where
+// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution).
+//
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data cat_program: NonEmptyStr = "cat"
+data cp_program: NonEmptyStr = "cp"
+data rm_program: NonEmptyStr = "rm"
+data printf_program: NonEmptyStr = "printf"
+data true_program: NonEmptyStr = "true"
+data whoami_program: NonEmptyStr = "whoami"
+data readlink_program: NonEmptyStr = "readlink"
+data ls_program: NonEmptyStr = "ls"
+
+// -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
+// ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
+// stdout is a terminal and emits one-per-line when it is a pipe, so a caller that does not pass -1
+// is depending on where its output happens to go. It does NOT recurse and does NOT include dotfiles
+// -- that is -a, a different question with a different answer -- so this enumerates exactly the
+// non-hidden entries DIRECTLY under `path`. A caller needing hidden entries or a recursive walk
+// needs its own builder and its own name, not a flags parameter here.
+fn ls_one_per_line_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program, arguments: ["-1", path])
+}
+
+fn cat_command(path: String) -> ArgvCommand {
+  argv_command(program: cat_program, arguments: [path])
+}
+
+fn cp_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program, arguments: [source, destination])
+}
+
+// -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which
+// is what an unlink-if-present means; it does NOT recurse, so a path that turns out to be a
+// directory refuses instead of destroying its contents. The recursive form is a different operation
+// and needs its own name and its own call site, not a flags parameter here.
+fn rm_force_command(path: String) -> ArgvCommand {
+  argv_command(program: rm_program, arguments: ["-f", path])
+}
+
+// The format string is the first operand and the values follow it, exactly as printf(1) takes them.
+fn printf_command(format: String, values: List<String>) -> ArgvCommand {
+  argv_command(program: printf_program, arguments: append([format], items: values))
+}
+
+// true(1) does nothing and exits 0. It is a real utility rather than a placeholder, and it is here
+// because a control that asks "does the runner report success for a command that succeeds and
+// prints nothing" needs a program whose whole contract is exactly that.
+fn true_command() -> ArgvCommand {
+  argv_command(program: true_program, arguments: [])
+}
+
+fn whoami_command() -> ArgvCommand {
+  argv_command(program: whoami_program, arguments: [])
+}
+
+// readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
+// makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
+// executing", and a non-symlink there is a broken assumption, not empty output.
+fn readlink_command(path: String) -> ArgvCommand {
+  argv_command(program: readlink_program, arguments: [path])
+}
+
+// install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
+// here are the ones that manual defines: -d creates each named directory, -m sets the mode,
+// -o and -g set owner and group at creation. Owner-at-creation is why this repository installs
+// rather than copying and fixing up: the wrongly-owned intermediate state has no moment in
+// which to exist. install does NOT create missing parents — that is upstream behaviour, stated
+// here so a caller does not assume otherwise (emit's serve_binary_parent_was_a_literal_note is
+// the receipt for what assuming it costs).
+data coreutils_install_directory_flag: NonEmptyStr = "-d"
+data coreutils_install_mode_flag: NonEmptyStr = "-m"
+data coreutils_install_owner_flag: NonEmptyStr = "-o"
+data coreutils_install_group_flag: NonEmptyStr = "-g"
+data coreutils_install_binary_name: NonEmptyStr = "install"
+
+fn coreutils_install_directory_argv(mode: NonEmptyStr, path: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_directory_flag as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    path,
+  ]
+}
+
+fn coreutils_install_file_owned_argv(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  source: String,
+  dest: String,
+) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    coreutils_install_owner_flag as String,
+    owner as String,
+    coreutils_install_group_flag as String,
+    group as String,
+    source,
+    dest,
+  ]
+}
+
+fn coreutils_install_directory_owned_argv(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  path: String,
+) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_directory_flag as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    coreutils_install_owner_flag as String,
+    owner as String,
+    coreutils_install_group_flag as String,
+    group as String,
+    path,
+  ]
+}
+
+// rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
+// repository and the distinction between them is load-bearing, not stylistic: -f removes a file
+// and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY
+// directory and REFUSES a non-empty one, which is a fail-closed precondition rather than a
+// weaker rm -r; -rf removes a tree. Choosing -rf where -d was meant turns a loud refusal into
+// silent destruction, so the three carry separate names rather than a flags parameter a caller
+// fills in.
+data coreutils_rm_binary_name: NonEmptyStr = "rm"
+data coreutils_rm_force_flag: NonEmptyStr = "-f"
+data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"
+data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
+
+fn coreutils_rm_force_argv(paths: List<String>) -> List<String> {
+  concat([coreutils_rm_binary_name as String, coreutils_rm_force_flag as String], paths)
+}
+
+fn coreutils_rm_empty_directory_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_empty_directory_flag as String,
+    path,
+  ]
+}
+
+fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
+  [
+    coreutils_rm_binary_name as String,
+    coreutils_rm_force_recursive_flags as String,
+    path,
+  ]
+}

@@ -1,10 +1,15 @@
 module v2.workflow.floor_terminal_ledger_test
 
 import v2.std.logic { Bool }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 import v2.workflow.required_floor { SafetyInterrupted }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
+  PublishedCommit,
+  RepositorySnapshot,
+  UnpublishedWorkingTree,
+  ledger_is_candidate_bound,
   ClaimExpectation,
   ClaimTerminalRow,
   ExpectedRed,
@@ -50,12 +55,22 @@ fn hash(h: String) -> Fnv1a64Structural {
   Fnv1a64Structural { digest: h as Fnv1a64StructuralDigestHex }
 }
 
+// A TOTAL FIXTURE: an invalid hex answers `UnpublishedWorkingTree`, which
+// `the_fixture_binding_is_candidate_bound` catches, rather than being cast out of an Optional.
+// A cast on the absent arm type-checks and renders the WRAPPER into the binding -- I wrote exactly
+// that in the sibling module's fixture before catching it, so this one has no arm that can.
+fn fixture_snapshot(hex: String) -> RepositorySnapshot {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => PublishedCommit { commit: oid }
+    Absent => UnpublishedWorkingTree
+  }
+}
+
 fn ledger_with(publication: LedgerPublication) -> TerminalLedger {
   TerminalLedger {
     binding: LedgerBinding {
-      repository_snapshot: hash(h: "0123456789abcdef"),
-      prepared_subject: hash(h: "fedcba9876543210"),
-      roster_identity: hash(h: "0f1e2d3c4b5a6978")
+      repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
+      prepared_subject: hash(h: "fedcba9876543210")
     },
     rows: [],
     publication: publication
@@ -159,4 +174,10 @@ test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "a"), ident(f: "b")]
        ) == EvidenceComplete
+}
+
+// THE FIXTURE ITSELF IS ASSERTED BOUND, so a bad commit hex above fails a test instead of quietly
+// producing an unbound ledger that every other test then happily exercises.
+test fn the_fixture_binding_is_candidate_bound() -> Bool {
+  ledger_is_candidate_bound(binding: ledger_with(publication: LedgerPartial { reason: "probe" }).binding)
 }

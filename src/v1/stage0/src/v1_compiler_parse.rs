@@ -7509,7 +7509,12 @@ pub fn parse_config_fields(
                     continue;
                 }
                 _ => {
-                    continue;
+                    break Rc::new(ConfigResult {
+    config: dummy_cfg.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`".to_string()), r.span.clone())),
+});
                 }
             }
         }
@@ -7868,9 +7873,12 @@ pub fn parse_rest_fields(
                                                 continue;
                                             }
                                         } else {
-                                            {
-                                                continue;
-                                            }
+                                            break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("transport rest has no field `".to_string(), fname.clone()), "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`".to_string()), r.span.clone())),
+});
                                         }
                                     }
                                 }
@@ -8002,25 +8010,21 @@ pub fn parse_shell_fields(
                         continue;
                     }
                 } else {
-                    let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-                    if has_err(r3.err.clone()) {
-                        return Rc::new(TransportResult {
-                            transport: dummy.clone(),
-                            tokens: r3.tokens.clone(),
-                            ctx: r3.ctx.clone(),
-                            err: r3.err.clone(),
-                        });
-                    }
-                    let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
-                    tokens = match (*e.clone()).clone() {
-                        EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
-                    };
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport shell has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `argv` and `stdin`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }
@@ -8047,25 +8051,24 @@ pub fn parse_file_fields(
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
         {
-            let bp = match base_path.clone() {
-                Some(e) => e.clone(),
-                None => make_expr_node(
-                    Rc::new(ExprData::ExprLiteral {
-                        value: Rc::new(LiteralValue::LitStr {
-                            value: "".to_string(),
-                        }),
-                    }),
-                    Rc::new(vec![]),
-                    None,
-                    no_span(),
-                ),
-            };
-            break Rc::new(TransportResult {
-                transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: None,
-            });
+            match base_path.clone() {
+                Some(bp) => {
+                    break Rc::new(TransportResult {
+                        transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: None,
+                    });
+                }
+                None => {
+                    break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("transport file declares no `path:` field; a file transport must name the path it reads or writes".to_string(), span.clone())),
+});
+                }
+            }
         } else {
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -8118,11 +8121,21 @@ pub fn parse_file_fields(
                         continue;
                     }
                 } else {
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: tokens.clone(),
+                        ctx: r3.ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport file has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `path` and `verb`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }
@@ -13286,6 +13299,67 @@ pub fn parse_match_arm_stmts(
     }
 }
 
+pub fn qualified_arm_start_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i64) -> bool {
+    loop {
+        if !peek_is_expected_at(
+            tokens.clone(),
+            offset.clone(),
+            Rc::new(ExpectedToken::ExpectDot),
+        ) {
+            break false;
+        } else {
+            match token_stream_first(token_stream_advance(tokens.clone(), (offset.clone() + 1))) {
+                Some(seg) => {
+                    if !is_ident_shape(seg.shape.clone()) {
+                        break false;
+                    } else {
+                        if is_uppercase_start(seg.text.clone()) {
+                            if peek_is_fat_arrow_at(tokens.clone(), (offset.clone() + 2)) {
+                                break true;
+                            } else {
+                                if peek_is_expected_at(
+                                    tokens.clone(),
+                                    (offset.clone() + 2),
+                                    Rc::new(ExpectedToken::ExpectLBrace),
+                                ) {
+                                    break scan_for_fat_arrow_after_braces(
+                                        token_stream_advance(tokens.clone(), (offset.clone() + 3)),
+                                        1,
+                                    );
+                                } else {
+                                    {
+                                        let __tco_0 = (offset + 2);
+                                        offset = __tco_0;
+                                        continue;
+                                    }
+                                }
+                            }
+                        } else {
+                            {
+                                let __tco_0 = (offset + 2);
+                                offset = __tco_0;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                None => {
+                    break false;
+                }
+            }
+        }
+    }
+}
+
 pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
     {
         let tok = token_stream_first(tokens.clone());
@@ -13299,7 +13373,9 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                 if (n.clone() == "_".to_string()) {
                     peek_is_fat_arrow_at(tokens.clone(), 1)
                 } else {
-                    if is_uppercase_start(n.clone()) {
+                    if !is_uppercase_start(n.clone()) {
+                        arm_start_after_qualified_path(tokens.clone(), 1)
+                    } else {
                         if peek_is_fat_arrow_at(tokens.clone(), 1) {
                             true
                         } else {
@@ -13316,8 +13392,6 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                                 false
                             }
                         }
-                    } else {
-                        false
                     }
                 }
             }

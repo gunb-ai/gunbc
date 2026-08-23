@@ -15,7 +15,7 @@ import product.fabric.work {
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
 import product.fabric.supply {
-  Offer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
+  SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
   offer_fungibility_for, offer_affordability_for,
 }
 import product.fabric.demand {
@@ -23,6 +23,7 @@ import product.fabric.demand {
 }
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
+import gunbc.claim_executor_cli { claim_executor_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
 
@@ -30,7 +31,7 @@ import std.types { String, List }
 //
 // This module used to own authorize_floor_run and a FloorRunRefusal coproduct.
 // Both moved to product.fabric.supply, because comparing a Work's requirements
-// against an Offer's capabilities is provider-neutral fungibility and nothing in
+// against a SupplierOffer's capabilities is provider-neutral fungibility and nothing in
 // ShapeNotCovered / TrustDomainMismatch / CapabilitiesNotOffered was ever about
 // the floor. A gunbc module answering a fabric question is a gunbc module that
 // will answer it differently from the next consumer.
@@ -145,12 +146,12 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
 //
 // WHY NO Architecture VALUE IS DECLARED HERE YET, and the receipt for it.
 // Matching a declared architecture against an offer's requires the OFFER to
-// carry one, and Offer has 25 constructors in tree, so the field and the arm
+// carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm
 // that reads it land together. An earlier revision of this module declared
 // `floor_architecture() -> Architecture = Aarch64` anyway, with a comment
 // explaining that the consuming arm would come later. It had ZERO consumers,
 // and v2.lens.inert_carrier caught it on CI as an unrostered inert carrier --
-// in the same commit whose message refused to add an unread field to Offer by
+// in the same commit whose message refused to add an unread field to SupplierOffer by
 // citing review 53848's declared-but-nothing-derives-it defect. Refusing the
 // defect on one side of a module boundary and authoring it on the other is the
 // same defect, and the lens was a better reader of that than I was.
@@ -207,23 +208,25 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // and that ruling governs what one composed entry point is responsible for. A distinct subject
 // gets its own check, and --required-ci is left at exactly three.
 fn cited_symbol_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: fold(
+  claim_executor_command(
+    mode_flag: "--required-cited-symbol",
+    operands: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-cited-symbol"],
+      init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
-  }
+  )
 }
 
 fn floor_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: fold(
+  claim_executor_command(
+    mode_flag: "--required-ci",
+    operands: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-ci"],
+      init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
-  }
+  )
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
@@ -248,14 +251,14 @@ fn floor_run_command() -> ArgvCommand {
 // The fold stays: it is the modeled decision the broker will consume, and deleting
 // it would be deleting the design rather than the overstatement. What changes is
 // that it is described as UNCONSUMED, so its status is a countable gap instead of
-// an assumed guarantee. NEXT-RUNG TRIGGER: a broker fold that selects an Offer for
+// an assumed guarantee. NEXT-RUNG TRIGGER: a broker fold that selects a SupplierOffer for
 // this Demand, at which point affordability is on the live path and this row
 // becomes an ordinary description of a check that runs.
 //
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.
 
-fn floor_offer_fungibility<P>(offer: Offer<P>) -> OfferFungibility {
+fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
   offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
 }
 
@@ -274,7 +277,7 @@ fn floor_grant_duration() -> GrantDuration {
 }
 
 fn floor_offer_affordability<P>(
-  offer: Offer<P>,
+  offer: SupplierOffer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
 ) -> DemandOfferAffordability {

@@ -1,5 +1,6 @@
 module v2.test.lens_mock_totality.witness_template
 
+import v2.lens.mock_totality { mock_totality_lens }
 
 fn published_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
   a.operation_key == b.operation_key && a.case_id == b.case_id
