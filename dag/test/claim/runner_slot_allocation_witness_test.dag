@@ -74,20 +74,28 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
     && committed_allocation_for(host: "srv-does-not-exist") == 0
 }
 
-data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY. srv4's historical disk row-pin is retired: allocation commits 6 at the memory axis (7 before the 2026-08-17 16GiB ruling) and disk binding moves to apply-time gunbc.runner_lifecycle runner_width_disk_preflight. Asserting only 5/5/6/6 committed would miss a reintroduced disk pin; asserting only memory admissions would miss provisioning without the apply gate."
+data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY DISAGREE. The two rows below asserted the same four numbers twice for this module's entire history, because memory bound every host and the minimum had nothing else to choose from. That made the separation look like ceremony. It was not: the 2026-08-22 DIMM upgrade plus the CPU axis moved memory admission to 27/5/29/29 while committed width went to 21/5/21/21, and a single row pinning only one of them would now be silently blind to the other.\n\nWHICH IS THE POINT THIS PAIR WAS MAKING ALL ALONG. Asserting only committed width would miss a reintroduced disk pin or a memory regression hidden behind a CPU ceiling; asserting only memory admission would miss provisioning that skips the apply gate. srv4's historical disk row-pin stays retired and disk binding stays at apply-time gunbc.runner_lifecycle runner_width_disk_preflight."
 
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 5
+  host_memory_admitted_width(host: operator_host_srv1) == 27
     && host_memory_admitted_width(host: operator_host_srv2) == 5
-    && host_memory_admitted_width(host: operator_host_srv3) == 6
-    && host_memory_admitted_width(host: operator_host_srv4) == 6
+    && host_memory_admitted_width(host: operator_host_srv3) == 29
+    && host_memory_admitted_width(host: operator_host_srv4) == 29
 }
 
-test fn runner_slot_allocation_committed_widths_match_memory_admission() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
+// RENAMED 2026-08-23, because the old name asserted the very thing that stopped being true.
+// runner_slot_allocation_committed_widths_MATCH_MEMORY_ADMISSION was an accurate description of a
+// coincidence -- memory was the binding axis on every host, so committed equalled admitted -- and
+// a name that states a coincidence as a law is how the next reader learns the wrong invariant.
+// Committed width is the MINIMUM over memory, CPU and disk, and on three of four hosts it is now
+// strictly below what memory admits.
+test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 21
     && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == host_memory_admitted_width(host: operator_host_srv2)
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {

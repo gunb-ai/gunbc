@@ -88,11 +88,15 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
     }
 }
 
-test fn witness_srv3_srv4_committed_width_six() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 6
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
+// RENAMED 2026-08-23: the width is 21, not six. The two hosts still agree with each other and with
+// gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
+// per-host allocation rows and the function that derives width have not drifted apart. Naming the
+// number in the test's own identity meant the name went stale the moment the fleet's memory did.
+test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
+  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
+    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
