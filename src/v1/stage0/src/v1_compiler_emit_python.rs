@@ -10,6 +10,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Python;
+use crate::v1_compiler_emit::BoundOperation::*;
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_algebra_method_template,
     emit_bin_op_symbol, emit_container, emit_default_bin_op, emit_error_expr,
@@ -30,7 +31,7 @@ pub use crate::v1_compiler_emit::{
     service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
     typed_named_arg_matches,
 };
-pub use crate::v1_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
+pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
@@ -1144,13 +1145,13 @@ pub fn emit_py_typed_expr(
 }
 
 pub fn emit_py_transport_body(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
-        transport.clone(),
+        bound.clone(),
         op_name.clone(),
         source_indices.clone(),
         depth.clone(),
@@ -1172,13 +1173,8 @@ pub fn emit_py_service_def(
         registry.clone(),
         env.clone(),
         |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
-        |transport, op_name, si, depth| {
-            emit_py_transport_body(
-                transport.clone(),
-                op_name.clone(),
-                si.clone(),
-                depth.clone(),
-            )
+        |bound, op_name, si, depth| {
+            emit_py_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
     )
 }
