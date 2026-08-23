@@ -10,6 +10,8 @@ import product.installed_bom_reconcile {
   DimmCountMatches, DimmCountDiffers,
 }
 import gunbc.fleet_hardware_standing_panel {
+  hardware_axis_labels, hardware_axis_reserved_width, hardware_subject_reserved_width,
+  hardware_longest_len, dimm_verdict_host,
   HardwareStanding, HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled,
   hardware_standing_label, dimm_standing, processor_standing,
   dimm_detail, hardware_axis_summary, standing_count,
@@ -132,4 +134,24 @@ test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count(
     Present { value: _ } => false
     Absent => standing_count(standings: fleet_processor_standings(), wanted: HardwareUnread) == 4
   }
+}
+
+
+// EACH COLUMN RESERVES ITS OWN POPULATION, WHICH IS THE DEFECT REVIEW 55065 CAUGHT.
+//
+// .hardware-axis took hardware_subject_reserved_width -- copied from the column beside it -- so a
+// column carrying "memory" and "processor" was reserved to the width of the longest HOST LABEL.
+// Two unrelated populations that happen to be adjacent, and the derivation read the wrong one.
+//
+// The discriminating fact is that the subject reservation is NOT wide enough for the axis words:
+// host labels are four characters and "processor" is nine, so the copy-paste is observable rather
+// than merely wrong-looking. A witness asserting only "the axis width is derived from the axis
+// labels" would be measure() == measure(); this asserts the two reservations DIFFER and that the
+// subject population genuinely cannot hold the axis one, which is what makes the swap detectable.
+test fn each_column_reserves_its_own_population() -> Bool {
+  let longest_axis = hardware_longest_len(labels: hardware_axis_labels())
+  let longest_host = hardware_longest_len(labels: map(fleet_dimm_verdicts, v => dimm_verdict_host(verdict: v) as String))
+  longest_axis > longest_host
+    && hardware_axis_reserved_width() != hardware_subject_reserved_width()
+    && (hardware_axis_labels() |> count) == 2
 }

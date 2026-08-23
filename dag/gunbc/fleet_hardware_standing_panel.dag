@@ -149,7 +149,7 @@ fn hardware_axis_cell(standing: HardwareStanding, detail: String) -> List<Fragme
 fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
   el_class("div", "hardware-row", concat(
     [el_class("span", "hardware-subject", [txt(dimm_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt("memory")])],
+     el_class("span", "hardware-axis", [txt(hardware_axis_labels().first())])],
     hardware_axis_cell(
       standing: dimm_standing(verdict: verdict),
       detail: dimm_detail(verdict: verdict),
@@ -160,7 +160,7 @@ fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
 fn processor_row(verdict: ProcessorReconcileVerdict) -> Fragment {
   el_class("div", "hardware-row", concat(
     [el_class("span", "hardware-subject", [txt(processor_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt("processor")])],
+     el_class("span", "hardware-axis", [txt(hardware_axis_labels().skip(n: 1).first())])],
     hardware_axis_cell(
       standing: processor_standing(verdict: verdict),
       detail: processor_detail(verdict: verdict),
@@ -232,6 +232,21 @@ data hardware_column_ch_gutter: Int = 2
 fn hardware_longest_len(labels: List<String>) -> Int {
   fold(labels, init: 0, f: (acc, l) =>
     if string_length(s: l) > acc { string_length(s: l) } else { acc })
+}
+
+// THE AXIS COLUMN RESERVES THE WIDEST AXIS WORD, NOT THE WIDEST HOSTNAME (review 55065).
+//
+// It was taking hardware_subject_reserved_width -- copied from the column beside it -- so the
+// column carrying "memory" and "processor" was reserved to the width of the longest HOST LABEL.
+// The two are unrelated populations that happen to be adjacent, and the derivation was reading the
+// wrong one; today that is merely wrong-looking, and it would silently truncate or over-reserve the
+// moment either population moved. The axis words now come from one list that both the rows and the
+// reservation read, so a third axis widens the column by derivation rather than by anyone noticing.
+fn hardware_axis_labels() -> List<String> { ["memory", "processor"] }
+
+fn hardware_axis_reserved_width() -> String {
+  let widest = hardware_longest_len(labels: hardware_axis_labels()) + hardware_column_ch_gutter
+  css_length_wire(l: css_ch(n: widest))
 }
 
 fn hardware_subject_reserved_width() -> String {

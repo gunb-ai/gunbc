@@ -29,7 +29,8 @@ import gunbc.design.state_response {
   RestBinding, StateClassBinding,
 }
 import gunbc.fleet_hardware_standing_panel {
-  hardware_subject_reserved_width, hardware_standing_reserved_width,
+  hardware_subject_reserved_width, hardware_axis_reserved_width,
+  hardware_standing_reserved_width,
 }
 import gunbc.roadmap_component {
   dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
@@ -529,7 +530,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-axis" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
-      decl(prop: MinWidth, value: hardware_subject_reserved_width()),
+      decl(prop: MinWidth, value: hardware_axis_reserved_width()),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-cell" }, decls: [
       decl(prop: FontWeight, value: "600"),
