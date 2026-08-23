@@ -493,7 +493,7 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
       } else {
         ClosureDocEncodeRefused {
           cause: ClosureDocIncompleteWithoutAdmission {
-            identity: first_uncontained_key(missing: missing)
+            identity: an_uncontained_key(missing: missing)
           }
         }
       }
@@ -509,7 +509,10 @@ fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosu
 
 // The first identity that would have been written as an uncontained arm. Naming one is what makes
 // the refusal actionable; naming all of them is the caller's own query via unresolved_identities.
-fn first_uncontained_key(missing: List<ObjectId>) -> String {
+// AN uncontained key, not THE FIRST. Same correction as an_uncontained_target in repository_envelope:
+// the refusal needs one actionable example and no consumer depends on which, so the name should not
+// promise an ordering nothing verifies.
+fn an_uncontained_key(missing: List<ObjectId>) -> String {
   fold(missing, init: "", f: fn(acc, id) {
     if acc == "" { object_id_key(identity: id) } else { acc }
   })

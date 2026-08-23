@@ -608,6 +608,18 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
 // It carries no assertions of its own: every claim below is the authority, and this only sequences
 // them and maps the first failure to an exit code. Delete it once the floor executes these
 // identities again, at which point it is a second invocation path with no consumer.
+//
+// ITS OWN COVERAGE IS THE RISK, AND IT IS ENFORCED WEAKLY ON PURPOSE. A hand-sequenced driver that
+// omits a claim turns "driver green" into a subset run that reads as a full pass -- the nothing-ran
+// versus nothing-failed trap, inside the tool built to avoid it. The invariant is that every `test
+// fn` this file declares appears exactly once here; measured at the time of writing, declared=24
+// dispatched=24, and the check goes red when a claim is added without an entry (verified by planting
+// one: declared=7 dispatched=6 on a sibling witness).
+//
+// That check is run by hand, not by a gate, and the rung is stated rather than dressed up:
+// MITIGATABLE. A committed gate was deliberately not built, because durable enforcement machinery
+// for an artifact with a scheduled deletion is scaffold protecting scaffold. The real dissolution is
+// the floor executing these identities, which removes the driver and the invariant together.
 fn envelope_witness_main() -> ProcessExit {
   if !scm_env_an_empty_repository_round_trips() {
     ExitFailure { code: 1, reason: "scm_env_an_empty_repository_round_trips" }
