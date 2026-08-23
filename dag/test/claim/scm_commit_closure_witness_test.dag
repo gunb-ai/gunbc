@@ -114,6 +114,84 @@ fn build_grafted_store() -> ObjectStore {
   }
 }
 
+// TWO UNCONTAINED CHILDREN, IN ORDER, and this fixture exists because the ones above cannot see
+// order at all. names_exactly is a membership fold and every other closure fixture asserts exactly
+// ONE missing identity -- and a one-element list reversed is itself. So the unresolved list could
+// have been emitted in any order and nothing here would have noticed.
+//
+// That was not hypothetical. uncontained_targets accumulates by prepend and reverses once (the cost
+// shape DESIGN section 6 requires); dropping that reverse was measured to leave every claim in this
+// file GREEN. A comment asserting the reverse was load-bearing would have been describing a wall
+// that nothing held up, which is the failure this stack has now produced three times.
+//
+// The parent's two children are both absent from the grafted store, so both are uncontained, and
+// this claim pins WHICH COMES FIRST. Reversing the fold flips alpha and beta and this goes red.
+fn closure_alpha_child_node() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_alpha } }, children: [])
+}
+
+fn closure_beta_child_node() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_beta } }, children: [])
+}
+
+fn closure_two_child_parent_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^alpha }, target: closure_alpha_child_node() },
+      Edge { label: Named { name: ^beta }, target: closure_beta_child_node() },
+    ],
+  )
+}
+
+type TwoChildStore { store: ObjectStore, root: ObjectId, first: ObjectId, second: ObjectId }
+
+fn two_child_fallback() -> TwoChildStore {
+  TwoChildStore { store: empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }
+}
+
+fn build_two_child_store() -> TwoChildStore {
+  match store_node(store: empty_store(), n: closure_alpha_child_node()) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+    Stored { store: s1, identity: alpha_id } =>
+      match store_node(store: s1, n: closure_beta_child_node()) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+        Stored { store: s2, identity: beta_id } =>
+          match store_node(store: s2, n: closure_two_child_parent_node()) {
+            LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+            Stored { store: s3, identity: parent_id } =>
+              TwoChildStore { store: s3, root: parent_id, first: alpha_id, second: beta_id }
+          }
+      }
+  }
+}
+
+fn first_missing_is(missing: List<ObjectId>, expected: ObjectId) -> Bool {
+  match fold(missing, init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: id }
+    }
+  }) {
+    Present { value: id } => object_id_eq(left: id, right: expected)
+    Absent => false
+  }
+}
+
+test fn two_uncontained_children_are_named_in_order() -> Bool {
+  let built = build_two_child_store()
+  let grafted = match copy_object(from: built.store, to: empty_store(), identity: built.root) {
+    Copied { store: s, identity: _ } => s
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+  let missing = unresolved_identities(closure: CommitClosure { store: grafted, root: built.root })
+  (store_object_count(store: grafted) == 1)
+    && (list_length(items: missing) == 2)
+    && first_missing_is(missing: missing, expected: built.first)
+    && names_exactly(missing: missing, expected: built.second)
+}
+
 // CONTROL. A complete closure names nothing missing, and completeness is DERIVED from the objects
 // rather than stored beside them -- there is no flag here that could disagree with the store.
 test fn a_complete_closure_names_nothing_missing() -> Bool {
@@ -198,6 +276,8 @@ fn commit_closure_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "a_duplicated_at_is_refused_against_at" }
   } else if !a_non_string_at_is_refused_against_at() {
     ExitFailure { code: 1, reason: "a_non_string_at_is_refused_against_at" }
+  } else if !two_uncontained_children_are_named_in_order() {
+    ExitFailure { code: 1, reason: "two_uncontained_children_are_named_in_order" }
   } else {
     ExitSuccess
   }
