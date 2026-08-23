@@ -35,6 +35,7 @@ import product.installed_bom_reconcile {
 }
 import extdeps.memory.types { MemoryPopulationRow }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory.samsung { m386a4g40dm0_cpb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog }
 import product.inventory {
@@ -54,6 +55,7 @@ import product.inventory {
   ReservationOverRelease,
   ZeroQuantityEvent,
   derive_inventory_balance,
+  lot_catalog_exact_row,
   lot_catalog_is_read,
   lot_catalog_read_obligation,
   lot_landed_cost_reading,
@@ -107,11 +109,21 @@ test fn srv1_live_population_confirms_the_expectation() -> Bool {
   }
 }
 
-// THE REFUSAL FIRES ON REAL DATA. srv3's observed population is seven HMA82GR7AFR8N-VK plus one
-// HMA82GR7AFR4N-VK against a uniform AFR4N expectation, so exactly ONE row differs, it is located
-// at population grain because the BMC reported no slot, and the stick total still matches — which
-// is the discrimination this witness exists for: a refusal whose count axis says Matches proves
-// the part axis alone produced it.
+// THE REFUSAL FIRES ON REAL DATA. srv3's observed population is eight M393A8G40D40-CRB0Q against
+// a uniform AFR4N expectation, so exactly ONE row differs, it is located at population grain
+// because the BMC reported no slot, and the stick total still matches -- which is the
+// discrimination this witness exists for: a refusal whose count axis says Matches proves the
+// part axis alone produced it.
+//
+// THE OBSERVATION MOVED UNDER THIS TEST ON 2026-08-22 AND THE TEST IS BETTER FOR IT, which is
+// worth recording because the alternative was to pin it to a fixture and stop reading live data.
+// It previously ran against srv3's mixed seven-plus-one Hynix population, where "exactly one row
+// differs" was a fact about two Hynix part numbers happening to collapse into one discrepancy
+// row. The replacement made srv3 uniform, so the same assertion now discriminates a cleaner
+// case: eight-of-one against eight-of-another, count identical, part axis solely responsible.
+// The expectation stays deliberately WRONG (it names the Hynix part srv3 no longer carries)
+// because this witness's subject is the refusal, not the fleet's current correctness -- the
+// matching expectation lives in gunbc.fleet_physical_inventory and is checked there.
 test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
@@ -132,7 +144,7 @@ test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
         Present { value: d } =>
           d.expected_part == hma82gr7afr4n_vk_catalog.part_number
             && match d.observed {
-              ObservedDimmCataloged { catalog: c } => c.part_number == hma82gr7afr8n_vk_catalog.part_number
+              ObservedDimmCataloged { catalog: c } => c.part_number == m393a8g40d40_crb0q_catalog.part_number
               ObservedDimmUncataloged { part_number: _ } => false
             }
             && match d.location {
@@ -265,19 +277,34 @@ test fn an_observation_of_another_host_refuses() -> Bool {
   }
 }
 
-// AN UNOBSERVED HOST STAYS UNOBSERVED. srv4 has no read at either grain, and the verdict must be
-// neither a pass nor a refusal — a pass would zero the observation deficit's frequency by
-// construction, and a refusal would accuse hardware nobody has looked at.
-test fn srv4_unobserved_reaches_neither_confirmed_nor_refused() -> Bool {
+// AN UNOBSERVED HOST STAYS UNOBSERVED. The verdict must be neither a pass nor a refusal -- a pass
+// would zero the observation deficit's frequency by construction, and a refusal would accuse
+// hardware nobody has looked at.
+//
+// THIS CONTROL LOST ITS LIVE SPECIMEN ON 2026-08-22 AND IS KEPT ANYWAY, which is the point worth
+// recording. srv4 WAS the unobserved host and drove this test directly; the authenticated Redfish
+// read that retired its deferral moved it to a real population, so nothing in the live fleet now
+// occupies DimmObservationAbsent. That is a guard going quiet, not a guard dying: the arm is still
+// reachable -- the next host racked without a read produces it -- and deleting a wall because
+// nothing currently lands in it is how a live wall gets removed while looking principled.
+//
+// So the input is now CONSTRUCTED rather than live, and the test says so in its name. The honest
+// cost of that swap is that this no longer proves anything about the fleet, only about the fold;
+// the fleet-level claim it used to carry is the report-length test below, which is where the
+// change in occupancy is actually visible.
+test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> Bool {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
-      host: "srv4" as HostIdentity,
+      host: "srv-never-read" as HostIdentity,
       catalog: hma82gr7afr4n_vk_catalog,
       stick_count: 8,
     },
-    observation: srv4_dimm_observation,
+    observation: DimmObservationAbsent {
+      host: "srv-never-read" as HostIdentity,
+      cause: "constructed: no per-DIMM read has been taken for this host at either grain",
+    },
   ) {
-    DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv4" as HostIdentity)
+    DimmPopulationUnconfirmed { host: h, cause: _ } => h == ("srv-never-read" as HostIdentity)
     DimmPopulationConfirmed { host: _, stick_count: _ } => false
     DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
     DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
@@ -285,11 +312,22 @@ test fn srv4_unobserved_reaches_neither_confirmed_nor_refused() -> Bool {
 }
 
 // A confirmed population contributes nothing to the report, so the report's length counts real
-// contradictions only. Over the four live fleet verdicts that is exactly srv3's single row: srv1
-// and srv2 confirm and srv4 is unobserved, so a report of any other length would mean silence had
-// leaked into it.
-test fn the_fleet_report_carries_exactly_the_live_contradiction() -> Bool {
-  dimm_discrepancy_report(verdicts: fleet_dimm_verdicts).length() == 1
+// contradictions only. THE LIVE FLEET NOW RECONCILES AND THE EXPECTED LENGTH IS ZERO: srv1 and
+// srv2 confirm against the Hynix rows they still carry, and srv3 and srv4 confirm against the
+// Samsung rows installed on 2026-08-22 with their expectations updated in the same change.
+//
+// A ZERO-LENGTH ASSERTION IS WEAK ON ITS OWN and is deliberately not carrying this claim alone.
+// It cannot distinguish "the fleet agrees" from "the report is broken and returns nothing", which
+// is exactly the empty-observation narrow DESIGN 5 names. What discriminates it is the pair of
+// live refusal tests above -- srv3 against a deliberately wrong expectation still produces one
+// located row -- so the fold is proven able to emit a discrepancy on the same data path that here
+// emits none. Read the two together or neither means anything.
+//
+// It previously asserted ONE, which was srv3's mixed Hynix population against a uniform
+// expectation. That contradiction was resolved by making the expectation true, not by suppressing
+// it.
+test fn the_fleet_report_is_empty_while_every_expectation_matches() -> Bool {
+  dimm_discrepancy_report(verdicts: fleet_dimm_verdicts).length() == 0
 }
 
 // Every verdict the fold produces is grounded: no refusal names an empty discrepancy list with a
@@ -378,16 +416,26 @@ test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
 
 // --- the 64 GiB lot on the ledger --------------------------------------------------------------
 
-// THE LOT IS COMMITTED, UNREAD, AND UNSETTLED, and each of those is asserted by constructor rather
-// than inferred from a total. A lot that reported a read catalog, or a recorded cost, would be
-// claiming facts nobody has - and the read obligation is what makes the missing part number
-// countable instead of merely absent.
-test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() -> Bool {
+// THE LOT IS COMMITTED, READ, AND STILL UNSETTLED, and each of those is asserted by constructor
+// rather than inferred from a total. This claim INVERTED on 2026-08-22: it previously asserted the
+// catalog was UNREAD and carried a standing read obligation, and it went green by the obligation
+// being discharged - the sticks arrived, the label was read, and extdeps.memory.samsung
+// m393a8g40d40_crb0q_catalog was authored against the manufacturer's part number. Per DESIGN
+// section 4b(4) the claim is INVERTED IN PLACE rather than deleted: it now guards the other
+// direction, so a regression that dropped the citation back to an unread family string goes red
+// here instead of passing unnoticed. The cost and receipt halves did not move - a lot that reported
+// a recorded cost would still be claiming facts nobody has.
+test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bool {
   let quantity = dimm_lot_64gib_32x.quantity_acquired == 32
-  let unread = !lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
-  let obligation = match lot_catalog_read_obligation(catalog: dimm_lot_64gib_32x.catalog) {
-    Present { value: _ } => true
+  let read = lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
+  let cited = match lot_catalog_exact_row(catalog: dimm_lot_64gib_32x.catalog) {
+    Present { value: r } => r.module_path == "extdeps.memory.samsung"
+      && r.decl_name == "m393a8g40d40_crb0q_catalog"
     Absent => false
+  }
+  let no_obligation = match lot_catalog_read_obligation(catalog: dimm_lot_64gib_32x.catalog) {
+    Present { value: _ } => false
+    Absent => true
   }
   let no_public_cost = match lot_landed_cost_reading(lot: dimm_lot_64gib_32x) {
     LandedCostReadingUnsettled => true
@@ -395,17 +443,29 @@ test fn the_dimm_lot_is_committed_with_an_unread_catalog_and_no_public_cost() ->
     LandedCostReadingHeldPrivately => false
   }
   let no_public_receipt = !lot_receipt_is_recorded(lot: dimm_lot_64gib_32x)
-  quantity && unread && obligation && no_public_cost && no_public_receipt
+  quantity && read && cited && no_obligation && no_public_cost && no_public_receipt
 }
 
-// EVERY STICK IS AWAITING RECEIPT AND NONE IS RESERVED. The intent says eight per host; the ledger
-// says nothing is allocated, because nothing has arrived. Asserting both in one claim is what keeps
-// the intent from being read as a holding.
-test fn the_dimm_lot_holds_all_thirty_two_sticks_awaiting_receipt() -> Bool {
+// RECEIVED AND UNQUALIFIED, WHICH IS CONSERVATIVE AND TRUE. The sticks arrived, so the ledger says
+// so; twenty-four are installed across srv1/srv3/srv4 and srv2's eight were installed, failed
+// training and were removed, and NONE of that is recorded yet, so every stick sits unqualified.
+//
+// THIS CLAIM PREVIOUSLY ASSERTED received == 0, which made a known-false state -- delivered hardware
+// modeled as still on a truck - a condition the change had to preserve to stay green. Annotating a
+// false state does not make it acceptable, and pinning it in a witness makes it load-bearing.
+//
+// WHAT REMAINS UNRECORDED IS BOUNDED AND NOT A LAG BY OVERSIGHT: QuantityInstalled needs a
+// PhysicalAssetIdentity per stick and the serials were observed but not captured, and srv2's eight
+// have no established disposition. Both are stated as obligations in gunbc.fleet_physical_inventory
+// beside the lot. This claim measures THE LEDGER, never the fleet - the installed answer lives in
+// fleet_dimm_verdicts, and reading an allocation ledger for a physical-installation fact is the
+// authority-substitution failure DESIGN names.
+test fn the_dimm_lot_is_received_and_wholly_unqualified() -> Bool {
   match derive_inventory_balance(lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger) {
     BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
     BalanceDerived { balance: b } =>
-      b.acquired == 32 && b.received == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
+      b.acquired == 32 && b.received == 32 && b.unqualified == 32
+        && b.qualified == 0 && b.available == 0 && b.reserved == 0 && b.installed == 0
   }
 }
 

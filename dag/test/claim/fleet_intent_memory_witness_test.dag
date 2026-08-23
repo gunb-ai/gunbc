@@ -16,9 +16,12 @@ import gunbc.fleet_intent {
   srv1_memory_population,
   srv2_memory_population,
   srv3_memory_population,
-  srv1_memory_population_observation_note,
+  srv1_memory_population_observation_2026_07_16_note,
   srv2_memory_population_observation_note,
-  srv3_memory_population_observation_note,
+  srv3_memory_population_observation_2026_08_22_note,
+  srv4_memory_population,
+  srv4_memory_population_observation_note,
+  srv4_host,
   compute_host_ram_bytes_total,
   fleet_host_memory_nominal_vs_usable_note,
 }
@@ -27,7 +30,8 @@ import extdeps.memory {
   host_memory_population_nominal_bytes,
   memory_population_row_bytes,
 }
-import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory.types { MemoryPopulationRow, HostMemoryPopulation, dram_module_is_realizable }
 import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.bmc.redfish { redfish_memory_summary_from_gib }
@@ -35,9 +39,22 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data srv3_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+data srv3_bmc_observed_total_gib: Gibibyte = gibibyte(512)
 
-data srv1_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+data srv4_bmc_observed_total_gib: Gibibyte = gibibyte(512)
+
+// srv1 HAS NO BMC READ, SO THIS ROW IS NOT ONE AND NO LONGER PRETENDS TO BE. It was authored as
+// srv1_bmc_observed_total_gib, which named a Redfish observation that does not exist: srv1's
+// upgrade is operator-relayed at the population grain, as gunbc.fleet_intent says in the row's own
+// note. Feeding that figure through redfish_memory_summary_from_gib and asserting the population
+// matched it proved 512 == 512 -- the answer under test retyped as a receipt, which is the
+// fabricated-evidence failure DESIGN 5 forbids, committed inside the witness that exists to catch it.
+//
+// WHAT THE VALUE HONESTLY IS: the total the operator reported, against which the population row was
+// transcribed. Checking the population against it is a TRANSCRIPTION check -- it catches a
+// mis-authored row, and it establishes nothing about what is in srv1's slots. That is worth having
+// and it is not independent evidence; the name now says which.
+data srv1_operator_relayed_total_gib: Gibibyte = gibibyte(512)
 
 data srv2_bmc_observed_total_gib: Gibibyte = gibibyte(128)
 
@@ -52,33 +69,26 @@ test fn srv3_population_matches_bmc_memory_summary() -> Bool {
 test fn srv3_host_memory_derives_from_cited_population() -> Bool {
   let host_ram = byte_size_count(compute_host_ram_bytes_total(host: srv3_host))
   let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
-  host_ram == nominal && list_length(items: srv3_host.memory) == 2
+  host_ram == nominal && list_length(items: srv3_host.memory) == 1
 }
 
 test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
-  dram_module_is_realizable(module: hma82gr7afr8n_vk_catalog, jedec: ddr4_generation_catalog)
-    && dram_module_is_realizable(module: hma82gr7afr4n_vk_catalog, jedec: ddr4_generation_catalog)
+  dram_module_is_realizable(module: m393a8g40d40_crb0q_catalog, jedec: ddr4_generation_catalog)
 }
 
 test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {
-  let seven_sticks = byte_size_count(
+  let eight_sticks = byte_size_count(
     memory_population_row_bytes(
-      row: MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 }
+      row: MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 }
     )
   )
-  let one_stick = byte_size_count(
-    memory_population_row_bytes(
-      row: MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 }
-    )
-  )
-  seven_sticks == 7 * byte_size_count(hma82gr7afr8n_vk_catalog.capacity_bytes)
-    && one_stick == byte_size_count(hma82gr7afr4n_vk_catalog.capacity_bytes)
+  eight_sticks == 8 * byte_size_count(m393a8g40d40_crb0q_catalog.capacity_bytes)
 }
 
 test fn red_wrong_stick_count_changes_nominal_total() -> Bool {
   let wrong = HostMemoryPopulation {
     rows: [
-      MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
+      MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 7 },
     ],
   }
   let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
@@ -86,16 +96,28 @@ test fn red_wrong_stick_count_changes_nominal_total() -> Bool {
   wrong_total != observed_total
 }
 
-test fn srv1_srv2_populations_match_bmc_memory_summary() -> Bool {
-  let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+// srv2 alone in this claim, because srv2 alone has a BMC read. It carries the 2026-07-16 Redfish
+// observation of the Hynix population it was reverted to, so reconciling its authored population
+// against a Redfish-shaped summary compares two independently sourced facts.
+test fn srv2_population_matches_bmc_memory_summary() -> Bool {
   let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
-  let srv1_bmc = byte_size_count(
-    redfish_memory_summary_from_gib(total_gib: srv1_bmc_observed_total_gib).total_memory_bytes
-  )
   let srv2_bmc = byte_size_count(
     redfish_memory_summary_from_gib(total_gib: srv2_bmc_observed_total_gib).total_memory_bytes
   )
-  srv1_nominal == srv1_bmc && srv2_nominal == srv2_bmc
+  srv2_nominal == srv2_bmc
+}
+
+// srv1's is a TRANSCRIPTION check and is named as one. It compares the authored population against
+// the total the operator relayed; both trace to the same report, so a matching pair proves the row
+// was transcribed faithfully and proves NOTHING about srv1's slots. It is deliberately NOT routed
+// through redfish_memory_summary_from_gib: that function shapes a Redfish answer, and passing an
+// operator-relayed number through it is what made the previous version read as a BMC receipt.
+// DISSOLVE-ON: an authenticated srv1 BMC read, at which point this becomes a real reconcile beside
+// srv2's and this comment goes.
+test fn srv1_population_matches_the_operator_relayed_total() -> Bool {
+  let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  let relayed = byte_size_count(gibibyte_to_byte_size(g: srv1_operator_relayed_total_gib))
+  srv1_nominal == relayed
 }
 
 test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
@@ -107,10 +129,14 @@ test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
     && srv2_ram == srv2_nominal && list_length(items: srv2_host.memory) == 1
 }
 
+// SEVEN OF THE CURRENT MODULE, NOT SEVEN OF THE OLD ONE. This control previously constructed seven
+// SK Hynix sticks against srv1's now-Samsung eight, so it varied part identity AND count at once and
+// could pass on either difference -- it no longer isolated stick count, which is the one thing it
+// claims to discriminate. Holding the module fixed makes the count the only variable.
 test fn red_srv1_seven_stick_population_differs_from_observed() -> Bool {
   let wrong = HostMemoryPopulation {
     rows: [
-      MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 7 },
+      MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 7 },
     ],
   }
   let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
@@ -119,9 +145,9 @@ test fn red_srv1_seven_stick_population_differs_from_observed() -> Bool {
 }
 
 test fn srv1_srv2_observation_notes_record_raw_redfish_fields() -> Bool {
-  string_contains(s: srv1_memory_population_observation_note, pattern: "HMA82GR7AFR4N-VK RankCount=1")
-    && string_contains(s: srv1_memory_population_observation_note, pattern: "192.168.1.183")
-    && string_contains(s: srv1_memory_population_observation_note, pattern: "(×8)")
+  string_contains(s: srv1_memory_population_observation_2026_07_16_note, pattern: "HMA82GR7AFR4N-VK RankCount=1")
+    && string_contains(s: srv1_memory_population_observation_2026_07_16_note, pattern: "192.168.1.183")
+    && string_contains(s: srv1_memory_population_observation_2026_07_16_note, pattern: "(×8)")
     && string_contains(s: srv2_memory_population_observation_note, pattern: "HMA82GR7AFR4N-VK RankCount=1")
     && string_contains(s: srv2_memory_population_observation_note, pattern: "192.168.1.184")
     && string_contains(s: srv2_memory_population_observation_note, pattern: "(×8)")
@@ -138,7 +164,37 @@ test fn nominal_population_and_os_usable_budget_are_distinct_facts() -> Bool {
 }
 
 test fn srv3_observation_note_records_raw_redfish_fields() -> Bool {
-  string_contains(s: srv3_memory_population_observation_note, pattern: "dimm7 HMA82GR7AFR4N-VK RankCount=1")
-    && string_contains(s: srv3_memory_population_observation_note, pattern: "dimm0 HMA82GR7AFR8N-VK RankCount=2")
-    && string_contains(s: srv3_memory_population_observation_note, pattern: "DataWidthBits=64")
+  string_contains(s: srv3_memory_population_observation_2026_08_22_note, pattern: "M393A8G40D40-CRB")
+    && string_contains(s: srv3_memory_population_observation_2026_08_22_note, pattern: "TotalSystemMemoryGiB=512")
+    && string_contains(s: srv3_memory_population_observation_2026_08_22_note, pattern: "OperatingSpeedMhz=2133")
+}
+
+// THE FLEET IS HETEROGENEOUS AND THIS IS THE CONTROL THAT SAYS SO. Until 2026-08-22 every host
+// carried the same population, so a test asserting srv1 == srv3 would have passed for the wrong
+// reason and kept passing through the upgrade. This one goes red if anyone re-uniformizes the
+// rows -- in either direction -- without an observation to justify it.
+// THE PARTITION IS PINNED AT ALL FOUR HOSTS, because the claim being made about this fleet is
+// three-upgraded-one-reverted and a check that omits srv1 does not state it. The previous version
+// compared only srv2, srv3 and srv4, so srv1 could have drifted to any total -- including back to
+// its pre-upgrade 128 GiB -- with this claim still green. That is the exact drift review 54843
+// caught by hand on srv1's expectation row, left undetectable in the witness beside it.
+test fn upgraded_and_legacy_hosts_carry_different_populations() -> Bool {
+  let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
+  let srv3_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+  let srv4_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv4_memory_population))
+  srv1_nominal == srv3_nominal && srv3_nominal == srv4_nominal && srv2_nominal != srv3_nominal
+}
+
+test fn srv4_population_matches_bmc_memory_summary() -> Bool {
+  let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv4_memory_population))
+  let bmc = byte_size_count(
+    redfish_memory_summary_from_gib(total_gib: srv4_bmc_observed_total_gib).total_memory_bytes
+  )
+  nominal == bmc && byte_size_count(compute_host_ram_bytes_total(host: srv4_host)) == nominal
+}
+
+test fn srv4_observation_note_records_the_read_that_retired_the_deferral() -> Bool {
+  string_contains(s: srv4_memory_population_observation_note, pattern: "M393A8G40D40-CRB")
+    && string_contains(s: srv4_memory_population_observation_note, pattern: "TotalSystemMemoryGiB=512")
 }
