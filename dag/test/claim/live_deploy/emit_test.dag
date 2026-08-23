@@ -688,17 +688,21 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
 
 test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
-  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
-  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+  let production_spec_row = deployment_spec_srv1()
+  let twin_spec_row = srv1_twin_spec()
+  let production_enable_command = tailscale_enable_command(endpoint: production_spec_row.names.tailscale_serve_endpoint)
+  let production_off_command = tailscale_off_command(endpoint: production_spec_row.names.tailscale_serve_endpoint)
+  let live_apply = live_deploy_apply_script_for(spec: production_spec_row, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_apply = live_deploy_apply_script_for(spec: twin_spec_row, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live_retract = live_deploy_retract_script_for(spec: production_spec_row)
+  let twin_retract = live_deploy_retract_script_for(spec: twin_spec_row)
+  string_contains(s: live_apply, pattern: production_enable_command)
     && !string_contains(s: live_apply, pattern: "--set-path")
-    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
-    && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
-    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: twin_spec_row.names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_apply, pattern: production_enable_command)
+    && string_contains(s: live_retract, pattern: production_off_command)
+    && string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: twin_spec_row.names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_retract, pattern: production_off_command)
 }
 
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
