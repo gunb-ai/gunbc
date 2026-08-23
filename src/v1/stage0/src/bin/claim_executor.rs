@@ -9915,6 +9915,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_cited_symbol_mode = false;
+    let mut required_v2_emission_mode = false;
+    let mut required_v2_emission_selftest_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
@@ -9949,6 +9951,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-cited-symbol" => {
                 required_cited_symbol_mode = true;
+            }
+            "--required-v2-emission" => {
+                required_v2_emission_mode = true;
+            }
+            "--required-v2-emission-selftest" => {
+                required_v2_emission_selftest_mode = true;
             }
             "--corpus-type-judgment" => {
                 corpus_type_judgment_mode = true;
@@ -10045,6 +10053,29 @@ fn run() -> Result<ExitCode, ExitCode> {
         let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
         emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
         return Ok(ExitCode::SUCCESS);
+    }
+
+    // ── V2 EMISSION, ITS OWN ENTRY POINT AND DELIBERATELY NOT ENROLLED ──────────
+    //
+    // NOT added to `--required-ci`. Changing what every PR must pass is an operator
+    // decision, not an author's; the capability lands here with its evidence executing
+    // and the enrolment question goes up with its measured cost attached (135s over the
+    // configured entry, against the floor's ~30-40 minutes). Landing it enrolled would
+    // have been the author granting himself the very admission DESIGN §5 says is
+    // external to the diff.
+    if required_v2_emission_selftest_mode {
+        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+        for failure in &failures {
+            eprintln!("required-v2-emission-selftest: FAIL {failure}");
+        }
+        return if failures.is_empty() {
+            eprintln!(
+                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
+            );
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, and that ordering is load-bearing rather
@@ -10300,6 +10331,59 @@ fn run() -> Result<ExitCode, ExitCode> {
             Ok(ExitCode::SUCCESS)
         } else {
             Err(ExitCode::from(1))
+        };
+    }
+
+    if required_v2_emission_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
+            Ok(outcomes) => {
+                let mut refused = 0usize;
+                for outcome in &outcomes {
+                    // Every field is printed whether or not this entry refused: a stopped
+                    // line is analysed before it restarts, and the counts are what the
+                    // analysis reads.
+                    eprintln!(
+                        "required-v2-emission: entry={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
+                        outcome.entry,
+                        outcome.closure_modules,
+                        outcome.census_modules,
+                        outcome.files_emitted,
+                        outcome.blocking_diagnostics,
+                        outcome.advisory_diagnostics,
+                        outcome.wall_ms,
+                    );
+                    if let Some(refusal) = &outcome.refusal {
+                        refused += 1;
+                        eprintln!("required-v2-emission: REFUSED {refusal}");
+                    } else if outcome.files_emitted == 0 {
+                        refused += 1;
+                        eprintln!(
+                            "required-v2-emission: REFUSED {} emitted no files and produced no refusal — the emitter reached neither outcome",
+                            outcome.entry
+                        );
+                    }
+                }
+                eprintln!(
+                    "required-v2-emission: entries={} refused={}",
+                    outcomes.len(),
+                    refused
+                );
+                if refused == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            // Not reaching the subject is reported as itself, never as a broken emitter.
+            Err(e) => {
+                eprintln!("required-v2-emission: could not reach its subject: {e}");
+                Err(ExitCode::from(1))
+            }
         };
     }
 

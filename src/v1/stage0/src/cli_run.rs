@@ -2115,6 +2115,9 @@ const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
+/// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
+/// which entry the gate compiles is an authoring change, never a Rust edit.
+const REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME: &str = "required_v2_emission_entries";
 /// The `WitnessConsumerCadence` variant names a `witness_exclusion_frontier` row may carry
 /// (`std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
 /// exclusion row claiming discovery is a contradiction and the reader refuses it.
@@ -6474,6 +6477,243 @@ pub fn load_sources_for_entry_with_pool_index(
     // fresh build (process_shared_index only builds strict).
     let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
+}
+
+// ── THE V2 EMISSION SUBJECT AND ITS REFUSAL ──────────────────────────────────
+//
+// WHY THIS EXISTS AT ALL. On 2026-08-23 `gunbc compile --source-root dag --source-root
+// src/v2 --entry src/v2/compiler/03_ingest.dag` refused outright on main -- no emitted
+// tree, no cargo log -- while every required phase stayed green for hours. The required
+// run parses `src/v1` .dag, compares the regen mirrors, and folds the witness floor;
+// NONE OF THE THREE COMPILES A v2 ENTRY, so the emission path had no observer at all.
+// The break was a trailing `//` annotation block with no declaration after it, authored
+// under `dag/test/manual/`, which no required phase reads either.
+//
+// WHAT MAKES ONE SMALL ENTRY SUFFICIENT FOR THAT CLASS, measured rather than argued.
+// An `--entry` compile is scoped in what it EMITS (the reference-derived closure) and
+// whole-tree in what it PARSES: every indexed module outside the closure enters the name
+// census, so the census parse reaches the whole of `dag` + `src/v2`. Measured on this
+// tree with the two fixes for the day's breaks resolved in:
+//
+//   entry                        closure   census   emitted   wall
+//   dag/std/abi.dag                    4    3,847         9    135s
+//   src/v2/compiler/03_ingest.dag    ~180    ~3,670      176    349s
+//
+// and with the real specimen planted back into `dag/test/manual/` the SMALL entry
+// refuses, naming the file and byte range of the offending annotation:
+//   `source annotation names no subject: no module item follows it.`
+// So the 2.6x cost of the large entry buys emission coverage of the compiler's own
+// closure, not coverage of the class that actually escaped. The entry is a `.dag` row
+// rather than a literal here precisely so that trade can be re-decided without a Rust
+// edit (`gunbc.ci_layer_roots` `required_v2_emission_entries`).
+//
+// WHAT THE LINE IS, AND WHAT IT DOES NOT CATCH. The refusal predicate is NOT new: it is
+// `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority `gunbc
+// compile` already stops on -- a blocking diagnostic, or an empty emitted file set. A
+// gate that refused on ANY diagnostic would be permanently red (03_ingest carries 503
+// advisory diagnostics today and 0 blocking), so advisory diagnostics are COUNTED and
+// reported and never refused on. Named rather than left to be inferred, this phase does
+// NOT catch: a rustc error in the emitted tree (nothing here compiles the emission), a
+// semantic regression that still emits, or an emission break confined to a closure the
+// configured entry does not reach.
+
+/// The `.dag` entry paths a required v2-emission phase compiles, read live from
+/// `gunbc.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
+/// scalar because the axis is "which entries", not "the entry" -- adding a second entry
+/// is a row, never a second host reader.
+pub fn required_v2_emission_entries() -> Vec<String> {
+    static ENTRIES: OnceLock<Vec<String>> = OnceLock::new();
+    ENTRIES
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+/// One entry's emission measurement. `refusal` carries the compiler's own refusal text
+/// when no tree was produced; every other field is reported whether or not it refused,
+/// because a stopped line is analysed before it restarts (DESIGN §5).
+#[derive(Debug, Clone)]
+pub struct V2EmissionEntryOutcome {
+    pub entry: String,
+    pub closure_modules: usize,
+    pub census_modules: usize,
+    pub files_emitted: usize,
+    pub blocking_diagnostics: usize,
+    pub advisory_diagnostics: usize,
+    /// `Some` exactly when no emitted tree was produced -- the refusal, verbatim.
+    pub refusal: Option<String>,
+    pub wall_ms: u128,
+}
+
+impl V2EmissionEntryOutcome {
+    pub fn is_clean(&self) -> bool {
+        self.refusal.is_none() && self.files_emitted > 0
+    }
+}
+
+/// Compile ONE `.dag` entry over `source_roots` and report whether an emitted tree came
+/// out. Emitted files are held in memory and DROPPED: the question is whether emission
+/// happens, and writing a tree nothing reads would be output with no consumer.
+///
+/// `Err` is reserved for not reaching the subject at all (an unreadable entry, a closure
+/// that will not load) -- distinct from `Ok(outcome)` with a refusal, which means the
+/// compiler reached the subject and refused it. Collapsing the two would report a missing
+/// file as a broken emitter.
+pub fn run_v2_emission_entry(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<V2EmissionEntryOutcome, String> {
+    let started = std::time::Instant::now();
+    // The entry is a FILE, so it is anchored against the workspace root directly rather
+    // than through `anchor_source_root`, which asserts a directory and panics on a path.
+    let entry_abs = if std::path::Path::new(entry_path).is_absolute() {
+        std::path::PathBuf::from(entry_path)
+    } else {
+        process_workspace_root().join(entry_path)
+    };
+    if !entry_abs.is_file() {
+        return Err(format!(
+            "v2-emission: entry does not exist: {entry_path} (--entry names a repo path, not a module path)"
+        ));
+    }
+    // The closure authority is the one `gunbc compile --entry` uses, called rather than
+    // re-derived: a second closure rule here would decide a different compiled population
+    // from the one the CLI decides, and the gate would then be green over a subject no
+    // user ever compiles (DESIGN §3).
+    let closure = load_sources_for_entry_with_pool_index(source_roots, entry_path, false)?;
+    let closure_modules: std::collections::HashSet<String> = closure
+        .iter()
+        .filter_map(|s| extract_module_path(&s.content))
+        .collect();
+
+    // Everything indexed and outside the closure enters the NAME CENSUS only. This is
+    // what makes the phase see a parse break anywhere under the source roots, and it is
+    // the same fill the CLI builds -- keyed on module path, not file path, because the
+    // two loaders normalize paths differently.
+    let index = build_module_index(source_roots);
+    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .iter()
+        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
+        .map(|(_, source)| source.clone())
+        .collect();
+    census_only.sort_by(|a, b| a.path.cmp(&b.path));
+    let census_modules = census_only.len();
+
+    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(census_only.into()),
+    });
+    let result = v1_compiler_compile::compile_sources_with_options(
+        Rc::new(closure.clone().into()),
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+        options,
+    );
+
+    // ONE REFUSAL AUTHORITY, NOT A SECOND ONE SPELLED HERE. `stage0_self_compile_refusal_message`
+    // is what `gunbc compile` itself stops on; restating "blocking, or zero files" in this
+    // function would be a second representation of one rule (DESIGN §2/§3), free to drift.
+    let refusal = v1_compiler_compile::stage0_self_compile_refusal_message(
+        format!("v2-emission compile of {entry_path}"),
+        result.clone(),
+    );
+    let blocking =
+        v1_compiler_compile::interpreter_blocking_diagnostic_messages(result.diagnostics.clone())
+            .len();
+    Ok(V2EmissionEntryOutcome {
+        entry: entry_path.to_string(),
+        closure_modules: closure.len(),
+        census_modules,
+        files_emitted: result.files.len(),
+        blocking_diagnostics: blocking,
+        // Derived from one population rather than scanned twice, so the two counts
+        // cannot disagree with the total.
+        advisory_diagnostics: result.diagnostics.len().saturating_sub(blocking),
+        refusal,
+        wall_ms: started.elapsed().as_millis(),
+    })
+}
+
+/// Every configured entry, each compiled whatever the previous one did. A first refusal
+/// hiding the rest is the failure the required run's phase ordering already refuses to
+/// make (the stopped-line audit: it reports everything, it never greens).
+pub fn run_required_v2_emission(
+    source_roots: &[String],
+) -> Result<Vec<V2EmissionEntryOutcome>, String> {
+    let entries = required_v2_emission_entries();
+    if entries.is_empty() {
+        // An EMPTY ROSTER REFUSES. Zero entries compiled is not zero breaks -- it is the
+        // phase failing to reach any subject, and reporting it as clean is the
+        // empty-observation narrow (DESIGN, recurring failure modes).
+        return Err(
+            "v2-emission: gunbc.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
+                .to_string(),
+        );
+    }
+    let mut outcomes = Vec::new();
+    for entry in entries {
+        match run_v2_emission_entry(source_roots, &entry) {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(outcomes)
+}
+
+/// THE PHASE'S OWN EVIDENCE, EXECUTED RATHER THAN DESCRIBED.
+///
+/// Two controlled fixture roots, authored to differ in ONE thing: `fixtures/v2_emission_gate/red`
+/// holds the real specimen -- a standalone `//` block trailing a module with no declaration
+/// after it -- and `fixtures/v2_emission_gate/green` holds the same block moved above the
+/// declaration it describes, which is the placement DESIGN §4c admits. The RED must refuse
+/// and the GREEN must emit; either flipping is a failure, because a gate that cannot go red
+/// is a decoration and a gate that cannot go green is not usable.
+///
+/// The fixture roots are their OWN source roots, so this runs in well under a second and
+/// does not depend on the state of the repository corpus -- an oracle authored
+/// independently of the tree it will judge (DESIGN §5, on what may serve as an oracle).
+pub fn run_required_v2_emission_selftest() -> Vec<String> {
+    let mut failures = Vec::new();
+    let red_root = "fixtures/v2_emission_gate/red".to_string();
+    let green_root = "fixtures/v2_emission_gate/green".to_string();
+
+    match run_v2_emission_entry(
+        &[red_root.clone()],
+        "fixtures/v2_emission_gate/red/subject.dag",
+    ) {
+        Ok(outcome) if outcome.is_clean() => failures.push(format!(
+            "selftest RED did not refuse: {} file(s) emitted from the trailing-annotation fixture",
+            outcome.files_emitted
+        )),
+        Ok(outcome) => {
+            // The refusal must be the ANNOTATION one. A fixture that refuses for an
+            // unrelated reason would keep this control permanently green while the
+            // class it stands for went unobserved.
+            let text = outcome.refusal.clone().unwrap_or_default();
+            if !text.contains("source annotation names no subject") {
+                failures.push(format!(
+                    "selftest RED refused for the wrong cause; expected the annotation refusal, got: {text}"
+                ));
+            }
+        }
+        Err(e) => failures.push(format!("selftest RED could not reach its subject: {e}")),
+    }
+
+    match run_v2_emission_entry(&[green_root], "fixtures/v2_emission_gate/green/subject.dag") {
+        Ok(outcome) if outcome.is_clean() => {}
+        Ok(outcome) => failures.push(format!(
+            "selftest GREEN refused: {}",
+            outcome
+                .refusal
+                .clone()
+                .unwrap_or_else(|| "no files emitted".to_string())
+        )),
+        Err(e) => failures.push(format!("selftest GREEN could not reach its subject: {e}")),
+    }
+    failures
 }
 
 /// Import-edge closure ONLY — no reference-derived or bare-reference extension.
