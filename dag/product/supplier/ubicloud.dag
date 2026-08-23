@@ -6,6 +6,8 @@ import std.measure { ByteSize, Second, second }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { cpu_memory_envelope }
+import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
 import extdeps.pricing.ubicloud {
   UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
@@ -45,16 +47,20 @@ data ubicloud_billing_quantum: Second = second(count: 60)
 
 // WHAT THE FABRIC'S SHAPE CANNOT SAY.
 //
-// Shape is { hard: HardRequirements } and HardRequirements is { threads:
-// HardwareThreadCount }. So a SupplierOffer can state the threads it provides and CANNOT state
-// the memory or the disk. That is not a detail of this binding: a selection fold over
-// Shape alone cannot refuse a memory-inadequate offer, so a 2-thread runner with 6 GB
-// and a 2-thread runner with 8 GB are indistinguishable to it -- and Ubicloud sells
-// exactly that pair. The facts are dropped LOUDLY here rather than silently at the
-// boundary, so a consumer can see what the shape did not carry.
+// MEMORY CAME OFF THIS LIST, AND ITS REMOVAL IS THE POINT RATHER THAN A TIDY-UP. This row
+// existed because Shape carried only { hard: { threads } }, so a 2-thread runner with 6 GB and a
+// 2-thread runner with 8 GB were indistinguishable to a selection fold -- and Ubicloud sells
+// exactly that pair. Shape now carries an `envelope`, added for precisely this binding, so the
+// memory a catalog row publishes is EXPRESSED (see ubicloud_shape) and MemoryNotExpressibleInShape
+// would now be a false statement about the model rather than an honest one about its limits. A
+// diagnosis outliving the deficit it diagnoses is worse than absent: it is cited as a known gap
+// while the gap is closed.
+//
+// Disk stays, because nothing in ResourceEnvelope's storage axis is populated from this catalog
+// yet, and the fact is still true. That asymmetry is the whole content of this type now.
 type UnexpressedSupplyFact
-  = MemoryNotExpressibleInShape { provided: ByteSize }
-  | DiskNotExpressibleInShape { provided: ByteSize }
+  = DiskNotExpressibleInShape { provided: ByteSize }
+  | IsolationNotObserved
 
 // A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
 // looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
@@ -67,13 +73,39 @@ type SupplierOfferProjection<P> {
 }
 
 fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
-  Shape { hard: HardRequirements { threads: catalog.vcpus } }
+  Shape {
+    hard: HardRequirements { threads: catalog.vcpus },
+    envelope: cpu_memory_envelope(
+      min_threads: catalog.vcpus,
+      architecture: none,
+      min_bytes: catalog.memory_bytes,
+    ),
+  }
+}
+
+// THE PROFILE THIS BINDING MAY HONESTLY CLAIM IS THE EMPTY ONE, AND IT IS NOT A PLACEHOLDER.
+//
+// SupplierOffer.isolation states what an offer PROVIDES, and nobody here has measured what a
+// Ubicloud runner provides. The published catalog rows carry vcpus, memory and disk; they say
+// nothing about kernel tenancy, namespacing or egress. Naming shared_kernel_sandbox_profile()
+// would be inventing a vendor guarantee from its price list -- the fabricated-plausible-output
+// failure, and worse than a refusal because a broker would then ROUTE work to it.
+//
+// An empty guarantee list is fail-closed by construction: unsatisfied_isolation_guarantees
+// filters the REQUIRED set against this one, so every guarantee any work asks for comes back
+// missing and the offer refuses BY NAME. Work requiring nothing still matches, which is correct.
+//
+// The empty list alone would conflate "provides none" with "nobody looked", so the projection
+// carries IsolationNotObserved beside it -- the same move the disk fact makes, and the thing
+// that turns this from a silent zero into a stated coverage obligation.
+fn ubicloud_unobserved_isolation() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
 }
 
 fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
   [
-    MemoryNotExpressibleInShape { provided: catalog.memory_bytes },
     DiskNotExpressibleInShape { provided: catalog.disk_bytes },
+    IsolationNotObserved,
   ]
 }
 
@@ -136,6 +168,7 @@ fn bind_ubicloud_offer<P>(
             shape: ubicloud_shape(catalog: row.catalog),
             capabilities: capabilities,
             trust_domain: trust_domain,
+            isolation: ubicloud_unobserved_isolation(),
             quantity_bound: placement_concurrency_bound,
             ready_at: ready_at,
             quote: ubicloud_quote(row: row),
