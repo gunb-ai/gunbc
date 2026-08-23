@@ -22,7 +22,6 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
-use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -461,6 +460,23 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 }
 
 pub mod roadmap_acceptance_history_carrier;
+
+#[cfg(test)]
+/// The erasing projection `func_sig_if_resolved` was deleted from production in the
+/// callable-candidate cut: mapping `FuncSigAmbiguous` onto the same `None` that means "no such
+/// signature" is what kept the ambiguity arm unreachable for its consumers. These tests are the
+/// eleventh consumer, and they are the one place the collapse is legitimate -- they PIN the
+/// legacy `ImportScoped` policy and assert its first-hit behaviour, where an ambiguity cannot
+/// arise, and the other assertion is a genuine miss. Keeping the collapse here, named and local
+/// to the tests, is what stops it from becoming a production projection again.
+fn test_sig_or_none(
+    lookup: Rc<crate::v1_compiler_infer_sigs::FuncSigLookup>,
+) -> Option<Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig>> {
+    match (*crate::v1_compiler_infer_sigs::func_sig_for_derivation(lookup)).clone() {
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::DerivedFromSig { sig, .. } => Some(sig),
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::NoDerivableSig { .. } => None,
+    }
+}
 
 #[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
@@ -38521,18 +38537,15 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+            let deep_hit =
+                super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
                     prev.clone(),
                     "bottom_fn".to_string(),
-                ),
-            );
-            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                    prev.clone(),
-                    "absent_fn".to_string(),
-                ),
-            );
+                ));
+            let miss = super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                prev.clone(),
+                "absent_fn".to_string(),
+            ));
             let _ = tx.send((
                 prev.parents.len(),
                 deep_hit.map(|s| s.inferred.name.clone()),
@@ -38581,9 +38594,10 @@ mod sigs_env_flat_parents {
         crate::v1_rt::name_resolution_policy_set_namespace_only(false);
 
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
-            )
+            super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                env.clone(),
+                f.to_string(),
+            ))
             .map(|s| s.inferred.name.clone())
         };
 
