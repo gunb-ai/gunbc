@@ -14,7 +14,27 @@ fn observe_srv1_ci_instance() -> BuildCacheInstance {
 }
 
 data observe_managed_unit_cgroup_text: String = "0::/system.slice/gunbc-build-cache-ci.service\n"
-data observe_retired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service\n"
+// THE RETIRED-SLOT FIXTURE IS DERIVED FROM THE COMMITTED WIDTH, NOT PINNED TO AN INDEX. It read
+// srv1-10 until 2026-08-23, chosen when srv1 committed five slots so that ten was comfortably past
+// the end. The CPU-axis change took srv1 to twenty-one and slot ten became a DESIRED slot, so this
+// fixture silently stopped being a specimen of the thing it is named for and the witness went red --
+// correctly, and for a reason that had nothing to do with the decoder under test.
+//
+// A literal one index further would have the same defect on the next width change, which is the
+// trap this lane already hit once tonight in a different costume (a search bound whose comment said
+// it was "wider than any host can reach"). So the index is computed as one past what the host
+// actually commits, and it is retired BY CONSTRUCTION rather than by a coincidence someone has to
+// maintain.
+data observe_retired_slot_index: Int = gunbc_runner_slots_per_host(host: "srv1") + 1
+
+data observe_retired_slot_cgroup_text: String = join(
+  [
+    "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-",
+    to_string(observe_retired_slot_index),
+    ".service\n",
+  ],
+  "",
+)
 data observe_desired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-02.service\n"
 
 data proc_net_unix_header: String = "Num       RefCount Protocol Flags    Type St Inode Path\n"
@@ -136,6 +156,19 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
   }
 }
 
+// THE CLAIM IS "PAST THE COMMITTED WIDTH", WHICH IS WHAT RETIRED MEANS, rather than an index
+// equality that has to be re-typed every time the fleet's width moves. Asserting the property the
+// decoder actually decides makes this row survive a width change instead of being broken by one.
+//
+// THIS COMMENT SAT INSIDE THE MATCH BODY UNTIL 2026-08-23 AND REFUSED THE WHOLE FLOOR. DESIGN 4c
+// admits standalone leading blocks attached to MODULE-SCOPE declarations and nothing else, so an
+// annotation indented into a declaration body is a located parse refusal rather than a style note --
+// and it refuses at PREPARATION, taking every witness in the corpus with it rather than failing the
+// row it sits in. Worth recording where the check does and does not live: --required-cited-symbol
+// parses the corpus and passed this file clean, because annotation grain is enforced in the floor's
+// preparation and not in that census. A green parse is not evidence that an annotation is placed
+// legally, which is exactly the class of "my local check passed" this lane has now been bitten by
+// twice in one night.
 test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   match observe_placement_full(
     path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
@@ -145,7 +178,7 @@ test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   ) {
     ServerRunnerOwned { slot: s, lifecycle: lc } =>
       match lc {
-        RetiredRunnerSlot => s.slot_index == 10
+        RetiredRunnerSlot => s.slot_index > gunbc_runner_slots_per_host(host: "srv1")
         DesiredRunnerSlot => false
       }
     ServerManagedUnitOwned { unit: _ } => false
