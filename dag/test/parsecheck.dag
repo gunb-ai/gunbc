@@ -10,6 +10,8 @@ import gunbc.runner_disk_reclaim {
   reclaim_diag_max_age, reclaim_repack_min_packs, reclaim_repack_timeout,
   reclaim_source_observed_on_srv4,
   ReclaimMember, reclaim_member_value_eq, reclaim_path_is_managed,
+  ReclaimUnitAbsent, ReclaimUnitPresent, ReclaimUnitUnreadable,
+  admit_reclaim_observation, ReclaimObservationAdmitted, ReclaimObservationRefused,
 }
 
 // Git work refuses on a busy slot and proceeds on an idle one, while diagnostic rotation proceeds
@@ -41,6 +43,39 @@ fn parsecheck_holds() -> Bool {
          a: ReclaimMember { unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer", content: "a" },
          b: ReclaimMember { unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer", content: "b" },
        )
+    && observation_arms_hold()
+}
+
+// An unreadable unit REFUSES the whole plan rather than shrinking the roster to what could be read.
+// The discriminating pair matters: the same observation list is admitted when the third entry is a
+// genuine absence and refused when it is unreadable, so the arm is doing the work rather than the
+// count. If absence and unreadability were folded together -- as the cap observer folds them -- both
+// calls would return Admitted and this claim would go green while the distinction was gone.
+fn observation_arms_hold() -> Bool {
+  let member = ReclaimMember {
+    unit_path: "/etc/systemd/system/gunbc-runner-reclaim.timer",
+    content: "installed",
+  }
+  let with_absence = [
+    ReclaimUnitPresent { member: member },
+    ReclaimUnitAbsent { unit_path: "/etc/systemd/system/gunbc-runner-reclaim.service" },
+  ]
+  let with_unreadable = [
+    ReclaimUnitPresent { member: member },
+    ReclaimUnitUnreadable {
+      unit_path: "/etc/systemd/system/gunbc-runner-reclaim.service",
+      cause: "exists but read failed",
+    },
+  ]
+  let admitted = match admit_reclaim_observation(obs: with_absence) {
+    ReclaimObservationAdmitted { members: ms } => ms.length() == 1
+    ReclaimObservationRefused { unreadable: _ } => false
+  }
+  let refused = match admit_reclaim_observation(obs: with_unreadable) {
+    ReclaimObservationAdmitted { members: _ } => false
+    ReclaimObservationRefused { unreadable: u } => u.length() == 1
+  }
+  admitted && refused
 }
 
 // THE ENTRY RETURNS ProcessExit SO THE EXIT CODE IS THE VERDICT. A Bool-returning entry makes the

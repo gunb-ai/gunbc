@@ -5,7 +5,7 @@ import std.measure { Second, second }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv4 }
 import gunbc.ownership { Ownership, Owned }
-import v2.std.algebra { any }
+import v2.std.algebra { any, list_flat_map }
 
 // GROUND TRUTH FIRST, MODEL SECOND. gunbc.runner_lifecycle's ADD path states the rule this module
 // follows: read the deployed artifact as ground truth for what it does, then subsume it through
@@ -200,5 +200,71 @@ fn reclaim_member_ownership(m: ReclaimMember) -> Ownership? {
     Present { value: Owned }
   } else {
     none
+  }
+}
+
+// THE OBSERVATION HAS THREE ARMS, AND THE THIRD IS WHY THIS IS NOT A COPY OF THE CAP OBSERVER.
+// gunbc.fleet_converge_plan_cli observe_cap_members_wet folds a failed Filesystem.Read to the empty
+// list, so "this unit is not installed" and "I could not read this unit" become the same observed
+// state. For a drop-in that is nearly harmless; for a unit file it is the dangerous direction,
+// because absent is exactly the state that makes the plan propose an install -- so an unreadable
+// path would be written over on the strength of a read that failed.
+//
+// The two are distinguished by asking existence separately from content, which is the same split
+// the timer observer already uses (test -f) and the cap observer does not. Present-and-readable is
+// a member; absent is a genuine absence and the plan may install; present-but-unreadable REFUSES,
+// because a plan that cannot see what is at a path it intends to write is not a plan.
+type ReclaimUnitObservation
+  = ReclaimUnitAbsent { unit_path: NonEmptyStr }
+  | ReclaimUnitPresent { member: ReclaimMember }
+  | ReclaimUnitUnreadable { unit_path: NonEmptyStr, cause: NonEmptyStr }
+
+fn reclaim_observation_is_refusal(o: ReclaimUnitObservation) -> Bool {
+  match o {
+    ReclaimUnitAbsent { unit_path: _ } => false
+    ReclaimUnitPresent { member: _ } => false
+    ReclaimUnitUnreadable { unit_path: _, cause: _ } => true
+  }
+}
+
+fn no_reclaim_members() -> List<ReclaimMember> {
+  []
+}
+
+fn reclaim_observed_members(obs: List<ReclaimUnitObservation>) -> List<ReclaimMember> {
+  list_flat_map(obs, o => match o {
+    ReclaimUnitPresent { member: m } => [m]
+    ReclaimUnitAbsent { unit_path: _ } => no_reclaim_members()
+    ReclaimUnitUnreadable { unit_path: _, cause: _ } => no_reclaim_members()
+  })
+}
+
+// THE REFUSAL IS WHOLESALE RATHER THAN PER-MEMBER, mirroring host_axis_caps' foreign-occupant arm:
+// one unreadable unit refuses the whole reclaim plan instead of planning around it. Planning the
+// members it COULD read would be the absorbing fallback in its narrowing form -- an observation
+// that failed rendered as a smaller world, so the plan proceeds against a roster it knows is
+// incomplete and reports success for a convergence it did not verify.
+type ReclaimObservationVerdict
+  = ReclaimObservationAdmitted { members: List<ReclaimMember> }
+  | ReclaimObservationRefused { unreadable: List<NonEmptyStr> }
+
+fn no_reclaim_paths() -> List<NonEmptyStr> {
+  []
+}
+
+fn reclaim_unreadable_paths(obs: List<ReclaimUnitObservation>) -> List<NonEmptyStr> {
+  list_flat_map(obs, o => match o {
+    ReclaimUnitUnreadable { unit_path: p, cause: _ } => [p]
+    ReclaimUnitPresent { member: _ } => no_reclaim_paths()
+    ReclaimUnitAbsent { unit_path: _ } => no_reclaim_paths()
+  })
+}
+
+fn admit_reclaim_observation(obs: List<ReclaimUnitObservation>) -> ReclaimObservationVerdict {
+  let unreadable = reclaim_unreadable_paths(obs: obs)
+  if unreadable.length() == 0 {
+    ReclaimObservationAdmitted { members: reclaim_observed_members(obs: obs) }
+  } else {
+    ReclaimObservationRefused { unreadable: unreadable }
   }
 }
