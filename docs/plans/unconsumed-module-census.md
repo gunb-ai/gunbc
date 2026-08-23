@@ -1,5 +1,10 @@
 # Corpus-wide unconsumed-module census
 
+**Execution record:** the disposition of this population -- what was deleted, and the typed
+reason every held row survived -- is
+[`unconsumed-module-residue-disposition.md`](unconsumed-module-residue-disposition.md).
+This document stays the authority on how the population is derived.
+
 **Status: census only. Nothing is deleted by this document.** It exists to be reviewed
 before any uprooting, per the dispatch: *"337 is too many to delete on one session's
 judgment."*
@@ -59,10 +64,10 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument: the universe it decodes, and the seven defects found in building it
+## 2. Instrument: the universe it decodes, and the defects found in building it
 
-**One cause produced most of what follows, and it is worth stating once instead of seven
-times.** Every defect below except 1 and 4 has the same shape: *a conclusion was drawn
+**One cause produced most of what follows, and it is worth stating once instead of once
+per defect.** Every defect below except 1 and 4 has the same shape: *a conclusion was drawn
 without reading the surface that would settle it.* Defect 3 scored the accelerator family
 dead without reading qualified calls; defect 5 froze two `tools/` rows against a real
 re-add anchor without reading the `entry:` field surface, and ten more of that class turn
