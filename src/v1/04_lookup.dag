@@ -1,6 +1,13 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_identity {
+  PrimitiveProjectionAnswer, DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive,
+  DeclarationPrimitiveUndisposed,
+  ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
+  primitive_projection_for_declaration
+}
 
 import v1.std.core {
   Node, param_node_type_expr,
@@ -155,6 +162,52 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
   }
 }
 
+// IS THE BUILTIN A SECOND AUTHORITY, OR THE SAME ONE SEEN THROUGH A DECLARATION?
+//
+// A declared name that PROJECTS a primitive is not a rival authority for it -- it is the
+// primitive's modeled surface, and collecting both would refuse a corpus that is doing exactly
+// what the model says to do. `std.primitive_identity` (gunbc#8964) answers this per declaration,
+// and the three answers are not interchangeable:
+//
+//   HostRealizedSeam / ModeledProjection  -- ONE authority. The declaration is the primitive's
+//        surface (a self-call seam, or a real body the builtin arm intercepts ahead of), so the
+//        builtin is dropped and the declared population decides alone.
+//   DivergentProjection                   -- TWO authorities, and the divergence is the reason.
+//        `v2.std.collection.map_get` returns Outcome<Optional<V>> where the primitive returns
+//        Optional<V>. Both candidates are kept and the call REFUSES. This is row 30's specimen.
+//   DeclarationProjectsNoPrimitive        -- TWO authorities. Nobody has claimed this declaration
+//        projects anything, so a same-named builtin is a genuine rival.
+//   DeclarationPrimitiveUndisposed        -- NOBODY HAS CLASSIFIED THIS YET, which is NOT the
+//        same state as "classified as not a projection" and must not refuse. 196 of 209 census
+//        symbols sit here; treating ignorance as an answer would make the wall strictest exactly
+//        where it knows least, and would scale its strictness INVERSELY with how much of the
+//        census is done. The builtin is dropped and behaviour is today's.
+//
+// The asymmetry is deliberate: the builtin is RETAINED only when a declared candidate positively
+// says the two are different authorities.
+fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
+  match candidate.identity {
+    BuiltinCallable { primitive_name: _ } => false
+    DeclaredCallable { owner_module_path: owner, decl_name: decl } =>
+      match primitive_projection_for_declaration(
+        declaration: decl_ref(module_path: owner, decl_name: decl)
+      ) {
+        DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+          match fidelity {
+            HostRealizedSeam => false
+            ModeledProjection => false
+            DivergentProjection { divergence: _ } => true
+          }
+        DeclarationProjectsNoPrimitive => true
+        DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+      }
+  }
+}
+
+fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
+  declared |> any(c => declared_candidate_rivals_the_builtin(candidate: c))
+}
+
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
 //
 // THE LEVELS, and they are lexical scope rather than precedence between authorities. This
@@ -166,14 +219,21 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 //              a candidate in any decision. (Body-scope binders -- let, match binders, fn and
 //              lambda parameters -- shadow even this, one seam up, in
 //              `body_shadow_aware_func_sig`.)
-//   level 1a - NAMES A LISTED IMPORT BROUGHT INTO SCOPE (`type_env.authored_import_names`,
-//              the specific_names arm alone -- an is_all import names a MODULE and belongs at
-//              1b with the rest of the closure). An `import v2.std.collection { map_get }` NAMES
-//              ONE EXACT DECLARATION, and every later bare call in that module is a reference to
-//              the thing the author named -- the same authorial act as a qualified reference,
-//              one line higher. The builtin surface is NOT a co-candidate here, because nothing
-//              about it was named. Two LISTED imports of one name are still two candidates and
-//              still ambiguous, so this is membership in a set, never a first-wins rule.
+//   level 1a - AN AUTHORED SOURCE BINDING REMOVES THE IMPLICIT BUILTIN CO-CANDIDATE, AND DOES
+//              NOTHING ELSE. `type_env.authored_import_names` (the specific_names arm alone --
+//              an is_all import names a MODULE and belongs at 1b) carries NAME MEMBERSHIP, not
+//              selected declaration identity: it is a Map<String, Bool>, so it can say "the
+//              author wrote this word in an import list" and cannot say WHICH declaration they
+//              meant. So the only thing it licenses is dropping the implicit builtin rival.
+//              THE REMAINING DECLARED POPULATION STILL UNDERGOES EXACT CARDINALITY ADMISSION:
+//              one visible name plus one declaration candidate resolves; one visible name plus
+//              SEVERAL still refuses. That is conservative and never silently selects the wrong
+//              declared function, and it is strictly weaker than "the listed import names one
+//              exact declaration" -- a claim this mechanism does not support and must not be
+//              written as though it did. Narrowing the declared set to the actually-imported
+//              declaration needs an exact-binding carrier (identity, not Map<String, Bool>);
+//              that is NOT required to keep the explicitly-importing consumers resolving and is
+//              deliberately out of this cut.
 //   level 1b - THE TRANSITIVE CLOSURE AND THE BUILTIN SURFACE, TOGETHER. Both are visible to
 //              this module without the author naming either anywhere, so two answers here are
 //              two answers at ONE level and nothing ranks them. THIS IS THE ROW-30 INCIDENT:
@@ -191,8 +251,12 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 // that distinction IS the defect, not a tiebreak between kinds of callable. An UNLISTED
 // declaration still does not beat the builtin; that is exactly the case that refuses.
 //
-// AN EMPTY authored-names MAP IS IGNORANCE, NOT AN ANSWER. It is built at resolve time and is
-// not persisted onto TypedModule.type_env, so the emit-side consumer reads an empty map and
+// AN EMPTY authored-names MAP IS A COMPATIBILITY FALLBACK, NOT AN AUTHORED-BINDING VERDICT, and
+// it may never serve as a resolution authority for anything downstream: it reports that THIS
+// SEAM CANNOT SEE source visibility, not that the author named nothing. A consumer needing the
+// binding must take the source-resolved identity carried on the node rather than re-running
+// callable lookup at a grain where source visibility has vanished. It is built at resolve time
+// and is not persisted onto TypedModule.type_env, so the emit-side consumer reads an empty map
 // cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
 // DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
 // "nothing was named", which would make the wall strictest exactly where it knows least.
@@ -214,12 +278,17 @@ fn callable_lookup_over_candidates(
     Present { value: sig } => FuncSigResolved { sig: sig }
     Absent =>
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
-      let admissible = match author_named_visibility(type_env: type_env, name: name) {
-        AuthorNamedThisName => declared
-        VisibilityUnobservable => declared
+      let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
+        AuthorNamedThisName => []
+        VisibilityUnobservable => []
         AuthorNamedNothingForThisName =>
-          concat(declared, builtin_callable_candidates(name: name))
+          if builtin_is_a_rival_authority(declared: declared) {
+            builtin_callable_candidates(name: name)
+          } else {
+            if (declared |> count) == 0 { builtin_callable_candidates(name: name) } else { [] }
+          }
       }
+      let admissible = concat(declared, builtin_admissible)
       match decide_callable_candidates(candidates: admissible) {
         FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
