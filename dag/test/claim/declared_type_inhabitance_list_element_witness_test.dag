@@ -8,9 +8,19 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+// SUBSTRATE-ONLY, AND THE EARLIER ReadsLiveTree DECLARATION MADE EVERY ARM BELOW INERT. A
+// ReadsLiveTree witness is DISCOVERED, counted in declined_live, and NEVER FOLDED -- so these
+// arms were enrolled, reviewed, cited as this PR's executable evidence, and executed by nothing.
+// That is the specification-without-execution trap DESIGN 5 calls the deepest one, and it is
+// worse here than a missing test would have been, because the arms were named as the reason the
+// class had climbed. The sibling test.claim.direct_call_argument_type_witness had already made
+// this exact move and said why: an assertion in a live-tree module is "enrolled and inert ...
+// wearing the costume of a populated probe corpus". This file needs no live read -- every arm
+// hands compile_dag_diagnostic_census a source STRING it authors itself -- so nothing is lost by
+// declaring what it actually consumes.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FLOOR CLAUSE THIS GUARDS: a value accepted at a declared-type position inhabits that
 // declared type. DESIGN names it as floor, so a breach is a below-baseline safety regression
