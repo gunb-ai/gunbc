@@ -1,0 +1,50 @@
+module test.claim.hermetic_mock_fidelity_witness
+
+import std.types { String, Bool }
+import gunbc.guarantee_rung_drop { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.hermetic_mock_fidelity {
+  HermeticMockRow,
+  UnconditionalArm,
+  InputDiscriminating,
+  hermetic_mock_fidelity_all_tracked,
+  hermetic_mock_row_is_tracked
+}
+
+// THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_tracked` over the live roster is the
+// positive control; on its own it would be satisfied by an empty roster and by a roster with no
+// fabricating rows, so it carries no information about the check. The two rows below are the
+// discriminating half: an UNTRACKED fabricating row must be rejected, and a non-fabricating row
+// with no trigger must be accepted -- which is what establishes that the predicate reads the
+// discrimination and the trigger together rather than either alone.
+
+fn untracked_fabricating_row() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Untracked.Run",
+    discrimination: UnconditionalArm {},
+    rung: OutsideTheLadder {},
+    ceiling: StructurallyGuaranteed {},
+    next_trigger: ""
+  }
+}
+
+fn honest_row_needs_no_trigger() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Honest.Run",
+    discrimination: InputDiscriminating {},
+    rung: StructurallyGuaranteed {},
+    ceiling: StructurallyGuaranteed {},
+    next_trigger: ""
+  }
+}
+
+test fn hermetic_mock_live_roster_is_tracked() -> Bool {
+  hermetic_mock_fidelity_all_tracked()
+}
+
+test fn hermetic_mock_untracked_fabricating_row_is_rejected() -> Bool {
+  !hermetic_mock_row_is_tracked(r: untracked_fabricating_row())
+}
+
+test fn hermetic_mock_honest_row_needs_no_trigger() -> Bool {
+  hermetic_mock_row_is_tracked(r: honest_row_needs_no_trigger())
+}

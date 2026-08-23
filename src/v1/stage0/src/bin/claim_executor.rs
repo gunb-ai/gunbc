@@ -11659,11 +11659,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_live={} \
-         — every discovered site is exactly one of these",
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         declined_live={} — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
+        outcome.declined_fixture_member,
         outcome.declined_live_tree
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
