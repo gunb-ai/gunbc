@@ -223,18 +223,16 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // never here.
 
 fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>) -> OfferFungibility {
+  let missing_isolation = unsatisfied_isolation_guarantees(
+    required: requirements.isolation,
+    provided: offer.isolation,
+  )
   if requirements.trust_domain != offer.trust_domain {
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
   } else if requirements.capabilities != offer.capabilities {
     CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
-  } else if (unsatisfied_isolation_guarantees(
-      required: requirements.isolation, provided: offer.isolation,
-    ) |> count) > 0 {
-    IsolationNotProvided {
-      missing: unsatisfied_isolation_guarantees(
-        required: requirements.isolation, provided: offer.isolation,
-      ),
-    }
+  } else if (missing_isolation |> count) > 0 {
+    IsolationNotProvided { missing: missing_isolation }
   } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
     ShapeNotCovered {
       required_threads: requirements.shape.hard.threads,
