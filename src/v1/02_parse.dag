@@ -4571,6 +4571,11 @@ fn parse_expr_no_brace(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: 0)
 }
 
+// MAINTENANCE DEBT: this retries after parse_prefix consumes the brace that the surrounding
+// if/match owns. Simply forbidding record literals in this path is not the construction fix:
+// `if x == Present { value: y } { ... }` has a legitimate record literal and a distinct branch
+// brace. Retire the retry when the expression parser carries a delimiter-aware boundary that can
+// distinguish those two brace roles before parsing, while preserving that valid record condition.
 fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprResult {
   let tok = token_stream_first(stream: tokens)
   let next = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
