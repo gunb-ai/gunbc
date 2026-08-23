@@ -1,5 +1,10 @@
 # E0308 repartition on current main (mechanism grain, M=1)
 
+**CORRECTED 2026-08-23:** this is an E0308 projection, not mechanism grain. `A-clone = 12` reaches
+E0277 and E0599 too and has cross-code population 22. All percentages below are code-local shares,
+not mechanism shares; the cost/staffing inference is withdrawn. See
+[`rustc_mechanism_partition_2026-08-23.md`](../rustc_mechanism_partition_2026-08-23.md).
+
 ## Completeness standing (reporting convention adopted 2026-08-22)
 
 ```
@@ -92,11 +97,11 @@ the mismatch and no pair-keyed rule can recover it.
   `v2_compiler_tokenize.rs`, now fails at `E0599` before inference reaches those expressions.
 - **New:** ELEM-COLL (4), BOX-WRAP (1).
 
-## Cost shape
+## Cost shape inside E0308 only — staffing inference withdrawn
 
-Four clusters cover 57% of sites; six more are single- or two-file and cover another 49. Tail = 7
+Four candidates cover 57% of E0308 manifestations; six more are single- or two-file and cover another 49. Tail = 7
 residue sites in 5 files. This is a small number of producer decisions with wide fanout, not a site-by-site
-tail — the same shape the 2026-08-21 board reported on a different population.
+tail inside this code. It does not rank cross-code mechanisms.
 
 ## The 182 in the commissioning brief
 
