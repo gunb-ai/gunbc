@@ -765,7 +765,30 @@ fn arm_present(v: JsonValue, key: String) -> Int {
   }
 }
 
+// THE ARM IS SELECTED ON PRESENCE, NOT ON READ SUCCESS, and that distinction is the whole repair.
+//
+// An earlier revision matched `read_string_member(v, "at")` and treated ANY failure as "this is the
+// uncontained arm". But a missing `at` and a MALFORMED `at` both arrive as MemberFailed, and they are
+// opposite facts: absence means the other arm applies, while duplication or a non-string means THIS
+// arm is broken. Conflating them sent a target carrying `at` twice into the uncontained read, where
+// `uncontained` is legitimately absent, and the document was refused as a wrong-shape `uncontained`
+// -- a diagnostic naming the wrong key, for a defect in the other one, with the duplication never
+// mentioned. The comment above target_arm_count asserted the opposite was already true; it was not
+// (found by review, and the witness that now executes it is the reason the claim is worth anything).
+//
+// Presence answers the applicability question and nothing else, so each arm reports its own failures
+// with its own key and neither can be reached by the other's defect.
 fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match json_object_unique_member(v: target_value, key: "at") {
+    JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
+    JsonMemberDuplicated { count: _ } =>
+      TargetDecodeFailed { cause: ClosureDocMemberDuplicated { key: "at" } }
+    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocNotAnObject }
+    JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
+  }
+}
+
+fn decode_at_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
   match read_string_member(v: target_value, key: "at") {
     MemberString { value: reference } =>
       match resolve_reference(positions: positions, reference: reference) {
@@ -773,17 +796,20 @@ fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> Tar
         Absent =>
           TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
       }
-    MemberFailed { cause: c } =>
-      match read_string_member(v: target_value, key: "uncontained") {
-        MemberString { value: hex } =>
-          match fnv1a64_structural_hex_digest(hex: hex) {
-            Present { value: digest } => TargetDecoded { target: digest }
-            Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
-          }
-        MemberFailed { cause: inner } => TargetDecodeFailed { cause: inner }
-        _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
-      }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
     _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "at" } }
+  }
+}
+
+fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
+  match read_string_member(v: target_value, key: "uncontained") {
+    MemberString { value: hex } =>
+      match fnv1a64_structural_hex_digest(hex: hex) {
+        Present { value: digest } => TargetDecoded { target: digest }
+        Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
+      }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
   }
 }
 
