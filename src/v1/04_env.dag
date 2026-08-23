@@ -27,6 +27,7 @@ type TypeEnv {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
+  authored_import_names: Map<String, Bool>
   symbol_index: SymbolIndex
   module_path: String
 }
@@ -98,7 +99,7 @@ fn empty_type_env() -> TypeEnv {
     inductive_fields: empty_map(),
     source_indices: empty_map(),
     intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
+    source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index()
   }
 }
@@ -1076,6 +1077,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       source_indices: e.source_indices,
       intern_table: e.intern_table,
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
+      authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index
     }
   )

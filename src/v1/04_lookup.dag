@@ -127,24 +127,27 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
   }
 }
 
-// DID THE AUTHOR NAME THIS NAME, OR DID A CLOSURE SUPPLY IT?
+// DID THE AUTHOR NAME THIS DECLARATION, OR DID A CLOSURE SUPPLY IT?
 //
-// Three states, and the third is the one that must not collapse into either other. This reuses
-// `type_env.source_visible_names` rather than minting a visibility notion beside it: that map is
-// already the corpus authority for "the author named this" (locals + kernel + selectively
-// imported names + all-module import exports), and `v1.compiler.infer_env`
-// `closure_independent_bare_free_call_note` already refuses global-bare and pool-coincidence
-// resolution for registered symbols absent from it. Same question, same authority, one seam over.
+// Three states, and the third must not collapse into either other. The authority is
+// `type_env.authored_import_names` -- the LISTED-import arm alone -- and NOT
+// `source_visible_names`, which is a union of both import arms and cannot answer this question.
+// An is_all import contributes every name in the imported module's interface plus every name
+// that module acquired through ancestry, so `import v2.std.collection` would put `map_get` in
+// source_visible_names without the author ever writing the word, and the ancestry half
+// contributes names transitively -- which IS the closure-supply case this wall exists to refuse,
+// arriving through a set whose name suggests the opposite. Membership in source_visible_names is
+// necessary for "the author named this" and not sufficient for it.
 type AuthorNamedVisibility
   = AuthorNamedThisName
   | AuthorNamedNothingForThisName
   | VisibilityUnobservable
 
 fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibility {
-  if map_is_empty(m: type_env.source_visible_names) {
+  if map_is_empty(m: type_env.authored_import_names) {
     VisibilityUnobservable
   } else {
-    if map_has(m: type_env.source_visible_names, key: name) {
+    if map_has(m: type_env.authored_import_names, key: name) {
       AuthorNamedThisName
     } else {
       AuthorNamedNothingForThisName
@@ -163,9 +166,9 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 //              a candidate in any decision. (Body-scope binders -- let, match binders, fn and
 //              lambda parameters -- shadow even this, one seam up, in
 //              `body_shadow_aware_func_sig`.)
-//   level 1a - NAMES THE AUTHOR EXPLICITLY BROUGHT INTO SCOPE (`type_env.source_visible_names`:
-//              the module's own declarations, the kernel surface, selectively imported names,
-//              and all-module import exports). An `import v2.std.collection { map_get }` NAMES
+//   level 1a - NAMES A LISTED IMPORT BROUGHT INTO SCOPE (`type_env.authored_import_names`,
+//              the specific_names arm alone -- an is_all import names a MODULE and belongs at
+//              1b with the rest of the closure). An `import v2.std.collection { map_get }` NAMES
 //              ONE EXACT DECLARATION, and every later bare call in that module is a reference to
 //              the thing the author named -- the same authorial act as a qualified reference,
 //              one line higher. The builtin surface is NOT a co-candidate here, because nothing
@@ -188,14 +191,14 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 // that distinction IS the defect, not a tiebreak between kinds of callable. An UNLISTED
 // declaration still does not beat the builtin; that is exactly the case that refuses.
 //
-// EMPTY source_visible_names IS IGNORANCE, NOT AN ANSWER. It is built at resolve time and is
+// AN EMPTY authored-names MAP IS IGNORANCE, NOT AN ANSWER. It is built at resolve time and is
 // not persisted onto TypedModule.type_env, so the emit-side consumer reads an empty map and
 // cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
 // DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
 // "nothing was named", which would make the wall strictest exactly where it knows least.
 // The class's rung is therefore per path and its minimum governs (DESIGN 4b): refuses on the
 // resolve path, silent on the emit path. Next-rung trigger for the emit row: persisting
-// source_visible_names onto TypedModule.type_env.
+// authored_import_names onto TypedModule.type_env.
 //
 // ORDER-INDEPENDENCE: within a level the answer is a function of the candidate SET. Import
 // order, parent-list order, map insertion order, and whether a module was reached through one
