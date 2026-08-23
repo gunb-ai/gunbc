@@ -441,7 +441,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
                 ),
                 assertions: Rc::new({
                     let mut __result = Vec::new();
-                    for cp in cps.clone().iter().cloned() {
+                    for cp in cps.iter().cloned() {
                         __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
                             target: target.clone(),
                             dag_name: cp.dag_name.clone(),
@@ -504,7 +504,7 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
             let mut __result = Vec::new();
-            for cp in cps.clone().iter().cloned() {
+            for cp in cps.iter().cloned() {
                 __result.extend(
                     (*match cp.is_copy.clone() {
                         Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
@@ -534,12 +534,12 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
 pub fn unique_inhabitants_for_template_tests(
     inhs: Rc<Vec<Rc<InhabitantDecl>>>,
 ) -> Rc<Vec<Rc<InhabitantDecl>>> {
-    inhs.clone().iter().cloned().fold(
+    inhs.iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
             if {
                 let mut __found = false;
-                for prev in acc.clone().iter().cloned() {
+                for prev in acc.iter().cloned() {
                     if ((prev.template.clone() == inh.template.clone())
                         && (prev.arity.clone() == inh.arity.clone()))
                     {
@@ -566,7 +566,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         ]);
         let assertions = Rc::new({
             let mut __result = Vec::new();
-            for t in targets.clone().iter().cloned() {
+            for t in targets.iter().cloned() {
                 __result.extend(
                     (*{
                         let inhs =
@@ -577,7 +577,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                             coerce_primitive_type(t.clone(), "String".to_string(), "".to_string());
                         Rc::new({
                             let mut __result = Vec::new();
-                            for inh in inhs.clone().iter().cloned() {
+                            for inh in inhs.iter().cloned() {
                                 __result.extend(
                                     (*if (inh.arity.clone() == 1) {
                                         {

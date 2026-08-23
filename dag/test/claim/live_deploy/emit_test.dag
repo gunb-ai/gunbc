@@ -43,14 +43,39 @@ import gunbc.managed_directory {
   managed_directory_permissions,
   srv1_attempt_state_directory,
 }
-import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
   tailscale_scoped_removal_capability,
+  TailscaleServeEndpoint,
+  tailscale_serve_enable_argv,
+  tailscale_serve_off_argv,
 }
 import extdeps.exec.command { shell_quote }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.apt { apt_install_argv }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import gunbc.live_deploy.operations {
+  install_directory_command,
+  rm_force_command,
+  rm_empty_directory_command,
+  rm_force_recursive_command,
+  systemctl_disable_now_command,
+  deploy_stage_install_command,
+  deploy_stage_write_expansion_command,
+  install_directory_owned_command,
+  install_file_owned_command,
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_restart_command,
+}
 import gunbc.live_deploy.emit {
+  deploy_receipt_command,
+  install_d_shared_mode,
+  path_parent_dir,
   RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   live_deploy_tree_sync_unit_for,
@@ -177,12 +202,12 @@ data attempt_state_mode_derivation_witness_note: String = "This asserts the DERI
 test fn witness_apply_provisions_attempt_state_root_owned() -> Bool {
   string_contains(
     s: witness_apply_script(),
-    pattern: join([
-      "install -d -m ", managed_directory_mode_octal(d: srv1_attempt_state_directory()),
-      " -o ", gunbc_service_user as String,
-      " -g ", gunbc_service_user as String,
-      " ", srv1_dispatch_attempt_state_root as String,
-    ], ""),
+    pattern: install_directory_owned_command(
+      mode: managed_directory_mode_octal(d: srv1_attempt_state_directory()) as NonEmptyStr,
+      owner: gunbc_service_user,
+      group: gunbc_service_user,
+      path: srv1_dispatch_attempt_state_root as String,
+    ),
   )
 }
 
@@ -197,8 +222,8 @@ test fn witness_attempt_state_mode_derives_to_owner_only() -> Bool {
 test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
   let script = witness_retract_script()
   let path = srv1_dispatch_attempt_state_root as String
-  let empty_dir_removal = string_contains(s: script, pattern: join(["rm -d ", path], ""))
-  let recursive_removal = string_contains(s: script, pattern: join(["rm -rf ", path], ""))
+  let empty_dir_removal = string_contains(s: script, pattern: rm_empty_directory_command(path: path))
+  let recursive_removal = string_contains(s: script, pattern: rm_force_recursive_command(path: path))
   empty_dir_removal && !recursive_removal
 }
 
@@ -223,10 +248,10 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tmux = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
-  string_contains(s: tailscale, pattern: "dpkg -s tailscale")
-    && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
-    && string_contains(s: tmux, pattern: "dpkg -s tmux")
-    && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
+  string_contains(s: tailscale, pattern: dpkg_status_command(package: package_tailscale))
+    && string_contains(s: tailscale, pattern: apt_install_command(package: package_tailscale, privileged: false))
+    && string_contains(s: tmux, pattern: dpkg_status_command(package: package_tmux))
+    && string_contains(s: tmux, pattern: apt_install_command(package: package_tmux, privileged: false))
 }
 
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
@@ -252,19 +277,19 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/gunbc")
-    && string_contains(s: sh, pattern: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\"")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" /etc/gunbc-tree-sync.env")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" /etc/systemd/system/gunbc-tree-sync.service")
-    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service")
-    && string_contains(s: sh, pattern: "sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
+    && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
+    && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
+    && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
+    && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
+    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
-    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg --https=443 8080")
-    && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
-    && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
-    && string_contains(s: sh, pattern: "fold=apply verdict=converged")
+    && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
 }
 
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
@@ -281,17 +306,20 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
 
-test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
-  let apply = witness_apply_script()
+test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
+  !string_contains(s: retract, pattern: "chown")
+    && !string_contains(s: retract, pattern: "rmdir")
+    && !string_contains(s: retract, pattern: "rsync")
+}
+
+test fn apply_script_and_tree_sync_unit_stay_within_ci_runner_grants() -> Bool {
+  let apply = witness_apply_script()
   let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
   !string_contains(s: apply, pattern: "chown")
-    && !string_contains(s: retract, pattern: "chown")
     && !string_contains(s: apply, pattern: "rmdir")
-    && !string_contains(s: retract, pattern: "rmdir")
     && !string_contains(s: apply, pattern: "rsync -a ")
     && !string_contains(s: apply, pattern: "\nrsync")
-    && !string_contains(s: retract, pattern: "rsync")
     && string_contains(s: unit, pattern: "Type=oneshot")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
@@ -310,7 +338,13 @@ data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for 
 
 test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   let sh = witness_apply_script()
-  string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
+  string_contains(
+    s: sh,
+    pattern: concat(
+      systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true),
+      " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }",
+    ),
+  )
 }
 
 data owned_only_removes_exactly_its_own_endpoint_note: String = "THIS CONJUNCT HAS NOW BEEN WRONG IN BOTH DIRECTIONS, which is what makes the third version worth stating carefully. It first REQUIRED `sudo -n tailscale serve reset` — a claim named owned_only demanding the one command on the host that is definitionally not owned-only (review 45207). It was then inverted to forbid every privileged tailscale invocation and require a refusal marker, which was honest about the emission but rested on the emission being right, and it was not: the refusal existed because the model asserted, without citation, that the CLI has no scoped removal.\\n\\nSo the pattern to watch is that a witness cannot be more correct than the claim it transcribes. Both earlier versions were faithful readings of the artifact in front of them; neither could have found that the artifact was answering the wrong question, and no strengthening of a string match over the retract would have surfaced it.\\n\\nThe assertion is now positive and specific: the retract issues the scoped `off` for the endpoint this deployment configured, and never the node-global reset. Requiring the exact off spelling is what ties it to the apply — the upstream demands every original flag on an off command, so a retract whose flags drift from its apply removes nothing while exiting zero, and that is the failure this conjunct exists to catch."
@@ -319,15 +353,18 @@ test fn witness_retract_script_owned_only() -> Bool {
   let sh = witness_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: sh, pattern: "then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
-    && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "sudo -n rm -rf /opt/gunbc/gunbc")
-    && !string_contains(s: sh, pattern: "rm -rf /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env")
-    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "fold=retract verdict=converged")
+    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: sh, pattern: concat("then ", concat(systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true), "; fi")))
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/opt/gunbc/bin/gunbc"]))
+    && string_contains(s: sh, pattern: rm_empty_directory_command(path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/gunbc"))
+    && !string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: [
+      "/etc/systemd/system/gunbc-tree-sync.service",
+      "/etc/gunbc-tree-sync.env",
+    ]))
+    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
 }
@@ -361,12 +398,12 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
     && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
     && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
-    && string_contains(s: sh, pattern: "fold=retract verdict=converged")
+    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
@@ -556,38 +593,45 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
 
 data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
-test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
+test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "--function roadmap_serve_handle ")
-    && string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
-    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
+}
+
+test fn emitted_twin_apply_touches_none_of_productions_effects() -> Bool {
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
 }
 
 data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOST NEEDED AND DID NOT HAVE (review 46541). Every other member's twin-safety follows from its PATH differing, which spec_owned_paths and the disjointness claim above already cover. The belt timer is the one member whose damage is not expressible as a path collision: both instances install their own unit at their own path, and the twin's unit can still drive PRODUCTION's tree, because what selects the tree is an argument inside the unit body rather than the unit's name. A path-level witness cannot see it, which is exactly the shape deployment_service_handler_note records for the serve handler.\\n\\nSo this reads the emitted body. The twin's belt unit must carry the twin's own spawn root, and must not carry production's — and because GUNBC_BELT_SPAWN_WORKDIR is fail-closed in belt_run_once_cli, a unit that carried neither would refuse at run time rather than silently default, which is the third state this pins shut.\\n\\nIt is discriminating in the direction that matters: deleting the Environment= line, or hardcoding either root in the emitter, reds it. The earlier conditional-membership shape would also have redded it, since the twin would have had no belt unit at all to carry a root."
 
-test fn twin_belt_timer_actuates_its_own_tree_not_productions() -> Bool {
+test fn twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
   let lab_instance = srv1_lab_dashboard_instance()
   let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let env = concat(belt_spawn_workdir_env_var as String, "=")
   string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
     && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
-    && string_contains(s: live, pattern: concat(env, live_instance.repo_root as String))
     && !(live_instance.repo_root == lab_instance.repo_root)
+}
+
+test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
+  let live_instance = srv1_live_dashboard_instance()
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: concat(concat(belt_spawn_workdir_env_var as String, "="), live_instance.repo_root as String))
 }
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
   let twin = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  !string_contains(s: twin, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+  !string_contains(s: twin, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "tailscale serve reset")
-    && !string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
+    && !string_contains(s: twin, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && string_contains(s: twin, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
 }
 
 
@@ -601,15 +645,30 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
 
 data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
 
-test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
+test fn production_apply_creates_productions_binary_parent_directory() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
+}
+
+test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions() -> Bool {
   let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/bin")
-    && !string_contains(s: twin, pattern: "install -d -m 0755 /opt/gunbc/bin")
-    && string_contains(
-         s: twin,
-         pattern: "install -d -m 0755 /home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin",
-       )
+  !string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_live_dashboard_instance()))
+    && string_contains(s: twin, pattern: serve_binary_parent_install_command(instance: srv1_lab_dashboard_instance()))
+}
+
+// The parent-directory command is DERIVED from the same instance field the binary path is derived
+// from, at the same two calls the emitter makes (path_parent_dir over instance.serve_binary, then
+// install_directory_command). Transcribing `install -d -m 0755 /opt/gunbc/bin` here — which this
+// claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
+// fact: the discriminating half is the PATH differing between the two instances, and a literal
+// re-states production's path a second time, which is exactly the half-parameterization
+// serve_binary_parent_was_a_literal_note records the cost of.
+fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
+  install_directory_command(
+    mode: install_d_shared_mode,
+    path: path_parent_dir(path: instance.serve_binary as String),
+    privileged: true,
+  )
 }
 
 data teardown_disposition_after_the_mapping_started_acting_note: String = "THIS CLAIM ASSERTED THE WRONG ANSWER CONFIDENTLY, and it is worth keeping the record of how. review 45217 correctly found that the emitter was hand-walking three coproducts to decide teardown, and the repair lifted the fact to the model and gave the refusal a CAUSE — so the claim then pinned TailscaleServeMapping to TeardownWouldExceedOwnership and treated that as the discriminating half.\\n\\nThe discrimination was real and the cause was fiction. The mapping refused because the model asserted, with no citation, that the CLI's only removal verb is node-global; the upstream documents scoped removal. So a well-formed claim, over a well-modeled fact, faithfully pinned a false premise — and every conjunct here would have stayed green for as long as the premise went unchecked. A cause is only as good as its grounding, and nothing in a claim can supply that.\\n\\nWHAT SURVIVES is the shape rather than the cause list: every OWNED artifact acts, and the one surviving refusal is about ownership rather than tooling. TeardownWouldExceedOwnership is deleted with its premise, so the cause coproduct has one variant and this claim can no longer discriminate between two — it discriminates between the two LAYERS instead, which is the distinction that was always load-bearing.\\n\\nThe acting arms are the ratchet: if a future change made refusal the default for an owned artifact — the safe-looking direction — this reds instead of silently converting the retract into a no-op that still prints its convergence receipt."
@@ -637,20 +696,29 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   mapping && binary && package
 }
 
-data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
+data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms required_floor_claim_cpu_safety_limit_ms and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
-test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
+test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
-  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
-  string_contains(s: live_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
+  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && !string_contains(s: live_apply, pattern: "--set-path")
-    && string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 --set-path=/srv1-lab-codex-feedback-v0 18081")
-    && !string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
-    && string_contains(s: live_retract, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
-    && !string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 off")
+}
+
+test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
+test fn production_retract_offs_its_own_endpoint() -> Bool {
+  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
+test fn twin_retract_offs_its_own_endpoint_and_not_productions() -> Bool {
+  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
@@ -695,13 +763,13 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
   let measured = witness_retract_script()
   string_contains(s: unobserved, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: unobserved, pattern: "UNOBSERVED")
-    && !string_contains(s: unobserved, pattern: "sudo -n tailscale")
+    && !string_contains(s: unobserved, pattern: emitted_tailscale_binary_word())
     && string_contains(s: too_old, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: too_old, pattern: "1.40.0")
     && !string_contains(s: too_old, pattern: "UNOBSERVED")
-    && !string_contains(s: too_old, pattern: "sudo -n tailscale")
+    && !string_contains(s: too_old, pattern: emitted_tailscale_binary_word())
     && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
-    && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: measured, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
 // Fleet converge timer is RETIRED from live_deploy apply membership (sleek-heron-218).
@@ -717,3 +785,52 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && !string_contains(s: live, pattern: "ctrl-fleet-converge.timer")
 }
+
+// The staged unit files stopped being here-documents. A here-doc ends at a line equal to its
+// delimiter, so the delimiter is a value the CONTENT could contain — a unit body carrying the
+// tag line would end the document early and the rest would run as shell. These REDs fail if any
+// of the five converted writes goes back to that form, and the positive conjunct is the reason
+// it is safe now: the body reaches the host as one quoted argument through the POSIX authority,
+// which has no terminator to collide with.
+test fn emit_RED_unit_files_are_not_written_through_here_documents() -> Bool {
+  let sh = witness_apply_script()
+  !string_contains(s: sh, pattern: "GUNBC_UNIT_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_TREE_SYNC_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_BELT_SERVICE_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_BELT_TIMER_EOF")
+    && !string_contains(s: sh, pattern: "GUNBC_TREE_REMOTE_EOF")
+}
+
+test fn emit_staged_unit_body_is_quoted_by_the_posix_authority() -> Bool {
+  let sh = witness_apply_script()
+  string_contains(s: sh, pattern: concat("'printf' '%s' ", concat("'", "[Unit]")))
+}
+
+// The tailscale endpoint spellings are DERIVED from extdeps.tailscale.serve's argv rows, the
+// same rows the emitter consumes, rather than transcribed. Transcribing them is what let an
+// invented `tailscale_serve_path` label sit in the model while the emitted command derived from
+// the port alone — endpoint_identity_is_the_collision_axis_note is the receipt.
+// The absence conjuncts below cannot be spelled as a derived COMMAND, because what they assert is
+// that no tailscale invocation was emitted at all — there is no particular command whose absence
+// says that. They assert the binary WORD as the grammar spells it instead, which every invocation
+// through the single authority must contain. Spelled `"sudo -n tailscale"` (as they were until the
+// emitter's quoting moved into the bash grammar) the conjunct became VACUOUS rather than red: the
+// unquoted prefix can no longer appear in any emitted script, so the absence held for a reason that
+// has nothing to do with the refusal these claims exist to pin.
+fn emitted_tailscale_binary_word() -> String {
+  posix_single_quote(spelling: "tailscale")
+}
+
+fn tailscale_enable_command(endpoint: TailscaleServeEndpoint) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: endpoint)),
+  )
+}
+
+fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: endpoint)),
+  )
+}
+
+

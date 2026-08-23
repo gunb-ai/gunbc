@@ -7,10 +7,13 @@ use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
+pub use crate::v1_compiler_artifact::RenderTarget;
+use crate::v1_compiler_artifact::RenderTarget::Rust;
+pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
+    child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -82,7 +85,7 @@ pub struct UniqueStringAccum {
 
 pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let acc = items.clone().iter().cloned().fold(
+        let acc = items.iter().cloned().fold(
             Rc::new(UniqueStringAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
@@ -187,6 +190,8 @@ pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
@@ -424,7 +429,7 @@ pub fn find_variant_parent(
 ) -> Option<String> {
     Rc::new({
         let mut __result = Vec::new();
-        for en in scope_enums.clone().iter().cloned() {
+        for en in scope_enums.iter().cloned() {
             if variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()) {
                 __result.push(en);
             }
@@ -529,7 +534,7 @@ pub fn enum_field_present_in_all_variants(
 ) -> bool {
     {
         let mut __all = true;
-        for variant in variants.clone().iter().cloned() {
+        for variant in variants.iter().cloned() {
             if !(has_child_named(variant.clone(), field_name.clone(), source_indices.clone())) {
                 __all = false;
                 break;
@@ -547,7 +552,7 @@ pub fn enum_field_type_consistent(
 ) -> bool {
     {
         let mut __all = true;
-        for variant in variants.clone().iter().cloned() {
+        for variant in variants.iter().cloned() {
             if !(match find_child_named(variant.clone(), field_name.clone(), source_indices.clone())
             {
                 Some(field_child) => node_type_equals(
@@ -582,7 +587,7 @@ pub fn build_enum_field_summaries(
         };
         let shared = Rc::new({
             let mut __result = Vec::new();
-            for field_name in first_field_names.clone().iter().cloned() {
+            for field_name in first_field_names.iter().cloned() {
                 if enum_field_present_in_all_variants(
                     variants.clone(),
                     field_name.clone(),
@@ -595,7 +600,7 @@ pub fn build_enum_field_summaries(
         });
         let consistent = Rc::new({
             let mut __result = Vec::new();
-            for field_name in shared.clone().iter().cloned() {
+            for field_name in shared.iter().cloned() {
                 if match find_first_enum_field_node(
                     variants.clone(),
                     field_name.clone(),
@@ -614,7 +619,7 @@ pub fn build_enum_field_summaries(
             }
             __result
         });
-        consistent.clone().iter().cloned().fold(
+        consistent.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| {
                 match find_first_enum_field_node(
@@ -643,7 +648,7 @@ pub fn build_field_type_map(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FieldTypeMapBuild> {
-    children.clone().iter().cloned().fold(
+    children.iter().cloned().fold(
         Rc::new(FieldTypeMapBuild {
             field_types: v1_rt::rc_empty_map::<String, String>(),
             import_surface_names: Rc::new(vec![]),
@@ -795,7 +800,7 @@ pub fn enum_variant_payload_surface_names(
 ) -> Rc<Vec<String>> {
     dedupe_nonempty_strings(Rc::new({
         let mut __result = Vec::new();
-        for v in variants.clone().iter().cloned() {
+        for v in variants.iter().cloned() {
             __result.extend(
                 (*{
                     let built = build_field_type_map(v.children.clone(), source_indices.clone());
@@ -812,7 +817,7 @@ pub fn enum_variant_payload_surface_names(
 pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let mut __found = false;
-        for v in variants.clone().iter().cloned() {
+        for v in variants.iter().cloned() {
             if {
                 let mut __found = false;
                 for child in v.children.clone().iter().cloned() {
@@ -836,46 +841,70 @@ pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     }
 }
 
-pub fn type_summary_reaches_fn(
+pub fn type_summary_or_structural_alias_reaches_fn(
     name: String,
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
     visited: Rc<BTreeSet<String>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v1_rt::set_contains(&visited, name.clone()) {
             false
         } else {
-            match v1_rt::map_get(&summaries, name.clone()) {
-                Some(s) => {
-                    if s.has_fn_fields.clone() {
-                        true
-                    } else {
-                        {
-                            let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
+            {
+                let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
+                match v1_rt::map_get(&summaries, name.clone()) {
+                    Some(s) => {
+                        (s.has_fn_fields.clone() || {
+                            let mut __found = false;
+                            for target in v1_rt::concat(
+                                Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
+                                s.field_import_surface_names.clone(),
+                            )
+                            .iter()
+                            .cloned()
                             {
-                                let mut __found = false;
-                                for ft in v1_rt::concat(
-                                    Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
-                                    s.field_import_surface_names.clone(),
-                                )
-                                .iter()
-                                .cloned()
-                                {
-                                    if type_summary_reaches_fn(
-                                        ft.clone(),
-                                        summaries.clone(),
-                                        v2.clone(),
-                                    ) {
-                                        __found = true;
-                                        break;
-                                    }
+                                if type_summary_or_structural_alias_reaches_fn(
+                                    target.clone(),
+                                    summaries.clone(),
+                                    structural_alias_fn_surface_names.clone(),
+                                    structural_alias_direct_fn_names.clone(),
+                                    v2.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
                                 }
-                                __found
                             }
-                        }
+                            __found
+                        })
+                    }
+                    None => {
+                        (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
+                            || match v1_rt::map_get(
+                                &structural_alias_fn_surface_names,
+                                name.clone(),
+                            ) {
+                                Some(targets) => {
+                                    let mut __found = false;
+                                    for target in targets.iter().cloned() {
+                                        if type_summary_or_structural_alias_reaches_fn(
+                                            target.clone(),
+                                            summaries.clone(),
+                                            structural_alias_fn_surface_names.clone(),
+                                            structural_alias_direct_fn_names.clone(),
+                                            v2.clone(),
+                                        ) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
+                                None => false,
+                            })
                     }
                 }
-                None => false,
             }
         }
     })
@@ -883,6 +912,8 @@ pub fn type_summary_reaches_fn(
 
 pub fn close_fn_fields(
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
 ) -> Rc<HashMap<String, Rc<TypeSummary>>> {
     Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
         summaries.clone(),
@@ -892,9 +923,11 @@ pub fn close_fn_fields(
         ) {
             Some(s) => {
                 if (!s.has_fn_fields.clone()
-                    && type_summary_reaches_fn(
+                    && type_summary_or_structural_alias_reaches_fn(
                         name.clone(),
                         summaries.clone(),
+                        structural_alias_fn_surface_names.clone(),
+                        structural_alias_direct_fn_names.clone(),
                         v1_rt::rc_empty_set::<String>(),
                     ))
                 {
@@ -921,6 +954,18 @@ pub fn close_fn_fields(
     )
 }
 
+pub fn structural_alias_direct_fn_names_with(
+    names: Rc<BTreeSet<String>>,
+    name: String,
+    include: bool,
+) -> Rc<BTreeSet<String>> {
+    if include.clone() {
+        v1_rt::rc_set_insert(names.clone(), name.clone())
+    } else {
+        names.clone()
+    }
+}
+
 pub fn add_emit_item_summary(
     state: Rc<EmitInfoBuildState>,
     item: Rc<Node>,
@@ -928,6 +973,43 @@ pub fn add_emit_item_summary(
 ) -> Rc<EmitInfoBuildState> {
     {
         let decl_name = authored_name_at(source_indices.clone(), item.clone());
+        let alias_rhs = resolved_type(item.clone());
+        let item_decl_file = decl_identity_file(item.clone());
+        let alias_rhs_name = authored_name_at(source_indices.clone(), alias_rhs.clone());
+        let is_type_alias = (((((((decl_name.clone() != "".to_string())
+            && (item.connective.clone() == Connective::NoConnective))
+            && (item.body.clone() == None))
+            && ((item.params.clone().len() as i64) == 0))
+            && (item.transport.clone() == None))
+            && ((item.children.clone().len() as i64) == 0))
+            && (alias_rhs_name.clone() != "Unit".to_string()));
+        let is_structural_alias = if is_type_alias.clone() {
+            match lookup_checkpoint(
+                RenderTarget::Rust,
+                decl_name.clone(),
+                item_decl_file.clone(),
+            ) {
+                Some(_) => false,
+                None => true,
+            }
+        } else {
+            false
+        };
+        let structural_alias_fn_surface_names = if is_structural_alias.clone() {
+            v1_rt::rc_map_insert(
+                state.structural_alias_fn_surface_names.clone(),
+                decl_name.clone(),
+                collect_type_node_import_surface_names(alias_rhs.clone(), source_indices.clone()),
+            )
+        } else {
+            state.structural_alias_fn_surface_names.clone()
+        };
+        let prior_direct_fn_names = state.structural_alias_direct_fn_names.clone();
+        let structural_alias_direct_fn_names = structural_alias_direct_fn_names_with(
+            prior_direct_fn_names.clone(),
+            decl_name.clone(),
+            (is_structural_alias.clone() && (alias_rhs.connective.clone() == Connective::Arrow)),
+        );
         let state = if ((decl_name.clone() != "".to_string())
             && emit_graph_records_type_decl(item.clone(), source_indices.clone()))
         {
@@ -939,6 +1021,8 @@ pub fn add_emit_item_summary(
                     item.clone(),
                 ),
                 fn_decl_items: state.fn_decl_items.clone(),
+                structural_alias_fn_surface_names: structural_alias_fn_surface_names.clone(),
+                structural_alias_direct_fn_names: structural_alias_direct_fn_names.clone(),
             })
         } else {
             state.clone()
@@ -954,6 +1038,8 @@ pub fn add_emit_item_summary(
                     decl_name.clone(),
                     item.clone(),
                 ),
+                structural_alias_fn_surface_names: state.structural_alias_fn_surface_names.clone(),
+                structural_alias_direct_fn_names: state.structural_alias_direct_fn_names.clone(),
             })
         } else {
             state.clone()
@@ -1043,6 +1129,12 @@ pub fn add_emit_item_summary(
                     type_summaries: next_summaries.clone(),
                     type_decl_items: state.type_decl_items.clone(),
                     fn_decl_items: state.fn_decl_items.clone(),
+                    structural_alias_fn_surface_names: state
+                        .structural_alias_fn_surface_names
+                        .clone(),
+                    structural_alias_direct_fn_names: state
+                        .structural_alias_direct_fn_names
+                        .clone(),
                 })
             }
             None => state.clone(),

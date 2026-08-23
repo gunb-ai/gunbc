@@ -24,6 +24,10 @@ import gunbc.gitignore_model {
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted,
   PythonProbeScriptAllowlisted,
   FloorCutNameResolutionPartitionScriptAllowlisted,
+  ShadowDirectCallArgConformanceSummarizeScriptAllowlisted,
+  ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted,
+  ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted,
+  E0308ClassifySitesScriptAllowlisted,
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
@@ -90,6 +94,10 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
     PythonProbeScriptAllowlisted => "!docs/probes/e0369_b1_operator_classify.py"
     FloorCutNameResolutionPartitionScriptAllowlisted => "!docs/probes/floor_cut_name_resolution_partition.py"
+    ShadowDirectCallArgConformanceSummarizeScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/summarize.py"
+    ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/adjudicate.py"
+    ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/join_board.py"
+    E0308ClassifySitesScriptAllowlisted => "!docs/probes/e0308_classify_sites.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"

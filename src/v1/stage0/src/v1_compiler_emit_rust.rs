@@ -3,6 +3,7 @@
 
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
+use self::IterOwnedReceiverCloneDisposition::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -43,23 +44,34 @@ pub use crate::v1_compiler_coercion::{
     type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::BoundOperation::{
+    BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
+};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
-pub use crate::v1_compiler_emit::{
-    compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
-    emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_map_type, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    emit_unmodeled_file_transport_refusal, escape_rust_interp_text, extract_modifier_names,
-    has_nested_records_node, has_service_items, is_null_coalesce, is_self_recursive,
-    is_tco_eligible, is_tco_identity_passthrough, lookup_item, module_emit_scope,
-    order_typed_call_args, render_node_type, render_tuple_parts, rust_literal_for_pattern,
-    scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
-    service_field_decls, tco_reassign_core, typed_named_arg_matches,
+use crate::v1_compiler_emit::FileResultChannel::{
+    FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
+};
+use crate::v1_compiler_emit::FileVerb::{
+    FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    bind_operation_transport, child_from_key, compute_service_fields,
+    effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
+    emit_error_expr, emit_ident, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
+    emit_let_binding_annotated, emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type,
+    emit_null_coalesce, emit_return, emit_shared_expr, emit_shared_tco_expr, emit_simple_expr,
+    emit_string_literal, emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared,
+    emit_unary_op, escape_rust_interp_text, extract_modifier_names, has_nested_records_node,
+    has_service_items, is_null_coalesce, is_self_recursive, is_tco_eligible,
+    is_tco_identity_passthrough, lookup_item, module_emit_scope, order_typed_call_args,
+    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
+    tco_reassign_core, transport_binding_refusal_fact, typed_named_arg_matches,
+    unwrap_single_field_product,
+};
+pub use crate::v1_compiler_emit::{
+    BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
+    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -172,15 +184,15 @@ pub use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
     find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
     transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
@@ -1071,7 +1083,7 @@ pub fn rust_witness_type_arg_from_holds_value_field(
 ) -> Option<String> {
     match Rc::new({
         let mut __result = Vec::new();
-        for f in fields.clone().iter().cloned() {
+        for f in fields.iter().cloned() {
             if (field_init_node_name_at(f.clone(), source_indices.clone()) == "value".to_string()) {
                 __result.push(f);
             }
@@ -1338,7 +1350,7 @@ pub fn type_param_is_collection_element_in_values(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
                 let te = param_node_type_expr(vp.clone());
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
@@ -1369,7 +1381,7 @@ pub fn is_value_variant_type_arg(
 ) -> bool {
     if {
         let mut __found = false;
-        for g in generic_param_names.clone().iter().cloned() {
+        for g in generic_param_names.iter().cloned() {
             if (g.clone() == name.clone()) {
                 __found = true;
                 break;
@@ -1941,7 +1953,7 @@ pub fn render_rust_decl_type(
                     && ((n.children.clone().len() as i64) == 0))
                     && {
                         let mut __found = false;
-                        for g in generic_param_names.clone().iter().cloned() {
+                        for g in generic_param_names.iter().cloned() {
                             if (g.clone() == name.clone()) {
                                 __found = true;
                                 break;
@@ -2517,7 +2529,7 @@ pub fn render_rust_alias_rhs_type(
             && ((n.children.clone().len() as i64) == 0))
             && {
                 let mut __found = false;
-                for g in generic_param_names.clone().iter().cloned() {
+                for g in generic_param_names.iter().cloned() {
                     if (g.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -2808,7 +2820,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 pub fn type_var_in_fn_generic_scope(id: String, generic_param_names: Rc<Vec<String>>) -> bool {
     {
         let mut __found = false;
-        for g in generic_param_names.clone().iter().cloned() {
+        for g in generic_param_names.iter().cloned() {
             if (g.clone() == id.clone()) {
                 __found = true;
                 break;
@@ -3945,7 +3957,7 @@ pub fn module_imports_std_serialization_coproduct_wire_contract(
 ) -> bool {
     {
         let mut __found = false;
-        for imp in imports.clone().iter().cloned() {
+        for imp in imports.iter().cloned() {
             if ((authored_name_at(source_indices.clone(), imp.clone())
                 == "std.serialization".to_string())
                 && (import_is_all(imp.clone()) || {
@@ -3994,7 +4006,7 @@ pub fn module_defines_local_coproduct_wire_contract_type(
 ) -> bool {
     {
         let mut __found = false;
-        for item in module_items.clone().iter().cloned() {
+        for item in module_items.iter().cloned() {
             if (((is_type_def_item(item.clone())
                 || is_type_alias_item(item.clone(), source_indices.clone()))
                 || is_type_decl_item(item.clone(), source_indices.clone()))
@@ -4061,7 +4073,7 @@ pub fn emit_coproduct_wire_contract_target_validation(
             Some(target_name) => {
                 if {
                     let mut __found = false;
-                    for name in local_coproduct_names.clone().iter().cloned() {
+                    for name in local_coproduct_names.iter().cloned() {
                         if (name.clone() == target_name.clone()) {
                             __found = true;
                             break;
@@ -4207,7 +4219,7 @@ pub fn resolve_local_coproduct_wire_policy(
 }
 
 pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
         |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
@@ -4244,7 +4256,7 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
 pub fn build_qualified_item_registry(
     modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         |acc: Rc<HashMap<String, Rc<ItemInfo>>>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
@@ -4490,7 +4502,7 @@ pub fn augment_scoped_data_item_index_with_imports(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
-    imports.clone().iter().cloned().fold(
+    imports.iter().cloned().fold(
         scoped.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
             let import_path = authored_name_at(source_indices.clone(), imp.clone());
@@ -4741,7 +4753,7 @@ pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<Ty
                 let mut __result = Vec::new();
                 for child in Rc::new({
                     let mut __result = Vec::new();
-                    for child in children.clone().iter().cloned() {
+                    for child in children.iter().cloned() {
                         if ((child.children.clone().len() as i64) == 0) {
                             __result.push(child);
                         }
@@ -4782,7 +4794,7 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
 ) -> bool {
     {
         let mut __found = false;
-        for item in items.clone().iter().cloned() {
+        for item in items.iter().cloned() {
             if ((authored_name_at(source_indices.clone(), item.clone()) == vname.clone())
                 && (is_type_alias_item(item.clone(), source_indices.clone())
                     || is_type_decl_item(item.clone(), source_indices.clone())))
@@ -4801,7 +4813,7 @@ pub fn collect_phantom_zst_marker_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
+        for item in items.iter().cloned() {
             if (is_type_def_item(item.clone()) && {
                 let mut __all = true;
                 for c in item.children.clone().iter().cloned() {
@@ -4829,7 +4841,7 @@ pub fn collect_phantom_zst_marker_names(
                         if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
                             && !{
                                 let mut __found = false;
-                                for n in inner.clone().iter().cloned() {
+                                for n in inner.iter().cloned() {
                                     if (n.clone() == vname.clone()) {
                                         __found = true;
                                         break;
@@ -5026,7 +5038,7 @@ pub fn build_shared_types(
             }
             __result
         });
-        collection_keys.clone().iter().cloned().fold(
+        collection_keys.iter().cloned().fold(
             user_shared.clone(),
             |acc: Rc<BTreeSet<String>>, key: String| {
                 let pascal = to_pascal(key.clone());
@@ -5051,7 +5063,7 @@ pub struct OwnershipBuildResult {
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
-        let callable_set = modules.clone().iter().cloned().fold(
+        let callable_set = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
@@ -5078,7 +5090,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
         );
         let proofs = Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
@@ -5135,7 +5147,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
             }
             __result
         });
-        proofs.clone().iter().cloned().fold(
+        proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
                 ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
@@ -5173,7 +5185,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
 pub fn group_unlisted_type_names(
     diags: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    diags.clone().iter().cloned().fold(
+    diags.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
             .diagnostic
@@ -5233,7 +5245,7 @@ pub fn v1_map_key_seed_type_exprs(
         });
         let signature_exprs = Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
@@ -5259,7 +5271,7 @@ pub fn v1_map_key_seed_type_exprs(
 pub fn merged_module_source_indices(
     modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
@@ -5349,7 +5361,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
                 ));
-                svc_items.clone().iter().cloned().fold(
+                svc_items.iter().cloned().fold(
                     acc,
                     |a: Rc<HashMap<String, String>>, svc: Rc<Node>| {
                         v1_rt::rc_map_insert(
@@ -5407,7 +5419,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for p in test_projections.clone().iter().cloned() {
+                            for p in test_projections.iter().cloned() {
                                 if (p.module_name.clone()
                                     == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
@@ -5525,7 +5537,7 @@ pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<Text
         let declared = v1_rt::concat(
             Rc::new({
                 let mut __result = Vec::new();
-                for f in files.clone().iter().cloned() {
+                for f in files.iter().cloned() {
                     __result.push(f.path.clone());
                 }
                 __result
@@ -5535,7 +5547,7 @@ pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<Text
         let lines = Rc::new({
             let mut __result = Vec::new();
             for path in Rc::new({
-                let mut __sorted: Vec<_> = declared.clone().iter().cloned().collect();
+                let mut __sorted: Vec<_> = declared.iter().cloned().collect();
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|path: String| path.clone())(a.clone());
                     let __kb = (|path: String| path.clone())(b.clone());
@@ -5597,7 +5609,7 @@ pub fn closure_stub_reference_self_match_note() -> String {
 pub fn emitted_files_carry_use_line(files: Rc<Vec<Rc<TextFile>>>, line: String) -> bool {
     {
         let mut __found = false;
-        for f in files.clone().iter().cloned() {
+        for f in files.iter().cloned() {
             if v1_rt::string_contains(
                 &f.content.clone(),
                 v1_rt::concat("\n".to_string(), line.clone()),
@@ -5638,7 +5650,7 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
         );
         {
             let mut __found = false;
-            for f in files.clone().iter().cloned() {
+            for f in files.iter().cloned() {
                 if (f.path.clone() == expected.clone()) {
                     __found = true;
                     break;
@@ -5657,7 +5669,7 @@ pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool
         );
         {
             let mut __found = false;
-            for f in files.clone().iter().cloned() {
+            for f in files.iter().cloned() {
                 if (f.path.clone() == expected.clone()) {
                     __found = true;
                     break;
@@ -5749,7 +5761,7 @@ pub fn is_lib_rs_macro_provider(mod_name: String) -> bool {
 pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in mod_names.clone().iter().cloned() {
+        for n in mod_names.iter().cloned() {
             if !is_lib_rs_macro_provider(n.clone()) {
                 __result.push(n);
             }
@@ -5762,7 +5774,7 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
     v1_rt::concat(
         Rc::new({
             let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
+            for n in mod_names.iter().cloned() {
                 if is_lib_rs_macro_provider(n.clone()) {
                     __result.push(n);
                 }
@@ -5771,7 +5783,7 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
         }),
         Rc::new({
             let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
+            for n in mod_names.iter().cloned() {
                 if !is_lib_rs_macro_provider(n.clone()) {
                     __result.push(n);
                 }
@@ -5788,7 +5800,6 @@ pub fn emit_lib_rs_from_files(
     {
         let file_derived_names = Rc::new(
             all_module_files
-                .clone()
                 .iter()
                 .cloned()
                 .map(lib_rs_mod_name_from_file)
@@ -5801,7 +5812,6 @@ pub fn emit_lib_rs_from_files(
         };
         let mod_decls = Rc::new(
             mod_names
-                .clone()
                 .iter()
                 .cloned()
                 .map(emit_lib_rs_mod_decl)
@@ -5900,7 +5910,7 @@ pub fn emit_module(
 pub fn build_module_export_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
             let m_name = authored_name_at(
@@ -5911,7 +5921,7 @@ pub fn build_module_export_sets(
                 tm.module.clone(),
                 tm.type_env.clone().source_indices.clone(),
             );
-            let exported_set = exported.clone().iter().cloned().fold(
+            let exported_set = exported.iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, bool>(),
                 |inner: Rc<HashMap<String, bool>>, n: String| {
                     v1_rt::rc_map_insert(inner, n.clone(), true)
@@ -6179,7 +6189,7 @@ pub fn record_lit_ref_names(
             };
             let ctor_names = Rc::new({
                 let mut __result = Vec::new();
-                for t in tn_list.clone().iter().cloned() {
+                for t in tn_list.iter().cloned() {
                     __result.extend(
                         (*record_lit_resolved_ctor_import_names(
                             t.clone(),
@@ -6377,7 +6387,7 @@ pub fn collect_items_field_import_surface_names(
         let variant_to_enum = emit_info.variant_to_enum.clone();
         unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
@@ -6727,7 +6737,7 @@ pub fn collect_rc_pattern_prelude_parent_enums(
                 } else {
                     Rc::new({
                         let mut __result = Vec::new();
-                        for fb in fbs.clone().iter().cloned() {
+                        for fb in fbs.iter().cloned() {
                             __result.extend(
                                 (*{
                                     let fb_name =
@@ -7243,7 +7253,7 @@ pub fn expand_variant_payload_struct_imports(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in names.clone().iter().cloned() {
+        for n in names.iter().cloned() {
             __result.extend(
                 (*match v1_rt::map_get(&variant_to_enum, n.clone()) {
                     Some(enum_name) => {
@@ -7397,7 +7407,7 @@ pub fn reference_derived_use_lines(
     {
         let module_source = match Rc::new({
             let mut __result = Vec::new();
-            for tm in typed_modules.clone().iter().cloned() {
+            for tm in typed_modules.iter().cloned() {
                 if (authored_name_at(source_indices.clone(), tm.module.clone())
                     == this_module_name.clone())
                 {
@@ -7414,7 +7424,7 @@ pub fn reference_derived_use_lines(
         };
         let value_names = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*collect_value_ref_names(
                         item.clone(),
@@ -7430,7 +7440,7 @@ pub fn reference_derived_use_lines(
         }));
         let type_surface_names = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*collect_item_emit_surface_names(
                         item.clone(),
@@ -7455,7 +7465,7 @@ pub fn reference_derived_use_lines(
         );
         let emitter_attested_anon_heads = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*collect_anonymous_record_lit_heads(
                         item.clone(),
@@ -7492,7 +7502,7 @@ pub fn reference_derived_use_lines(
                         emit_info.variant_to_enum.clone(),
                     ) || {
                         let mut __found = false;
-                        for h in emitter_attested_anon_heads.clone().iter().cloned() {
+                        for h in emitter_attested_anon_heads.iter().cloned() {
                             if (h.clone() == name.clone()) {
                                 __found = true;
                                 break;
@@ -7516,7 +7526,7 @@ pub fn reference_derived_use_lines(
         });
         let local_decl_names = Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*{
                         let nm = authored_name_at(source_indices.clone(), item.clone());
@@ -7546,7 +7556,7 @@ pub fn reference_derived_use_lines(
         );
         let unlisted = Rc::new({
             let mut __result = Vec::new();
-            for name in candidates.clone().iter().cloned() {
+            for name in candidates.iter().cloned() {
                 __result.extend(
                     (*if (emit_map_has(already.clone(), name.clone())
                         || is_kernel_type(name.clone()))
@@ -7581,7 +7591,7 @@ pub fn reference_derived_use_lines(
         });
         let providers = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for name in unlisted.clone().iter().cloned() {
+            for name in unlisted.iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&registry, name.clone()) {
                         Some(info) => Rc::new(vec![info.module_name.clone()]),
@@ -7595,12 +7605,12 @@ pub fn reference_derived_use_lines(
         }));
         Rc::new({
             let mut __result = Vec::new();
-            for provider in providers.clone().iter().cloned() {
+            for provider in providers.iter().cloned() {
                 __result.extend(
                     (*{
                         let names = Rc::new({
                             let mut __result = Vec::new();
-                            for name in unlisted.clone().iter().cloned() {
+                            for name in unlisted.iter().cloned() {
                                 if match v1_rt::map_get(&registry, name.clone()) {
                                     Some(info) => (info.module_name.clone() == provider.clone()),
                                     None => false,
@@ -7635,7 +7645,7 @@ pub fn reference_derived_use_lines(
                         };
                         let emitted_here = Rc::new({
                             let mut __result = Vec::new();
-                            for l in block_lines.clone().iter().cloned() {
+                            for l in block_lines.iter().cloned() {
                                 __result.extend(
                                     (*imported_names_in_use_line(l.clone())).iter().cloned(),
                                 );
@@ -7644,11 +7654,11 @@ pub fn reference_derived_use_lines(
                         });
                         let fallback = Rc::new({
                             let mut __result = Vec::new();
-                            for nm in names.clone().iter().cloned() {
+                            for nm in names.iter().cloned() {
                                 __result.extend(
                                     (*if ({
                                         let mut __found = false;
-                                        for e in emitted_here.clone().iter().cloned() {
+                                        for e in emitted_here.iter().cloned() {
                                             if (e.clone() == nm.clone()) {
                                                 __found = true;
                                                 break;
@@ -8019,7 +8029,7 @@ pub fn emit_module_full(
         };
         let wire_contract_item = Rc::new({
             let mut __result = Vec::new();
-            for i in wire_context_items.clone().iter().cloned() {
+            for i in wire_context_items.iter().cloned() {
                 if (is_data_def_item(i.clone())
                     && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
                         == "wire_contract".to_string()))
@@ -8187,7 +8197,7 @@ pub struct ModuleIndex {
 
 pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
     {
-        let by_name = modules.clone().iter().cloned().fold(
+        let by_name = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = authored_name_at(
@@ -8200,7 +8210,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
                 }
             },
         );
-        let by_filename = modules.clone().iter().cloned().fold(
+        let by_filename = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = module_to_filename(authored_name_at(
@@ -8278,7 +8288,7 @@ pub fn module_name_from_filename(
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
         Some(mods) => Rc::new({
             let mut __result = Vec::new();
-            for tm in mods.clone().iter().cloned() {
+            for tm in mods.iter().cloned() {
                 __result.push(authored_name_at(source_indices.clone(), tm.module.clone()));
             }
             __result
@@ -8299,7 +8309,7 @@ pub fn has_physical_type_def_in_module_filename(
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
         Some(mods) => {
             let mut __found = false;
-            for tm in mods.clone().iter().cloned() {
+            for tm in mods.iter().cloned() {
                 if {
                     let mut __found = false;
                     for item in tm.items.clone().iter().cloned() {
@@ -8515,7 +8525,7 @@ pub fn name_in_transitive_export_surface(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
             let mut __found = false;
-            for v in visited.clone().iter().cloned() {
+            for v in visited.iter().cloned() {
                 if (v.clone() == module_name.clone()) {
                     __found = true;
                     break;
@@ -8610,7 +8620,7 @@ pub fn reexport_source_module_name_with_visited(
     loop {
         if {
             let mut __found = false;
-            for v in visited.clone().iter().cloned() {
+            for v in visited.iter().cloned() {
                 if (v.clone() == import_module.clone()) {
                     __found = true;
                     break;
@@ -8925,7 +8935,7 @@ pub fn wildcard_import_pool_surface_names(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
             let mut __found = false;
-            for v in visited.clone().iter().cloned() {
+            for v in visited.iter().cloned() {
                 if (v.clone() == module_name.clone()) {
                     __found = true;
                     break;
@@ -9447,7 +9457,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
         let mut __result = Vec::new();
         for imp in Rc::new({
             let mut __result = Vec::new();
-            for imp in imports.clone().iter().cloned() {
+            for imp in imports.iter().cloned() {
                 if {
                     let mut __found = false;
                     for n in import_specific_names_at(imp.clone(), source_indices.clone())
@@ -9483,7 +9493,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                 let mut __result = Vec::new();
                 for imp in Rc::new({
                     let mut __result = Vec::new();
-                    for imp in imports.clone().iter().cloned() {
+                    for imp in imports.iter().cloned() {
                         if import_is_all(imp.clone()) {
                             __result.push(imp);
                         }
@@ -10088,7 +10098,7 @@ pub fn import_variant_parent_for_name(
     } else {
         if {
             let mut __found = false;
-            for e in import_module_enums.clone().iter().cloned() {
+            for e in import_module_enums.iter().cloned() {
                 if (e.clone() == n.clone()) {
                     __found = true;
                     break;
@@ -10154,10 +10164,10 @@ pub fn emit_specific_import_block(
         let type_summaries = emit_info.type_summaries.clone();
         let deduped_names = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for n in filtered_names.clone().iter().cloned() {
+            for n in filtered_names.iter().cloned() {
                 if {
                     let mut __all = true;
-                    for ln in local_names.clone().iter().cloned() {
+                    for ln in local_names.iter().cloned() {
                         if !(ln.clone() != n.clone()) {
                             __all = false;
                             break;
@@ -10185,7 +10195,7 @@ pub fn emit_specific_import_block(
                 );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
-                    for n in deduped_names.clone().iter().cloned() {
+                    for n in deduped_names.iter().cloned() {
                         if if is_import_graph_type_name(
                             n.clone(),
                             import_module.clone(),
@@ -10201,7 +10211,7 @@ pub fn emit_specific_import_block(
                             if is_known_variant(type_summaries.clone(), n.clone()) {
                                 {
                                     let mut __found = false;
-                                    for e in import_module_enums.clone().iter().cloned() {
+                                    for e in import_module_enums.iter().cloned() {
                                         if (e.clone() == n.clone()) {
                                             __found = true;
                                             break;
@@ -10236,10 +10246,10 @@ pub fn emit_specific_import_block(
                 });
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
-                    for n in deduped_names.clone().iter().cloned() {
+                    for n in deduped_names.iter().cloned() {
                         if {
                             let mut __found = false;
-                            for e in import_module_enums.clone().iter().cloned() {
+                            for e in import_module_enums.iter().cloned() {
                                 if (e.clone() == n.clone()) {
                                     __found = true;
                                     break;
@@ -10256,7 +10266,7 @@ pub fn emit_specific_import_block(
                     let mut __result = Vec::new();
                     for p in Rc::new({
                         let mut __result = Vec::new();
-                        for n in deduped_names.clone().iter().cloned() {
+                        for n in deduped_names.iter().cloned() {
                             __result.push(import_variant_parent_for_name(
                                 n.clone(),
                                 import_module.clone(),
@@ -10284,7 +10294,7 @@ pub fn emit_specific_import_block(
                 let parent_list = unique_strings(all_parents.clone());
                 let non_variant_top = Rc::new({
                     let mut __result = Vec::new();
-                    for n in top_level.clone().iter().cloned() {
+                    for n in top_level.iter().cloned() {
                         if if (import_variant_parent_for_name(
                             n.clone(),
                             import_module.clone(),
@@ -10303,7 +10313,7 @@ pub fn emit_specific_import_block(
                             if is_known_variant(type_summaries.clone(), n.clone()) {
                                 {
                                     let mut __found = false;
-                                    for e in import_module_enums.clone().iter().cloned() {
+                                    for e in import_module_enums.iter().cloned() {
                                         if (e.clone() == n.clone()) {
                                             __found = true;
                                             break;
@@ -10323,10 +10333,10 @@ pub fn emit_specific_import_block(
                 let direct_names = unique_strings(non_variant_top.clone());
                 let local_parent_names = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parent_list.clone().iter().cloned() {
+                    for p in parent_list.iter().cloned() {
                         if {
                             let mut __found = false;
-                            for n in deduped_names.clone().iter().cloned() {
+                            for n in deduped_names.iter().cloned() {
                                 if match find_variant_parent_in_module(
                                     n.clone(),
                                     import_module.clone(),
@@ -10352,10 +10362,10 @@ pub fn emit_specific_import_block(
                     let mut __result = Vec::new();
                     for p in Rc::new({
                         let mut __result = Vec::new();
-                        for p in parent_list.clone().iter().cloned() {
+                        for p in parent_list.iter().cloned() {
                             if {
                                 let mut __all = true;
-                                for n in direct_names.clone().iter().cloned() {
+                                for n in direct_names.iter().cloned() {
                                     if !(n.clone() != p.clone()) {
                                         __all = false;
                                         break;
@@ -10373,7 +10383,7 @@ pub fn emit_specific_import_block(
                     {
                         if ({
                             let mut __found = false;
-                            for n in deduped_names.clone().iter().cloned() {
+                            for n in deduped_names.iter().cloned() {
                                 if match find_variant_parent_in_module(
                                     n.clone(),
                                     import_module.clone(),
@@ -10402,7 +10412,7 @@ pub fn emit_specific_import_block(
                 ));
                 let type_direct_names = Rc::new({
                     let mut __result = Vec::new();
-                    for n in merged_direct_names.clone().iter().cloned() {
+                    for n in merged_direct_names.iter().cloned() {
                         if is_import_graph_type_name(
                             n.clone(),
                             import_module.clone(),
@@ -10420,7 +10430,7 @@ pub fn emit_specific_import_block(
                 });
                 let other_direct_names = Rc::new({
                     let mut __result = Vec::new();
-                    for n in merged_direct_names.clone().iter().cloned() {
+                    for n in merged_direct_names.iter().cloned() {
                         if (is_import_graph_type_name(
                             n.clone(),
                             import_module.clone(),
@@ -10439,7 +10449,7 @@ pub fn emit_specific_import_block(
                 });
                 let type_direct_mods = unique_strings(Rc::new({
                     let mut __result = Vec::new();
-                    for n in type_direct_names.clone().iter().cloned() {
+                    for n in type_direct_names.iter().cloned() {
                         __result.push(graph_type_import_module_filename(
                             n.clone(),
                             import_module.clone(),
@@ -10454,11 +10464,11 @@ pub fn emit_specific_import_block(
                 }));
                 let type_direct_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for def_mod in type_direct_mods.clone().iter().cloned() {
+                    for def_mod in type_direct_mods.iter().cloned() {
                         __result.push({
                             let group = Rc::new({
                                 let mut __result = Vec::new();
-                                for n in type_direct_names.clone().iter().cloned() {
+                                for n in type_direct_names.iter().cloned() {
                                     if (graph_type_import_module_filename(
                                         n.clone(),
                                         import_module.clone(),
@@ -10478,7 +10488,7 @@ pub fn emit_specific_import_block(
                                 {
                                     let names_str = Rc::new({
                                         let mut __result = Vec::new();
-                                        for n in group.clone().iter().cloned() {
+                                        for n in group.iter().cloned() {
                                             __result.push(emit_import_name(
                                                 n.clone(),
                                                 registry.clone(),
@@ -10515,7 +10525,7 @@ pub fn emit_specific_import_block(
                     {
                         let names_str = Rc::new({
                             let mut __result = Vec::new();
-                            for n in other_direct_names.clone().iter().cloned() {
+                            for n in other_direct_names.iter().cloned() {
                                 __result.push(emit_import_name(n.clone(), registry.clone()));
                             }
                             __result
@@ -10544,7 +10554,7 @@ pub fn emit_specific_import_block(
                 let direct_lines = v1_rt::concat(
                     Rc::new({
                         let mut __result = Vec::new();
-                        for l in type_direct_lines.clone().iter().cloned() {
+                        for l in type_direct_lines.iter().cloned() {
                             if (l.clone() != "".to_string()) {
                                 __result.push(l);
                             }
@@ -10559,11 +10569,11 @@ pub fn emit_specific_import_block(
                 );
                 let parent_defining_mods = unique_strings(Rc::new({
                     let mut __result = Vec::new();
-                    for p in remote_parent_list.clone().iter().cloned() {
+                    for p in remote_parent_list.iter().cloned() {
                         __result.push({
                             let rep_variant = Rc::new({
                                 let mut __result = Vec::new();
-                                for n in deduped_names.clone().iter().cloned() {
+                                for n in deduped_names.iter().cloned() {
                                     if match find_variant_parent_in_module(
                                         n.clone(),
                                         import_module.clone(),
@@ -10617,10 +10627,10 @@ pub fn emit_specific_import_block(
                 }));
                 let parent_main_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for def_mod in parent_defining_mods.clone().iter().cloned() {
+                    for def_mod in parent_defining_mods.iter().cloned() {
                         __result.push({
-                    let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.clone().iter().cloned() { if {
-                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                    let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.iter().cloned() { if {
+                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == p.clone()),
     None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == p.clone()),
@@ -10649,7 +10659,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         direct_lines.clone(),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for l in parent_main_lines.clone().iter().cloned() {
+                            for l in parent_main_lines.iter().cloned() {
                                 if (l.clone() != "".to_string()) {
                                     __result.push(l);
                                 }
@@ -10660,7 +10670,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 } else {
                     Rc::new({
                         let mut __result = Vec::new();
-                        for l in parent_main_lines.clone().iter().cloned() {
+                        for l in parent_main_lines.iter().cloned() {
                             if (l.clone() != "".to_string()) {
                                 __result.push(l);
                             }
@@ -10670,18 +10680,18 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 };
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for parent in parent_list.clone().iter().cloned() {
+                    for parent in parent_list.iter().cloned() {
                         __result.push(if is_grounded_coproduct_native_alias(parent.clone()) {
                     "".to_string()
                 } else {
                     {
-                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
+                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
                             if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
                                 false
                             } else {
-                                if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
+                                if { let mut __found = false; for e in import_module_enums.iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
                                     false
                                 } else {
                                     match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -10710,10 +10720,10 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                 });
                 let final_imported_enums = Rc::new({
                     let mut __result = Vec::new();
-                    for n in top_level.clone().iter().cloned() {
+                    for n in top_level.iter().cloned() {
                         if {
                             let mut __found = false;
-                            for e in import_module_enums.clone().iter().cloned() {
+                            for e in import_module_enums.iter().cloned() {
                                 if (e.clone() == n.clone()) {
                                     __found = true;
                                     break;
@@ -10730,10 +10740,10 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     let mut __result = Vec::new();
                     for en in Rc::new({
                         let mut __result = Vec::new();
-                        for en in final_imported_enums.clone().iter().cloned() {
+                        for en in final_imported_enums.iter().cloned() {
                             if (({
                                 let mut __found = false;
-                                for p in parent_list.clone().iter().cloned() {
+                                for p in parent_list.iter().cloned() {
                                     if (p.clone() == en.clone()) {
                                         __found = true;
                                         break;
@@ -10768,7 +10778,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     v1_rt::concat(
                         Rc::new({
                             let mut __result = Vec::new();
-                            for l in main_lines.clone().iter().cloned() {
+                            for l in main_lines.iter().cloned() {
                                 if (l.clone() != "".to_string()) {
                                     __result.push(l);
                                 }
@@ -10777,7 +10787,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                         }),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for l in variant_lines.clone().iter().cloned() {
+                            for l in variant_lines.iter().cloned() {
                                 if (l.clone() != "".to_string()) {
                                     __result.push(l);
                                 }
@@ -10885,7 +10895,6 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                                 "".to_string()
                             } else {
                                 segments
-                                    .clone()
                                     .iter()
                                     .cloned()
                                     .fold((0, "".to_string()), |acc: (i64, String), seg: String| {
@@ -11035,7 +11044,7 @@ pub fn rust_pub_use_singleton_covered(line: String, lines: Rc<Vec<String>>) -> b
         } else {
             {
                 let mut __found = false;
-                for other in lines.clone().iter().cloned() {
+                for other in lines.iter().cloned() {
                     if rust_pub_use_braced_line_has_name(
                         other.clone(),
                         mod_name.clone(),
@@ -11060,7 +11069,7 @@ pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) 
         } else {
             {
                 let mut __found = false;
-                for other in lines.clone().iter().cloned() {
+                for other in lines.iter().cloned() {
                     if (((((other.clone() != line.clone())
                         && (rust_pub_use_module_name(other.clone()) == mod_name.clone()))
                         && v1_rt::contains(other.clone(), "::{".to_string()))
@@ -11068,7 +11077,7 @@ pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) 
                             > (names.clone().len() as i64)))
                         && {
                             let mut __all = true;
-                            for name in names.clone().iter().cloned() {
+                            for name in names.iter().cloned() {
                                 if !(rust_pub_use_braced_line_has_name(
                                     other.clone(),
                                     mod_name.clone(),
@@ -11105,7 +11114,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
             false
         } else {
             {
-                let acc = lines.clone().iter().cloned().fold(
+                let acc = lines.iter().cloned().fold(
                     BracedImportCoverAccum {
                         found_current: false,
                         covered: false,
@@ -11130,7 +11139,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
                                                 == (names.clone().len() as i64)))
                                             && {
                                                 let mut __all = true;
-                                                for name in names.clone().iter().cloned() {
+                                                for name in names.iter().cloned() {
                                                     if !(rust_pub_use_braced_line_has_name(
                                                         other.clone(),
                                                         mod_name.clone(),
@@ -11195,7 +11204,7 @@ pub fn rust_use_line_bound_symbols(line: String) -> Rc<Vec<String>> {
             if ((braced.clone().len() as i64) > 0) {
                 Rc::new({
                     let mut __result = Vec::new();
-                    for entry in braced.clone().iter().cloned() {
+                    for entry in braced.iter().cloned() {
                         __result.push(rust_use_bound_symbol(entry.clone()));
                     }
                     __result
@@ -11216,7 +11225,7 @@ pub fn rust_use_line_bound_symbols(line: String) -> Rc<Vec<String>> {
 
 pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let owners = lines.clone().iter().cloned().fold(
+        let owners = lines.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, line: String| {
                 rust_use_line_bound_symbols(line.clone())
@@ -11233,7 +11242,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
         );
         Rc::new({
             let mut __result = Vec::new();
-            for line in lines.clone().iter().cloned() {
+            for line in lines.iter().cloned() {
                 __result.extend(
                     (*if ((rust_use_crate_marker(line.clone()) == "".to_string())
                         || v1_rt::contains(line.clone(), "::*".to_string()))
@@ -11248,7 +11257,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
                                         let mut __result = Vec::new();
                                         for bound in unique_strings(Rc::new({
                                             let mut __result = Vec::new();
-                                            for entry in braced.clone().iter().cloned() {
+                                            for entry in braced.iter().cloned() {
                                                 __result.push(rust_use_bound_symbol(entry.clone()));
                                             }
                                             __result
@@ -11267,11 +11276,11 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
                                     });
                                     let kept = Rc::new({
                                         let mut __result = Vec::new();
-                                        for bound in fresh_bounds.clone().iter().cloned() {
+                                        for bound in fresh_bounds.iter().cloned() {
                                             __result.extend(
                                                 (*match Rc::new({
                                                     let mut __result = Vec::new();
-                                                    for entry in braced.clone().iter().cloned() {
+                                                    for entry in braced.iter().cloned() {
                                                         if (rust_use_bound_symbol(entry.clone())
                                                             == bound.clone())
                                                         {
@@ -11358,7 +11367,7 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let exact = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for line in lines.clone().iter().cloned() {
+            for line in lines.iter().cloned() {
                 if (line.clone() != "".to_string()) {
                     __result.push(line);
                 }
@@ -11399,19 +11408,19 @@ pub fn emit_imports(
         {
             let import_modules = unique_strings(Rc::new({
                 let mut __result = Vec::new();
-                for imp in imports.clone().iter().cloned() {
+                for imp in imports.iter().cloned() {
                     __result.push(authored_name_at(source_indices.clone(), imp.clone()));
                 }
                 __result
             }));
             let import_lines = Rc::new({
                 let mut __result = Vec::new();
-                for import_module in import_modules.clone().iter().cloned() {
+                for import_module in import_modules.iter().cloned() {
                     __result.extend(
                         (*{
                             let mod_imports = Rc::new({
                                 let mut __result = Vec::new();
-                                for imp in imports.clone().iter().cloned() {
+                                for imp in imports.iter().cloned() {
                                     if (authored_name_at(source_indices.clone(), imp.clone())
                                         == import_module.clone())
                                     {
@@ -11423,7 +11432,7 @@ pub fn emit_imports(
                             let mod_name = module_to_filename(import_module.clone());
                             let mod_has_wildcard = {
                                 let mut __found = false;
-                                for imp in mod_imports.clone().iter().cloned() {
+                                for imp in mod_imports.iter().cloned() {
                                     if import_is_all(imp.clone()) {
                                         __found = true;
                                         break;
@@ -11449,7 +11458,7 @@ pub fn emit_imports(
                                             let mut __result = Vec::new();
                                             for imp in Rc::new({
                                                 let mut __result = Vec::new();
-                                                for imp in mod_imports.clone().iter().cloned() {
+                                                for imp in mod_imports.iter().cloned() {
                                                     if (import_is_all(imp.clone()) == false) {
                                                         __result.push(imp);
                                                     }
@@ -11497,7 +11506,7 @@ pub fn emit_imports(
                                 {
                                     let specific_names = Rc::new({
                                         let mut __result = Vec::new();
-                                        for imp in mod_imports.clone().iter().cloned() {
+                                        for imp in mod_imports.iter().cloned() {
                                             __result.extend(
                                                 (*import_specific_names_at(
                                                     imp.clone(),
@@ -11674,7 +11683,7 @@ pub fn module_data_field_struct_import_names(
         let mut __result = Vec::new();
         for item in Rc::new({
             let mut __result = Vec::new();
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if is_data_def_item(item.clone()) {
                     __result.push(item);
                 }
@@ -11742,7 +11751,7 @@ pub fn typed_closure_includes_module_filename(
 ) -> bool {
     {
         let mut __found = false;
-        for tm in typed_modules.clone().iter().cloned() {
+        for tm in typed_modules.iter().cloned() {
             if (module_to_filename(authored_name_at(source_indices.clone(), tm.module.clone()))
                 == filename.clone())
             {
@@ -11839,7 +11848,7 @@ pub fn module_needs_faithful_carrier_imports(
     } else {
         (module_renders_faithful_text_carrier(items.clone(), source_indices.clone()) || {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if ((((((module_item_references_type_name(
                     item.clone(),
                     "FreeMonoid".to_string(),
@@ -11886,7 +11895,7 @@ pub fn module_renders_faithful_text_carrier(
     } else {
         {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if module_item_has_faithful_string_leaf(item.clone(), source_indices.clone()) {
                     __found = true;
                     break;
@@ -11904,7 +11913,7 @@ pub fn rust_import_name_already_resolved(
 ) -> bool {
     ({
         let mut __found = false;
-        for n in imported_names.clone().iter().cloned() {
+        for n in imported_names.iter().cloned() {
             if (n.clone() == name.clone()) {
                 __found = true;
                 break;
@@ -11913,7 +11922,7 @@ pub fn rust_import_name_already_resolved(
         __found
     } || {
         let mut __found = false;
-        for n in local_type_names.clone().iter().cloned() {
+        for n in local_type_names.iter().cloned() {
             if (n.clone() == name.clone()) {
                 __found = true;
                 break;
@@ -11939,7 +11948,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         );
         let needs_free_monoid = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if (module_item_has_faithful_string_leaf(item.clone(), source_indices.clone())
                     || module_item_references_type_name(
                         item.clone(),
@@ -11955,7 +11964,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let needs_char = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if (module_item_has_faithful_string_leaf(item.clone(), source_indices.clone())
                     || module_item_references_type_name(
                         item.clone(),
@@ -11971,7 +11980,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let needs_non_empty_str = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if module_item_references_type_name(
                     item.clone(),
                     "NonEmptyStr".to_string(),
@@ -11985,7 +11994,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let needs_int = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if module_item_references_type_name(
                     item.clone(),
                     "Int".to_string(),
@@ -11999,7 +12008,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let needs_partial_function = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if (module_item_references_type_name(
                     item.clone(),
                     "PartialFunction".to_string(),
@@ -12017,7 +12026,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let needs_measure_phantoms = (closure_has_std_measure.clone() && {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if module_item_references_faithful_expanded_type(
                     item.clone(),
                     source_indices.clone(),
@@ -12069,7 +12078,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         };
         let int_line = if (!needs_int.clone() || {
             let mut __found = false;
-            for n in local_type_names.clone().iter().cloned() {
+            for n in local_type_names.iter().cloned() {
                 if (n.clone() == "Int".to_string()) {
                     __found = true;
                     break;
@@ -12339,7 +12348,7 @@ pub fn emit_typed_item(
                                             ),
                                             Rc::new({
                                                 let mut __result = Vec::new();
-                                                for n in generic_names.clone().iter().cloned() {
+                                                for n in generic_names.iter().cloned() {
                                                     __result.push(to_pascal(n.clone()));
                                                 }
                                                 __result
@@ -12593,7 +12602,8 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let name = authored_name_at(source_indices.clone(), n.clone());
+        let authored = authored_name_at(source_indices.clone(), n.clone());
+        let name = qualified_last_segment(authored.clone());
         if v1_rt::set_contains(&shared_types, name.clone()) {
             break false;
         } else {
@@ -12638,7 +12648,7 @@ pub fn emit_type_params(
         {
             let names = Rc::new({
                 let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     __result.push(to_pascal(generic_param_name_at(
                         p.clone(),
                         source_indices.clone(),
@@ -12663,7 +12673,7 @@ pub fn emit_bare_type_params(generic_param_names: Rc<Vec<String>>) -> String {
                 "<".to_string(),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for n in generic_param_names.clone().iter().cloned() {
+                    for n in generic_param_names.iter().cloned() {
                         __result.push(to_pascal(n.clone()));
                     }
                     __result
@@ -12686,7 +12696,7 @@ pub fn emit_type_params_with_clone_bound(
         {
             let names = Rc::new({
                 let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     __result.push({
                         let pname = generic_param_name_at(p.clone(), source_indices.clone());
                         let pascal = to_pascal(pname.clone());
@@ -12726,7 +12736,7 @@ pub fn is_function_type_param(param: Rc<Node>) -> bool {
 pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in params.clone().iter().cloned() {
+        for p in params.iter().cloned() {
             if is_function_type_param(p.clone()) {
                 __result.push(p);
             }
@@ -12738,7 +12748,7 @@ pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
 pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in params.clone().iter().cloned() {
+        for p in params.iter().cloned() {
             if !is_function_type_param(p.clone()) {
                 __result.push(p);
             }
@@ -12751,7 +12761,7 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     {
         let names = Rc::new({
             let mut __result = Vec::new();
-            for p in type_params.clone().iter().cloned() {
+            for p in type_params.iter().cloned() {
                 __result.push(p.name.clone());
             }
             __result
@@ -12769,7 +12779,7 @@ pub fn emit_item_type_params_with_clone_bounds(
     {
         let generic_param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
             }
             __result
@@ -13167,10 +13177,10 @@ pub fn struct_unused_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if !{
                 let mut __found = false;
-                for child in children.clone().iter().cloned() {
+                for child in children.iter().cloned() {
                     if type_node_mentions_name(
                         field_node_type_expr(child.clone()),
                         p.clone(),
@@ -13196,7 +13206,7 @@ pub fn alias_unused_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if !type_node_mentions_name(rhs.clone(), p.clone(), source_indices.clone()) {
                 __result.push(p);
             }
@@ -13209,7 +13219,7 @@ pub fn rust_phantom_marker_inner(unused: Rc<Vec<String>>) -> String {
     {
         let pascal_unused = Rc::new({
             let mut __result = Vec::new();
-            for n in unused.clone().iter().cloned() {
+            for n in unused.iter().cloned() {
                 __result.push(to_pascal(n.clone()));
             }
             __result
@@ -13295,7 +13305,7 @@ pub fn emit_struct_from_children(
             {
                 let field_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for child in children.clone().iter().cloned() {
+                    for child in children.iter().cloned() {
                         __result.push(emit_struct_field_from_child(
                             name.clone(),
                             child.clone(),
@@ -13853,7 +13863,7 @@ pub fn emit_enum_from_children(
         };
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
-            for child in children.clone().iter().cloned() {
+            for child in children.iter().cloned() {
                 __result.push(emit_variant_from_child(
                     child.clone(),
                     name.clone(),
@@ -13938,7 +13948,7 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
     {
         let fielded = Rc::new({
             let mut __result = Vec::new();
-            for child in children.clone().iter().cloned() {
+            for child in children.iter().cloned() {
                 if (((child.children.clone().len() as i64) > 0)
                     && !variant_is_synthetic_positional_payload(
                         child.children.clone(),
@@ -13965,10 +13975,10 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
         };
         Rc::new({
             let mut __result = Vec::new();
-            for fname in first_fields.clone().iter().cloned() {
+            for fname in first_fields.iter().cloned() {
                 if {
                     let mut __all = true;
-                    for variant in fielded.clone().iter().cloned() {
+                    for variant in fielded.iter().cloned() {
                         if !({
                             let mut __found = false;
                             for f in variant.children.clone().iter().cloned() {
@@ -14010,7 +14020,7 @@ pub fn emit_enum_shared_accessors(
         }
         let fielded = Rc::new({
             let mut __result = Vec::new();
-            for child in children.clone().iter().cloned() {
+            for child in children.iter().cloned() {
                 if (((child.children.clone().len() as i64) > 0)
                     && !variant_is_synthetic_positional_payload(
                         child.children.clone(),
@@ -14028,11 +14038,11 @@ pub fn emit_enum_shared_accessors(
         let first_fielded = fielded.clone().first().cloned().clone().unwrap();
         let shared = Rc::new({
             let mut __result = Vec::new();
-            for fname in all_shared.clone().iter().cloned() {
+            for fname in all_shared.iter().cloned() {
                 if {
                     let types = Rc::new({
                         let mut __result = Vec::new();
-                        for variant in fielded.clone().iter().cloned() {
+                        for variant in fielded.iter().cloned() {
                             __result.push(
                                 match Rc::new({
                                     let mut __result = Vec::new();
@@ -14067,7 +14077,7 @@ pub fn emit_enum_shared_accessors(
                     };
                     {
                         let mut __all = true;
-                        for t in types.clone().iter().cloned() {
+                        for t in types.iter().cloned() {
                             if !(t.clone() == first_type.clone()) {
                                 __all = false;
                                 break;
@@ -14086,7 +14096,7 @@ pub fn emit_enum_shared_accessors(
         }
         let accessor_fns = Rc::new({
             let mut __result = Vec::new();
-            for fname in shared.clone().iter().cloned() {
+            for fname in shared.iter().cloned() {
                 __result.push({
                     let ty = match Rc::new({
                         let mut __result = Vec::new();
@@ -14113,7 +14123,7 @@ pub fn emit_enum_shared_accessors(
                     };
                     let arms = Rc::new({
                         let mut __result = Vec::new();
-                        for child in children.clone().iter().cloned() {
+                        for child in children.iter().cloned() {
                             __result.push({
                                 let child_text = authored_name(env.clone(), child.clone());
                                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
@@ -14472,7 +14482,7 @@ pub fn variant_rename_validations_for_policy(
         let mut __result = Vec::new();
         for text in Rc::new({
             let mut __result = Vec::new();
-            for child in children.clone().iter().cloned() {
+            for child in children.iter().cloned() {
                 __result.push(variant_rename_validation_for_policy(
                     authored_name(env.clone(), child.clone()),
                     serde_policy.clone(),
@@ -14829,14 +14839,14 @@ pub fn v1_fn_body_derived_clone_param_names(
         let value_params = function_value_params(params.clone());
         let generic_param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in type_params.clone().iter().cloned() {
+            for p in type_params.iter().cloned() {
                 __result.push(generic_param_name_at(p.clone(), si.clone()));
             }
             __result
         });
         let value_param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in value_params.clone().iter().cloned() {
+            for p in value_params.iter().cloned() {
                 __result.push(p.name.clone());
             }
             __result
@@ -14844,7 +14854,7 @@ pub fn v1_fn_body_derived_clone_param_names(
         let ret_name = authored_name_at(si.clone(), inferred.clone());
         let return_is_bare_generic = ((Rc::new({
             let mut __result = Vec::new();
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if (g.clone() == ret_name.clone()) {
                     __result.push(g);
                 }
@@ -14855,7 +14865,7 @@ pub fn v1_fn_body_derived_clone_param_names(
             > 0);
         let body_is_param_ref = ((Rc::new({
             let mut __result = Vec::new();
-            for n in value_param_names.clone().iter().cloned() {
+            for n in value_param_names.iter().cloned() {
                 if (n.clone() == body.name.clone()) {
                     __result.push(n);
                 }
@@ -14919,13 +14929,13 @@ pub fn v1_fn_bounds_by_param(
     eq_param_names: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
-        let with_clone = clone_param_names.clone().iter().cloned().fold(
+        let with_clone = clone_param_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
             },
         );
-        eq_param_names.clone().iter().cloned().fold(
+        eq_param_names.iter().cloned().fold(
             with_clone.clone(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
             {
@@ -15023,7 +15033,7 @@ pub fn v1_call_forwarding_forwarded_param_names(
                 let arg_by_name = call_args_by_name(call.clone(), si.clone());
                 let forwarded = Rc::new({
                     let mut __result = Vec::new();
-                    for cp in callee_value_params.clone().iter().cloned() {
+                    for cp in callee_value_params.iter().cloned() {
                         __result.extend(
                             (*{
                                 let callee_param_type_name =
@@ -15117,7 +15127,7 @@ pub fn v1_call_forwarding_clone_bound_param_names(
                             let callee_type_params = function_type_params(callee_params.clone());
                             let callee_generic_param_names = Rc::new({
                                 let mut __result = Vec::new();
-                                for p in callee_type_params.clone().iter().cloned() {
+                                for p in callee_type_params.iter().cloned() {
                                     __result.push(generic_param_name_at(p.clone(), si.clone()));
                                 }
                                 __result
@@ -15200,7 +15210,7 @@ pub fn v1_call_site_equality_forwarded_param_names(
                     let callee_type_params = function_type_params(callee_params.clone());
                     let callee_generic_param_names = Rc::new({
                         let mut __result = Vec::new();
-                        for p in callee_type_params.clone().iter().cloned() {
+                        for p in callee_type_params.iter().cloned() {
                             __result.push(generic_param_name_at(p.clone(), si.clone()));
                         }
                         __result
@@ -15256,7 +15266,7 @@ pub fn emit_fn_def(
                 }
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
-                    for p in type_params.clone().iter().cloned() {
+                    for p in type_params.iter().cloned() {
                         __result.push(generic_param_name_at(p.clone(), si.clone()));
                     }
                     __result
@@ -15271,7 +15281,7 @@ pub fn emit_fn_def(
                 );
                 let value_param_names = Rc::new({
                     let mut __result = Vec::new();
-                    for p in value_params.clone().iter().cloned() {
+                    for p in value_params.iter().cloned() {
                         __result.push(p.name.clone());
                     }
                     __result
@@ -15279,7 +15289,7 @@ pub fn emit_fn_def(
                 let ret_name = authored_name_at(si.clone(), inferred.clone());
                 let return_is_bare_generic = ((Rc::new({
                     let mut __result = Vec::new();
-                    for g in generic_param_names.clone().iter().cloned() {
+                    for g in generic_param_names.iter().cloned() {
                         if (g.clone() == ret_name.clone()) {
                             __result.push(g);
                         }
@@ -15290,7 +15300,7 @@ pub fn emit_fn_def(
                     > 0);
                 let body_is_param_ref = ((Rc::new({
                     let mut __result = Vec::new();
-                    for n in value_param_names.clone().iter().cloned() {
+                    for n in value_param_names.iter().cloned() {
                         if (n.clone() == body.name.clone()) {
                             __result.push(n);
                         }
@@ -16020,17 +16030,17 @@ pub fn emit_func_def(
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope = uses.clone().iter().cloned().fold(
-            body_scope.clone(),
-            |s: Rc<InferScope>, u: Rc<Node>| {
-                extend_scope(
-                    s,
-                    resource_use_name_at(u.clone(), si.clone()),
-                    resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
-                )
-            },
-        );
+        let body_scope =
+            uses.iter()
+                .cloned()
+                .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
+                    extend_scope(
+                        s,
+                        resource_use_name_at(u.clone(), si.clone()),
+                        resource_use_resource(u.clone()),
+                        Rc::new(SubValueRelation::SubValueUnknown),
+                    )
+                });
         let body_str = emit_func_body(
             body.clone(),
             registry.clone(),
@@ -16236,7 +16246,7 @@ pub fn emit_tco_params(
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(emit_tco_param(
                     p.clone(),
                     generic_param_names.clone(),
@@ -16311,7 +16321,7 @@ pub fn emit_func_params(
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
                     Rc::new(vec![]),
@@ -16327,7 +16337,7 @@ pub fn emit_func_params(
         });
         let resource_strs = Rc::new({
             let mut __result = Vec::new();
-            for u in uses.clone().iter().cloned() {
+            for u in uses.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         emit_ident(
@@ -16348,7 +16358,7 @@ pub fn emit_func_params(
         });
         let service_strs = Rc::new({
             let mut __result = Vec::new();
-            for sn in service_names.clone().iter().cloned() {
+            for sn in service_names.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(service_var_name(sn.clone()), ": &".to_string()),
                     sanitize_service_name(sn.clone()),
@@ -16396,7 +16406,7 @@ pub fn emit_params(
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
                     generic_param_names.clone(),
@@ -16601,7 +16611,7 @@ pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
         {
             let segments = Rc::new({
                 let mut __result = Vec::new();
-                for seg in path.clone().iter().cloned() {
+                for seg in path.iter().cloned() {
                     __result.push(emit_ident(seg.clone(), RenderTarget::Rust));
                 }
                 __result
@@ -16642,7 +16652,7 @@ pub fn collect_field_binding_string_guards(
     {
         let parts = Rc::new({
             let mut __result = Vec::new();
-            for fb in field_bindings.clone().iter().cloned() {
+            for fb in field_bindings.iter().cloned() {
                 __result.extend(
                     (*{
                         let fb_name = field_binding_name_at(fb.clone(), source_indices.clone());
@@ -16803,7 +16813,7 @@ pub fn collect_pattern_string_guards(
 pub fn all_arms_are_string_lit(arms: Rc<Vec<Rc<Node>>>) -> bool {
     ({
         let mut __all = true;
-        for arm in arms.clone().iter().cloned() {
+        for arm in arms.iter().cloned() {
             if !(match (*arm_pattern(arm.clone())).clone() {
                 MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
                     LiteralValue::LitStr { value: _, .. } => true,
@@ -16824,7 +16834,7 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let has_lit = {
             let mut __found = false;
-            for arm in arms.clone().iter().cloned() {
+            for arm in arms.iter().cloned() {
                 if match (*arm_pattern(arm.clone())).clone() {
                     MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
                         LiteralValue::LitStr { value: _, .. } => true,
@@ -16840,7 +16850,7 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
         };
         let has_bind = {
             let mut __found = false;
-            for arm in arms.clone().iter().cloned() {
+            for arm in arms.iter().cloned() {
                 if match (*arm_pattern(arm.clone())).clone() {
                     MatchPattern::Bind { declaration: _, .. } => true,
                     _ => false,
@@ -17242,7 +17252,7 @@ pub fn emit_variant_pattern(
                     {
                         let effective_bindings = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in field_bindings.clone().iter().cloned() {
+                            for fb in field_bindings.iter().cloned() {
                                 if match (*field_binding_pattern(fb.clone())).clone() {
                                     MatchPattern::Wildcard => false,
                                     _ => true,
@@ -17263,7 +17273,7 @@ pub fn emit_variant_pattern(
                             {
                                 let binding_strs = Rc::new({
                                     let mut __result = Vec::new();
-                                    for fb in effective_bindings.clone().iter().cloned() {
+                                    for fb in effective_bindings.iter().cloned() {
                                         __result.push({
                                             let fb_name = field_binding_name_at(
                                                 fb.clone(),
@@ -17478,7 +17488,7 @@ pub fn analyze_rc_pattern(
                         };
                         let ref_bound_fields = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in fbs.clone().iter().cloned() {
+                            for fb in fbs.iter().cloned() {
                                 __result.extend(
                                     (*{
                                         let fb_name = field_binding_name_at(
@@ -17551,7 +17561,7 @@ pub fn box_bound_fields_for_pattern(
             } else {
                 Rc::new({
                     let mut __result = Vec::new();
-                    for fb in fbs.clone().iter().cloned() {
+                    for fb in fbs.iter().cloned() {
                         __result.extend(
                             (*{
                                 let fb_name = field_binding_name_at(
@@ -17633,7 +17643,7 @@ pub fn analyze_rc_match(
     {
         let arm_analyses = Rc::new({
             let mut __result = Vec::new();
-            for arm in arms.clone().iter().cloned() {
+            for arm in arms.iter().cloned() {
                 __result.push(analyze_rc_pattern(
                     arm_pattern(arm.clone()),
                     scrut_type.clone(),
@@ -17660,7 +17670,7 @@ pub fn analyze_rc_match(
         };
         let arms_want_option = {
             let mut __found = false;
-            for a in arm_analyses.clone().iter().cloned() {
+            for a in arm_analyses.iter().cloned() {
                 if a.matches_option_rc_variant.clone() {
                     __found = true;
                     break;
@@ -17670,7 +17680,7 @@ pub fn analyze_rc_match(
         };
         let arms_want_deref = {
             let mut __found = false;
-            for a in arm_analyses.clone().iter().cloned() {
+            for a in arm_analyses.iter().cloned() {
                 if a.matches_rc_variant.clone() {
                     __found = true;
                     break;
@@ -17961,7 +17971,7 @@ pub fn emit_variant_pattern_rc_aware(
                     {
                         let effective_bindings = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in field_bindings.clone().iter().cloned() {
+                            for fb in field_bindings.iter().cloned() {
                                 if match (*field_binding_pattern(fb.clone())).clone() {
                                     MatchPattern::Wildcard => false,
                                     _ => true,
@@ -17982,7 +17992,7 @@ pub fn emit_variant_pattern_rc_aware(
                             {
                                 let binding_strs = Rc::new({
                                     let mut __result = Vec::new();
-                                    for fb in effective_bindings.clone().iter().cloned() {
+                                    for fb in effective_bindings.iter().cloned() {
                                         __result.push({
                                             let fb_name = field_binding_name_at(
                                                 fb.clone(),
@@ -18222,7 +18232,7 @@ pub fn collect_pattern_rc_variant_guards(
                         );
                         let parts = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in fbs.clone().iter().cloned() {
+                            for fb in fbs.iter().cloned() {
                                 __result.extend((*{
                         let fb_name = field_binding_name_at(fb.clone(), source_indices.clone());
 if (fb_name.clone() == "0".to_string()) {
@@ -18323,7 +18333,7 @@ pub fn rc_pattern_preludes(
                         );
                         let preludes = Rc::new({
                             let mut __result = Vec::new();
-                            for fb in fbs.clone().iter().cloned() {
+                            for fb in fbs.iter().cloned() {
                                 __result.extend(
                                     (*{
                                         let fb_name = field_binding_name_at(
@@ -18951,44 +18961,49 @@ pub fn emit_typed_expr_base(
                                     }
                                 }
                             }
-                            None => match lookup_item_for_value_ref(
-                                value_ref_normalize_self_module(
+                            None => {
+                                let resolved_name = value_ref_normalize_self_module(
                                     n.clone(),
                                     scope.module_name.clone(),
-                                ),
-                                registry.clone(),
-                            ) {
-                                Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
-                                    } else {
+                                );
+                                match lookup_item_for_value_ref(
+                                    resolved_name.clone(),
+                                    registry.clone(),
+                                ) {
+                                    Some(info) => {
+                                        if is_duplicate_qualified_item_registry_marker(info.clone())
                                         {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
+                                            value_ref_item_info_refusal(info.clone())
+                                        } else {
+                                            {
+                                                let is_data =
+                                                    (info.kind.clone() == ItemKind::DataItem);
+                                                if is_data.clone() {
+                                                    v1_rt::concat(
+                                                        emit_value_ref_ident(
+                                                            n.clone(),
+                                                            registry.clone(),
+                                                            emit_info.clone(),
+                                                        ),
+                                                        "()".to_string(),
+                                                    )
+                                                } else {
                                                     emit_value_ref_ident(
-                                                        n.clone(),
+                                                        resolved_name.clone(),
                                                         registry.clone(),
                                                         emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
-                                            } else {
-                                                emit_value_ref_ident(
-                                                    n.clone(),
-                                                    registry.clone(),
-                                                    emit_info.clone(),
-                                                )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
+                                    None => emit_value_ref_ident(
+                                        resolved_name.clone(),
+                                        registry.clone(),
+                                        emit_info.clone(),
+                                    ),
                                 }
-                                None => emit_value_ref_ident(
-                                    n.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                ),
-                            },
+                            }
                         }
                     }
                 }
@@ -20826,7 +20841,7 @@ pub fn emit_typed_function_value_call(
     {
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
-            for a in args.clone().iter().cloned() {
+            for a in args.iter().cloned() {
                 __result.push(emit_cloned_arg(
                     arg_value(a.clone()),
                     registry.clone(),
@@ -21206,7 +21221,7 @@ pub fn emit_typed_call(
         } else {
             {
                 let mut __found = false;
-                for a in filled_args.clone().iter().cloned() {
+                for a in filled_args.iter().cloned() {
                     if expr_references_var(arg_value(a.clone()), func.clone(), si.clone()) {
                         __found = true;
                         break;
@@ -21269,7 +21284,7 @@ pub fn fill_default_args(
         Some(info) => {
             let provided_names = Rc::new({
                 let mut __result = Vec::new();
-                for a in ordered.clone().iter().cloned() {
+                for a in ordered.iter().cloned() {
                     __result.push(
                         match arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone())
                         {
@@ -21286,7 +21301,7 @@ pub fn fill_default_args(
                     if {
                         let is_provided = {
                             let mut __found = false;
-                            for n in provided_names.clone().iter().cloned() {
+                            for n in provided_names.iter().cloned() {
                                 if (n.clone()
                                     == param_node_name_at(
                                         p.clone(),
@@ -21312,7 +21327,7 @@ pub fn fill_default_args(
             });
             let default_args = Rc::new({
                 let mut __result = Vec::new();
-                for p in missing_with_defaults.clone().iter().cloned() {
+                for p in missing_with_defaults.iter().cloned() {
                     __result.push(make_arg_node(
                         Some(param_node_name_at(
                             p.clone(),
@@ -21342,7 +21357,7 @@ pub fn fill_op_default_args(
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let arg_map = ordered.clone().iter().cloned().fold(
+        let arg_map = ordered.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match arg_name_at(
                 a.clone(),
@@ -21354,7 +21369,7 @@ pub fn fill_op_default_args(
         );
         let unnamed_args = Rc::new({
             let mut __result = Vec::new();
-            for a in ordered.clone().iter().cloned() {
+            for a in ordered.iter().cloned() {
                 if (arg_name_at(a.clone(), si.clone()) == None) {
                     __result.push(a);
                 }
@@ -21363,7 +21378,7 @@ pub fn fill_op_default_args(
         });
         let named_ordered = Rc::new({
             let mut __result = Vec::new();
-            for p in op_params.clone().iter().cloned() {
+            for p in op_params.iter().cloned() {
                 __result.extend(
                     (*{
                         let pname = param_node_name_at(p.clone(), si.clone());
@@ -21436,6 +21451,104 @@ pub fn emit_nested_rt_concat(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum IterOwnedReceiverCloneDisposition {
+    IterOwnedReceiverCloneDropped,
+    IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String },
+    IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
+}
+impl IterOwnedReceiverCloneDisposition {
+    pub fn receiver_name(&self) -> String {
+        match self {
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => panic!("no receiver_name on unit variant"),
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: __val, .. } => __val.clone(),
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedNotSimpleIdentifier => panic!("no receiver_name on unit variant"),
+        }
+    }
+}
+
+pub fn iter_owned_receiver_clone_disposition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch) renders its receiver through the general identifier renderer (emit_var_ref), which clones any resolved-type, non-moved identifier unconditionally -- correct in owned position, but sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a real reference and is treated as one) -- retains today's clone. Fail-open by construction: the disposition can only ever retain an unnecessary clone, never drop a needed one. Named per DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather than a single collapsed default, so the retained-for-downstream-reference population (must never be silently indistinguishable from an ordinary unoptimized site) is separately countable from the retained-for-non-simple-receiver population. The decision never consults movable, Read, or any ownership classification -- the syntactic position of the receiver as a sharing.iter_owned argument is itself the borrow-position proof, which is what keeps this sound where a disposition keyed on the ownership pass's Read edge kind would not be (Read fires on genuine by-value-consuming positions too, not only borrow positions).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn iter_owned_receiver_clone_disposition(
+    receiver: Rc<Node>,
+    downstream: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<IterOwnedReceiverCloneDisposition> {
+    match (*receiver.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = expr_var_name_at(receiver.clone(), source_indices.clone());
+            if {
+                let mut __found = false;
+                for n in downstream.iter().cloned() {
+                    if expr_references_var(n.clone(), name.clone(), source_indices.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new(IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference {
+    receiver_name: name.clone(),
+})
+            } else {
+                Rc::new(IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped)
+            }
+        }
+        _ => Rc::new(
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
+        ),
+    }
+}
+
+pub fn emit_typed_iter_owned_receiver(
+    receiver: Rc<Node>,
+    downstream: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let disposition = iter_owned_receiver_clone_disposition(
+            receiver.clone(),
+            downstream.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        match (*disposition.clone()).clone() {
+            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => {
+                emit_typed_expr_base(
+                    receiver.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => emit_typed_expr(
+                receiver.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
+        }
+    }
+}
+
 pub fn emit_typed_for_each(
     variable: String,
     collection: Rc<Node>,
@@ -21448,14 +21561,14 @@ pub fn emit_typed_for_each(
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let coll_str = emit_typed_expr(
+        let coll_str = emit_typed_iter_owned_receiver(
             collection.clone(),
+            Rc::new(vec![body.clone()]),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type = for_each_element_type_node(
             resolved_type(collection.clone()),
@@ -22029,14 +22142,14 @@ pub fn emit_rust_fold_method_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type_str = collection_element_type(
             receiver.inferred.clone(),
@@ -22499,14 +22612,14 @@ pub fn emit_rust_sort_by_method_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let elem_type_str = match receiver.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -22662,7 +22775,17 @@ pub fn emit_rust_map_method_call(
         } else {
             {
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-                let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str.clone());
+                let iter_recv_str = emit_typed_iter_owned_receiver(
+                    receiver.clone(),
+                    args.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                );
+                let iter_str =
+                    apply_type_template1(sharing.iter_owned.clone(), iter_recv_str.clone());
                 match args.clone().first().cloned() {
                     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
                         ExprData::ExprLambda => {
@@ -22755,14 +22878,14 @@ pub fn emit_rust_higher_order_method(
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let recv_str = emit_typed_expr(
+        let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
+            args.clone(),
             registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
         );
         let first_arg_str = emit_typed_first_arg(
             args.clone(),
@@ -23149,7 +23272,7 @@ pub fn emit_rust_generic_method_call(
                 );
                 let arg_strs = Rc::new({
                     let mut __result = Vec::new();
-                    for a in args.clone().iter().cloned() {
+                    for a in args.iter().cloned() {
                         __result.push(emit_cloned_arg(
                             arg_value(a.clone()),
                             registry.clone(),
@@ -23211,7 +23334,7 @@ pub fn emit_rust_generic_method_call(
                         };
                     let arg_strs = Rc::new({
                         let mut __result = Vec::new();
-                        for a in args.clone().iter().cloned() {
+                        for a in args.iter().cloned() {
                             __result.push(emit_cloned_arg(
                                 arg_value(a.clone()),
                                 registry.clone(),
@@ -23282,7 +23405,7 @@ pub fn emit_typed_method_call(
                 );
                 let optional_param_set = Rc::new({
                     let mut __result = Vec::new();
-                    for p in op_params.clone().iter().cloned() {
+                    for p in op_params.iter().cloned() {
                         if (param_node_type_expr(p.clone()).return_cardinality.clone()
                             == Cardinality::CardOptional)
                         {
@@ -23301,7 +23424,7 @@ pub fn emit_typed_method_call(
                 );
                 let json_param_set = Rc::new({
                     let mut __result = Vec::new();
-                    for p in op_params.clone().iter().cloned() {
+                    for p in op_params.iter().cloned() {
                         if (coerce_primitive_type(
                             RenderTarget::Rust,
                             authored_name_at(si.clone(), param_node_type_expr(p.clone())),
@@ -23323,7 +23446,7 @@ pub fn emit_typed_method_call(
                 );
                 let arg_strs = Rc::new({
                     let mut __result = Vec::new();
-                    for a in filled_args.clone().iter().cloned() {
+                    for a in filled_args.iter().cloned() {
                         __result.push({
                             let arg_str = emit_typed_expr(
                                 arg_value(a.clone()),
@@ -23524,7 +23647,7 @@ pub fn emit_typed_method_call(
                                                         );
                                                         let arg_strs = Rc::new({
                                                             let mut __result = Vec::new();
-                                                            for a in args.clone().iter().cloned() {
+                                                            for a in args.iter().cloned() {
                                                                 __result.push(emit_typed_expr(
                                                                     arg_value(a.clone()),
                                                                     registry.clone(),
@@ -23693,7 +23816,7 @@ pub fn emit_typed_method_call(
                             None => {
                                 let arg_strs = Rc::new({
                                     let mut __result = Vec::new();
-                                    for a in args.clone().iter().cloned() {
+                                    for a in args.iter().cloned() {
                                         __result.push(emit_typed_expr(
                                             arg_value(a.clone()),
                                             registry.clone(),
@@ -23756,7 +23879,7 @@ pub fn emit_typed_first_arg(
 pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Option<Rc<Node>> {
     Rc::new({
         let mut __result = Vec::new();
-        for arm in arms.clone().iter().cloned() {
+        for arm in arms.iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
                 MatchPattern::VariantPattern { name: n, .. } => (n.clone() == variant.clone()),
                 _ => false,
@@ -23781,7 +23904,7 @@ pub fn freemonoid_cons_binding(
             ..
         } => match Rc::new({
             let mut __result = Vec::new();
-            for fb in fbs.clone().iter().cloned() {
+            for fb in fbs.iter().cloned() {
                 if (field_binding_name_at(fb.clone(), source_indices.clone()) == field.clone()) {
                     __result.push(fb);
                 }
@@ -23834,7 +23957,7 @@ pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
 pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     Rc::new({
         let mut __result = Vec::new();
-        for arm in arms.clone().iter().cloned() {
+        for arm in arms.iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
                 MatchPattern::Wildcard => true,
                 MatchPattern::Bind { declaration: _, .. } => true,
@@ -24122,7 +24245,7 @@ pub fn variant_pattern_field_binding_named(
             ..
         } => Rc::new({
             let mut __result = Vec::new();
-            for fb in fbs.clone().iter().cloned() {
+            for fb in fbs.iter().cloned() {
                 if (field_binding_name_at(fb.clone(), source_indices.clone()) == field_name.clone())
                 {
                     __result.push(fb);
@@ -24265,7 +24388,7 @@ pub fn rc_group_members(
 ) -> Rc<Vec<Rc<RcGroupedArmEntry>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for e in entries.clone().iter().cloned() {
+        for e in entries.iter().cloned() {
             if (e.plan.clone().variant.clone() == variant.clone()) {
                 __result.push(e);
             }
@@ -24282,7 +24405,7 @@ pub fn rc_group_is_whole_coverage(
         let members = rc_group_members(entries.clone(), plan.variant.clone());
         {
             let mut __all = true;
-            for e in members.clone().iter().cloned() {
+            for e in members.iter().cloned() {
                 if !((e.plan.clone().groupable.clone()
                     && (e.plan.clone().ref_field.clone() == plan.ref_field.clone()))
                     && (e.plan.clone().pat_str.clone() == plan.pat_str.clone()))
@@ -24309,7 +24432,7 @@ pub fn emit_rc_grouped_match_arm(
     {
         let inner_arms = Rc::new({
             let mut __result = Vec::new();
-            for e in members.clone().iter().cloned() {
+            for e in members.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -24364,7 +24487,7 @@ pub fn emit_typed_match_arm_strs(
     {
         let has_irrefutable = {
             let mut __found = false;
-            for a in arms.clone().iter().cloned() {
+            for a in arms.iter().cloned() {
                 if match_pattern_is_irrefutable(arm_pattern(a.clone())) {
                     __found = true;
                     break;
@@ -24375,7 +24498,7 @@ pub fn emit_typed_match_arm_strs(
         if has_irrefutable.clone() {
             Rc::new({
                 let mut __result = Vec::new();
-                for arm in arms.clone().iter().cloned() {
+                for arm in arms.iter().cloned() {
                     __result.push(emit_typed_match_arm(
                         arm.clone(),
                         registry.clone(),
@@ -24394,7 +24517,7 @@ pub fn emit_typed_match_arm_strs(
             {
                 let entries = Rc::new({
                     let mut __result = Vec::new();
-                    for arm in arms.clone().iter().cloned() {
+                    for arm in arms.iter().cloned() {
                         __result.push(Rc::new(RcGroupedArmEntry {
                             arm: arm.clone(),
                             plan: rc_grouped_arm_plan(
@@ -24625,7 +24748,7 @@ pub fn emit_typed_match(
                             {
                                 let sf_arm_strs = Rc::new({
                                     let mut __result = Vec::new();
-                                    for arm in arms.clone().iter().cloned() {
+                                    for arm in arms.iter().cloned() {
                                         __result.push(emit_typed_match_arm(
                                             arm.clone(),
                                             registry.clone(),
@@ -25102,7 +25225,7 @@ pub fn rust_callable_capture_preamble(lambda_node: Rc<Node>, scope: Rc<InferScop
         );
         let captured = Rc::new({
             let mut __result = Vec::new();
-            for nm in names.clone().iter().cloned() {
+            for nm in names.iter().cloned() {
                 if emit_map_has(scope.body_locals.clone(), nm.clone()) {
                     __result.push(nm);
                 }
@@ -25111,7 +25234,7 @@ pub fn rust_callable_capture_preamble(lambda_node: Rc<Node>, scope: Rc<InferScop
         });
         Rc::new({
             let mut __result = Vec::new();
-            for nm in captured.clone().iter().cloned() {
+            for nm in captured.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -25621,7 +25744,10 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone() != "".to_string())
-                        && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                        && v1_rt::set_contains(
+                            &shared_types,
+                            qualified_last_segment(rc_name.clone()),
+                        ))
                     {
                         rust_shared_wrap_ctor(raw.clone())
                     } else {
@@ -25670,7 +25796,7 @@ pub fn struct_candidates_by_field_names(
                         if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
                             {
                                 let mut __all = true;
-                                for fn_name in field_names.clone().iter().cloned() {
+                                for fn_name in field_names.iter().cloned() {
                                     if !(v1_rt::map_contains_key(
                                         &summary.field_type_map.clone(),
                                         fn_name.clone(),
@@ -25712,7 +25838,7 @@ pub fn find_struct_name_by_fields(
             {
                 let typed_candidates = Rc::new({
                     let mut __result = Vec::new();
-                    for cand in candidates.clone().iter().cloned() {
+                    for cand in candidates.iter().cloned() {
                         if {
                             let mut __all = true;
                             for fname in Rc::new(v1_rt::sorted_map_keys(&field_type_hints))
@@ -25747,7 +25873,7 @@ pub fn find_struct_name_by_fields(
                     }
                 } else {
                     match Rc::new({
-                        let mut __sorted: Vec<_> = candidates.clone().iter().cloned().collect();
+                        let mut __sorted: Vec<_> = candidates.iter().cloned().collect();
                         __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
                             let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
                             let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
@@ -25856,7 +25982,7 @@ pub fn emit_typed_record_lit(
                                 );
                                 let single_field_names = Rc::new({
                                     let mut __result = Vec::new();
-                                    for ff in fields.clone().iter().cloned() {
+                                    for ff in fields.iter().cloned() {
                                         __result.push(field_init_node_name_at(
                                             ff.clone(),
                                             scope.type_env.clone().source_indices.clone(),
@@ -25925,7 +26051,7 @@ pub fn emit_typed_record_lit(
                         {
                             let lit_field_names = Rc::new({
                                 let mut __result = Vec::new();
-                                for f in fields.clone().iter().cloned() {
+                                for f in fields.iter().cloned() {
                                     __result.push(field_init_node_name_at(
                                         f.clone(),
                                         scope.type_env.clone().source_indices.clone(),
@@ -25933,7 +26059,7 @@ pub fn emit_typed_record_lit(
                                 }
                                 __result
                             });
-                            let field_type_hints = fields.clone().iter().cloned().fold(
+                            let field_type_hints = fields.iter().cloned().fold(
                                 v1_rt::rc_empty_map::<String, String>(),
                                 |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
                                     let fname = field_init_node_name_at(
@@ -25964,7 +26090,7 @@ pub fn emit_typed_record_lit(
                                 Some(resolved_sn) => {
                                     let field_strs = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             __result.push({
                                                 let fname = field_init_node_name_at(
                                                     f.clone(),
@@ -26016,7 +26142,7 @@ pub fn emit_typed_record_lit(
                                 None => {
                                     let vals = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             __result.push(emit_typed_expr(
                                                 field_init_node_value(f.clone()),
                                                 registry.clone(),
@@ -26133,7 +26259,7 @@ pub fn emit_typed_record_lit(
                     {
                         let head_val = match Rc::new({
                             let mut __result = Vec::new();
-                            for f in fields.clone().iter().cloned() {
+                            for f in fields.iter().cloned() {
                                 if (field_init_node_name_at(f.clone(), si.clone())
                                     == "head".to_string())
                                 {
@@ -26160,7 +26286,7 @@ pub fn emit_typed_record_lit(
                         };
                         let tail_val = match Rc::new({
                             let mut __result = Vec::new();
-                            for f in fields.clone().iter().cloned() {
+                            for f in fields.iter().cloned() {
                                 if (field_init_node_name_at(f.clone(), si.clone())
                                     == "tail".to_string())
                                 {
@@ -26320,7 +26446,7 @@ pub fn emit_typed_record_lit(
                                 {
                                     let field_strs = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             __result.push({
                                                 let f_name = field_init_node_name_at(
                                                     f.clone(),
@@ -26389,7 +26515,7 @@ pub fn emit_typed_record_lit(
                                     });
                                     let provided_names = Rc::new({
                                         let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
+                                        for f in fields.iter().cloned() {
                                             __result.push(field_init_node_name_at(
                                                 f.clone(),
                                                 scope.type_env.clone().source_indices.clone(),
@@ -26397,7 +26523,7 @@ pub fn emit_typed_record_lit(
                                         }
                                         __result
                                     });
-                                    let provided_set = provided_names.clone().iter().cloned().fold(
+                                    let provided_set = provided_names.iter().cloned().fold(
                                         v1_rt::rc_empty_map::<String, bool>(),
                                         |acc: Rc<HashMap<String, bool>>, n: String| {
                                             v1_rt::rc_map_insert(acc, n.clone(), true)
@@ -26428,7 +26554,7 @@ pub fn emit_typed_record_lit(
                                             });
                                             let all_defaultable = {
                                                 let mut __all = true;
-                                                for fname in missing.clone().iter().cloned() {
+                                                for fname in missing.iter().cloned() {
                                                     if !({
                                                         let has_zv = match v1_rt::map_get(
                                                             &ftm,
@@ -26458,7 +26584,7 @@ pub fn emit_typed_record_lit(
                                             if all_defaultable.clone() {
                                                 Rc::new({
                                                     let mut __result = Vec::new();
-                                                    for fname in missing.clone().iter().cloned() {
+                                                    for fname in missing.iter().cloned() {
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
                                             {
                                                 let wrapped_none = wrap_rust_record_field_value("None".to_string(), None, scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
@@ -26785,7 +26911,7 @@ pub fn emit_typed_string_interp(
     {
         let has_interpolations = {
             let mut __found = false;
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 if match (*p.clone()).clone() {
                     StringPart::Interpolation { expr: _, .. } => true,
                     _ => false,
@@ -26798,7 +26924,7 @@ pub fn emit_typed_string_interp(
         };
         let fmt_parts = Rc::new({
             let mut __result = Vec::new();
-            for p in parts.clone().iter().cloned() {
+            for p in parts.iter().cloned() {
                 __result.push(typed_interp_format_part(
                     p.clone(),
                     registry.clone(),
@@ -26813,7 +26939,7 @@ pub fn emit_typed_string_interp(
         });
         let fmt_str = Rc::new({
             let mut __result = Vec::new();
-            for p in fmt_parts.clone().iter().cloned() {
+            for p in fmt_parts.iter().cloned() {
                 __result.push(p.format_segment.clone());
             }
             __result
@@ -26823,7 +26949,7 @@ pub fn emit_typed_string_interp(
             let mut __result = Vec::new();
             for a in Rc::new({
                 let mut __result = Vec::new();
-                for p in fmt_parts.clone().iter().cloned() {
+                for p in fmt_parts.iter().cloned() {
                     __result.push(p.arg_expr.clone());
                 }
                 __result
@@ -27010,7 +27136,7 @@ pub fn emit_tco_init_stmt(
             );
             let is_param = {
                 let mut __found = false;
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     if (param_node_name_at(
                         p.clone(),
                         scope.type_env.clone().source_indices.clone(),
@@ -27456,7 +27582,7 @@ pub fn emit_rust_tco_match(
                     );
                     let arm_strs = Rc::new({
                         let mut __result = Vec::new();
-                        for arm in arm_list.clone().iter().cloned() {
+                        for arm in arm_list.iter().cloned() {
                             __result.push(emit_typed_tco_match_arm(
                                 arm.clone(),
                                 fn_name.clone(),
@@ -27597,7 +27723,7 @@ pub fn emit_rust_tco_let(
             );
             let is_param = {
                 let mut __found = false;
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     if (param_node_name_at(
                         p.clone(),
                         frame.scope.clone().type_env.clone().source_indices.clone(),
@@ -28024,7 +28150,7 @@ pub fn emit_typed_tco_reassign(
         let si = scope.type_env.clone().source_indices.clone();
         let arg_values = Rc::new({
             let mut __result = Vec::new();
-            for a in args.clone().iter().cloned() {
+            for a in args.iter().cloned() {
                 __result.push(arg_value(a.clone()));
             }
             __result
@@ -28109,7 +28235,7 @@ pub fn emit_typed_tco_reassign(
         });
         let filtered_params = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 if match v1_rt::map_get(&identity_params, param_node_name_at(p.clone(), si.clone()))
                 {
                     Some(_) => false,
@@ -28120,22 +28246,20 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let tco_movable = filtered_params.clone().iter().cloned().fold(
+        let tco_movable = filtered_params.iter().cloned().fold(
             emit_info.movable.clone(),
             |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-                let ref_count =
-                    filtered_arg_values
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .fold(0, |n: i64, av: _| {
-                            if expr_references_var(av.clone(), pname.clone(), si.clone()) {
-                                (n.clone() + 1)
-                            } else {
-                                n.clone()
-                            }
-                        });
+                let ref_count = filtered_arg_values
+                    .iter()
+                    .cloned()
+                    .fold(0, |n: i64, av: _| {
+                        if expr_references_var(av.clone(), pname.clone(), si.clone()) {
+                            (n.clone() + 1)
+                        } else {
+                            n.clone()
+                        }
+                    });
                 if (ref_count.clone() <= 1) {
                     v1_rt::rc_set_insert(m.clone(), pname.clone())
                 } else {
@@ -28149,7 +28273,7 @@ pub fn emit_typed_tco_reassign(
         });
         let ordered_args = Rc::new({
             let mut __result = Vec::new();
-            for av in filtered_arg_values.clone().iter().cloned() {
+            for av in filtered_arg_values.iter().cloned() {
                 __result.push(emit_typed_expr(
                     av.clone(),
                     registry.clone(),
@@ -28164,7 +28288,7 @@ pub fn emit_typed_tco_reassign(
         });
         let param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in filtered_params.clone().iter().cloned() {
+            for p in filtered_params.iter().cloned() {
                 __result.push(emit_ident(
                     param_node_name_at(p.clone(), si.clone()),
                     RenderTarget::Rust,
@@ -28319,7 +28443,7 @@ pub fn emit_service_impl(
         );
         let method_strs = Rc::new({
             let mut __result = Vec::new();
-            for op_node in op_children.clone().iter().cloned() {
+            for op_node in op_children.iter().cloned() {
                 __result.push(emit_operation_method(
                     name.clone(),
                     transport.clone(),
@@ -28437,7 +28561,7 @@ pub fn emit_service_new_method(
         );
         let ctors = Rc::new({
             let mut __result = Vec::new();
-            for c in ctors.clone().iter().cloned() {
+            for c in ctors.iter().cloned() {
                 __result.push(apply_type_template1(c.clone(), base_url_default.clone()));
             }
             __result
@@ -28445,7 +28569,7 @@ pub fn emit_service_new_method(
         let ctors = match service_config_auth_source(service_item.clone(), source_indices.clone()) {
             Some(src) => Rc::new({
                 let mut __result = Vec::new();
-                for c in ctors.clone().iter().cloned() {
+                for c in ctors.iter().cloned() {
                     __result.push(if v1_rt::contains(c.clone(), "auth_token".to_string()) {
                         emit_auth_source_ctor(src.clone(), source_indices.clone())
                     } else {
@@ -28576,8 +28700,13 @@ pub fn emit_operation_method(
         );
         let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
         let op_inferred = resolved_type(op_node.clone());
-        let real_body = emit_transport_call(
+        let bound = bind_operation_transport(
             eff_transport.clone(),
+            op_node.clone(),
+            env.source_indices.clone(),
+        );
+        let real_body = emit_transport_call(
+            bound.clone(),
             op_text.clone(),
             registry.clone(),
             (depth.clone() + 2),
@@ -28733,7 +28862,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_s
                                     },
     None => v1_rt::concat(v1_rt::concat("let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string(), mock_json.clone()), "\"#)?;\n".to_string()),
 };
-let extract_lines = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push({
+let extract_lines = Rc::new({ let mut __result = Vec::new(); for ch in children.iter().cloned() { __result.push({
                                         let ch_name = authored_name_at(source_indices.clone(), ch.clone());
 let field_name = emit_ident(ch_name.clone(), RenderTarget::Rust);
 let from_path = match child_from_key(ch.clone(), source_indices.clone()) {
@@ -28756,7 +28885,7 @@ match ch.return_cardinality.clone() {
     _ => raw.clone(),
 }
 }); } __result });
-let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
+let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.iter().cloned() { __result.push(emit_ident(authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
 let result_body = v1_rt::concat(v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())), ")".to_string());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\n".to_string()), prelude.clone()), extract_lines.clone().join(&"\n".to_string())), "\nOk(".to_string()), result_body.clone()), ")".to_string())
 }
@@ -28786,7 +28915,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 }
 
 pub fn emit_transport_call(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
@@ -28797,10 +28926,10 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_rest_transport(transport.clone(), source_indices.clone()) {
-        emit_rest_call(
+    match (*bound.clone()).clone() {
+        BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
             op_name.clone(),
-            transport.clone(),
+            t.clone(),
             registry.clone(),
             depth.clone(),
             service_item.clone(),
@@ -28808,25 +28937,36 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
-        )
-    } else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(
-                op_name.clone(),
-                transport.clone(),
-                registry.clone(),
-                depth.clone(),
-                inferred.clone(),
-                op_node.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            if is_file_transport(transport.clone(), source_indices.clone()) {
-                emit_unmodeled_file_transport_refusal(op_name.clone(), RenderTarget::Rust)
-            } else {
-                emit_local_call(op_name.clone())
-            }
-        }
+        ),
+        BoundOperation::ShellBound { transport: t, .. } => emit_shell_call(
+            op_name.clone(),
+            t.clone(),
+            registry.clone(),
+            depth.clone(),
+            inferred.clone(),
+            op_node.clone(),
+            source_indices.clone(),
+        ),
+        BoundOperation::FileBound {
+            verb: v,
+            path_template: pt,
+            result_fields: fs,
+            ..
+        } => emit_file_call(v.clone(), pt.clone(), fs.clone(), source_indices.clone()),
+        BoundOperation::LocalBound => emit_local_call(op_name.clone()),
+        BoundOperation::BindingRefused { cause: cz, .. } => emit_error_expr(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "transport binding refused for operation '".to_string(),
+                        op_name.clone(),
+                    ),
+                    "': ".to_string(),
+                ),
+                transport_binding_refusal_fact(cz.clone()),
+            ),
+            RenderTarget::Rust,
+        ),
     }
 }
 
@@ -28872,7 +29012,7 @@ pub fn emit_rest_call(
                 let headers = transport_headers(transport.clone(), source_indices.clone());
                 let header_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for h in headers.clone().iter().cloned() {
+                    for h in headers.iter().cloned() {
                         __result.push({
                             let hval = field_init_node_value(h.clone());
                             let val_str = emit_simple_expr(
@@ -29126,7 +29266,7 @@ pub fn emit_rest_url_line(
                 });
                 let fmt_segments = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
                             StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
                             StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
@@ -29137,7 +29277,7 @@ pub fn emit_rest_url_line(
                 let fmt_str = fmt_segments.clone().join(&"".to_string());
                 let args = Rc::new({
                     let mut __result = Vec::new();
-                    for p in parts.clone().iter().cloned() {
+                    for p in parts.iter().cloned() {
                         __result.extend(
                             (*match (*p.clone()).clone() {
                                 StringPart::Text { value: _, .. } => Rc::new(vec![]),
@@ -29345,7 +29485,7 @@ pub fn emit_rest_body_line(
     ExprData::ExprRecordLit { .. } => {
         let required_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if !is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
 let optional_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
-let req_strs = Rc::new({ let mut __result = Vec::new(); for fi in required_fields.clone().iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone()))); } __result });
+let req_strs = Rc::new({ let mut __result = Vec::new(); for fi in required_fields.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone()))); } __result });
 if (((req_strs.clone().len() as i64) == 0) && ((optional_fields.clone().len() as i64) == 0)) {
             "compile_error!(\"transport body record has no fields\");".to_string()
         } else {
@@ -29355,7 +29495,7 @@ if (((req_strs.clone().len() as i64) == 0) && ((optional_fields.clone().len() as
                 } else {
                     "let mut __body = serde_json::json!({});".to_string()
                 };
-let opt_lines = Rc::new({ let mut __result = Vec::new(); for fi in optional_fields.clone().iter().cloned() { __result.push({
+let opt_lines = Rc::new({ let mut __result = Vec::new(); for fi in optional_fields.iter().cloned() { __result.push({
                     let fname = field_init_node_name_at(fi.clone(), source_indices.clone());
 let fexpr = emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if let Some(ref __v) = ".to_string(), fexpr.clone()), " { __body[\"".to_string()), fname.clone()), "\"] = serde_json::json!(__v); }".to_string())
@@ -29376,39 +29516,6 @@ pub fn has_response_prefix(name: String) -> bool {
         false
     } else {
         (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
-pub fn child_from_key(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for p in ch.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "from_key".to_string())
-            {
-                __result.push(p);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
-            _ => None,
-        },
-        None => None,
     }
 }
 
@@ -29687,7 +29794,7 @@ pub fn emit_wire_struct_path_chain(
             }
             __result
         });
-        segs.clone().iter().cloned().fold(
+        segs.iter().cloned().fold(
             Rc::new(WirePathProjection {
                 expr: base.clone(),
                 node: Some(wire_node.clone()),
@@ -29895,7 +30002,7 @@ pub fn emit_from_key_extraction(
                 };
                 let extract_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for ch in children.clone().iter().cloned() {
+                    for ch in children.iter().cloned() {
                         __result.push({
                     let ch_name = authored_name_at(source_indices.clone(), ch.clone());
 let field_name = emit_ident(ch_name.clone(), RenderTarget::Rust);
@@ -29920,7 +30027,7 @@ match ch.inferred.clone().as_deref().cloned() {
                 });
                 let field_names = Rc::new({
                     let mut __result = Vec::new();
-                    for ch in children.clone().iter().cloned() {
+                    for ch in children.iter().cloned() {
                         __result.push(emit_ident(
                             authored_name_at(source_indices.clone(), ch.clone()),
                             RenderTarget::Rust,
@@ -30013,7 +30120,7 @@ pub fn emit_response_code_handling(
             {
                 let arms = Rc::new({
                     let mut __result = Vec::new();
-                    for p in response_props.clone().iter().cloned() {
+                    for p in response_props.iter().cloned() {
                         __result.push(emit_response_arm(
                             p.clone(),
                             op_node.clone(),
@@ -30150,7 +30257,7 @@ pub fn emit_exit_code_handling(
             {
                 let has_nonzero = {
                     let mut __found = false;
-                    for p in exit_props.clone().iter().cloned() {
+                    for p in exit_props.iter().cloned() {
                         if (field_init_node_name_at(p.clone(), source_indices.clone())
                             == "exit_nonzero".to_string())
                         {
@@ -30162,7 +30269,7 @@ pub fn emit_exit_code_handling(
                 };
                 let exit_arms = Rc::new({
                     let mut __result = Vec::new();
-                    for p in exit_props.clone().iter().cloned() {
+                    for p in exit_props.iter().cloned() {
                         __result.push(emit_exit_arm(
                             p.clone(),
                             inferred.clone(),
@@ -30337,7 +30444,7 @@ pub fn emit_shell_call(
         let env_entries = transport_env(transport.clone(), source_indices.clone());
         let env_lines = Rc::new({
             let mut __result = Vec::new();
-            for e in env_entries.clone().iter().cloned() {
+            for e in env_entries.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -30474,7 +30581,7 @@ pub fn emit_shell_argv_element(
             });
             let fmt_segments = Rc::new({
                 let mut __result = Vec::new();
-                for p in parts.clone().iter().cloned() {
+                for p in parts.iter().cloned() {
                     __result.push(match (*p.clone()).clone() {
                         StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
                         StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
@@ -30485,7 +30592,7 @@ pub fn emit_shell_argv_element(
             let fmt_str = fmt_segments.clone().join(&"".to_string());
             let args = Rc::new({
                 let mut __result = Vec::new();
-                for p in parts.clone().iter().cloned() {
+                for p in parts.iter().cloned() {
                     __result.extend(
                         (*match (*p.clone()).clone() {
                             StringPart::Text { value: _, .. } => Rc::new(vec![]),
@@ -30659,18 +30766,272 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
     }
 }
 
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+pub fn emit_file_call(
+    verb: FileVerb,
+    path_template: Rc<Node>,
+    result_fields: Rc<Vec<Rc<FileResultField>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
-        let is_product = is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => resolved_type(field_node.clone()),
-                None => n.clone(),
+        let path_line = emit_file_path_line(path_template.clone(), source_indices.clone());
+        let action = v1_rt::concat(
+            file_channel_binding_prefix(),
+            file_verb_action_expr(verb.clone()),
+        );
+        let return_line = emit_file_return(result_fields.clone());
+        Rc::new(vec![
+            path_line.clone(),
+            file_empty_path_guard(),
+            action.clone(),
+            return_line.clone(),
+        ])
+        .join(&"\n".to_string())
+    }
+}
+
+pub fn file_verb_action_expr(verb: FileVerb) -> String {
+    match verb.clone() {
+        FileVerb::FileRead => file_read_match_expr(),
+        FileVerb::FileWrite => file_write_expr(),
+        FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
+        FileVerb::FileDelete => file_delete_match_expr(),
+        FileVerb::FileList => file_list_match_expr(),
+    }
+}
+
+pub fn emit_file_path_line(
+    path_template: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let path_node = path_template.clone();
+        match (*path_node.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            {
+                let LiteralValue::LitStr {
+                    value: path_str, ..
+                } = value.as_ref()
+                else {
+                    unreachable!()
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "let file_path: String = \"".to_string(),
+                        escape_string_literal_body(path_str.clone()),
+                    ),
+                    "\".to_string();".to_string(),
+                )
             }
+            ExprData::ExprStringInterp => {
+                let parts = Rc::new({
+                    let mut __result = Vec::new();
+                    for child in path_node.children.clone().iter().cloned() {
+                        __result.push(match (*child.expr_data.clone()).clone() {
+                            ExprData::ExprLiteral { ref value, .. }
+                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                            {
+                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                else {
+                                    unreachable!()
+                                };
+                                Rc::new(StringPart::Text {
+                                    value: text.clone(),
+                                })
+                            }
+                            _ => Rc::new(StringPart::Interpolation {
+                                expr: arg_value(child.clone()),
+                            }),
+                        });
+                    }
+                    __result
+                });
+                let fmt_str = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in parts.iter().cloned() {
+                        __result.push(match (*p.clone()).clone() {
+                            StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
+                            StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
+                        });
+                    }
+                    __result
+                })
+                .join(&"".to_string());
+                let args = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in parts.iter().cloned() {
+                        __result.extend(
+                            (*match (*p.clone()).clone() {
+                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                StringPart::Interpolation { expr: e, .. } => {
+                                    let var_name = emit_ident(
+                                        expr_var_name_at(e.clone(), source_indices.clone()),
+                                        RenderTarget::Rust,
+                                    );
+                                    if is_optional_typed_expr(e.clone()) {
+                                        Rc::new(vec![v1_rt::concat(
+                                            var_name.clone(),
+                                            ".as_deref().unwrap_or(\"\")".to_string(),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![var_name.clone()])
+                                    }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                });
+                if ((args.clone().len() as i64) == 0) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "let file_path: String = format!(\"".to_string(),
+                            fmt_str.clone(),
+                        ),
+                        "\");".to_string(),
+                    )
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "let file_path: String = format!(\"".to_string(),
+                                    fmt_str.clone(),
+                                ),
+                                "\", ".to_string(),
+                            ),
+                            args.clone().join(&", ".to_string()),
+                        ),
+                        ");".to_string(),
+                    )
+                }
+            }
+            _ => {
+                "compile_error!(\"file transport path must be a string literal or interpolation\");"
+                    .to_string()
+            }
+        }
+    }
+}
+
+pub fn file_empty_path_guard() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_channel_binding_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = ".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_read_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_delete_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_list_match_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_owner_only_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_file_channel_expr(channel: FileResultChannel, is_optional: bool) -> String {
+    {
+        let base = match channel.clone() {
+            FileResultChannel::FileChanSuccess => "file_success".to_string(),
+            FileResultChannel::FileChanByteCount => "file_byte_count".to_string(),
+            FileResultChannel::FileChanPath => "file_path.clone()".to_string(),
+            FileResultChannel::FileChanError => "file_error.clone()".to_string(),
+            FileResultChannel::FileChanContent => "file_content.clone()".to_string(),
+        };
+        if is_optional.clone() {
+            v1_rt::concat(
+                v1_rt::concat("Some(".to_string(), base.clone()),
+                ")".to_string(),
+            )
         } else {
-            n.clone()
+            base.clone()
+        }
+    }
+}
+
+pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> String {
+    {
+        let field_exprs = Rc::new({
+            let mut __result = Vec::new();
+            for f in result_fields.iter().cloned() {
+                __result.push(emit_file_channel_expr(
+                    f.channel.clone(),
+                    f.optional.clone(),
+                ));
+            }
+            __result
+        });
+        let n = (result_fields.clone().len() as i64);
+        if (n.clone() == 0) {
+            "Ok(())".to_string()
+        } else {
+            if (n.clone() == 1) {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok(".to_string(),
+                        field_exprs.clone().join(&", ".to_string()),
+                    ),
+                    ")".to_string(),
+                )
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Ok((".to_string(),
+                        field_exprs.clone().join(&", ".to_string()),
+                    ),
+                    "))".to_string(),
+                )
+            }
         }
     }
 }
@@ -30709,7 +31070,7 @@ pub fn emit_resource_def(
                 let depth = 0;
                 let cap_methods = Rc::new({
                     let mut __result = Vec::new();
-                    for c in cap_children.clone().iter().cloned() {
+                    for c in cap_children.iter().cloned() {
                         __result.push(emit_capability_method(
                             c.clone(),
                             shared_types.clone(),
@@ -31421,7 +31782,7 @@ pub fn emit_test_file(
         let depth = 0;
         let test_fns = Rc::new({
             let mut __result = Vec::new();
-            for p in projections.clone().iter().cloned() {
+            for p in projections.iter().cloned() {
                 __result.push(emit_operation_test(p.clone(), (depth.clone() + 1)));
             }
             __result
@@ -31617,7 +31978,7 @@ pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) 
         {
             let feat_strs = Rc::new({
                 let mut __result = Vec::new();
-                for f in features.clone().iter().cloned() {
+                for f in features.iter().cloned() {
                     __result.push(v1_rt::concat(
                         v1_rt::concat("\"".to_string(), f.clone()),
                         "\"".to_string(),
@@ -31658,7 +32019,7 @@ pub fn emit_cargo_dep_no_default_features(
     {
         let feat_strs = Rc::new({
             let mut __result = Vec::new();
-            for f in features.clone().iter().cloned() {
+            for f in features.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat("\"".to_string(), f.clone()),
                     "\"".to_string(),
@@ -31795,7 +32156,7 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
 }
 
 pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
-    modules.clone().iter().cloned().fold(
+    modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
         |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             tm.items.clone().iter().cloned().fold(
@@ -31988,7 +32349,7 @@ pub fn collect_workflow_funcs(
         let data_body_index = build_data_body_index(modules.clone());
         Rc::new({
             let mut __result = Vec::new();
-            for tm in modules.clone().iter().cloned() {
+            for tm in modules.iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
@@ -32054,7 +32415,7 @@ pub fn validate_workflow_param_defaults(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for wf in workflow_funcs.clone().iter().cloned() {
+        for wf in workflow_funcs.iter().cloned() {
             __result.extend((*Rc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match param_node_default_value(param.clone()) {
     Some(dv) => {
         let param_name = authored_name_at(wf.source_indices.clone(), param.clone());
@@ -32085,7 +32446,7 @@ pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModul
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
@@ -32126,7 +32487,7 @@ pub fn emit_main_rs(
     {
         let has_pipeline = {
             let mut __found = false;
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 if (authored_name_at(m.type_env.clone().source_indices.clone(), m.module.clone())
                     == "v1.compiler.compile".to_string())
                 {
@@ -32138,7 +32499,7 @@ pub fn emit_main_rs(
         };
         let resource_type_names = Rc::new({
             let mut __result = Vec::new();
-            for wf in workflow_funcs.clone().iter().cloned() {
+            for wf in workflow_funcs.iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
@@ -32159,7 +32520,7 @@ pub fn emit_main_rs(
         let unique_resource_types = unique_strings(resource_type_names.clone());
         let resource_imports = Rc::new({
             let mut __result = Vec::new();
-            for rname in unique_resource_types.clone().iter().cloned() {
+            for rname in unique_resource_types.iter().cloned() {
                 __result.extend(
                     (*{
                         let mod_name = find_resource_module(rname.clone(), modules.clone());
@@ -32196,7 +32557,7 @@ pub fn emit_main_rs(
         let resource_imports_str = resource_imports.clone().join(&"\n".to_string());
         let all_svc_names = Rc::new({
             let mut __result = Vec::new();
-            for wf in workflow_funcs.clone().iter().cloned() {
+            for wf in workflow_funcs.iter().cloned() {
                 __result.extend((*wf.service_names.clone()).iter().cloned());
             }
             __result
@@ -32204,7 +32565,7 @@ pub fn emit_main_rs(
         let unique_svc_names = unique_strings(all_svc_names.clone());
         let svc_imports = Rc::new({
             let mut __result = Vec::new();
-            for sn in unique_svc_names.clone().iter().cloned() {
+            for sn in unique_svc_names.iter().cloned() {
                 __result.extend(
                     (*{
                         let struct_name = sanitize_service_name(sn.clone());
@@ -32383,7 +32744,7 @@ pub fn emit_main_mod_uses(
     {
         let mod_names = Rc::new({
             let mut __result = Vec::new();
-            for wf in workflow_funcs.clone().iter().cloned() {
+            for wf in workflow_funcs.iter().cloned() {
                 __result.push(module_to_filename(wf.module_name.clone()));
             }
             __result
@@ -32391,7 +32752,7 @@ pub fn emit_main_mod_uses(
         let unique_mods = unique_strings(mod_names.clone());
         let use_lines = Rc::new({
             let mut __result = Vec::new();
-            for m in unique_mods.clone().iter().cloned() {
+            for m in unique_mods.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -32480,7 +32841,7 @@ pub fn emit_subcommand_enum(
         let depth = 0;
         let variants = Rc::new({
             let mut __result = Vec::new();
-            for wf in workflow_funcs.clone().iter().cloned() {
+            for wf in workflow_funcs.iter().cloned() {
                 __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1)));
             }
             __result
@@ -32738,7 +33099,7 @@ pub fn emit_main_fn(
         };
         let match_arms = Rc::new({
             let mut __result = Vec::new();
-            for wf in workflow_funcs.clone().iter().cloned() {
+            for wf in workflow_funcs.iter().cloned() {
                 __result.push(emit_main_match_arm(wf.clone(), has_services.clone()));
             }
             __result
