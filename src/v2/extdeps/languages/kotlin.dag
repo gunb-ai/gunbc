@@ -55,7 +55,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -2530,8 +2530,8 @@ fn kotlin_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn kotlin_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       kotlin_catalog_surface_symbol(sym: sym) ||
         kotlin_lex_token_symbol(sym: sym) ||

@@ -12,8 +12,8 @@ fn validate_grammar_fixture_well_formed() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
   let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
   FormalGrammar {
-    nonterminals: Set { member: fn(n) { n == start } },
-    terminals: Set { member: fn(t) { t == terminal } },
+    nonterminals: PointwisePower { member: fn(n) { n == start } },
+    terminals: PointwisePower { member: fn(t) { t == terminal } },
     productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,
@@ -30,8 +30,8 @@ fn validate_grammar_fixture_start_not_in_nonterminals() -> FormalGrammar {
   let other_nt = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_other_nt)
   let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
   FormalGrammar {
-    nonterminals: Set { member: fn(n) { n == other_nt } },
-    terminals: Set { member: fn(t) { t == terminal } },
+    nonterminals: PointwisePower { member: fn(n) { n == other_nt } },
+    terminals: PointwisePower { member: fn(t) { t == terminal } },
     productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_other_nt,
@@ -47,8 +47,8 @@ fn validate_grammar_fixture_lhs_not_in_nonterminals() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
   let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
   FormalGrammar {
-    nonterminals: Set { member: fn(n) { n == start } },
-    terminals: Set { member: fn(t) { t == terminal } },
+    nonterminals: PointwisePower { member: fn(n) { n == start } },
+    terminals: PointwisePower { member: fn(t) { t == terminal } },
     productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_bad_lhs,
@@ -64,8 +64,8 @@ fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
   let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
   FormalGrammar {
-    nonterminals: Set { member: fn(n) { n == start } },
-    terminals: Set { member: fn(t) { t == terminal } },
+    nonterminals: PointwisePower { member: fn(n) { n == start } },
+    terminals: PointwisePower { member: fn(t) { t == terminal } },
     productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,

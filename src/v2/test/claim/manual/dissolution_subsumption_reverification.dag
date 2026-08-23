@@ -25,7 +25,7 @@ import v2.lens.subsumption {
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
   Map,
-  Set
+  PointwisePower
 }
 import v2.std.optional {
   Optional,
@@ -100,8 +100,8 @@ type MechanicalReverificationRun {
   test_claim: TestClaimId
   applied_root_fix: DiffId
   execution: MechanicalReverificationExecution
-  findings_before: Set<DiffId>
-  findings_after: Set<DiffId>
+  findings_before: PointwisePower<DiffId>
+  findings_after: PointwisePower<DiffId>
 }
 
 type MechanicalReverificationError
@@ -216,7 +216,7 @@ fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeVa
   }
 }
 
-fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> OptionalDiffId {
+fn missing_subsumed_fix_before(expected: PointwisePower<DiffId>, observed: PointwisePower<DiffId>) -> OptionalDiffId {
   let template = DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if expected.member(template) && !observed.member(template) {
@@ -228,7 +228,7 @@ fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> 
   }
 }
 
-fn surviving_subsumed_fix_after(observed: Set<DiffId>) -> OptionalDiffId {
+fn surviving_subsumed_fix_after(observed: PointwisePower<DiffId>) -> OptionalDiffId {
   let template = DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if observed.member(template) {
@@ -443,8 +443,8 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
   subject: subject_rust_language_model_emit_mechanical_reverification_claim
 )
 
-fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
-  Set {
+fn rust_language_model_emit_observed_before_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(d) {
       d.id == ^emit_rust_template_leaf_fix ||
         d.id == ^emit_rust_name_dispatch_leaf_fix
@@ -452,17 +452,17 @@ fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
   }
 }
 
-data rust_language_model_emit_observed_before: Set<DiffId> = rust_language_model_emit_observed_before_value()
+data rust_language_model_emit_observed_before: PointwisePower<DiffId> = rust_language_model_emit_observed_before_value()
 
-fn rust_language_model_emit_observed_after_value() -> Set<DiffId> {
-  Set {
+fn rust_language_model_emit_observed_after_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(_) {
       false
     }
   }
 }
 
-data rust_language_model_emit_observed_after: Set<DiffId> = rust_language_model_emit_observed_after_value()
+data rust_language_model_emit_observed_after: PointwisePower<DiffId> = rust_language_model_emit_observed_after_value()
 
 data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
   test_claim: TestClaimId { id: ^rust_language_model_emit_mechanical_reverification_claim },
