@@ -10,7 +10,9 @@ import v1.std.core {
   field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
   field_node_from_key, field_node_span, module_imports, module_items, import_is_all,
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
-  Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
+  Resolved, CompilerError, TypeVariable, VarBindingKind, CallTargetIdentity,
+  RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
   OccurrenceTransportViolation,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
@@ -382,9 +384,19 @@ fn var_binding_kind_name(value: VarBindingKind) -> String {
 
 fn call_semantics_name(value: CallSemantics) -> String {
   match value {
-    PlainCallSemantics => "PlainCallSemantics"
-    LookupCallSemantics => "LookupCallSemantics"
+    PlainCallSemantics { target: _ } => "PlainCallSemantics"
+    LookupCallSemantics { target: _ } => "LookupCallSemantics"
     FunctionValueCallSemantics => "FunctionValueCallSemantics"
+  }
+}
+
+fn serialize_call_target_identity(value: CallTargetIdentity) -> String {
+  match value {
+    RuntimePrimitiveCall { primitive_name: primitive_name } =>
+      concat("{\"kind\": \"RuntimePrimitiveCall\", \"primitive_name\": ", json_quote(s: primitive_name), "}")
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      concat("{\"kind\": \"SourceDeclarationCall\", \"owner_module_path\": ", json_quote(s: owner), ", \"decl_name\": ", json_quote(s: decl), "}")
+    CallableTargetUndetermined => "{\"kind\": \"CallableTargetUndetermined\"}"
   }
 }
 
@@ -522,8 +534,12 @@ fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIn
 
 fn serialize_call_semantics(value: CallSemantics?) -> String {
   match value {
-    Present { value: inner } =>
-      concat("{\"kind\": ", json_quote(s: call_semantics_name(value: inner)), "}")
+    Present { value: PlainCallSemantics { target: target } } =>
+      concat("{\"kind\": \"PlainCallSemantics\", \"target\": ", serialize_call_target_identity(value: target), "}")
+    Present { value: LookupCallSemantics { target: target } } =>
+      concat("{\"kind\": \"LookupCallSemantics\", \"target\": ", serialize_call_target_identity(value: target), "}")
+    Present { value: FunctionValueCallSemantics } =>
+      "{\"kind\": \"FunctionValueCallSemantics\"}"
     Absent => "null"
   }
 }

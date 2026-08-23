@@ -91,9 +91,14 @@ type VarBindingKind
   | VariantValueBinding { parent_enum: String }
   | MatchBoundBinding
 
+type CallTargetIdentity
+  = RuntimePrimitiveCall { primitive_name: String }
+  | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | CallableTargetUndetermined
+
 type CallSemantics
-  = PlainCallSemantics
-  | LookupCallSemantics
+  = PlainCallSemantics { target: CallTargetIdentity }
+  | LookupCallSemantics { target: CallTargetIdentity }
   | FunctionValueCallSemantics
 
 type MethodSemantics

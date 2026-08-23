@@ -47,6 +47,7 @@ import v1.std.core {
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -198,6 +199,13 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import std.decl_ref { decl_ref }
+import std.primitive_identity {
+  primitive_projection_for_declaration,
+  PrimitiveProjectionAnswer, DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive,
+  DeclarationPrimitiveUndisposed,
+  ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection
+}
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -3724,7 +3732,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     true =>
                       ok_infer(texpr: make_named_expr_node(
                         name: name,
-                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: name, sig_lookup: FuncSigResolved { sig: fsig }) } }, descent_evidence: none },
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
@@ -4021,7 +4029,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         )
         InferResult {
           typed: make_named_expr_node(
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
@@ -4128,7 +4136,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -4142,7 +4150,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: map_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
@@ -4153,7 +4161,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -4168,7 +4176,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: map_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
@@ -4179,7 +4187,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -4196,7 +4204,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -4210,7 +4218,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: set_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
@@ -4221,7 +4229,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -4236,7 +4244,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: set_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
@@ -4247,7 +4255,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -4261,9 +4269,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
-            Present { value: LookupCallSemantics }
+            Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name } } }
           } else {
-            Present { value: PlainCallSemantics }
+            Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }
           }
           InferResult {
             typed: make_named_expr_node(
@@ -4293,7 +4301,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics } }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
@@ -4338,7 +4346,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
               InferResult {
                 typed: make_named_expr_node(
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
@@ -4371,7 +4379,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: infer_expr(
                     texpr: make_named_expr_node(
                       name: dotted,
-                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: CallableTargetUndetermined } }, descent_evidence: none },
                       children: mc_args,
                       inferred: none,
                       span: span,
@@ -5185,6 +5193,36 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 }
 
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
+
+data resolved_call_target_identity_note: String = "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_identity says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism."
+
+fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
+  match sig_lookup {
+    FuncSigResolved { sig: _ } =>
+      match func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+        ExactConstructorDeclaration { identity: identity, declaration: _ } =>
+          match primitive_projection_for_declaration(declaration: decl_ref(module_path: identity.owner_module_path, decl_name: identity.decl_name)) {
+            DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+              match fidelity {
+                HostRealizedSeam => RuntimePrimitiveCall { primitive_name: func_name }
+                ModeledProjection => RuntimePrimitiveCall { primitive_name: func_name }
+                DivergentProjection { divergence: _ } => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
+              }
+            DeclarationProjectsNoPrimitive => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
+            DeclarationPrimitiveUndisposed { authored_symbol: _ } => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
+          }
+        NotAdmissionBearingReference {} => CallableTargetUndetermined
+        AdmissionBearingDeclarationUnavailable { identity: _, cause: _ } => CallableTargetUndetermined
+      }
+    FuncSigUnresolved =>
+      if infer_builtin_call_type(name: func_name) != none {
+        RuntimePrimitiveCall { primitive_name: func_name }
+      } else {
+        CallableTargetUndetermined
+      }
+    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
+  }
+}
 
 data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
 

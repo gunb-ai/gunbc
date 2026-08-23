@@ -16,7 +16,8 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
+  MatchBoundBinding, CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   UnlistedImportUse, AmbiguousAnonymousRecordLiteral, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
@@ -8060,11 +8061,20 @@ fn call_semantics_is_function_value(cs: CallSemantics?) -> Bool {
   }
 }
 
+fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
+  match cs {
+    Present { value: PlainCallSemantics { target: target } } => target
+    Present { value: LookupCallSemantics { target: target } } => target
+    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
+    Absent => CallableTargetUndetermined
+  }
+}
+
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices)
-      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
   }
 }
@@ -8371,8 +8381,9 @@ fn emit_discriminant_call_scrutinee_lowering(arg: Node, registry: Map<String, It
   }
 }
 
-fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let call_str = if func == "empty_map" {
+fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let target_is_runtime = match call_target { RuntimePrimitiveCall { primitive_name: _ } => true  _ => false }
+  let call_str = if target_is_runtime && func == "empty_map" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
         let kv_type_str = rust_empty_map_kv_type_str(map_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
@@ -8383,17 +8394,17 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         }
       _ => rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map return type unresolved */")
     }
-  } else if func == "empty_set" {
+  } else if target_is_runtime && func == "empty_set" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
         emit_rust_empty_set_expr(set_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
       _ => "v1_rt::rc_empty_set::<_>()"
     }
   } else {
-    emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
-  if callee_is_function_value == false && rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+  if callee_is_function_value == false && match call_target { RuntimePrimitiveCall { primitive_name: primitive_name } => rust_runtime_bridge_wraps_collection_result_in_rc(function_name: primitive_name)  _ => false } {
     rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
@@ -8525,11 +8536,12 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   }
 }
 
-fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
-  if func == "get" {
+  let target_is_runtime = match call_target { RuntimePrimitiveCall { primitive_name: _ } => true  _ => false }
+  if target_is_runtime && func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
     let get_list = get_args |> first
     let get_idx = get_args |> skip(1) |> first
@@ -8546,7 +8558,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     }
     return get_result
   }
-  if func == "with" {
+  if target_is_runtime && func == "with" {
     let with_args = order_typed_call_args(args: args, func: func, scope: scope)
     if with_args |> count == 0 { return "compile_error!(\"with call missing base record\")" }
     let base_arg = arg_value(n: (with_args |> first).value)
@@ -8571,7 +8583,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     if needs_rc { return rust_shared_wrap_ctor(inner_expr: raw) }
     else { return raw }
   }
-  if func == "to_string" {
+  if target_is_runtime && func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
@@ -8581,7 +8593,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     return ts_result
   }
 
-  if func == "utf8_decode_bytes" {
+  if target_is_runtime && func == "utf8_decode_bytes" {
     let decode_args = order_typed_call_args(args: args, func: func, scope: scope)
     let decode_result = match decode_args |> first {
       Present { value: value_arg } =>
@@ -8594,7 +8606,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     }
     return decode_result
   }
-  if func == "discriminant" {
+  if target_is_runtime && func == "discriminant" {
     let disc_args = order_typed_call_args(args: args, func: func, scope: scope)
     let disc_result = match disc_args |> first {
       Present { value: value_arg } =>
@@ -8604,10 +8616,18 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     return disc_result
   }
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
+  let callee = match call_target {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      lookup_item(registry: registry, name: concat(owner, ".", decl))
+    _ => none
+  }
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
-  let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
+  let runtime_primitive_name = match call_target {
+    RuntimePrimitiveCall { primitive_name: primitive_name } => primitive_name
+    _ => ""
+  }
+  let is_rt = callee_is_function_value == false && runtime_primitive_name != ""
+  let is_rt_ref_map = is_rt && map_contains_key(rt_ref_map_functions(), runtime_primitive_name)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
@@ -8633,14 +8653,20 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let runtime_name = rust_runtime_bridge_name(function_name: func)
+  let runtime_name = rust_runtime_bridge_name(function_name: runtime_primitive_name)
   let si = scope.type_env.source_indices
 
   let callee_self_capture = if is_rt { false } else {
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
-    else { emit_value_ref_ident(name: func, registry: registry, emit_info: emit_info) }
+    else { match call_target {
+      SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+        if owner == scope.module_name { emit_ident(name: decl, target: Rust) }
+        else { concat("crate::", module_to_filename(name: owner), "::", emit_ident(name: decl, target: Rust)) }
+      CallableTargetUndetermined => emit_error_expr(message: "call target identity was not established before Rust emission", target: Rust)
+      RuntimePrimitiveCall { primitive_name: _ } => emit_error_expr(message: "runtime call target lost its bridge identity", target: Rust)
+    } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
@@ -9267,13 +9293,13 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, runtime_bridge: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
-  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
+  if runtime_bridge == false && rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
-  } else if map_contains_key(rt_functions(), function_name) == false {
+  } else if runtime_bridge == false {
     let spec = language_spec(target: Rust)
     apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
@@ -9346,7 +9372,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       } else if method_name == "with" {
         emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "string_contains" {
-        emit_rust_generic_method_call(method_name: "string_contains", receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        emit_rust_generic_method_call(method_name: "string_contains", receiver: receiver, args: args, result_type: result_type, runtime_bridge: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "concat" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
@@ -9369,7 +9395,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
               rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
-            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, runtime_bridge: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
       }
     }
@@ -9913,13 +9939,9 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
 }
 
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
-  if map_contains_key(rt_functions(), method_name) {
-    false
-  } else {
-    let receiver_type = resolved_type(n: receiver)
-    let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
-    rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
-  }
+  let receiver_type = resolved_type(n: receiver)
+  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
 }
 
 fn rust_struct_field_type_node_variant_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
@@ -10597,7 +10619,7 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
   match frame.expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
-      let call_str = emit_typed_call(func: f, args: frame.expr.children, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      let call_str = emit_typed_call(func: f, args: frame.expr.children, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }

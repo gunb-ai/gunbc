@@ -1,0 +1,52 @@
+module test.claim.resolved_call_emission_identity_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data resolved_call_emission_identity_witness_note: String = "Permanent regression control for post-resolution callable identity at Rust emission. The source resolver chooses once; 05_emit_rust consumes the recorded RuntimePrimitiveCall or exact SourceDeclarationCall and never asks rt_functions by leaf spelling. The positive trap is the real two-String substring primitive, which must still lower to v1_rt::contains. The empty_map arm proves an exact declaration carrying the existing primitive projection remains host-lowered. The contains and map_get arms prove ordinary and DivergentProjection declarations retain their source identities; together they reproduce the 28-block board mechanism across its two live names. The local same-name arm proves an unrelated declaration cannot become a primitive merely because its leaf collides. map_insert is deliberately absent: v2.std.collection currently carries both map_insert_host_binding and a closure-backed modeled body, while no authority decides which one owns calls; this repair consumes the existing projection roster and does not reclassify that unresolved specimen. dissolve-on: never -- emission may change target spelling, but it may never reintroduce name lookup after source resolution."
+
+fn w_two_string_substring_contains_stays_runtime_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.runtime_substring_contains_probe\nimport std.types { Bool, String }\nfn probe(s: String, sub: String) -> Bool { contains(s, sub) }\n",
+    "src/test_claim_runtime_substring_contains_probe.rs",
+    ["v1_rt::contains("],
+    []
+  )
+}
+
+fn w_primitive_bound_empty_map_stays_runtime_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.runtime_empty_map_probe\nimport std.types { Int, String, Map }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "src/test_claim_runtime_empty_map_probe.rs",
+    ["v1_rt::rc_empty_map"],
+    ["v2_std_collection::empty_map("]
+  )
+}
+
+fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport v2.std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
+    "src/test_claim_declared_contains_probe.rs",
+    ["crate::v2_std_algebra::contains("],
+    ["v1_rt::contains("]
+  )
+}
+
+fn w_divergent_map_get_keeps_declared_outcome_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport v2.std.collection { map_get }\nfn probe(m: Map<String, Int>) { map_get(m: m, key: \"key\") }\n",
+    "src/test_claim_declared_map_get_probe.rs",
+    ["crate::v2_std_collection::map_get("],
+    ["v1_rt::map_get("]
+  )
+}
+
+fn w_unrelated_same_named_declaration_never_becomes_runtime_primitive() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.local_contains_probe\nimport std.types { Int }\nfn contains(left: Int, right: Int, third: Int) -> Int { left + right + third }\nfn probe() -> Int { contains(1, 2, 3) }\n",
+    "src/test_claim_local_contains_probe.rs",
+    ["contains(1, 2, 3)"],
+    ["v1_rt::contains("]
+  )
+}
