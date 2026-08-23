@@ -10324,16 +10324,12 @@ pub fn infer_record_lit_structural(
                                         scope.type_env.clone(),
                                         scope.module_name.clone(),
                                     );
-                                    if (literal_introduction_type_mismatch(
-                                        expected_node.clone(),
-                                        field_init_node_value(fi.clone()),
-                                        scope.clone(),
-                                    ) || kernel_value_declared_type_mismatch(
+                                    if kernel_value_declared_type_mismatch(
                                         formal_peeled.clone(),
                                         actual_peeled.clone(),
                                         scope.type_env.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    )) {
+                                    ) {
                                         Rc::new(vec![type_mismatch_error(
                                             node_type_shape(
                                                 formal_peeled.clone(),
