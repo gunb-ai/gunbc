@@ -71,7 +71,6 @@ data eval_memo_facts: CacheInterfaceCatalogFacts = {
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: ExactLimit { value: 1000000 } }, at_capacity: RefuseNewStore } }
     atomicity: PerFile
-    auth: None
     read_latency: InProcessNs
     consistency: Strong
   }

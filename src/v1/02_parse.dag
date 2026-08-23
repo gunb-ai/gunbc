@@ -288,7 +288,7 @@ type ItemPrefixResult {
   err: ErrorNode?
 }
 
-type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
+type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node? }
 type ConfigResult { config: ServiceConfig, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type BindingPower { left: Int, right: Int }
@@ -2774,7 +2774,7 @@ fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: So
 
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
-    Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
+    Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit)
     Absent => []
   }
   let item = Node { name: name, span: start_span, ident_span: Present { value: svc_name_span },
@@ -2839,10 +2839,10 @@ fn parse_service_entries(tokens: TokenStream, ctx: ParseContext, config: Service
 }
 
 fn parse_service_config_block(tokens: TokenStream, ctx: ParseContext) -> ConfigResult {
-  parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none)
 }
 
-fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> ConfigResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let cfg = ServiceConfig {
@@ -2853,12 +2853,11 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
       auth: auth,
       auth_input: auth_input,
       auth_source: auth_source,
-      rate_limit: rate_limit,
-      retry: retry
+      rate_limit: rate_limit
     }
     ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none }
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
@@ -2872,13 +2871,12 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
     let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Present { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: Present { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_input" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: Present { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Present { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Present { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Present { value: r3.expr })
-      _ => ConfigResult { config: dummy_cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("service config has no field `", fname, "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`"), span: r.span) } }
+      "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Present { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit)
+      "auth" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: Present { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit)
+      "auth_input" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: Present { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit)
+      "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Present { value: r3.expr }, rate_limit: rate_limit)
+      "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Present { value: r3.expr })
+      _ => ConfigResult { config: dummy_cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("service config has no field `", fname, "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source` and `rate_limit`"), span: r.span) } }
     }
   }
 }

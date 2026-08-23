@@ -3165,6 +3165,11 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
                 // the same reason WhereRefinementUnenforced does.
                 | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
+                // The service-config reference-judgment deferral is non-blocking, so it must
+                // be admitted HERE or it would be counted by neither predicate — rendered to
+                // the terminal while every count the gate reports reads zero for it, which is
+                // the frontier-claiming-to-be-counted failure the comment above names.
+                | crate::v1_std_core::CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. }
         )
 }
 
