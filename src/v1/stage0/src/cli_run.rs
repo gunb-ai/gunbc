@@ -42358,7 +42358,11 @@ pub fn run_required_floor(
                         other => format!("{other:?}"),
                     };
                     outcome.known_red_runtime_errored.push(format!(
-                        "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}.                          Enrollment asserts an expected verdict; a claim that threw produced                          none. Repair the witness or its subject, then re-read the enrollment                          — do not read this as the enrolled failure.",
+                        "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
+                         Enrollment asserts an expected verdict; a claim that threw \
+                         produced none. Repair the witness or its subject, then \
+                         re-read the enrollment — do not read this as the enrolled \
+                         failure.",
                         claim.qualified, detail
                     ));
                     continue;
@@ -42366,7 +42370,11 @@ pub fn run_required_floor(
                 ExpectedRedArm::ObservationUnreadable => {
                     known_red_observation_unreadable_count += 1;
                     outcome.known_red_observation_unreadable.push(format!(
-                        "{} is enrolled as expected-red but returned something that is NOT A                          VERDICT ({:?}), so it is neither the enrolled failure nor a repayment.                          Enrollment asserts an expected verdict; an unreadable observation is                          none. Make the witness return a Bool, then re-read the enrollment.",
+                        "{} is enrolled as expected-red but returned something that is NOT A \
+                         VERDICT ({:?}), so it is neither the enrolled failure nor a \
+                         repayment. Enrollment asserts an expected verdict; an \
+                         unreadable observation is none. Make the witness return a \
+                         Bool, then re-read the enrollment.",
                         claim.qualified, result
                     ));
                     continue;
