@@ -1,5 +1,23 @@
 module test.claim.workload_simulation_witness
 
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.measure { money_amount_micro, money_amount_micro_count }
+import product.workload_simulation {
+  SupplyLane,
+  ArrivalShape,
+  FlatArrival,
+  BurstyArrival,
+  AcquisitionVerdict,
+  CommitmentPaysOff,
+  CommitmentCostsMore,
+  CommitmentBreaksEven,
+  VerdictRefusedUnplacedWork,
+  acquisition_verdict,
+  billed_slots_per_job,
+  simulate,
+}
+
 // The subject is WHETHER DEMAND SHAPE CHANGES THE ACQUISITION VERDICT. A simulation that
 // answered the same way for flat and bursty demand would be an expensive way to restate a
 // unit price, so every witness here is a pair that must DIVERGE, plus the refusals that

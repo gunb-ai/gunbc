@@ -1,5 +1,10 @@
 module test.claim.fabric_witness_run
 
+// Nat is imported explicitly because the strict floor does not supply it ambiently the way
+// `gunbc run` does. This file carried no import list at all and resolved anyway under the
+// looser path, so adding a Nat-typed parameter passed locally and refused in CI.
+import std.nat { Nat }
+
 // The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
 // separate coproducts, so every witness here is a refusal on ONE of them or one
 // of the controls that prove refusal is not the only reachable arm on either. A
