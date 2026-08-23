@@ -5230,7 +5230,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 }
 
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let name = authored_name_at(source_indices: source_indices, node: n)
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  let name = qualified_last_segment(name: authored)
   if set_contains(shared_types, name) { false }
   else if set_contains(recursive_types, name) { true }
   else if n.children |> count == 0 {
@@ -9978,7 +9979,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Present { value: en } => en
             Absent => variant_name
           }
-          if rc_name != "" && set_contains(shared_types, rc_name) {
+          if rc_name != "" && set_contains(shared_types, qualified_last_segment(name: rc_name)) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
