@@ -14,7 +14,9 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
 
 fn empty_workspace_html() -> String {
   match try_serialize_html_source(node: roadmap_daily_workspace_page(
@@ -57,10 +59,24 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 // Asserted as the relation against gunbc_runner_slots_per_host rather than against the literal 22.
 // A literal would be a change detector that goes red on a correct width ruling and stays green if
 // the panel silently stopped reading the authority at all.
+// THE TOTAL JOINS TO THE ALLOCATION AUTHORITY PER HOST, AND NAMES EVERY HOST TO DO IT.
+//
+// An earlier revision asserted srv1 * 2 + srv3 * 2, which was true only while the fleet was two
+// symmetric pairs. #8976 made CPU an admission axis and the symmetry ended: srv1/srv3/srv4 became
+// core-bound while srv2 stayed memory-bound on 8x16 GiB, because its 64 GiB upgrade failed training
+// and was reverted. The doubling was never the property under test -- it was a shortcut that
+// happened to hold -- and it turned a real fleet asymmetry into a red on a witness about summing.
+//
+// Naming all four hosts keeps the join (the panel's total must equal the allocation authority's
+// per-host widths) while carrying no assumption about which hosts resemble each other. It also
+// stays a genuine oracle rather than measure() == measure(): the right side reads
+// gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
 test fn the_slot_total_sums_the_allocation_authority() -> Bool {
   fleet_committed_slot_total_ignoring_withdrawals()
-    == gunbc_runner_slots_per_host(host: operator_host_srv1) * 2
-       + gunbc_runner_slots_per_host(host: operator_host_srv3) * 2
+    == gunbc_runner_slots_per_host(host: operator_host_srv1)
+       + gunbc_runner_slots_per_host(host: operator_host_srv2)
+       + gunbc_runner_slots_per_host(host: operator_host_srv3)
+       + gunbc_runner_slots_per_host(host: operator_host_srv4)
     && fleet_committed_slot_total() > 0
 }
 
