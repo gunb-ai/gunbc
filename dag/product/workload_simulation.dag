@@ -1,7 +1,30 @@
 module product.workload_simulation
 
 import std.types { NonEmptyStr, List, Bool, Int }
-import std.nat { Nat, nat_min, nat_range_inclusive }
+import std.nat { Nat, nat_min, nat_max, nat_range_inclusive }
+import std.measure {
+  MoneyAmountMicro,
+  money_amount_micro,
+  money_amount_micro_count,
+  measure_add,
+  measure_scale_fraction_floor,
+  measure_le,
+}
+
+// MONEY IS A CARRIER HERE, NOT A Nat WITH ITS UNIT IN THE FIELD NAME.
+// std.measure's own note states the rule this module initially broke: an amount is never
+// "folded into a bare amount with the unit in the field name". Every money field below is
+// MoneyAmountMicro, and every money operation goes through measure_add, measure_le or
+// measure_scale_fraction_floor. The point is not tidiness. This model's central arithmetic
+// multiplies a RATE by a DURATION and adds the result to a RUNNING TOTAL, and on bare Nat
+// all three are the same type -- which is exactly how the billing quantum came to be applied
+// to a slot's concurrency instead of a job's duration, typechecking the whole way. Scaling a
+// money measure by a count is now the only spelling that compiles, and adding a slot count
+// to a total has none.
+//
+// COUNTS STAY Nat AND THAT IS DELIBERATE. Slots, jobs, capacity and the occupancy permille
+// are dimensionless tallies, not money; giving them a money carrier would be the same error
+// pointed the other way.
 
 // WHAT DEMAND SHAPE MAKES OWNING CHEAPER THAN RENTING, AND AT WHAT OCCUPANCY.
 //
@@ -73,8 +96,8 @@ fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
 type SupplyLane {
   label: NonEmptyStr
   capacity: Nat
-  variable_micros_per_slot: Nat
-  committed_micros_per_slot: Nat
+  variable_per_slot: MoneyAmountMicro
+  committed_per_slot: MoneyAmountMicro
   billing_quantum_slots: Nat
 }
 
@@ -109,10 +132,17 @@ fn billed_slots_per_job(quantum_slots: Nat) -> Nat {
 // cheapest ask.
 type PlacementAccum {
   remaining: Nat
-  variable_micros: Nat
+  variable_spend: MoneyAmountMicro
   placed_committed: Nat
   placed_variable: Nat
   unplaced: Nat
+}
+
+// A lane is committed exactly when something is owed per slot regardless of use. Reading the
+// count to ask "is this greater than zero" is a predicate on the value, not arithmetic across
+// units, so it does not reintroduce the mixing the carrier exists to forbid.
+fn lane_is_committed(lane: SupplyLane) -> Bool {
+  money_amount_micro_count(m: lane.committed_per_slot) > 0
 }
 
 fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
@@ -120,9 +150,12 @@ fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
   let billed = taken * billed_slots_per_job(quantum_slots: lane.billing_quantum_slots)
   PlacementAccum {
     remaining: acc.remaining - taken,
-    variable_micros: acc.variable_micros + (billed * lane.variable_micros_per_slot),
-    placed_committed: if lane.committed_micros_per_slot > 0 { acc.placed_committed + taken } else { acc.placed_committed },
-    placed_variable: if lane.committed_micros_per_slot > 0 { acc.placed_variable } else { acc.placed_variable + taken },
+    variable_spend: measure_add(
+      a: acc.variable_spend,
+      b: measure_scale_fraction_floor(m: lane.variable_per_slot, num: billed, den: 1),
+    ),
+    placed_committed: if lane_is_committed(lane: lane) { acc.placed_committed + taken } else { acc.placed_committed },
+    placed_variable: if lane_is_committed(lane: lane) { acc.placed_variable } else { acc.placed_variable + taken },
     unplaced: acc.unplaced,
   }
 }
@@ -130,7 +163,7 @@ fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
 fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
   let seeded = PlacementAccum {
     remaining: concurrent,
-    variable_micros: 0,
+    variable_spend: money_amount_micro(count: 0),
     placed_committed: 0,
     placed_variable: 0,
     unplaced: 0,
@@ -138,7 +171,7 @@ fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
   let filled = fold(lanes, init: seeded, f: (acc, lane) => place_on_lane(acc: acc, lane: lane))
   PlacementAccum {
     remaining: 0,
-    variable_micros: filled.variable_micros,
+    variable_spend: filled.variable_spend,
     placed_committed: filled.placed_committed,
     placed_variable: filled.placed_variable,
     unplaced: filled.remaining,
@@ -150,7 +183,7 @@ fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
 // ---------------------------------------------------------------------------------------
 
 type RunAccum {
-  variable_micros: Nat
+  variable_spend: MoneyAmountMicro
   committed_slot_jobs: Nat
   variable_slot_jobs: Nat
   unplaced_slot_jobs: Nat
@@ -160,7 +193,7 @@ type RunAccum {
 
 fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum {
   RunAccum {
-    variable_micros: acc.variable_micros + placed.variable_micros,
+    variable_spend: measure_add(a: acc.variable_spend, b: placed.variable_spend),
     committed_slot_jobs: acc.committed_slot_jobs + placed.placed_committed,
     variable_slot_jobs: acc.variable_slot_jobs + placed.placed_variable,
     unplaced_slot_jobs: acc.unplaced_slot_jobs + placed.unplaced,
@@ -169,8 +202,15 @@ fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum 
   }
 }
 
-fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> Nat {
-  fold(lanes, init: 0, f: (acc, lane) => acc + (lane.committed_micros_per_slot * slots))
+fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> MoneyAmountMicro {
+  fold(
+    lanes,
+    init: money_amount_micro(count: 0),
+    f: (acc, lane) => measure_add(
+      a: acc,
+      b: measure_scale_fraction_floor(m: lane.committed_per_slot, num: slots, den: 1),
+    ),
+  )
 }
 
 fn lane_capacity_total(lanes: List<SupplyLane>) -> Nat {
@@ -178,7 +218,7 @@ fn lane_capacity_total(lanes: List<SupplyLane>) -> Nat {
 }
 
 fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
-  fold(lanes, init: 0, f: (acc, lane) => if lane.committed_micros_per_slot > 0 { acc + lane.capacity } else { acc })
+  fold(lanes, init: 0, f: (acc, lane) => if lane_is_committed(lane: lane) { acc + lane.capacity } else { acc })
 }
 
 // UNPLACED WORK IS REPORTED, NEVER ABSORBED. A slot whose demand exceeds every lane's
@@ -188,9 +228,9 @@ fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
 type SimulationResult {
   arrival: NonEmptyStr
   slots: Nat
-  variable_micros: Nat
-  committed_micros: Nat
-  total_micros: Nat
+  variable_spend: MoneyAmountMicro
+  committed_spend: MoneyAmountMicro
+  total_spend: MoneyAmountMicro
   committed_slot_jobs: Nat
   variable_slot_jobs: Nat
   unplaced_slot_jobs: Nat
@@ -212,7 +252,7 @@ fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slo
 fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> SimulationResult {
   let grid = nat_range_inclusive(lo: 0, hi: nat_max(a: slots, b: 1) - 1)
   let seeded = RunAccum {
-    variable_micros: 0,
+    variable_spend: money_amount_micro(count: 0),
     committed_slot_jobs: 0,
     variable_slot_jobs: 0,
     unplaced_slot_jobs: 0,
@@ -225,9 +265,9 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
   SimulationResult {
     arrival: arrival_label(s: shape),
     slots: slots,
-    variable_micros: run.variable_micros,
-    committed_micros: committed,
-    total_micros: run.variable_micros + committed,
+    variable_spend: run.variable_spend,
+    committed_spend: committed,
+    total_spend: measure_add(a: run.variable_spend, b: committed),
     committed_slot_jobs: run.committed_slot_jobs,
     variable_slot_jobs: run.variable_slot_jobs,
     unplaced_slot_jobs: run.unplaced_slot_jobs,
@@ -247,10 +287,19 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
 // always is once bought, and which is the comparison that talks operators into capacity
 // they cannot fill.
 type AcquisitionVerdict
-  = CommitmentPaysOff { saved_micros: Nat, occupancy_permille: Nat }
-  | CommitmentCostsMore { excess_micros: Nat, occupancy_permille: Nat }
+  = CommitmentPaysOff { saved: MoneyAmountMicro, occupancy_permille: Nat }
+  | CommitmentCostsMore { excess: MoneyAmountMicro, occupancy_permille: Nat }
   | CommitmentBreaksEven { occupancy_permille: Nat }
   | VerdictRefusedUnplacedWork { unplaced_slot_jobs: NonEmptyStr }
+
+// std.measure carries add, scale and compare but no subtraction, and the gap is principled:
+// Nat-backed measures cannot represent a negative result, so a general difference would need
+// a refusal arm for the case where the subtrahend is larger. Here both call sites have
+// already established the ordering with measure_le, so the difference is total by
+// construction and the guard belongs in the caller's branch rather than in a carrier.
+fn money_difference(larger: MoneyAmountMicro, smaller: MoneyAmountMicro) -> MoneyAmountMicro {
+  money_amount_micro(count: money_amount_micro_count(m: larger) - money_amount_micro_count(m: smaller))
+}
 
 fn acquisition_verdict(with_commitment: SimulationResult, all_rented: SimulationResult) -> AcquisitionVerdict {
   if with_commitment.unplaced_slot_jobs > 0 || all_rented.unplaced_slot_jobs > 0 {
@@ -258,15 +307,15 @@ fn acquisition_verdict(with_commitment: SimulationResult, all_rented: Simulation
       unplaced_slot_jobs: "A portfolio left work unplaced, so the two totals price different amounts of work and cannot be compared. Raise a lane's bound or admit the demand cannot be served; do not read the cheaper number.",
     }
   } else {
-    if with_commitment.total_micros < all_rented.total_micros {
+    if !measure_le(a: all_rented.total_spend, b: with_commitment.total_spend) {
       CommitmentPaysOff {
-        saved_micros: all_rented.total_micros - with_commitment.total_micros,
+        saved: money_difference(larger: all_rented.total_spend, smaller: with_commitment.total_spend),
         occupancy_permille: with_commitment.committed_occupancy_permille,
       }
     } else {
-      if all_rented.total_micros < with_commitment.total_micros {
+      if !measure_le(a: with_commitment.total_spend, b: all_rented.total_spend) {
         CommitmentCostsMore {
-          excess_micros: with_commitment.total_micros - all_rented.total_micros,
+          excess: money_difference(larger: with_commitment.total_spend, smaller: all_rented.total_spend),
           occupancy_permille: with_commitment.committed_occupancy_permille,
         }
       } else {

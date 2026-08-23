@@ -12,8 +12,8 @@ fn owned_lane() -> SupplyLane {
   SupplyLane {
     label: "owned",
     capacity: 10,
-    variable_micros_per_slot: 0,
-    committed_micros_per_slot: 300,
+    variable_per_slot: money_amount_micro(count: 0),
+    committed_per_slot: money_amount_micro(count: 300),
     billing_quantum_slots: 0,
   }
 }
@@ -22,8 +22,8 @@ fn rented_lane() -> SupplyLane {
   SupplyLane {
     label: "rented",
     capacity: 1000,
-    variable_micros_per_slot: 100,
-    committed_micros_per_slot: 0,
+    variable_per_slot: money_amount_micro(count: 100),
+    committed_per_slot: money_amount_micro(count: 0),
     billing_quantum_slots: 60,
   }
 }
@@ -40,8 +40,8 @@ fn rented_lane_per_slot() -> SupplyLane {
   SupplyLane {
     label: "rented-per-slot",
     capacity: 1000,
-    variable_micros_per_slot: 100,
-    committed_micros_per_slot: 0,
+    variable_per_slot: money_amount_micro(count: 100),
+    committed_per_slot: money_amount_micro(count: 0),
     billing_quantum_slots: 0,
   }
 }
@@ -51,8 +51,8 @@ fn rent_only() -> List<SupplyLane> { [rented_lane_per_slot()] }
 
 fn verdict_pays_off(v: AcquisitionVerdict) -> Bool {
   match v {
-    CommitmentPaysOff { saved_micros, occupancy_permille } => true
-    CommitmentCostsMore { excess_micros, occupancy_permille } => false
+    CommitmentPaysOff { saved, occupancy_permille } => true
+    CommitmentCostsMore { excess, occupancy_permille } => false
     CommitmentBreaksEven { occupancy_permille } => false
     VerdictRefusedUnplacedWork { unplaced_slot_jobs } => false
   }
@@ -60,8 +60,8 @@ fn verdict_pays_off(v: AcquisitionVerdict) -> Bool {
 
 fn verdict_costs_more(v: AcquisitionVerdict) -> Bool {
   match v {
-    CommitmentPaysOff { saved_micros, occupancy_permille } => false
-    CommitmentCostsMore { excess_micros, occupancy_permille } => true
+    CommitmentPaysOff { saved, occupancy_permille } => false
+    CommitmentCostsMore { excess, occupancy_permille } => true
     CommitmentBreaksEven { occupancy_permille } => false
     VerdictRefusedUnplacedWork { unplaced_slot_jobs } => false
   }
@@ -69,8 +69,8 @@ fn verdict_costs_more(v: AcquisitionVerdict) -> Bool {
 
 fn verdict_refused(v: AcquisitionVerdict) -> Bool {
   match v {
-    CommitmentPaysOff { saved_micros, occupancy_permille } => false
-    CommitmentCostsMore { excess_micros, occupancy_permille } => false
+    CommitmentPaysOff { saved, occupancy_permille } => false
+    CommitmentCostsMore { excess, occupancy_permille } => false
     CommitmentBreaksEven { occupancy_permille } => false
     VerdictRefusedUnplacedWork { unplaced_slot_jobs } => true
   }
@@ -142,7 +142,7 @@ test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool {
   let flat = FlatArrival { concurrent: 5 }
   let coarse = simulate(shape: flat, lanes: [rented_lane()], slots: 600)
   let fine = simulate(shape: flat, lanes: [rented_lane_per_slot()], slots: 600)
-  coarse.variable_micros == (fine.variable_micros * 60)
+  money_amount_micro_count(m: coarse.variable_spend) == (money_amount_micro_count(m: fine.variable_spend) * 60)
 }
 
 // UNPLACED WORK REFUSES THE COMPARISON RATHER THAN CHEAPENING IT.
@@ -150,8 +150,8 @@ test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool {
 // totals, and the cheaper number would be cheaper because it ran less. The fold refuses.
 test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Bool {
   let tiny = [SupplyLane {
-    label: "tiny", capacity: 1, variable_micros_per_slot: 0,
-    committed_micros_per_slot: 1, billing_quantum_slots: 0,
+    label: "tiny", capacity: 1, variable_per_slot: money_amount_micro(count: 0),
+    committed_per_slot: money_amount_micro(count: 1), billing_quantum_slots: 0,
   }]
   let overloaded = simulate(shape: FlatArrival { concurrent: 50 }, lanes: tiny, slots: 10)
   overloaded.unplaced_slot_jobs > 0
