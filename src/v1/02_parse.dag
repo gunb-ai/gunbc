@@ -4571,11 +4571,30 @@ fn parse_expr_no_brace(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: 0)
 }
 
+// This retries when parse_prefix consumes the brace that the surrounding if/match owns.
+// Simply forbidding record literals in this path would reject valid conditions:
+// `if x == Present { value: y } { ... }` has a legitimate record literal and a distinct branch
+// brace. The retry distinguishes the swallowed-branch case while preserving that condition.
 fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprResult {
+  let tok = token_stream_first(stream: tokens)
+  let next = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  let lhs = r.expr
-  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
+  let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+  let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
+  let stopped_at_infix = match infix_bp(tokens: parsed.tokens) { Present { value: _ } => true  Absent => false }
+  if leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) && !stopped_at_infix {
+    let span = token_span(tok: tok)
+    let lhs = make_named_expr_node(name: tok.value.text, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span)
+    parse_expr_loop_no_brace(
+      tokens: token_stream_advance(stream: tokens, n: 1),
+      ctx: ctx,
+      lhs: lhs,
+      min_bp: min_bp
+    )
+  } else {
+    parsed
+  }
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
