@@ -250,3 +250,52 @@ depth is bounded and rounds NOT converging would be a finding about the resoluti
 rather than about the roster. Three `runtime_axis` rows have now advanced through three distinct
 names (`symbolic_cost_of_node`/`chain_is_simulated` -> `cost_is_lowerable` -> `type_decls_anti_unify`),
 which is the deepest chain observed in this lane.
+
+## Round 3 executed: 111 -> 21, and one cost consequence stated rather than absorbed
+
+**Subject:** required-floor run `32667349586` at `7026838`. Ledger:
+
+    planned=10693 executed=10693 terminal=10693 passed=10445 known_red_held=36 failed=0
+    stale_quarantine=88 known_red_now_passing=88 known_red_budget_refused=2
+    known_red_runtime_errored=21 route_gap_held=101
+
+88 + 2 + 21 = 111 exactly, so the round's outcome partitions its input with no remainder. The 88
+are removed (roster 171 -> 83). `failed=0` again: the 70-import batch broke no sibling witness.
+
+**The two BUDGET-REFUSED rows are a real consequence of the repair, and they stay enrolled.**
+`v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct`
+and `..._roster_covers_testclaim` were runtime-errored before this round and are now INTERRUPTED
+at 5001ms and 5003ms against a 5000ms ceiling. That is not a regression being hidden: the witness
+previously threw before doing its work, and now it RUNS and the work costs more than its budget.
+A budget interruption is a lower bound on cost and not a verdict, so the enrolment is undecided
+and correctly keeps the row. The cost debt is real and belongs to whoever owns that witness.
+
+## Where this lane stops, and what is left
+
+Twenty-one rows remain, and **none of them is a reference failure** — the reference class this
+lane owned is drained. By reported cause:
+
+| cause | rows |
+|---|---|
+| `atom_identity_hash requires exactly one string argument` | 12 |
+| `no such function: sigma_families_of_defs` | 3 |
+| `undefined variable: LocalAccelerator` | 2 |
+| `cannot access field 'raw' on Int` | 2 |
+| `call depth exceeded 100000` (the self-recursive fixture) | 1 |
+| `call contract mismatch calling 'render'` | 1 |
+
+The last two reference-shaped ones are repaired in this round: `sigma_families_of_defs` is the
+`runtime_axis` file's FOURTH successive frontier name (`symbolic_cost_of_node`/`chain_is_simulated`
+-> `cost_is_lowerable` -> `type_decls_anti_unify` -> `sigma_families_of_defs`), and
+`LocalAccelerator` is fixed in `dag/gunbc/accelerator_demo_plan.dag` rather than in the two witness
+files, because that is where the bare value-position reference actually is — the witnesses only
+call into it.
+
+**The frontier converged.** Four rounds, depths 1 to 4, with the deepest chain in one file. The
+per-round table above is the evidence that the depth is bounded rather than open, which was the
+open question when the loop started.
+
+**The remaining 16 are not this lane's to repair**, and each has a named root in the tail-families
+section: the `Atom.identity` type hole behind `atom_identity_hash`, the `eval_call` lexical-tier
+gap behind `render`, the corpus-ambiguous `Hit` behind `.raw on Int`, and a `test fn` that is
+literally `fn f() { f() }`. They stay enrolled and honest.
