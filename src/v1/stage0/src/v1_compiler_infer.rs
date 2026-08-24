@@ -17,6 +17,7 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
@@ -37,6 +38,11 @@ pub use crate::std_interface_summary::{interface_summary_rollup, signature_contr
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_primitive_projection::primitive_projection_row_for_declaration;
+pub use crate::std_primitive_projection::ProjectionFidelity;
+use crate::std_primitive_projection::ProjectionFidelity::{
+    DivergentProjection, HostRealizedSeam, ModeledProjection,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::LitStr;
@@ -157,6 +163,9 @@ use crate::v1_std_core::AdmitCallersEntry::*;
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
+use crate::v1_std_core::CallTargetIdentity::{
+    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
@@ -221,11 +230,11 @@ pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
-    AdmitCallersEntry, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
-    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
-    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
-    VarBindingKind,
+    AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
+    Connective, DeclRefCoords, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
+    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
+    Node, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -6087,7 +6096,17 @@ pub fn infer_expr_body(
                                 true => ok_infer(make_named_expr_node(
                                     name.clone(),
                                     Rc::new(ExprData::ExprCall {
-                                        call_semantics: Some(CallSemantics::PlainCallSemantics),
+                                        call_semantics: Some(Rc::new(
+                                            CallSemantics::PlainCallSemantics {
+                                                target: resolved_plain_call_target(
+                                                    scope.clone(),
+                                                    name.clone(),
+                                                    Rc::new(FuncSigLookup::FuncSigResolved {
+                                                        sig: fsig.clone(),
+                                                    }),
+                                                ),
+                                            },
+                                        )),
                                         descent_evidence: None,
                                     }),
                                     Rc::new(vec![]),
@@ -6771,9 +6790,15 @@ pub fn infer_expr_body(
                                         typed: make_named_expr_node(
                                             func_name.clone(),
                                             Rc::new(ExprData::ExprCall {
-                                                call_semantics: Some(
-                                                    CallSemantics::PlainCallSemantics,
-                                                ),
+                                                call_semantics: Some(Rc::new(
+                                                    CallSemantics::PlainCallSemantics {
+                                                        target: resolved_plain_call_target(
+                                                            scope.clone(),
+                                                            func_name.clone(),
+                                                            call_sig_lookup.clone(),
+                                                        ),
+                                                    },
+                                                )),
                                                 descent_evidence: None,
                                             }),
                                             typed_arg_nodes.clone(),
@@ -7093,7 +7118,9 @@ pub fn infer_expr_body(
     Some(exp) => if node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
@@ -7106,7 +7133,9 @@ pub fn infer_expr_body(
 match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
@@ -7115,7 +7144,9 @@ match bare_m.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7129,7 +7160,9 @@ match bare_m.clone() {
     None => match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
@@ -7138,7 +7171,9 @@ match bare_m.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7159,7 +7194,9 @@ match bare_m.clone() {
     Some(exp) => if node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
@@ -7172,7 +7209,9 @@ match bare_m.clone() {
 match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
@@ -7181,7 +7220,9 @@ match bare_s.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7195,7 +7236,9 @@ match bare_s.clone() {
     None => match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
@@ -7204,7 +7247,9 @@ match bare_s.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7232,9 +7277,22 @@ match bare_s.clone() {
                                                         let call_semantics = if (func_name.clone()
                                                             == "lookup".to_string())
                                                         {
-                                                            Some(CallSemantics::LookupCallSemantics)
+                                                            Some(Rc::new(CallSemantics::LookupCallSemantics {
+    target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+    primitive_name: func_name.clone(),
+}),
+}))
                                                         } else {
-                                                            Some(CallSemantics::PlainCallSemantics)
+                                                            Some(Rc::new(
+                                                                CallSemantics::PlainCallSemantics {
+                                                                    target:
+                                                                        resolved_plain_call_target(
+                                                                            scope.clone(),
+                                                                            func_name.clone(),
+                                                                            call_sig_lookup.clone(),
+                                                                        ),
+                                                                },
+                                                            ))
                                                         };
                                                         Rc::new(InferResult {
                                                             typed: make_named_expr_node(
@@ -7296,9 +7354,11 @@ match bare_s.clone() {
                                                                 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(if callee_is_body_binding.clone() {
-                                                    CallSemantics::FunctionValueCallSemantics
+                                                    Rc::new(CallSemantics::FunctionValueCallSemantics)
                                                 } else {
-                                                    CallSemantics::PlainCallSemantics
+                                                    Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})
                                                 }),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -7359,7 +7419,9 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
 };
                                                                     Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
@@ -7403,27 +7465,15 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                                 v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
                                 method_name.clone(),
                             );
-                            match symbol_index_lookup(
-                                scope.type_env.clone().symbol_index.clone(),
-                                dotted.clone(),
-                            ) {
-                                None => None,
-                                Some(_) => Some(infer_expr(
-                                    make_named_expr_node(
-                                        dotted.clone(),
-                                        Rc::new(ExprData::ExprCall {
-                                            call_semantics: Some(CallSemantics::PlainCallSemantics),
-                                            descent_evidence: None,
-                                        }),
-                                        mc_args.clone(),
-                                        None,
-                                        span.clone(),
-                                        kernel_span(dotted.clone()),
-                                    ),
-                                    scope.clone(),
-                                    expected.clone(),
-                                )),
-                            }
+                            match symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
+    None => None,
+    Some(_) => Some(infer_expr(make_named_expr_node(dotted.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+})),
+    descent_evidence: None,
+}), mc_args.clone(), None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+}
                         }
                     }
                 }
@@ -9093,6 +9143,79 @@ pub fn call_locals_shadow_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolved_call_target_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_projection says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolved_plain_call_target(
+    scope: Rc<InferScope>,
+    func_name: String,
+    sig_lookup: Rc<FuncSigLookup>,
+) -> Rc<CallTargetIdentity> {
+    match (*sig_lookup.clone()).clone() {
+        FuncSigLookup::FuncSigResolved { sig: _, .. } => match (*func_decl_binding_for_call(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            func_name.clone(),
+        ))
+        .clone()
+        {
+            ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, .. } => {
+                match primitive_projection_row_for_declaration(decl_ref(
+                    identity.owner_module_path.clone(),
+                    identity.decl_name.clone(),
+                )) {
+                    Some(row) => match (*row.fidelity.clone()).clone() {
+                        ProjectionFidelity::HostRealizedSeam => {
+                            Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                                primitive_name: func_name.clone(),
+                            })
+                        }
+                        ProjectionFidelity::ModeledProjection => {
+                            Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                                primitive_name: func_name.clone(),
+                            })
+                        }
+                        ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
+                            Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                                owner_module_path: identity.owner_module_path.clone(),
+                                decl_name: identity.decl_name.clone(),
+                            })
+                        }
+                    },
+                    None => Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: identity.owner_module_path.clone(),
+                        decl_name: identity.decl_name.clone(),
+                    }),
+                }
+            }
+            ConstructorDeclarationLookup::NotAdmissionBearingReference => {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+            ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable { .. } => {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+        },
+        FuncSigLookup::FuncSigUnresolved => {
+            if (infer_builtin_call_type(func_name.clone()) != None) {
+                Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                    primitive_name: func_name.clone(),
+                })
+            } else {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+        }
+        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+    }
 }
 
 pub fn peel_alias_fixpoint_guard_note() -> String {
