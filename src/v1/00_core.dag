@@ -197,6 +197,7 @@ type CompilerDiagnostic
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
@@ -204,6 +205,12 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | ServiceConfigReferenceJudgmentDeferred {
+      field: String,
+      referenced_name: String,
+      trigger: String,
+      span: SourceSpan
+    }
   | TransportEmissionNotModeled {
       transport_kind: String,
       service: String,
@@ -336,6 +343,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
+    AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     CallArgumentDuplicate { callee: _, argument: _, span: s } => s
@@ -347,6 +355,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Absent => no_span()
       }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
   }
 }
@@ -409,6 +418,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
@@ -423,6 +433,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
       concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, span: _ } =>
+      concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
   }
@@ -477,6 +489,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     UnlistedImportUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
     _ => true
   }
 }
@@ -486,6 +499,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     UnlistedImportUse { name: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
@@ -1646,30 +1660,80 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
   }
 }
 
-fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+// THE SERVICE-CONFIG FIELD SET IS ONE AUTHORITY, and it is a coproduct rather than a list of
+// string literals because the property spellings had THREE copies before this: minted here,
+// matched in `04_infer` `service_config_field_judgment`, and (in authored spelling) matched in
+// `02_parse` `parse_config_fields`. Review 55463 on gunbc#9028 caught the cost exactly: the
+// judgment claimed a new field would fail to compile, and it would not — it was an `if/else if`
+// chain over string literals whose else-arm classified any unrecognised property as carrying no
+// reference, so a field added to the parser without a matching arm routed silently to
+// `diagnostics: []`. That recreates the fail-open the change exists to close, one level up.
+//
+// With the spellings derived from this coproduct and the judgment matching it totally, a new
+// variant forces an arm in `service_config_field_property_name` AND in the judgment. The residue
+// is declared rather than papered over: `service_config_known_fields` is a hand-authored roster,
+// so a variant added without a row there is unreachable from the judgment and lands in the
+// carries-no-reference arm. Its next-rung trigger is a variant-enumeration primitive; until one
+// exists, the roster is the one place that must be edited and every other site refuses.
+type ServiceConfigField
+  = SvcEndpoint
+  | SvcAuth
+  | SvcAuthInput
+  | SvcAuthSource
+  | SvcRateLimit
+
+fn service_config_field_property_name(field: ServiceConfigField) -> String {
+  match field {
+    SvcEndpoint => "svc_endpoint"
+    SvcAuth => "svc_auth"
+    SvcAuthInput => "svc_auth_input"
+    SvcAuthSource => "svc_auth_source"
+    SvcRateLimit => "svc_rate_limit"
+  }
+}
+
+fn service_config_known_fields() -> List<ServiceConfigField> {
+  [SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit]
+}
+
+fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
+  service_config_known_fields()
+    |> filter(f => service_config_field_property_name(field: f) == name)
+    |> first
+}
+
+// `retry` WAS A FIELD HERE AND IS DELETED AT THE ROOT, not left parsed-and-unread.
+// Measured before removal: `service_config_retry` had zero callers in the whole tree, and
+// NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
+// backoff, and the interpreter's only match for either word is an unrelated doc comment. So
+// the field was declared policy with no consumer (DESIGN section 5, specification without
+// execution). It was also in the wrong layer: `max_attempts: 3` is OUR policy authored
+// inside a cited upstream module, which is the literal-where-a-parameter-should-be-received
+// tell for the section 3 layer inversion. `rate_limit` is deliberately NOT deleted beside
+// it -- a published request ceiling is a fact ABOUT the dependency and belongs in extdeps;
+// a retry policy is a fact about how WE call it and belongs to the caller. When a retrying
+// realization exists, its policy arrives as a workflow-layer carrier parameterized per call
+// site, not as a literal frozen into a dependency's module.
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
   let zero_span = no_span()
-  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
+  let ep_prop = [make_field_init_node(name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Present { value: a } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_input_prop = match auth_input {
-    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Present { value: ai } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_source_prop = match auth_source {
-    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Present { value: src } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let rate_prop = match rate_limit {
-    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Present { value: r } => [make_field_init_node(name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, name_span: zero_span)]
     Absent => []
   }
-  let retry_prop = match retry {
-    Present { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
-    Absent => []
-  }
-  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
 fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1686,10 +1750,6 @@ fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> No
 
 fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
-}
-
-fn service_config_retry(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_retry", source_indices: source_indices)
 }
 
 fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {

@@ -1621,11 +1621,7 @@ fn swift_lex_token_symbol(sym: Symbol) -> Bool {
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      v2.std.optional.Absent
-    }
-  }
+  empty_map()
 }
 
 fn swift_primitive_fact_map_4(

@@ -522,12 +522,30 @@ mod compiler_tests {
                 // it, so the compile seam must too) all stay silent.
                 let green = compile_one(
                     "green.dag",
-                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn direct_order(a: Int, b: Int) -> Int { b }\nfn underscore_order(_a: Int, b: Int) -> Int { b }\nfn underscore_exact_order(_a: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn direct_order_control() -> Int { direct_order(b: 23, a: 11) }\nfn underscore_order_witness() -> Int { underscore_order(b: 23, a: 11) }\nfn underscore_exact_order_control() -> Int { underscore_exact_order(b: 23, _a: 11) }\n",
                 );
                 assert!(
                     green.diagnostics.is_empty(),
                     "correct call shapes must compile with NO diagnostic of any severity, got: {:?}",
                     green.diagnostics
+                );
+                let emitted = green.files.iter()
+                    .find(|f| f.path.ends_with("green.rs"))
+                    .expect("green fixture must emit its Rust module");
+                assert!(
+                    emitted.content.contains("direct_order(11, 23)"),
+                    "control: ordinary named arguments must follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_exact_order(11, 23)"),
+                    "control: exact underscore-prefixed caller labels must remain accepted and follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_order(11, 23)"),
+                    "named arguments accepted through the declaration-side underscore idiom must follow that same declaration order, got: {}",
+                    emitted.content
                 );
             })
             .expect("failed to spawn thread")
@@ -1950,8 +1968,12 @@ mod compiler_tests {
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Rust, "FinitePowerSet".into()),
             Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "FinitelySupportedFunction".into()),
+            Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
@@ -1970,11 +1992,11 @@ mod compiler_tests {
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
+            coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
             Some("BTreeSet<{0}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Rust, "Set".into()),
             Some("BTreeSet<{0}>".to_string())
         );
     }
@@ -1983,8 +2005,12 @@ mod compiler_tests {
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Python, "FinitePowerSet".into()),
             Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "FinitelySupportedFunction".into()),
+            Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Python, "FreeMonoid".into()),
@@ -2003,11 +2029,11 @@ mod compiler_tests {
             Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "Set".into()),
+            coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
             Some("set[{0}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Python, "Set".into()),
             Some("set[{0}]".to_string())
         );
     }
@@ -2016,8 +2042,12 @@ mod compiler_tests {
     fn coercion_go_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Go, "FinitePowerSet".into()),
             Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "FinitelySupportedFunction".into()),
+            Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "FreeMonoid".into()),
@@ -2036,11 +2066,11 @@ mod compiler_tests {
             Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "Set".into()),
+            coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
             Some("map[{0}]struct{}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Go, "Set".into()),
             Some("map[{0}]struct{}".to_string())
         );
     }
