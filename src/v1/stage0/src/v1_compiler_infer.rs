@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
@@ -172,8 +173,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
+    TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -192,6 +193,9 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
+};
+use crate::v1_std_core::ServiceConfigField::{
+    SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
@@ -221,9 +225,9 @@ pub use crate::v1_std_core::{
     node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -232,8 +236,8 @@ pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
     DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
     FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
-    VarBindingKind,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ServiceConfigField, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3857,12 +3861,38 @@ pub fn is_anonymous_bound_name(name: String) -> bool {
     (name.clone() == "_".to_string())
 }
 
-pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
-    (((param_name.clone() == arg_label.clone()) || (param_name.clone() == "_".to_string()))
-        || (((v1_rt::string_length(&param_name) >= 1)
+pub fn call_param_caller_labels(param_name: String) -> Rc<Vec<String>> {
+    if (param_name.clone() == "_".to_string()) {
+        Rc::new(vec![])
+    } else {
+        if ((v1_rt::string_length(&param_name) >= 1)
             && (v1_rt::substring(&param_name, 0, 1) == "_".to_string()))
-            && (v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name))
-                == arg_label.clone())))
+        {
+            Rc::new(vec![
+                param_name.clone(),
+                v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name)),
+            ])
+        } else {
+            Rc::new(vec![param_name.clone()])
+        }
+    }
+}
+
+pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
+    if (param_name.clone() == "_".to_string()) {
+        true
+    } else {
+        {
+            let mut __found = false;
+            for caller_label in call_param_caller_labels(param_name.clone()).iter().cloned() {
+                if (caller_label.clone() == arg_label.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
 }
 
 pub fn param_binds_positionally(
@@ -15374,8 +15404,8 @@ pub fn infer_property_values(
                 __result.push({
                     let val = field_init_node_value(p.clone());
                     let val_result = infer_expr(val.clone(), scope.clone(), None);
-                    (
-                        Rc::new(Node {
+                    Rc::new(PropertyInferenceResult {
+                        prop: Rc::new(Node {
                             name: p.name.clone(),
                             span: p.span.clone(),
                             ident_span: p.ident_span.clone(),
@@ -15395,8 +15425,8 @@ pub fn infer_property_values(
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
-                        val_result.diagnostics.clone(),
-                    )
+                        diagnostics: val_result.diagnostics.clone(),
+                    })
                 });
             }
             __result
@@ -15405,14 +15435,14 @@ pub fn infer_property_values(
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.0.clone());
+                    __result.push(r.prop.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.1.clone()).iter().cloned());
+                    __result.extend((*r.diagnostics.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -15420,7 +15450,56 @@ pub fn infer_property_values(
     }
 }
 
-pub fn infer_auth_source_properties(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PropertyInferenceResult {
+    pub prop: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ServiceConfigFieldJudgment {
+    FieldJudged,
+    FieldDeferred { trigger: String },
+    FieldCarriesNoReference,
+}
+impl ServiceConfigFieldJudgment {
+    pub fn trigger(&self) -> String {
+        match self {
+            ServiceConfigFieldJudgment::FieldJudged => panic!("no trigger on unit variant"),
+            ServiceConfigFieldJudgment::FieldDeferred { trigger: __val, .. } => __val.clone(),
+            ServiceConfigFieldJudgment::FieldCarriesNoReference => {
+                panic!("no trigger on unit variant")
+            }
+        }
+    }
+}
+
+pub fn service_config_field_judgment(field: String) -> Rc<ServiceConfigFieldJudgment> {
+    match service_config_field_for_property_name(field.clone()) {
+    None => Rc::new(ServiceConfigFieldJudgment::FieldCarriesNoReference),
+    Some(known) => match known.clone() {
+    ServiceConfigField::SvcEndpoint => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuth => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuthSource => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuthInput => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+    trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string(),
+}),
+    ServiceConfigField::SvcRateLimit => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+    trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string(),
+}),
+},
+}
+}
+
+pub fn service_config_property_referenced_name(p: Rc<Node>, scope: Rc<InferScope>) -> String {
+    authored_name_at(
+        scope.type_env.clone().source_indices.clone(),
+        field_init_node_value(p.clone()),
+    )
+}
+
+pub fn infer_service_config_properties(
     props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<InferPropertiesResult> {
@@ -15428,43 +15507,51 @@ pub fn infer_auth_source_properties(
         let results = Rc::new({
             let mut __result = Vec::new();
             for p in props.iter().cloned() {
-                __result.push(
-                    if (field_init_node_name_at(
-                        p.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) == "svc_auth_source".to_string())
-                    {
-                        {
-                            let val = field_init_node_value(p.clone());
-                            let val_result = infer_expr(val.clone(), scope.clone(), None);
-                            (
-                                Rc::new(Node {
-                                    name: p.name.clone(),
-                                    span: p.span.clone(),
-                                    ident_span: p.ident_span.clone(),
-                                    children: Rc::new(vec![val_result.typed.clone()]),
-                                    connective: p.connective.clone(),
-                                    params: p.params.clone(),
-                                    inferred: p.inferred.clone(),
-                                    return_cardinality: p.return_cardinality.clone(),
-                                    uses: p.uses.clone(),
-                                    body: p.body.clone(),
-                                    transport: p.transport.clone(),
-                                    properties: p.properties.clone(),
-                                    type_annotation: p.type_annotation.clone(),
-                                    is_self_recursive: p.is_self_recursive.clone(),
-                                    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
-                                    match_pattern: p.match_pattern.clone(),
-                                    expr_data: p.expr_data.clone(),
-                                    ident: None,
-                                }),
-                                val_result.diagnostics.clone(),
-                            )
-                        }
-                    } else {
-                        (p.clone(), Rc::new(vec![]))
-                    },
-                );
+                __result.push({
+            let field = field_init_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone());
+match (*service_config_field_judgment(field.clone())).clone() {
+    ServiceConfigFieldJudgment::FieldJudged => {
+                let val = field_init_node_value(p.clone());
+let val_result = infer_expr(val.clone(), scope.clone(), None);
+Rc::new(PropertyInferenceResult {
+    prop: Rc::new(Node {
+    name: p.name.clone(),
+    span: p.span.clone(),
+    ident_span: p.ident_span.clone(),
+    children: Rc::new(vec![val_result.typed.clone()]),
+    connective: p.connective.clone(),
+    params: p.params.clone(),
+    inferred: p.inferred.clone(),
+    return_cardinality: p.return_cardinality.clone(),
+    uses: p.uses.clone(),
+    body: p.body.clone(),
+    transport: p.transport.clone(),
+    properties: p.properties.clone(),
+    type_annotation: p.type_annotation.clone(),
+    is_self_recursive: p.is_self_recursive.clone(),
+    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+    match_pattern: p.match_pattern.clone(),
+    expr_data: p.expr_data.clone(),
+    ident: None,
+}),
+    diagnostics: val_result.diagnostics.clone(),
+})
+},
+    ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(PropertyInferenceResult {
+    prop: p.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
+    field: field.clone(),
+    referenced_name: service_config_property_referenced_name(p.clone(), scope.clone()),
+    trigger: t.clone(),
+    span: p.span.clone(),
+}), scope.module_name.clone())]),
+}),
+    ServiceConfigFieldJudgment::FieldCarriesNoReference => Rc::new(PropertyInferenceResult {
+    prop: p.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+}
+});
             }
             __result
         });
@@ -15472,14 +15559,14 @@ pub fn infer_auth_source_properties(
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.0.clone());
+                    __result.push(r.prop.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.1.clone()).iter().cloned());
+                    __result.extend((*r.diagnostics.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -15537,7 +15624,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
             infer_transport_node(item.transport.clone(), transport_scope.clone());
         let typed_transport = transport_result.transport.clone();
         let transport_diags = transport_result.diagnostics.clone();
-        let props_result = infer_auth_source_properties(item.properties.clone(), scope.clone());
+        let props_result = infer_service_config_properties(item.properties.clone(), scope.clone());
         let typed_properties = props_result.props.clone();
         let props_diags = props_result.diagnostics.clone();
         if ((item.connective.clone() != Connective::NoConnective)

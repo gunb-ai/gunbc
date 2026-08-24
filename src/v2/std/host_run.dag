@@ -6,7 +6,8 @@ import v2.std.diagnostic {
   Accepted,
   Rejected,
   None,
-  diagnostics_singleton
+  diagnostics_singleton,
+  rejected_with_pending
 }
 import v2.std.machine { Byte }
 import v2.std.host_transport { ByteString }
@@ -47,15 +48,23 @@ type EmitHostRunReceipt {
 
 fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outcome<HostLogicalRun> {
   match exit.outcome {
-    Accepted { value: Holds { value: _ }, diagnostics: None } =>
-      Accepted {
-        value: HostLogicalRun {
-          stdout: HostRunStdout { bytes: stdout_bytes }
-        },
-        diagnostics: None
+    Accepted { value: exit_witness, diagnostics: ds } =>
+      match exit_witness {
+        Holds { value: _ } =>
+          Accepted {
+            value: HostLogicalRun {
+              stdout: HostRunStdout { bytes: stdout_bytes }
+            },
+            diagnostics: ds
+          }
+        Violates { diagnostic: d } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: ds,
+              rejected: diagnostics_singleton(d: d)
+            )
+          }
       }
-    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
