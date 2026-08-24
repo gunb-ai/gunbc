@@ -33,5 +33,10 @@ signature fallback. Their downstream relationship to carrier/profile lookup
 remains a separate measurement, not asserted by this census.
 
 This census is evidence produced by the floor after the emission leaf-name
-mask was removed. It does not authorize consumer repairs in PR #9075. The
-upstream fix belongs to the namespace/admission work (including #9113).
+mask was removed, measured on PR #9075 head `560a5a0`. The exact merge-base
+`bd84f6696` was green in required CI (run `32691683624`), so this note must not
+attribute the observed diagnostics to pre-existing corpus defects; it records
+the consequences observed on that PR head without deciding whether they are
+correct refusals or defects in the delta. It does not authorize consumer
+repairs in PR #9075. The upstream fix belongs to the namespace/admission work
+(including #9113).
