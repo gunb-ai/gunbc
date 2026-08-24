@@ -106,6 +106,7 @@ type HostOperation =
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
+  | SystemctlShowLoadState { unit: NonEmptyStr }
   | HostnameReadShort
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
@@ -149,6 +150,10 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
           text: systemd_unit_property_wire(property: p) as String,
         ),
       ],
+    )
+    SystemctlShowLoadState { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "ShowLoadState"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
     )
     HostnameReadShort => bind_operation_invocation(
       at: OperationRef {
@@ -222,6 +227,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     SystemctlShowProperty { unit: u, property: p } => {
       let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    SystemctlShowLoadState { unit: u } => {
+      let result = systemd.Systemctl.ShowLoadState(unit: u)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     HostnameReadShort => {
