@@ -22060,6 +22060,7 @@ pub fn emit_typed_fold_lambda(
     lambda_expr: Rc<Node>,
     acc_type_str: String,
     elem_type_str: String,
+    elem_borrowed: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -22111,7 +22112,7 @@ pub fn emit_typed_fold_lambda(
                 }
                 __result
             });
-            let param_strs = lambda_param_type_strs(
+            let param_strs_raw = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
                 fallback_types.clone(),
@@ -22121,6 +22122,32 @@ pub fn emit_typed_fold_lambda(
                 true,
                 scope.type_env.clone(),
             );
+            let param_strs = if elem_borrowed.clone() {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for pair in Rc::new(
+                        param_strs_raw
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(if (pair.0.clone() == 1) {
+                            "_".to_string()
+                        } else {
+                            pair.1.clone()
+                        });
+                    }
+                    __result
+                })
+            } else {
+                param_strs_raw.clone()
+            };
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
             let body_str = emit_typed_expr(
@@ -22594,19 +22621,6 @@ pub fn emit_rust_fold_method_call(
             },
             None => "compile_error!(\"missing fold init argument\")".to_string(),
         };
-        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
-            Some(a) => emit_typed_fold_lambda(
-                arg_value(a.clone()),
-                lambda_acc_type_str.clone(),
-                fold_elem_type_str.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                fold_emit_info.clone(),
-            ),
-            None => "compile_error!(\"missing fold function argument\")".to_string(),
-        };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
@@ -22614,6 +22628,20 @@ pub fn emit_rust_fold_method_call(
                 scope.type_env.clone().source_indices.clone(),
             ),
             None => false,
+        };
+        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
+            Some(a) => emit_typed_fold_lambda(
+                arg_value(a.clone()),
+                lambda_acc_type_str.clone(),
+                fold_elem_type_str.clone(),
+                elem_unused.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                fold_emit_info.clone(),
+            ),
+            None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let iter_template = if elem_unused.clone() {
             v1_rt::replace(
