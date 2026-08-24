@@ -2411,3 +2411,97 @@ Two consequences, and the second inverts a decision:
 implementations matching each other is normally the strongest evidence available. Here it was the
 mechanism of concealment, and the thing they agreed about was a fact neither of them should have been
 computing.
+
+## Three from one hour of review, where the instrument was correct under its own definition
+
+The specimens above are mostly measurements. These three are **review instruments** — the tools you
+reach for to decide whether someone else's work is done. All three answered correctly. All three
+answered a different question than the one being asked, and in two of them the wrong answer was the
+one that took *less* work to reach.
+
+### 1. The blocker that stopped counting because pushes aged it out
+
+A PR reported `ready=True`. It had three `REQUEST_CHANGES` in its history and zero on its current head.
+Readiness is computed over current-head reviews, so the flag was **right under its own rule**: there is
+no current-head objection.
+
+The question a reviewer is actually asking is *has the objection been addressed*. Those diverge the
+moment an author pushes, because **a push does not answer a review — it makes it stale**. Nobody
+withdrew the blocker and nobody re-ran the provider. It stopped counting.
+
+Swept across all 40 open PRs, **eight** carried a provider whose *last* verdict was `request_changes` on
+a stale sha; **five** had an approval on head with checks as the only unmet requirement. So the moment
+an unrelated main-state breakage was fixed, five PRs would flip to ready simultaneously, each carrying
+an unanswered blocker. One of them went `CLEAN` within minutes of that merge.
+
+Checked by hand, the stale blocker on the worked example had two findings: one genuinely fixed by the
+author's pushes, one still live. **Both outcomes were possible and only reading decided which.** That
+is the point — the flag cannot distinguish them, and its green is produced by the same mechanism either
+way.
+
+> **A verdict that expires is not a verdict that was answered.** If readiness can be reached by the
+> passage of pushes, then "ready" measures elapsed authoring, not resolved objections.
+
+The structural repair is one clause: a stale `request_changes` must be superseded by a later verdict
+**from the same provider**. That makes *answered* mean answered. Aging out is not an answer, and the
+current rule cannot tell the difference between a fix and a wait.
+
+### 2. The counter that included the people who agreed with you
+
+Sweeping for that pattern, the obvious field is `stale_provider_count` — providers whose review is not
+on the current head. It returned **ten** PRs.
+
+The number is real and it is not the number. That field counts *any* provider off-head **including ones
+who approved**. On one PR the stale codex verdict was an *approve*: a reviewer who looked, was
+satisfied, and whose sign-off then aged out. Counting it as an unanswered blocker inflates the finding
+and — worse — attributes an objection to someone who did not make one.
+
+Filtering on *last verdict from that provider is `request_changes`* cut ten to eight, and to five that
+would actually flip. **I had the inflated number written into a report before checking what the field
+counted.**
+
+> The available counter answered *is anyone off-head*. The question was *is anyone off-head **with a
+> blocker***. One word of difference, a 2× error, and the wrong direction — toward alarm.
+
+### 3. The grep whose word boundary inverted the conclusion
+
+A blocker claimed a new dispatch had no production caller. The author's witness answered that the module
+is "a leaf entry point, **like its siblings**" — an asserted parallel, which is the shape this repository
+keeps finding to be false, so it wanted checking rather than trusting.
+
+The check is one grep. Run unbounded, and excluding each function's own definition, it returns **four** hits for one sibling
+provisioner and **three** for the other, against **zero** for the module under review — the subject is
+the odd one out, the parallel is false, the witness is wrong.
+
+Run as `(^|[^_a-zA-Z])provision_build_cache\(`, all three return **zero**. The parallel holds exactly
+as claimed.
+
+Every one of those seven "callers" was `realize_provision_build_cache(` or its sibling — a *different
+symbol*, the realizer, which contains the provisioner's name as a substring. **The unbounded grep did not return a slightly wrong count. It returned the
+opposite conclusion**, and the opposite conclusion is the one that looks like diligence: it *finds*
+something, it contradicts the author, and it confirms the blocker.
+
+The same artifact appeared twice more within the hour. A review notification promised "non-blocking
+comments"; the artifact contained a bare verdict and no remarks. The seven `nit:` hits in its log were
+substrings of `init:` and `unit:`; all four `findings` hits were quotations of DESIGN.md that the
+reviewer had been *reading*. Nothing to fix, and searching for the word had found the word.
+
+> **A substring is not a symbol.** Any search over identifiers whose boundary is unstated is
+> answering about *text that contains a name*, not about *the name* — and where one identifier is a
+> prefix of another, the two questions do not merely differ in precision, they can differ in sign.
+
+### What the three share, and the asymmetry that makes it dangerous
+
+Each instrument was correct under its own definition. None was broken, none needed fixing, and in all
+three cases reading the definition would have shown the mismatch before the answer was used.
+
+The asymmetry is what makes this worth a section rather than three footnotes: **in two of the three, the
+wrong answer was cheaper to reach and more interesting to report.** `stale_provider_count` is a field
+that already exists; filtering on last-verdict-per-provider is code you have to write. The unbounded
+grep is what you type first; the word-boundary form is what you type after you have been burned. And
+both of the cheap answers pointed *toward* a finding — more affected PRs, a false parallel, an author
+caught out.
+
+> When the quick instrument and the careful one disagree, note which direction the quick one errs. If
+> it errs toward *having found something*, that is not a reason to trust it more. It is the reason it
+> was cheap.
