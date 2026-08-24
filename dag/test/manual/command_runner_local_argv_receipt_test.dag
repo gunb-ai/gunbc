@@ -33,7 +33,6 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 // hermetic version of this file could only assert the mock, which is the specification-without-
 // execution trap. It therefore runs wet, by hand, and is excluded from the floor exactly as
 // test/manual/process_argv_expansion_receipt_test.dag is, for the same reason.
-
 test fn spaced_operand_survives_as_one_argument() -> Bool {
   process_outcome_receipt_text(
     outcome: run_shell_command_capture(
@@ -81,7 +80,6 @@ test fn plain_operand_round_trips() -> Bool {
 //
 // These two go red if ShellCaptureResult is restored, because then both arms are stdout == "" and
 // nothing in the value distinguishes them.
-
 test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
   match run_shell_command_capture(
     command: posix_sh_program_command(script: "exit 3"),
