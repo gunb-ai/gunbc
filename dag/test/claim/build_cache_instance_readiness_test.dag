@@ -19,7 +19,7 @@ import gunbc.build_cache_instance_readiness {
   BuildCacheInstanceObservedReady, BuildCacheInstanceObservedNotReady,
   BuildCacheInstanceObservationUnavailable,
   CacheOwnerOutsidePool, CacheCapacityIntentUndeclared,
-  CacheStorageObservationUnavailable,
+  CacheStorageObservationUnavailable, CacheUnavailableObservationSubjectMismatch,
 }
 
 fn owner_fixture() -> ProcessIdentity {
@@ -139,6 +139,26 @@ test fn unavailable_dominates_a_positive_mismatch() -> Bool {
   ) {
     BuildCacheInstanceObservationUnavailable { reason: CacheStorageObservationUnavailable { detail: d } } =>
       (d as String).contains("environment")
+    BuildCacheInstanceObservedReady { receipt: _ } => false
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool {
+  let instance = declared_session_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+    storage: BuildCacheStorageObservationUnavailable {
+      instance: declared_ci_instance(),
+      owner: owner_fixture(),
+      detail: "/proc owner environment read failed" as NonEmptyStr,
+    },
+    capacity: capacity_for(instance: instance),
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservationUnavailable { reason: CacheUnavailableObservationSubjectMismatch { axis: a } } =>
+      (a as String) == "storage"
     BuildCacheInstanceObservedReady { receipt: _ } => false
     BuildCacheInstanceObservedNotReady { reason: _ } => false
     BuildCacheInstanceObservationUnavailable { reason: _ } => false
