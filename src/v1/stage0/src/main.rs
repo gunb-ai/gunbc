@@ -456,9 +456,75 @@ fn main() {
             // Join-filtered silent-pick divergence detection has no enrolled
             // witness today; the retirement receipt carries the rung drop and
             // rebuild constraints.
-            v1_rt::resolution_silent_pick_enable();
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
+
+            // ── THE SCOPED SINGLE-TARGET COMPILE IS THE SHARED EMISSION TRANSACTION ──
+            //
+            // This is the invocation the cargo board's producer uses
+            // (`docs/probes/curated_cargo_probe_one.sh`), and it is now the SAME FUNCTION
+            // the required v2-emission phase calls -- `cli_run::compile_entry_emission`.
+            // Before this, the phase was a second caller reproducing the closure load, the
+            // census assembly, the refusal check and the silent-pick gate beside the ones
+            // below, with three parameters to keep equal by hand; a gate that drifts from
+            // the board's producer can green while the board refuses, which is two answers
+            // to one question (DESIGN §3). The handler keeps what is genuinely its own:
+            // writing the tree, rendering diagnostics, and choosing an exit code.
+            if let (Some(entry_path), 1) = (&entry, render_targets.len()) {
+                let run = cli_run::compile_entry_emission(
+                    &source_roots,
+                    entry_path,
+                    matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
+                    render_targets[0].1.clone(),
+                );
+                match &run.disposition {
+                    cli_run::EntryEmissionDisposition::NotExecuted {
+                        earlier_phase,
+                        cause,
+                    } => {
+                        // The closure/census line is DELIBERATELY not printed here: the
+                        // transaction never ran, so `resolved 0 sources` would report a
+                        // resolve that did not happen as one that found nothing.
+                        eprintln!("gunbc compile: {earlier_phase}: {cause}");
+                        std::process::exit(1);
+                    }
+                    cli_run::EntryEmissionDisposition::Refused { phase, cause } => {
+                        eprintln!(
+                            "resolved {} sources (reference-derived closure), {} indexed modules in the name census only",
+                            run.closure_modules, run.census_modules
+                        );
+                        // The tree is NOT written on a refusal: the previous handler's
+                        // refusal arm exited before `write_output_files` too, and writing a
+                        // partial tree the compiler has disowned is a fabricated plausible
+                        // output (DESIGN §5).
+                        eprintln!("gunbc compile: refused at {phase}: {cause}");
+                        if let Some(result) = &run.result {
+                            render_diagnostics(result);
+                        }
+                        std::process::exit(1);
+                    }
+                    cli_run::EntryEmissionDisposition::Completed { emitted_count } => {
+                        eprintln!(
+                            "resolved {} sources (reference-derived closure), {} indexed modules in the name census only",
+                            run.closure_modules, run.census_modules
+                        );
+                        let result = run
+                            .result
+                            .clone()
+                            .expect("a completed emission carries its result");
+                        write_output_files(&output_dir, &result);
+                        eprintln!(
+                            "compiled: {} files emitted, {} diagnostics",
+                            emitted_count,
+                            result.diagnostics.len()
+                        );
+                        render_diagnostics(&result);
+                        std::process::exit(0);
+                    }
+                }
+            }
+
+            v1_rt::resolution_silent_pick_enable();
 
             // Indexed modules outside the compile closure, included in the name
             // census only (fill = whole tree; the compile scope stays the closure).
