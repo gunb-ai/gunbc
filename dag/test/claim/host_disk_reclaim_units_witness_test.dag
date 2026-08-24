@@ -1,0 +1,75 @@
+module test.claim.host_disk_reclaim_units_witness_test
+
+import std.types { Bool }
+import std.measure { second_count }
+import gunbc.host_disk_reclaim { reclaim_per_repo_timeout }
+import gunbc.host_disk_reclaim_units {
+  reclaim_service_unit_text,
+  reclaim_timer_unit_text,
+  reclaim_service_start_timeout,
+}
+import extdeps.systemd.unit_file {
+  systemd_io_scheduling_class_wire,
+  IoSchedulingRealtime, IoSchedulingBestEffort, IoSchedulingIdle,
+}
+
+// THE THREE RESOURCE DIRECTIVES ARE WHY THE EXTDEPS COPRODUCT WAS EXTENDED, SO THEY ARE WITNESSED
+// TOGETHER. Before the extension a rendered unit could carry none of them, and the failure was
+// invisible in the output: the unit still parsed, still ran, and simply contended with live CI for
+// CPU and disk. This asserts the rendered text, which is the only surface systemd reads.
+test fn the_service_renders_its_resource_discipline() -> Bool {
+  let text = reclaim_service_unit_text()
+  string_contains(s: text, pattern: "Nice=15")
+    && string_contains(s: text, pattern: "IOSchedulingClass=idle")
+    && string_contains(s: text, pattern: "Type=oneshot")
+}
+
+// THE OUTER TIMEOUT TRACKS THE INNER BUDGET RATHER THAN AGREEING WITH IT ONCE.
+//
+// This asserts the RELATION, not 3600. A witness pinning the literal would stay green if the
+// per-repo budget moved and the unit bound did not -- which is the single way these two can come
+// to contradict each other, and therefore the only thing worth asserting.
+test fn the_start_timeout_is_derived_from_the_per_repo_budget() -> Bool {
+  second_count(s: reclaim_service_start_timeout())
+    == 2 * second_count(s: reclaim_per_repo_timeout)
+    && second_count(s: reclaim_per_repo_timeout) > 0
+}
+
+test fn the_derived_timeout_reaches_the_rendered_unit() -> Bool {
+  string_contains(s: reclaim_service_unit_text(), pattern: "TimeoutStartSec=3600")
+}
+
+// THE ESCAPE HATCH IS ABSENT, AND THIS IS THE ASSERTION THAT KEEPS IT ABSENT.
+//
+// The incumbent unit sources /etc/default/ctrl-runner-reclaim, whose variables include one that
+// disables the repack outright and one that moves the fragmentation gate. Those gates are data
+// rows in gunbc.host_disk_reclaim; a unit that lets a file override them has two authorities for
+// one policy and no observation that would reveal which one a host obeys. Re-adding the directive
+// is a one-line edit that looks like a fidelity improvement, which is exactly why it needs a
+// standing witness rather than only the annotation explaining it.
+test fn the_service_carries_no_environment_override_hatch() -> Bool {
+  let text = reclaim_service_unit_text()
+  !string_contains(s: text, pattern: "EnvironmentFile")
+    && !string_contains(s: text, pattern: "RECLAIM_")
+}
+
+test fn the_timer_drives_the_service_persistently_with_jitter() -> Bool {
+  let text = reclaim_timer_unit_text()
+  string_contains(s: text, pattern: "Unit=ctrl-runner-reclaim.service")
+    && string_contains(s: text, pattern: "OnCalendar=*-*-* 00/6:00:00")
+    && string_contains(s: text, pattern: "RandomizedDelaySec=900")
+    && string_contains(s: text, pattern: "Persistent=true")
+    && string_contains(s: text, pattern: "WantedBy=timers.target")
+}
+
+// THE I/O CLASS IS A CLOSED SET AND ITS THREE WIRE WORDS ARE THE KERNEL'S, NOT OURS.
+//
+// The discriminating half is that the three answers are DISTINCT: a wire function that collapsed
+// two classes would still render a unit systemd accepts, and the collapse would only show up as
+// the reclaimer competing in a scheduling class it was meant to leave.
+test fn the_three_io_classes_do_not_share_one_wire_word() -> Bool {
+  let rt = systemd_io_scheduling_class_wire(scheduling_class: IoSchedulingRealtime)
+  let be = systemd_io_scheduling_class_wire(scheduling_class: IoSchedulingBestEffort)
+  let idle = systemd_io_scheduling_class_wire(scheduling_class: IoSchedulingIdle)
+  rt != be && be != idle && rt != idle && idle == "idle" && be == "best-effort"
+}

@@ -8,6 +8,7 @@ import v2.lens.testgen {
   testgen_scheduled_coproduct_exhaustiveness_generators
 }
 import v2.std.algebra { length }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -67,25 +68,58 @@ fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol)
   }
 }
 
-fn roster_covers(coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
-  fold(
-    testgen_scheduled_coproduct_exhaustiveness_generators(),
-    init: false,
-    f: fn(acc, g) { acc || anchor_is(a: g.anchor, coproduct_type: coproduct_type, omitted_variant: omitted_variant) }
-  )
+fn roster_covers(
+  gens: List<Generator<TestgenConcept>>,
+  coproduct_type: Symbol,
+  omitted_variant: Symbol
+) -> Bool {
+  match gens {
+    Empty => false
+    Cons { head: g, tail: rest } =>
+      if anchor_is(a: g.anchor, coproduct_type: coproduct_type, omitted_variant: omitted_variant) {
+        true
+      } else {
+        roster_covers(gens: rest, coproduct_type: coproduct_type, omitted_variant: omitted_variant)
+      }
+  }
+}
+
+fn roster_covers_arms(
+  gens: List<Generator<TestgenConcept>>,
+  coproduct_type: Symbol,
+  arms: List<Symbol>
+) -> Bool {
+  match arms {
+    Empty => true
+    Cons { head: arm, tail: rest } =>
+      if roster_covers(gens: gens, coproduct_type: coproduct_type, omitted_variant: arm) {
+        roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: rest)
+      } else {
+        false
+      }
+  }
+}
+
+fn roster_covers_all_arms_of_roster(
+  gens: List<Generator<TestgenConcept>>,
+  coproduct_type: Symbol
+) -> Bool {
+  let arms = coproduct_arm_keys(type_name: coproduct_type)
+  (length(xs: arms) > 0)
+    && roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: arms)
 }
 
 fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
-  let arms = coproduct_arm_keys(type_name: coproduct_type)
-  (length(xs: arms) > 0)
-    && fold(arms, init: true, f: fn(acc, arm) {
-        acc && roster_covers(coproduct_type: coproduct_type, omitted_variant: arm)
-      })
+  roster_covers_all_arms_of_roster(
+    gens: testgen_scheduled_coproduct_exhaustiveness_generators(),
+    coproduct_type: coproduct_type
+  )
 }
 
 fn witness_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
-  (length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) > 0)
-    && roster_covers_all_arms_of(coproduct_type: ^TestClaim)
+  let gens = testgen_scheduled_coproduct_exhaustiveness_generators()
+  (length(xs: gens) > 0)
+    && roster_covers_all_arms_of_roster(gens: gens, coproduct_type: ^TestClaim)
 }
 
 fn witness_coproduct_exhaustiveness_covers_second_coproduct() -> Bool {
