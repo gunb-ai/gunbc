@@ -67,7 +67,7 @@ type PrimitiveSignatureGrounding
 // 59 distinct names carry more than one row, and four of those disagree in what they take --
 // get is [ReceiverSelf, NamedTemplate{Int}] on the List profile and [ReceiverSelf, ReceiverKey]
 // on the Map profile; join carries three signatures; member disagrees in ARITY OUTRIGHT
-// (2 on BooleanAlgebra, 1 on PointwisePower). Those are receiver-polymorphic operations, not
+// (2 on BooleanAlgebraCollection, 1 on PointwisePower). Those are receiver-polymorphic operations, not
 // duplicates: both readings of get are correct. A projection keyed on canonical_name alone
 // would therefore have to pick one silently, which is the same last-import-wins shape the
 // namespace lane already carries as a structural hole. The profile is what makes the

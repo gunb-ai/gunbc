@@ -7,6 +7,7 @@ import std.algebra {
   NamedTemplate,
   PartialFunctionProfile,
   PointwisePowerCollectionProfile,
+  BooleanAlgebraCollectionProfile,
   BooleanAlgebraProfile,
   ReceiverKey,
   ReceiverSelf,
@@ -96,7 +97,7 @@ fn arity_label(contract: PrimitiveSemanticContract) -> String {
 test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
   let boolean_member = PrimitiveSemanticContract {
     canonical_name: "member" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraProfile }
+    signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraCollectionProfile }
   }
   let pointwise_member = PrimitiveSemanticContract {
     canonical_name: "member" as NonEmptyStr,
