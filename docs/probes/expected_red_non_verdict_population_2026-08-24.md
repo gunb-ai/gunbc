@@ -147,3 +147,52 @@ has not landed, which is precisely the fix-carrying-baseline error described in 
 second time, into the artifact that documents it. The `PopulationBasis` arm names the run and the
 commit it was measured on, so the row is re-measured when that PR merges rather than quietly
 carrying a figure from a tree nobody is running.
+
+## 8. The no-import story does not cover the whole bucket (added 2026-08-24, after independent census)
+
+§5 checked four names by hand and found every one referenced a declaration that exists while its
+witness declared **no** import. That is accurate and it is a sample of four. An independent census
+(valiant-lynx-227, run `32743601436`) partitions the erroring modules **53 declaring no import** to
+**8 that declare imports and error anyway** — and cross-joining that against the cause census here
+puts **six of those eight inside the `no declaration named` bucket**. The bucket is not homogeneous.
+
+One read in full, so the second shape is evidence rather than inference: `v2.lens.vacuity_test`
+fails on `nat_add_left_identity_input` while declaring ten imports, among them
+`v2.test.nat_semiring.rung_5` — a module that *references* that name but is not the module that
+*declares* it (`v2.std.algebra_laws.nat_semiring`). **Importing a module does not transitively
+supply the names its own declarations reach for.** So the second shape is an *incomplete* import
+set, not an absent one.
+
+The load-bearing conclusion is unchanged and slightly strengthened: both shapes are authored
+defects, both are repaired by adding the import that declares the referenced name, and neither is a
+floor scope defect — so "widen the scope" remains the wrong trigger. What moves is the repairer's
+expectation. The other five are established only as "declares imports AND lands in this bucket";
+their specific missing imports are unread.
+
+### A note on how this was nearly reported wrong
+
+The census that produced the 53/8 split was first relayed as "142 rows but 133 distinct identities,
+9 appearing twice" — a claim that, if true, would have meant this PR's roster carried nine stale
+exemptions. It was false in a specific and instructive way: the floor **column-pads** the identity,
+so short names are followed by spaces before `ERROR in`, and an extraction using `[^ ]*` cannot
+cross that padding. The pattern silently selected for long identifiers and dropped exactly nine
+rows. The nine were **missed, not duplicated** — the sign was inverted, which is the same shape as
+the original brief this document exists to correct.
+
+Two independent diagnoses converged on the padding cause, and the retraction is recorded here
+rather than only in message traffic. The durable lesson is §7's, sharpened: **a distinct-vs-total
+discrepancy is a tell about the reader before it is a tell about the population**, and the control
+is to count with a *different* pattern than the one that extracts. It is also the strongest
+argument yet for the instrument gap below.
+
+## 9. The cause census in this document is a claim, not a receipt
+
+The floor log carries **no cause text beside the ERROR row** — only identity and duration. So the
+119/13/9/1 partition in §4 cannot be reproduced or checked by anyone unwilling to re-run the floor,
+which OOMs in a session container. That makes it unverifiable *by construction*, not by anyone's
+laziness, and this document says so rather than letting the table read as measured-and-checkable.
+
+Printing the cause beside the identity is a smaller change than the wall this PR lands, and it
+would have made the false alarm above impossible: a reader could have checked causes without
+re-deriving identities by grep at all. It is not folded into this PR — it is a separate change with
+its own subject — but until it lands, §4 is a claim.

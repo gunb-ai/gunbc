@@ -90,6 +90,27 @@ data floor_non_verdict_measured_total: Int = 142
 // referencing it declares no import that would bring it into the run's loaded index. The refusal is
 // correct; the witness is unimportable. That is why the next-rung trigger below is not "widen the
 // scope".
+//
+// THE SAMPLE WAS FOUR AND THE POPULATION HAS A SECOND SHAPE, recorded because four names all
+// lacking imports leaves the impression that the whole class does. It does not. An independent
+// census of the erroring modules (valiant-lynx-227, run 32743601436) partitions them 53 declaring
+// NO import against 8 that DECLARE imports and error anyway, and cross-joining that against the
+// cause census here puts SIX of those 8 inside this same no-declaration-named bucket -- so the
+// bucket is not homogeneous and a repairer working from the four names above would be surprised
+// by the sixth file they opened.
+//
+// ONE OF THE SIX READ IN FULL, so the second shape is named from evidence rather than inferred:
+// `v2.lens.vacuity_test` fails on `nat_add_left_identity_input` while declaring ten imports --
+// including `v2.test.nat_semiring.rung_5`, a module that REFERENCES that name but is not the
+// module that DECLARES it (`v2.std.algebra_laws.nat_semiring`). Importing a module does not
+// transitively supply the names ITS OWN declarations reach for. So the second shape is an
+// INCOMPLETE import set rather than an absent one.
+//
+// THE CONCLUSION IS UNCHANGED AND SLIGHTLY STRENGTHENED: both shapes are authored defects and
+// both are repaired by adding the import that declares the referenced name. Neither is a floor
+// scope defect, so "widen the scope" is still the wrong trigger. What moves is the repairer's
+// expectation, not the remedy. The remaining five of the six are established only as "declares
+// imports AND lands in this bucket"; each one's specific missing import is unread.
 data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module_path: "test.claim.design_argument_witness", decl_name: "design_s1_argument_form_is_valid")
 
 // RUNG, PER SEAM, AND THE GOVERNING RUNG IS THE MINIMUM ACROSS THEM.
