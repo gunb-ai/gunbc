@@ -2,18 +2,13 @@ module v1.compiler.type_head_exposure
 
 // This vocabulary belongs to the compiler judgment, not std: it describes how far this
 // compiler exposed an expected type before selecting an introduction or compatibility rule.
-// Exposure never means "choose an application argument".  The outer constructor and the
-// constructor-owned relations remain present in ApplicationHead.
-type TypeParameterRelation
-  = NominalParameterRelation
-  | RepresentationalParameterRelation
-
+// Exposure never means "choose an application argument". The outer constructor and every
+// argument identity remain present in ApplicationHead.
 type TypeHeadView
   = KernelScalarHead { type_identity: String }
   | ApplicationHead {
       constructor_identity: String,
-      argument_identities: List<String>,
-      parameter_relations: List<TypeParameterRelation>
+      argument_identities: List<String>
     }
   | ProductHead { type_identity: String }
   | CoproductHead { type_identity: String }
@@ -23,10 +18,7 @@ type TypeHeadExposure
   = ExposedTypeHead { view: TypeHeadView }
   | OpaqueTypeHead { type_identity: String }
   | StuckTypeHead { cause: String }
-  | CyclicTypeHead { path: List<String> }
   | MalformedApplicationHead { cause: String }
-
-data type_head_exposure_model_note: String = "Type-head exposure is a bounded, declaration-identity-keyed compiler judgment. It exposes only through TransparentAlias, stops at opaque/abstract/refinement/brand/sole-constructor boundaries, and preserves an application as its outer constructor plus arguments under relations owned by that constructor. Stuck is strategy-not-applicable (including lookup Absent); MalformedApplication is an invalid input. Consumers must never collapse those arms or map either one to compatible."
 
 fn type_declaration_identity_key(decl_file: String, declared_name: String) -> String {
   concat(decl_file, "::", declared_name)

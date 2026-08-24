@@ -9,9 +9,8 @@ import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_dige
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.compiler.type_head_exposure {
-  TypeParameterRelation, NominalParameterRelation,
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
-  TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, CyclicTypeHead, MalformedApplicationHead,
+  TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
   type_declaration_identity_key
 }
 import v1.std.core {
@@ -1958,7 +1957,6 @@ fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExpos
   let direct = exposure_view_for_node(n: formal, source_indices: source_indices)
   match direct {
     ExposedTypeHead { view: _ } => direct
-    CyclicTypeHead { path: _ } => direct
     MalformedApplicationHead { cause: _ } => direct
     _ => {
       let identity = type_reference_identity(n: formal, source_indices: source_indices)
@@ -1972,7 +1970,7 @@ fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExpos
 
 fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   match exposure {
-    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _, parameter_relations: _ } } => true
+    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
     _ => false
   }
 }
@@ -8980,14 +8978,6 @@ fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
-fn nominal_parameter_relation(argument: Node) -> TypeParameterRelation {
-  NominalParameterRelation
-}
-
-fn nominal_parameter_relations(arguments: List<Node>) -> List<TypeParameterRelation> {
-  arguments |> map(argument => nominal_parameter_relation(argument: argument))
-}
-
 fn application_argument_identities(arguments: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   arguments |> map(ch => type_reference_identity(n: child_type_node(ch: ch), source_indices: source_indices))
 }
@@ -9011,8 +9001,7 @@ fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) ->
                 view: ApplicationHead {
                   constructor_identity: type_declaration_identity_key(
                     decl_file: node_declaration_file(n: n), declared_name: constructor_name),
-                  argument_identities: application_argument_identities(arguments: n.children, source_indices: source_indices),
-                  parameter_relations: nominal_parameter_relations(arguments: n.children)
+                  argument_identities: application_argument_identities(arguments: n.children, source_indices: source_indices)
                 }
               }
             }

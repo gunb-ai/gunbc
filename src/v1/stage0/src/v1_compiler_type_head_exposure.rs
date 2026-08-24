@@ -3,22 +3,12 @@
 
 use self::TypeHeadExposure::*;
 use self::TypeHeadView::*;
-use self::TypeParameterRelation::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum TypeParameterRelation {
-    NominalParameterRelation,
-    RepresentationalParameterRelation,
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -29,7 +19,6 @@ pub enum TypeHeadView {
     ApplicationHead {
         constructor_identity: String,
         argument_identities: Rc<Vec<String>>,
-        parameter_relations: Rc<Vec<TypeParameterRelation>>,
     },
     ProductHead {
         type_identity: String,
@@ -48,17 +37,7 @@ pub enum TypeHeadExposure {
     ExposedTypeHead { view: Rc<TypeHeadView> },
     OpaqueTypeHead { type_identity: String },
     StuckTypeHead { cause: String },
-    CyclicTypeHead { path: Rc<Vec<String>> },
     MalformedApplicationHead { cause: String },
-}
-
-pub fn type_head_exposure_model_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Type-head exposure is a bounded, declaration-identity-keyed compiler judgment. It exposes only through TransparentAlias, stops at opaque/abstract/refinement/brand/sole-constructor boundaries, and preserves an application as its outer constructor plus arguments under relations owned by that constructor. Stuck is strategy-not-applicable (including lookup Absent); MalformedApplication is an invalid input. Consumers must never collapse those arms or map either one to compatible.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -> String {
@@ -67,8 +46,3 @@ pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -
         declared_name.clone(),
     )
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NominalParameterRelation;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RepresentationalParameterRelation;

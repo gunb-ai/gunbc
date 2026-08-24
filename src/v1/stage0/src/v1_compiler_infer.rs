@@ -153,15 +153,12 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
-    CyclicTypeHead, ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
+    ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
 };
 use crate::v1_compiler_type_head_exposure::TypeHeadView::{
     ApplicationHead, CallableHead, CoproductHead, KernelScalarHead, ProductHead,
 };
-use crate::v1_compiler_type_head_exposure::TypeParameterRelation::NominalParameterRelation;
-pub use crate::v1_compiler_type_head_exposure::{
-    TypeHeadExposure, TypeHeadView, TypeParameterRelation,
-};
+pub use crate::v1_compiler_type_head_exposure::{TypeHeadExposure, TypeHeadView};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AdmitCallersEntry::*;
@@ -2968,7 +2965,6 @@ pub fn expected_type_head_exposure(
         let direct = exposure_view_for_node(formal.clone(), source_indices.clone());
         match (*direct.clone()).clone() {
             TypeHeadExposure::ExposedTypeHead { view: _, .. } => direct.clone(),
-            TypeHeadExposure::CyclicTypeHead { path: _, .. } => direct.clone(),
             TypeHeadExposure::MalformedApplicationHead { cause: _, .. } => direct.clone(),
             _ => {
                 let identity = type_reference_identity(formal.clone(), source_indices.clone());
@@ -17570,20 +17566,6 @@ pub fn type_reference_identity(
     }
 }
 
-pub fn nominal_parameter_relation(argument: Rc<Node>) -> TypeParameterRelation {
-    TypeParameterRelation::NominalParameterRelation
-}
-
-pub fn nominal_parameter_relations(arguments: Rc<Vec<Rc<Node>>>) -> Rc<Vec<TypeParameterRelation>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for argument in arguments.iter().cloned() {
-            __result.push(nominal_parameter_relation(argument.clone()));
-        }
-        __result
-    })
-}
-
 pub fn application_argument_identities(
     arguments: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -17649,9 +17631,6 @@ pub fn exposure_view_for_node(
                                         argument_identities: application_argument_identities(
                                             n.children.clone(),
                                             source_indices.clone(),
-                                        ),
-                                        parameter_relations: nominal_parameter_relations(
-                                            n.children.clone(),
                                         ),
                                     }),
                                 }),
