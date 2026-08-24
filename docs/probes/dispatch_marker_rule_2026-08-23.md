@@ -20,6 +20,9 @@ asking.** Not one of them involves anything lying, erroring, or malfunctioning:
 | (nothing — the artifact is well-formed) | *who is even able to check this?* | 1's precondition |
 | this narrower thing is *green* | is the thing I care about green | the third leg |
 | this check *failed* | did it fail, or was it *cancelled* | the third leg, in the tooling |
+| I *applied* the treatment | did the treatment *reach* what I measured | the three below |
+| these runs *differ* | does the *content* differ | the three below |
+| this population is *N* | N *of what denominator* | the three below |
 
 That is why **none of them has a failure arm**, and it is the whole difficulty: there is nothing to
 catch, no error to check for, no status to inspect that would have been different. The absence of
@@ -464,6 +467,64 @@ dispatch from one branch has **one head and two trees** — the after-arm can be
 before-arm's binary. A sequential local run from a detached checkout cannot express that state.
 
 Receipts: `gunbc#9019`'s `RESULT_FALSIFIED.md` and its controls directory.
+
+## Three more, all from `quiet-pike-368`, all caught by an assertion rather than by care
+
+Grouped because the pattern across them is one sentence: **a well-formed wrong number is the default
+output of an under-specified instrument**, and in all three the only defence that worked was carrying
+something that could contradict it.
+
+### A treatment that cannot reach the instrument
+
+Distinct from everything above: not a missing marker, not a narrower question. **Both arms are
+honest and the comparison is meaningless.**
+
+A two-arm test patched `src/v1/05_emit_rust.dag` and then measured `gunbc compile` output. Both arms
+agreed on every figure — `EMIT_RC=0`, `FILES=176`, `LIVENESS_i64=848`, `BARE_INT_POSITIONS=47`, both
+target sites byte-identical. The patch was inert because it **could never have applied**: `gunbc
+compile` runs the *seed binary* built from `src/v1/stage0/src/*.rs`, and a `.dag` edit reaches an
+artifact only through regen, which interprets the `.dag` to produce a candidate stage0.
+
+What caught it was binary provenance: `md5sum target/release/gunbc` **identical** across arms, and
+the after-build reporting `Finished … in 0.05s` following an `rm -f`. Without that, the patch would
+have been reported as measured-inert.
+
+> **Assert that the treatment reached the thing you measured — not merely that you applied it.**
+
+### A digest that includes a path is a digest of the run, not of the content
+
+A determinism study printed a per-run tree hash as
+`find $DIR -name '*.rs' | sort | xargs md5sum | md5sum`, and all ten runs came back distinct. **That
+counter is worthless**: `md5sum` echoes each *path* beside its digest, and `$DIR` was per-run
+(`/tmp/n$i`), so the hash differs by construction on every run — *including under a perfectly
+deterministic producer*. It fabricates exactly the positive result the study was looking for.
+
+It was exposed by an internal contradiction between two instruments answering one question: a pair
+showing **0 differing files** under `diff -rq` while its two "tree hashes" differed.
+
+> **For cross-run content comparison use a path-independent instrument, and always carry a second
+> instrument that CAN contradict the first.**
+
+### When two counts of "the same" population differ, check the denominator before the test
+
+Two sessions counted hand-maintained files in the v1 seed: 39 and 79. The natural suspect was the
+*test* — whole-file `Source module:` versus first-five-lines — exactly the kind of difference that
+yields two honest numbers. Measured across all 169 top-level files: **zero disagreement**, so the
+test was not the separator.
+
+The separator was the **denominator**. `src/v1/stage0/src` holds 209 `.rs` (169 top-level + 31
+`bin/` + 6 `cli_run/` + 3 `module_path_index/`), and one glob — `src/v1/stage0/src/*.rs` — is
+non-recursive. 31 + 39 + 9 = 79. The smaller number was right *and* partial.
+
+Same shape as the digest above: `*.rs` silently means "top level only", answers a narrower question
+than the reader assumes, and returns a well-formed number either way. **This is the more common
+half**, because a test difference is visible in the code and a denominator difference is invisible in
+both.
+
+It pairs with a clause owned by `deep-ant-102`: before weighing which of two results dominates,
+**intersect the populations** — an empty intersection means there is no dominance question to answer.
+One failure from two sides: two measurements with no shared elements, and two measurements over
+unequal denominators.
 
 ## Neighbours already recorded, and how this differs
 
