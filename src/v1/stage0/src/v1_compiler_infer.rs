@@ -2,7 +2,6 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
-use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
@@ -18,6 +17,7 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
@@ -38,6 +38,11 @@ pub use crate::std_interface_summary::{interface_summary_rollup, signature_contr
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_primitive_projection::primitive_projection_row_for_declaration;
+pub use crate::std_primitive_projection::ProjectionFidelity;
+use crate::std_primitive_projection::ProjectionFidelity::{
+    DivergentProjection, HostRealizedSeam, ModeledProjection,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::LitStr;
@@ -152,19 +157,14 @@ pub use crate::v1_compiler_infer_types::{
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
-pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
-use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
-    ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
-};
-use crate::v1_compiler_type_head_exposure::TypeHeadView::{
-    ApplicationHead, CallableHead, CoproductHead, KernelScalarHead, ProductHead,
-};
-pub use crate::v1_compiler_type_head_exposure::{TypeHeadExposure, TypeHeadView};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AdmitCallersEntry::*;
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
+use crate::v1_std_core::CallTargetIdentity::{
+    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -173,8 +173,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeMismatch, UnresolvedType, VariantCollision,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -193,9 +193,6 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
-};
-use crate::v1_std_core::ServiceConfigField::{
-    SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
@@ -225,19 +222,19 @@ pub use crate::v1_std_core::{
     node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
-    AdmitCallersEntry, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
-    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
-    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ServiceConfigField, StringPart,
-    UnaryOpKind, VarBindingKind,
+    AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
+    Connective, DeclRefCoords, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
+    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
+    Node, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2830,63 +2827,6 @@ pub fn infer_expr(
     )
 }
 
-pub fn infer_list_literal_element(
-    element: Rc<Node>,
-    expected: Option<Rc<Node>>,
-    scope: Rc<InferScope>,
-) -> Rc<InferResult> {
-    {
-        let result = infer_expr(element.clone(), scope.clone(), expected.clone());
-        match expected.clone() {
-            Some(formal) => {
-                let formal_name = authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    formal.clone(),
-                );
-                match (*element.expr_data.clone()).clone() {
-                    ExprData::ExprLiteral { value: _, .. } => {
-                        if (literal_introduction_type_mismatch(
-                            formal.clone(),
-                            element.clone(),
-                            scope.clone(),
-                        ) || (is_kernel_type(formal_name.clone())
-                            && kernel_value_declared_type_mismatch(
-                                formal.clone(),
-                                resolved_type(result.typed.clone()),
-                                scope.type_env.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            )))
-                        {
-                            Rc::new(InferResult {
-                                typed: result.typed.clone(),
-                                diagnostics: v1_rt::concat(
-                                    result.diagnostics.clone(),
-                                    Rc::new(vec![type_mismatch_error(
-                                        node_type_shape(
-                                            formal.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        node_type_shape(
-                                            resolved_type(result.typed.clone()),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                        element.span.clone(),
-                                        scope.module_name.clone(),
-                                    )]),
-                                ),
-                            })
-                        } else {
-                            result.clone()
-                        }
-                    }
-                    _ => result.clone(),
-                }
-            }
-            None => result.clone(),
-        }
-    }
-}
-
 pub fn kernel_value_declared_type_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -2956,84 +2896,6 @@ pub fn kernel_value_declared_type_mismatch(
                     }
                 }
             }
-        }
-    }
-}
-
-pub fn expected_type_head_exposure(
-    formal: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> Rc<TypeHeadExposure> {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let direct = exposure_view_for_node(formal.clone(), source_indices.clone());
-        match (*direct.clone()).clone() {
-            TypeHeadExposure::ExposedTypeHead { view: _, .. } => direct.clone(),
-            TypeHeadExposure::MalformedApplicationHead { cause: _, .. } => direct.clone(),
-            _ => {
-                let identity = type_reference_identity(formal.clone(), source_indices.clone());
-                match v1_rt::map_get(
-                    &scope
-                        .type_env
-                        .clone()
-                        .symbol_index
-                        .clone()
-                        .type_head_exposures
-                        .clone(),
-                    identity.clone(),
-                ) {
-                    Some(exposure) => exposure.clone(),
-                    None => direct.clone(),
-                }
-            }
-        }
-    }
-}
-
-pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
-    match (*exposure.clone()).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
-                unreachable!()
-            };
-            true
-        }
-        _ => false,
-    }
-}
-
-pub fn literal_introduction_type_mismatch(
-    formal: Rc<Node>,
-    actual_expr: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    {
-        let expected_name = authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            formal.clone(),
-        );
-        match (*actual_expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
-            {
-                let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                false
-            }
-            ExprData::ExprLiteral { value: _, .. } => {
-                if is_kernel_type(expected_name.clone()) {
-                    false
-                } else {
-                    exposure_is_application(expected_type_head_exposure(
-                        formal.clone(),
-                        scope.clone(),
-                    ))
-                }
-            }
-            _ => false,
         }
     }
 }
@@ -3658,16 +3520,12 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if ((literal_introduction_type_mismatch(
-                                    formal.clone(),
-                                    actual_expr.clone(),
-                                    scope.clone(),
-                                ) || structured_application_site_type_mismatch_with_peeled(
+                                if (structured_application_site_type_mismatch_with_peeled(
                                     formal_subst.clone(),
                                     formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
-                                ))
+                                )
                                     || direct_call_structured_record_literal_resolved_type_mismatch(
                                         formal.clone(),
                                         actual_expr.clone(),
@@ -3861,38 +3719,12 @@ pub fn is_anonymous_bound_name(name: String) -> bool {
     (name.clone() == "_".to_string())
 }
 
-pub fn call_param_caller_labels(param_name: String) -> Rc<Vec<String>> {
-    if (param_name.clone() == "_".to_string()) {
-        Rc::new(vec![])
-    } else {
-        if ((v1_rt::string_length(&param_name) >= 1)
-            && (v1_rt::substring(&param_name, 0, 1) == "_".to_string()))
-        {
-            Rc::new(vec![
-                param_name.clone(),
-                v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name)),
-            ])
-        } else {
-            Rc::new(vec![param_name.clone()])
-        }
-    }
-}
-
 pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
-    if (param_name.clone() == "_".to_string()) {
-        true
-    } else {
-        {
-            let mut __found = false;
-            for caller_label in call_param_caller_labels(param_name.clone()).iter().cloned() {
-                if (caller_label.clone() == arg_label.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
+    (((param_name.clone() == arg_label.clone()) || (param_name.clone() == "_".to_string()))
+        || (((v1_rt::string_length(&param_name) >= 1)
+            && (v1_rt::substring(&param_name, 0, 1) == "_".to_string()))
+            && (v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name))
+                == arg_label.clone())))
 }
 
 pub fn param_binds_positionally(
@@ -6264,7 +6096,17 @@ pub fn infer_expr_body(
                                 true => ok_infer(make_named_expr_node(
                                     name.clone(),
                                     Rc::new(ExprData::ExprCall {
-                                        call_semantics: Some(CallSemantics::PlainCallSemantics),
+                                        call_semantics: Some(Rc::new(
+                                            CallSemantics::PlainCallSemantics {
+                                                target: resolved_plain_call_target(
+                                                    scope.clone(),
+                                                    name.clone(),
+                                                    Rc::new(FuncSigLookup::FuncSigResolved {
+                                                        sig: fsig.clone(),
+                                                    }),
+                                                ),
+                                            },
+                                        )),
                                         descent_evidence: None,
                                     }),
                                     Rc::new(vec![]),
@@ -6948,9 +6790,15 @@ pub fn infer_expr_body(
                                         typed: make_named_expr_node(
                                             func_name.clone(),
                                             Rc::new(ExprData::ExprCall {
-                                                call_semantics: Some(
-                                                    CallSemantics::PlainCallSemantics,
-                                                ),
+                                                call_semantics: Some(Rc::new(
+                                                    CallSemantics::PlainCallSemantics {
+                                                        target: resolved_plain_call_target(
+                                                            scope.clone(),
+                                                            func_name.clone(),
+                                                            call_sig_lookup.clone(),
+                                                        ),
+                                                    },
+                                                )),
                                                 descent_evidence: None,
                                             }),
                                             typed_arg_nodes.clone(),
@@ -7270,7 +7118,9 @@ pub fn infer_expr_body(
     Some(exp) => if node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
@@ -7283,7 +7133,9 @@ pub fn infer_expr_body(
 match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
@@ -7292,7 +7144,9 @@ match bare_m.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7306,7 +7160,9 @@ match bare_m.clone() {
     None => match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
@@ -7315,7 +7171,9 @@ match bare_m.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7336,7 +7194,9 @@ match bare_m.clone() {
     Some(exp) => if node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: exp.clone(),
@@ -7349,7 +7209,9 @@ match bare_m.clone() {
 match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
@@ -7358,7 +7220,9 @@ match bare_s.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7372,7 +7236,9 @@ match bare_s.clone() {
     None => match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
@@ -7381,7 +7247,9 @@ match bare_s.clone() {
 }),
     None => Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
@@ -7409,9 +7277,22 @@ match bare_s.clone() {
                                                         let call_semantics = if (func_name.clone()
                                                             == "lookup".to_string())
                                                         {
-                                                            Some(CallSemantics::LookupCallSemantics)
+                                                            Some(Rc::new(CallSemantics::LookupCallSemantics {
+    target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+    primitive_name: func_name.clone(),
+}),
+}))
                                                         } else {
-                                                            Some(CallSemantics::PlainCallSemantics)
+                                                            Some(Rc::new(
+                                                                CallSemantics::PlainCallSemantics {
+                                                                    target:
+                                                                        resolved_plain_call_target(
+                                                                            scope.clone(),
+                                                                            func_name.clone(),
+                                                                            call_sig_lookup.clone(),
+                                                                        ),
+                                                                },
+                                                            ))
                                                         };
                                                         Rc::new(InferResult {
                                                             typed: make_named_expr_node(
@@ -7473,9 +7354,11 @@ match bare_s.clone() {
                                                                 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(if callee_is_body_binding.clone() {
-                                                    CallSemantics::FunctionValueCallSemantics
+                                                    Rc::new(CallSemantics::FunctionValueCallSemantics)
                                                 } else {
-                                                    CallSemantics::PlainCallSemantics
+                                                    Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})
                                                 }),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
@@ -7536,7 +7419,9 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
 };
                                                                     Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: resolved_plain_call_target(scope.clone(), func_name.clone(), call_sig_lookup.clone()),
+})),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
@@ -7580,27 +7465,15 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                                 v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
                                 method_name.clone(),
                             );
-                            match symbol_index_lookup(
-                                scope.type_env.clone().symbol_index.clone(),
-                                dotted.clone(),
-                            ) {
-                                None => None,
-                                Some(_) => Some(infer_expr(
-                                    make_named_expr_node(
-                                        dotted.clone(),
-                                        Rc::new(ExprData::ExprCall {
-                                            call_semantics: Some(CallSemantics::PlainCallSemantics),
-                                            descent_evidence: None,
-                                        }),
-                                        mc_args.clone(),
-                                        None,
-                                        span.clone(),
-                                        kernel_span(dotted.clone()),
-                                    ),
-                                    scope.clone(),
-                                    expected.clone(),
-                                )),
-                            }
+                            match symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
+    None => None,
+    Some(_) => Some(infer_expr(make_named_expr_node(dotted.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+})),
+    descent_evidence: None,
+}), mc_args.clone(), None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+}
                         }
                     }
                 }
@@ -8349,11 +8222,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             let elem_results = Rc::new({
                 let mut __result = Vec::new();
                 for e in elements.iter().cloned() {
-                    __result.push(infer_list_literal_element(
-                        e.clone(),
-                        elem_expected.clone(),
-                        scope.clone(),
-                    ));
+                    __result.push(infer_expr(e.clone(), scope.clone(), elem_expected.clone()));
                 }
                 __result
             });
@@ -9274,6 +9143,79 @@ pub fn call_locals_shadow_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolved_call_target_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_projection says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolved_plain_call_target(
+    scope: Rc<InferScope>,
+    func_name: String,
+    sig_lookup: Rc<FuncSigLookup>,
+) -> Rc<CallTargetIdentity> {
+    match (*sig_lookup.clone()).clone() {
+        FuncSigLookup::FuncSigResolved { sig: _, .. } => match (*func_decl_binding_for_call(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            func_name.clone(),
+        ))
+        .clone()
+        {
+            ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, .. } => {
+                match primitive_projection_row_for_declaration(decl_ref(
+                    identity.owner_module_path.clone(),
+                    identity.decl_name.clone(),
+                )) {
+                    Some(row) => match (*row.fidelity.clone()).clone() {
+                        ProjectionFidelity::HostRealizedSeam => {
+                            Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                                primitive_name: func_name.clone(),
+                            })
+                        }
+                        ProjectionFidelity::ModeledProjection => {
+                            Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                                primitive_name: func_name.clone(),
+                            })
+                        }
+                        ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
+                            Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                                owner_module_path: identity.owner_module_path.clone(),
+                                decl_name: identity.decl_name.clone(),
+                            })
+                        }
+                    },
+                    None => Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: identity.owner_module_path.clone(),
+                        decl_name: identity.decl_name.clone(),
+                    }),
+                }
+            }
+            ConstructorDeclarationLookup::NotAdmissionBearingReference => {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+            ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable { .. } => {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+        },
+        FuncSigLookup::FuncSigUnresolved => {
+            if (infer_builtin_call_type(func_name.clone()) != None) {
+                Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
+                    primitive_name: func_name.clone(),
+                })
+            } else {
+                Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+            }
+        }
+        FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+    }
 }
 
 pub fn peel_alias_fixpoint_guard_note() -> String {
@@ -15404,8 +15346,8 @@ pub fn infer_property_values(
                 __result.push({
                     let val = field_init_node_value(p.clone());
                     let val_result = infer_expr(val.clone(), scope.clone(), None);
-                    Rc::new(PropertyInferenceResult {
-                        prop: Rc::new(Node {
+                    (
+                        Rc::new(Node {
                             name: p.name.clone(),
                             span: p.span.clone(),
                             ident_span: p.ident_span.clone(),
@@ -15425,8 +15367,8 @@ pub fn infer_property_values(
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
-                        diagnostics: val_result.diagnostics.clone(),
-                    })
+                        val_result.diagnostics.clone(),
+                    )
                 });
             }
             __result
@@ -15435,14 +15377,14 @@ pub fn infer_property_values(
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.prop.clone());
+                    __result.push(r.0.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    __result.extend((*r.1.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -15450,56 +15392,7 @@ pub fn infer_property_values(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PropertyInferenceResult {
-    pub prop: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ServiceConfigFieldJudgment {
-    FieldJudged,
-    FieldDeferred { trigger: String },
-    FieldCarriesNoReference,
-}
-impl ServiceConfigFieldJudgment {
-    pub fn trigger(&self) -> String {
-        match self {
-            ServiceConfigFieldJudgment::FieldJudged => panic!("no trigger on unit variant"),
-            ServiceConfigFieldJudgment::FieldDeferred { trigger: __val, .. } => __val.clone(),
-            ServiceConfigFieldJudgment::FieldCarriesNoReference => {
-                panic!("no trigger on unit variant")
-            }
-        }
-    }
-}
-
-pub fn service_config_field_judgment(field: String) -> Rc<ServiceConfigFieldJudgment> {
-    match service_config_field_for_property_name(field.clone()) {
-    None => Rc::new(ServiceConfigFieldJudgment::FieldCarriesNoReference),
-    Some(known) => match known.clone() {
-    ServiceConfigField::SvcEndpoint => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
-    ServiceConfigField::SvcAuth => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
-    ServiceConfigField::SvcAuthSource => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
-    ServiceConfigField::SvcAuthInput => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
-    trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string(),
-}),
-    ServiceConfigField::SvcRateLimit => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
-    trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string(),
-}),
-},
-}
-}
-
-pub fn service_config_property_referenced_name(p: Rc<Node>, scope: Rc<InferScope>) -> String {
-    authored_name_at(
-        scope.type_env.clone().source_indices.clone(),
-        field_init_node_value(p.clone()),
-    )
-}
-
-pub fn infer_service_config_properties(
+pub fn infer_auth_source_properties(
     props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<InferPropertiesResult> {
@@ -15507,51 +15400,43 @@ pub fn infer_service_config_properties(
         let results = Rc::new({
             let mut __result = Vec::new();
             for p in props.iter().cloned() {
-                __result.push({
-            let field = field_init_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone());
-match (*service_config_field_judgment(field.clone())).clone() {
-    ServiceConfigFieldJudgment::FieldJudged => {
-                let val = field_init_node_value(p.clone());
-let val_result = infer_expr(val.clone(), scope.clone(), None);
-Rc::new(PropertyInferenceResult {
-    prop: Rc::new(Node {
-    name: p.name.clone(),
-    span: p.span.clone(),
-    ident_span: p.ident_span.clone(),
-    children: Rc::new(vec![val_result.typed.clone()]),
-    connective: p.connective.clone(),
-    params: p.params.clone(),
-    inferred: p.inferred.clone(),
-    return_cardinality: p.return_cardinality.clone(),
-    uses: p.uses.clone(),
-    body: p.body.clone(),
-    transport: p.transport.clone(),
-    properties: p.properties.clone(),
-    type_annotation: p.type_annotation.clone(),
-    is_self_recursive: p.is_self_recursive.clone(),
-    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
-    match_pattern: p.match_pattern.clone(),
-    expr_data: p.expr_data.clone(),
-    ident: None,
-}),
-    diagnostics: val_result.diagnostics.clone(),
-})
-},
-    ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(PropertyInferenceResult {
-    prop: p.clone(),
-    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
-    field: field.clone(),
-    referenced_name: service_config_property_referenced_name(p.clone(), scope.clone()),
-    trigger: t.clone(),
-    span: p.span.clone(),
-}), scope.module_name.clone())]),
-}),
-    ServiceConfigFieldJudgment::FieldCarriesNoReference => Rc::new(PropertyInferenceResult {
-    prop: p.clone(),
-    diagnostics: Rc::new(vec![]),
-}),
-}
-});
+                __result.push(
+                    if (field_init_node_name_at(
+                        p.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) == "svc_auth_source".to_string())
+                    {
+                        {
+                            let val = field_init_node_value(p.clone());
+                            let val_result = infer_expr(val.clone(), scope.clone(), None);
+                            (
+                                Rc::new(Node {
+                                    name: p.name.clone(),
+                                    span: p.span.clone(),
+                                    ident_span: p.ident_span.clone(),
+                                    children: Rc::new(vec![val_result.typed.clone()]),
+                                    connective: p.connective.clone(),
+                                    params: p.params.clone(),
+                                    inferred: p.inferred.clone(),
+                                    return_cardinality: p.return_cardinality.clone(),
+                                    uses: p.uses.clone(),
+                                    body: p.body.clone(),
+                                    transport: p.transport.clone(),
+                                    properties: p.properties.clone(),
+                                    type_annotation: p.type_annotation.clone(),
+                                    is_self_recursive: p.is_self_recursive.clone(),
+                                    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+                                    match_pattern: p.match_pattern.clone(),
+                                    expr_data: p.expr_data.clone(),
+                                    ident: None,
+                                }),
+                                val_result.diagnostics.clone(),
+                            )
+                        }
+                    } else {
+                        (p.clone(), Rc::new(vec![]))
+                    },
+                );
             }
             __result
         });
@@ -15559,14 +15444,14 @@ Rc::new(PropertyInferenceResult {
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.prop.clone());
+                    __result.push(r.0.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    __result.extend((*r.1.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -15624,7 +15509,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
             infer_transport_node(item.transport.clone(), transport_scope.clone());
         let typed_transport = transport_result.transport.clone();
         let transport_diags = transport_result.diagnostics.clone();
-        let props_result = infer_service_config_properties(item.properties.clone(), scope.clone());
+        let props_result = infer_auth_source_properties(item.properties.clone(), scope.clone());
         let typed_properties = props_result.props.clone();
         let props_diags = props_result.diagnostics.clone();
         if ((item.connective.clone() != Connective::NoConnective)
@@ -17624,162 +17509,6 @@ pub fn transparent_alias_representatives(
     }
 }
 
-pub fn node_declaration_file(n: Rc<Node>) -> String {
-    match n.ident_span.clone() {
-        Some(sp) => sp.file.clone(),
-        None => "".to_string(),
-    }
-}
-
-pub fn node_declaration_identity(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    type_declaration_identity_key(
-        node_declaration_file(n.clone()),
-        authored_name_at(source_indices.clone(), n.clone()),
-    )
-}
-
-pub fn type_reference_identity(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            node_declaration_identity(rt.clone(), source_indices.clone())
-        }
-        _ => node_declaration_identity(n.clone(), source_indices.clone()),
-    }
-}
-
-pub fn application_argument_identities(
-    arguments: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for ch in arguments.iter().cloned() {
-            __result.push(type_reference_identity(
-                child_type_node(ch.clone()),
-                source_indices.clone(),
-            ));
-        }
-        __result
-    })
-}
-
-pub fn exposure_view_for_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypeHeadExposure> {
-    {
-        let identity = node_declaration_identity(n.clone(), source_indices.clone());
-        match (identity.clone() == "::".to_string()) {
-            true => Rc::new(TypeHeadExposure::StuckTypeHead {
-                cause: "declaration identity unavailable".to_string(),
-            }),
-            false => match ((n.type_annotation.clone() != None)
-                || ((n.properties.clone().len() as i64) > 0))
-            {
-                true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                    type_identity: identity.clone(),
-                }),
-                false => match n.connective.clone() {
-                    Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::CallableHead {
-                            type_identity: identity.clone(),
-                        }),
-                    }),
-                    Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::CoproductHead {
-                            type_identity: identity.clone(),
-                        }),
-                    }),
-                    Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::ProductHead {
-                            type_identity: identity.clone(),
-                        }),
-                    }),
-                    Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
-                        true => {
-                            let constructor_name =
-                                authored_name_at(source_indices.clone(), n.clone());
-                            match (constructor_name.clone() == "".to_string()) {
-                                true => Rc::new(TypeHeadExposure::MalformedApplicationHead {
-                                    cause: "application has no constructor identity".to_string(),
-                                }),
-                                false => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                                    view: Rc::new(TypeHeadView::ApplicationHead {
-                                        constructor_identity: type_declaration_identity_key(
-                                            node_declaration_file(n.clone()),
-                                            constructor_name.clone(),
-                                        ),
-                                        argument_identities: application_argument_identities(
-                                            n.children.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    }),
-                                }),
-                            }
-                        }
-                        false => {
-                            let name = authored_name_at(source_indices.clone(), n.clone());
-                            match is_kernel_type(name.clone()) {
-                                true => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                                    view: Rc::new(TypeHeadView::KernelScalarHead {
-                                        type_identity: identity.clone(),
-                                    }),
-                                }),
-                                false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                                    type_identity: identity.clone(),
-                                }),
-                            }
-                        }
-                    },
-                },
-            },
-        }
-    }
-}
-
-pub fn declaration_head_exposure(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypeHeadExposure> {
-    match item.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: target, .. }) => {
-            exposure_view_for_node(target.clone(), source_indices.clone())
-        }
-        _ => exposure_view_for_node(item.clone(), source_indices.clone()),
-    }
-}
-
-pub fn type_head_exposure_census(
-    module_nodes: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<TypeHeadExposure>>> {
-    module_nodes.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
-        |acc: Rc<HashMap<String, Rc<TypeHeadExposure>>>, module_node: Rc<Node>| {
-            module_items(module_node.clone()).iter().cloned().fold(
-                acc,
-                |by_identity: Rc<HashMap<String, Rc<TypeHeadExposure>>>, item: Rc<Node>| {
-                    let identity = node_declaration_identity(item.clone(), source_indices.clone());
-                    match (identity.clone() == "::".to_string()) {
-                        true => by_identity.clone(),
-                        false => v1_rt::rc_map_insert(
-                            by_identity.clone(),
-                            identity.clone(),
-                            declaration_head_exposure(item.clone(), source_indices.clone()),
-                        ),
-                    }
-                },
-            )
-        },
-    )
-}
-
 pub fn transparent_alias_representative(index: Rc<SymbolIndex>, name: String) -> String {
     match v1_rt::map_get(&index.transparent_alias_rep.clone(), name.clone()) {
         Some(rep) => rep.clone(),
@@ -17859,10 +17588,6 @@ pub fn build_symbol_index_census_raw_nodes(
                 module_nodes.clone(),
                 source_indices.clone(),
                 corpus_item_counts.clone(),
-            ),
-            type_head_exposures: type_head_exposure_census(
-                module_nodes.clone(),
-                source_indices.clone(),
             ),
         })
     }
@@ -18456,7 +18181,6 @@ pub fn census_with_resolved_fn_sigs(
             global_bare: global2.clone(),
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
-            type_head_exposures: index.type_head_exposures.clone(),
         })
     }
 }
@@ -18513,10 +18237,6 @@ pub fn symbol_index_with_bare_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 tree.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
-            ),
-            type_head_exposures: v1_rt::rc_map_merge(
-                tree.type_head_exposures.clone(),
-                closure.type_head_exposures.clone(),
             ),
         })
     }
@@ -18592,10 +18312,6 @@ pub fn symbol_index_with_qualified_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 fill.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
-            ),
-            type_head_exposures: v1_rt::rc_map_merge(
-                fill.type_head_exposures.clone(),
-                closure.type_head_exposures.clone(),
             ),
         })
     }

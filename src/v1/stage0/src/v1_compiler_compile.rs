@@ -67,7 +67,12 @@ pub use crate::v1_compiler_resolve::{ModuleGraph, ModuleOccurrenceInput};
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::*;
+use crate::v1_std_core::CallSemantics::{
+    FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
+use crate::v1_std_core::CallTargetIdentity::{
+    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+};
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
     InternalError, OccurrenceTransportViolation, OwnershipViolation,
@@ -98,10 +103,10 @@ pub use crate::v1_std_core::{
     record_lit_type_name_at, resource_use_name_at, resource_use_resource,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile, Token, UnaryOpKind,
-    VarBindingKind,
+    CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
+    TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -732,11 +737,46 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     }
 }
 
-pub fn call_semantics_name(value: CallSemantics) -> String {
-    match value.clone() {
-        CallSemantics::PlainCallSemantics => "PlainCallSemantics".to_string(),
-        CallSemantics::LookupCallSemantics => "LookupCallSemantics".to_string(),
+pub fn call_semantics_name(value: Rc<CallSemantics>) -> String {
+    match (*value.clone()).clone() {
+        CallSemantics::PlainCallSemantics { target: _, .. } => "PlainCallSemantics".to_string(),
+        CallSemantics::LookupCallSemantics { target: _, .. } => "LookupCallSemantics".to_string(),
         CallSemantics::FunctionValueCallSemantics => "FunctionValueCallSemantics".to_string(),
+    }
+}
+
+pub fn serialize_call_target_identity(value: Rc<CallTargetIdentity>) -> String {
+    match (*value.clone()).clone() {
+        CallTargetIdentity::RuntimePrimitiveCall {
+            primitive_name: primitive_name,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                "{\"kind\": \"RuntimePrimitiveCall\", \"primitive_name\": ".to_string(),
+                json_quote(primitive_name.clone()),
+            ),
+            "}".to_string(),
+        ),
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "{\"kind\": \"SourceDeclarationCall\", \"owner_module_path\": ".to_string(),
+                        json_quote(owner.clone()),
+                    ),
+                    ", \"decl_name\": ".to_string(),
+                ),
+                json_quote(decl.clone()),
+            ),
+            "}".to_string(),
+        ),
+        CallTargetIdentity::CallableTargetUndetermined => {
+            "{\"kind\": \"CallableTargetUndetermined\"}".to_string()
+        }
     }
 }
 
@@ -1068,15 +1108,25 @@ pub fn serialize_string_part(
     }
 }
 
-pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
-    match value.clone() {
-        Some(inner) => v1_rt::concat(
+pub fn serialize_call_semantics(value: Option<Rc<CallSemantics>>) -> String {
+    match value.clone().as_deref().cloned() {
+        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => v1_rt::concat(
             v1_rt::concat(
-                "{\"kind\": ".to_string(),
-                json_quote(call_semantics_name(inner.clone())),
+                "{\"kind\": \"PlainCallSemantics\", \"target\": ".to_string(),
+                serialize_call_target_identity(target.clone()),
             ),
             "}".to_string(),
         ),
+        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => v1_rt::concat(
+            v1_rt::concat(
+                "{\"kind\": \"LookupCallSemantics\", \"target\": ".to_string(),
+                serialize_call_target_identity(target.clone()),
+            ),
+            "}".to_string(),
+        ),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            "{\"kind\": \"FunctionValueCallSemantics\"}".to_string()
+        }
         None => "null".to_string(),
     }
 }

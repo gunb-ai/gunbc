@@ -3,6 +3,7 @@
 
 use self::AdmitCallersEntry::*;
 use self::CallSemantics::*;
+use self::CallTargetIdentity::*;
 use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
@@ -227,14 +228,34 @@ impl VarBindingKind {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CallTargetIdentity {
+    RuntimePrimitiveCall {
+        primitive_name: String,
+    },
+    SourceDeclarationCall {
+        owner_module_path: String,
+        decl_name: String,
+    },
+    CallableTargetUndetermined,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
-    PlainCallSemantics,
-    LookupCallSemantics,
+    PlainCallSemantics { target: Rc<CallTargetIdentity> },
+    LookupCallSemantics { target: Rc<CallTargetIdentity> },
     FunctionValueCallSemantics,
+}
+impl CallSemantics {
+    pub fn target(&self) -> Rc<CallTargetIdentity> {
+        match self {
+            CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -283,7 +304,7 @@ pub enum ExprData {
         summary: Option<Rc<FieldSummary>>,
     },
     ExprCall {
-        call_semantics: Option<CallSemantics>,
+        call_semantics: Option<Rc<CallSemantics>>,
         descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
@@ -4529,12 +4550,6 @@ pub struct TupleSecond;
 pub struct PlainValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OptionalValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PlainCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LookupCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FunctionValueCallSemantics;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParseRecoveryError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
