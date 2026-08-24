@@ -2,8 +2,9 @@
 // Source module: extdeps.cargo_version
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::extdeps_version_semver::{SemVerConstraint, SemVerIdentity};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -15,21 +16,21 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/cargo/reference/manifest.html".to_string(),
-    },
+    }),
     })
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type CargoPackageVersion = crate::extdeps_version::VersionIdentity;
+pub type CargoPackageVersion = SemVerIdentity;
 
-pub type CargoVersionRequirement = crate::extdeps_version::VersionConstraint;
+pub type CargoVersionRequirement = SemVerConstraint;
 
-pub type CargoToolVersionFloor = crate::extdeps_version::VersionConstraint;
+pub type CargoToolVersionFloor = SemVerConstraint;
 
 pub fn default_stage0_package_version() -> CargoPackageVersion {
     thread_local! {

@@ -3,7 +3,7 @@
 
 use self::CitationIndexCoverage::*;
 use self::DeclField::*;
-pub use crate::std_types::List;
+pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

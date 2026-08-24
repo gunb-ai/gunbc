@@ -6,8 +6,8 @@ use self::DescentSource::*;
 use self::PositiveDescentAmount::*;
 use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
-pub use crate::std_algebra::BoundedLattice;
-pub use crate::std_types::Map;
+use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{BoundedLattice, Ordering};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -68,6 +68,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
                 join: Rc::new(descent_evidence_lattice_join),
                 top: DescentEvidence::Strict,
                 bottom: DescentEvidence::DescentUnknown,
+                _phantom: std::marker::PhantomData,
             })
         };
     }

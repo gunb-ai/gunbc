@@ -6,7 +6,8 @@ use self::AnnotationAttachment::*;
 use self::AnnotationAttachmentRefusal::*;
 use self::AnnotationPlacement::*;
 pub use crate::std_occurrence_identity::OccurrenceId;
-pub use crate::std_types::{List, SourceSpan};
+use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -523,11 +524,11 @@ pub fn annotation_attach_step(
                                     open.text.clone(),
                                     v1_rt::concat("\n".to_string(), capture.text.clone()),
                                 ),
-                                origin: SourceSpan {
+                                origin: Rc::new(SourceSpan {
                                     file: open.origin.clone().file.clone(),
                                     start: open.origin.clone().start.clone(),
                                     end: capture.origin.clone().end.clone(),
-                                },
+                                }),
                             })),
                             pending_adjacent: true,
                         }),
@@ -581,11 +582,11 @@ pub fn annotation_attach_resolve(
                                 open.text.clone(),
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
-                            origin: SourceSpan {
+                            origin: Rc::new(SourceSpan {
                                 file: open.origin.clone().file.clone(),
                                 start: open.origin.clone().start.clone(),
                                 end: capture.origin.clone().end.clone(),
-                            },
+                            }),
                         })),
                         pending_adjacent: true,
                     })

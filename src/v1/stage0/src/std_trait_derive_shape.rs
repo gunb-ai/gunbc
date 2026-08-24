@@ -6,15 +6,15 @@ use self::PairCompletionComponent::*;
 use self::PairCompletionOp::*;
 use self::PairCompletionOperand::*;
 use self::ReprGroundingDeriveElemShape::*;
-use crate::std_decl_ref::DeclField::*;
+pub use crate::std_algebra::FreeMonoid;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-use crate::std_disposition::ConstructionMechanism::*;
-use crate::std_disposition::Disposition::*;
+use crate::std_disposition::ConstructionMechanism::SingleAuthority;
+use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -68,7 +68,7 @@ pub enum ReprGroundingDeriveElemShape {
     ReprDeriveElemUnknown,
 }
 
-pub fn repr_grounding_derive_shape_has_trait<K: Clone>(
+pub fn repr_grounding_derive_shape_has_trait<K: Clone + PartialEq>(
     table: Rc<TargetCapabilityShapeTable<K>>,
     shape: ReprGroundingDeriveElemShape,
     capability_key: K,
@@ -94,7 +94,7 @@ pub fn repr_grounding_derive_shape_has_trait<K: Clone>(
     }
 }
 
-pub fn repr_grounding_derive_completeness_predicate<K: Clone>(
+pub fn repr_grounding_derive_completeness_predicate<K: Clone + PartialEq>(
     table: Rc<TargetCapabilityShapeTable<K>>,
     required: Rc<Vec<K>>,
     shape: ReprGroundingDeriveElemShape,
@@ -390,11 +390,11 @@ pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: DeclarationRef {
+        bind: Rc::new(DeclarationRef {
         module_path: "std.algebra".to_string(),
         decl_name: "Ring".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
+    }),
     })
             };
         }

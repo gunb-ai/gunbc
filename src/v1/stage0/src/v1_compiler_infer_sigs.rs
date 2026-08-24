@@ -4,7 +4,8 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_types::{List, Map};
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
 pub use crate::v1_compiler_infer_occurrence_binding::{
@@ -13,12 +14,15 @@ pub use crate::v1_compiler_infer_occurrence_binding::{
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::*;
-use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
+use crate::v1_std_core::ExprData::ExprCall;
+use crate::v1_std_core::InferredNode::*;
+use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };
+pub use crate::v1_std_core::{InferredNode, MatchPattern};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -464,11 +468,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: ResolvedFuncEnv {
+                    func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    },
+                    }),
                     diagnostics: diagnostics.clone(),
                 });
             }
@@ -568,7 +572,8 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -581,11 +586,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: ResolvedFuncEnv {
+                    func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    },
+                    }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
                         cycle_accum.diagnostics.clone(),

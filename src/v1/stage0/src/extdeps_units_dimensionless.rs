@@ -2,7 +2,7 @@
 // Source module: extdeps.units.dimensionless
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
@@ -16,10 +16,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/31887.html".to_string(),
-    },
+    }),
     })
             };
         }

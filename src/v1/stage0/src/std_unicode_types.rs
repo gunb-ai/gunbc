@@ -3,6 +3,7 @@
 
 use self::CharClass::*;
 use self::DisplayWidth::*;
+pub use crate::std_types::Char;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -25,7 +26,7 @@ pub fn unicode_surrogate_last_code_point() -> i64 {
 pub fn unicode_scalar_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Unicode Standard 17.0 Core Specification section 3.9, definition D76 (https://www.unicode.org/versions/U0/core-spec/chapter-3/#G7404): scalar values are U+0000..U+D7FF and U+E000..U+10FFFF inclusive. Therefore U+10FFFF is the maximum and the surrogate code points U+D800..U+DFFF are excluded.".to_string()
+            "Unicode Standard 17.0 Core Specification section 3.9, definition D76 (https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/#G7404): scalar values are U+0000..U+D7FF and U+E000..U+10FFFF inclusive. Therefore U+10FFFF is the maximum and the surrogate code points U+D800..U+DFFF are excluded.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

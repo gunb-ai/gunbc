@@ -5,17 +5,27 @@ use self::EscapeProcessResult::*;
 use self::ScanStep::*;
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
-pub use crate::std_source_annotation::UnboundAnnotationCapture;
+use crate::std_source_annotation::AnnotationPlacement::{
+    LeadingAfterLineIndent, TrailingAfterSemanticToken,
+};
 pub use crate::std_source_annotation::{
     advance_line_prefix_indent_only_text, placement_from_line_prefix,
 };
-pub use crate::std_types::{List, Map, SourceSpan};
+pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
+pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
+pub use crate::v1_compiler_languages::EmojiCharEscape;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_file_span;
-use crate::v1_std_core::TokenShape::*;
+use crate::v1_std_core::TokenShape::{
+    ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
+    ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
+    ShLitInt, ShLitStr, ShLt, ShMinus, ShNe, ShNewline, ShNullCoalesce, ShOr, ShPercent, ShPipe,
+    ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
+    ShStrEnd, ShStrMid, ShUnknown,
+};
 pub use crate::v1_std_core::{Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -23,10 +33,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {
-    match v1_rt::lookup(
-        &crate::extdeps_languages_dag_syntax::dag_keyword_set(),
-        text.clone(),
-    ) {
+    match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -390,7 +397,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                 let eol = source_scan_to_eol(source.clone(), pos.pos.clone());
                 return Rc::new(ScanStep::ScannedAnnotation {
                     pos: eol.clone(),
-                    capture: UnboundAnnotationCapture {
+                    capture: Rc::new(UnboundAnnotationCapture {
                         lexeme: source_substring(source.clone(), pos.pos.clone(), eol.clone()),
                         origin: make_file_span(source.file.clone(), pos.pos.clone(), eol.clone()),
                         placement: placement_from_line_prefix(line_prefix_is_indent_only(
@@ -405,7 +412,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                             source.clone(),
                             pos.pos.clone(),
                         ),
-                    },
+                    }),
                     interp_depth: pos.interp_depth.clone(),
                 });
             }
@@ -521,7 +528,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             0
         };
         if ((ch.clone() == 61) && (next_ch.clone() == 62)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShFatArrow,
                 "=>".to_string(),
@@ -530,7 +537,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 45) && (next_ch.clone() == 62)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShArrow,
                 "->".to_string(),
@@ -539,7 +546,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 61) && (next_ch.clone() == 61)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShEqEq,
                 "==".to_string(),
@@ -548,7 +555,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 33) && (next_ch.clone() == 61)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShNe,
                 "!=".to_string(),
@@ -557,7 +564,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 60) && (next_ch.clone() == 61)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShLe,
                 "<=".to_string(),
@@ -566,7 +573,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 62) && (next_ch.clone() == 61)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShGe,
                 ">=".to_string(),
@@ -575,7 +582,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 38) && (next_ch.clone() == 38)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShAnd,
                 "&&".to_string(),
@@ -584,7 +591,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 124) && (next_ch.clone() == 124)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShOr,
                 "||".to_string(),
@@ -593,7 +600,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 124) && (next_ch.clone() == 62)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShPipeArrow,
                 "|>".to_string(),
@@ -602,7 +609,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 124) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShPipe,
                 "|".to_string(),
@@ -611,7 +618,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 63) && (next_ch.clone() == 63)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShNullCoalesce,
                 "??".to_string(),
@@ -620,7 +627,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if ((ch.clone() == 46) && (next_ch.clone() == 46)) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShDotDot,
                 "..".to_string(),
@@ -629,7 +636,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 61) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShEq,
                 "=".to_string(),
@@ -638,7 +645,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 60) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShLt,
                 "<".to_string(),
@@ -647,7 +654,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 62) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShGt,
                 ">".to_string(),
@@ -656,7 +663,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 45) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShMinus,
                 "-".to_string(),
@@ -665,7 +672,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 33) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShBang,
                 "!".to_string(),
@@ -674,7 +681,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             );
         }
         if (ch.clone() == 63) {
-            return crate::v1_compiler_tokenize::emit(
+            return emit(
                 pos.clone(),
                 TokenShape::ShQuestion,
                 "?".to_string(),
@@ -720,14 +727,14 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
         }
         let ch_text = source_char(source.clone(), pos.pos.clone());
         match v1_rt::lookup(&single_punct(), ch_text.clone()) {
-            Some(sh) => crate::v1_compiler_tokenize::emit(
+            Some(sh) => emit(
                 pos.clone(),
                 sh.clone(),
                 ch_text.clone(),
                 1,
                 source.file.clone(),
             ),
-            None => crate::v1_compiler_tokenize::emit(
+            None => emit(
                 pos.clone(),
                 TokenShape::ShUnknown,
                 ch_text.clone(),
@@ -1209,9 +1216,7 @@ pub fn unicode_escape_at(
         } else {
             let ch = code_point_at(source.clone(), pos.clone());
             if (ch.clone() == 125) {
-                if ((digit_count.clone() > 0)
-                    && crate::std_unicode_types::unicode_scalar(value.clone()))
-                {
+                if ((digit_count.clone() > 0) && unicode_scalar(value.clone())) {
                     break Some(UnicodeEscape {
                         code_point: value.clone(),
                         next_pos: (pos.clone() + 1),

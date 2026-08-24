@@ -2,7 +2,6 @@
 // Source module: v1.compiler.infer_occurrence_binding
 
 use self::ModulePathBindingProjection::*;
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

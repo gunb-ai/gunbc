@@ -29,7 +29,6 @@ pub use crate::std_termination::{
 pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -748,17 +747,13 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                 }
                             } else {
                                 match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                                    Some(prev) => {
-                                        match crate::std_checked_arithmetic::checked_int_optional(
-                                            crate::std_checked_arithmetic::checked_int_multiply(
-                                                base.clone(),
-                                                prev.clone(),
-                                            ),
-                                        ) {
-                                            Some(prod) => Some(prod.clone()),
-                                            None => None,
-                                        }
-                                    }
+                                    Some(prev) => match checked_int_optional(checked_int_multiply(
+                                        base.clone(),
+                                        prev.clone(),
+                                    )) {
+                                        Some(prod) => Some(prod.clone()),
+                                        None => None,
+                                    },
                                     None => None,
                                 }
                             }
@@ -783,28 +778,22 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
-            match crate::std_checked_arithmetic::checked_int_optional(
-                crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
-            ) {
+            match checked_int_optional(checked_int_multiply(power.clone(), base.clone())) {
                 None => {
                     break None;
                 }
-                Some(next_power) => {
-                    match crate::std_checked_arithmetic::checked_int_optional(
-                        crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
-                    ) {
-                        None => {
-                            break None;
-                        }
-                        Some(k1) => {
-                            let __tco_0 = k1.clone();
-                            let __tco_1 = next_power.clone();
-                            k = __tco_0;
-                            power = __tco_1;
-                            continue;
-                        }
+                Some(next_power) => match checked_int_optional(checked_int_add(k.clone(), 1)) {
+                    None => {
+                        break None;
                     }
-                }
+                    Some(k1) => {
+                        let __tco_0 = k1.clone();
+                        let __tco_1 = next_power.clone();
+                        k = __tco_0;
+                        power = __tco_1;
+                        continue;
+                    }
+                },
             }
         }
     }

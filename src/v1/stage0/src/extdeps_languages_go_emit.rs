@@ -2,10 +2,9 @@
 // Source module: extdeps.languages.go.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -17,10 +16,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
-    },
+    }),
     })
             };
         }
@@ -219,7 +218,7 @@ pub fn go_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
     go_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

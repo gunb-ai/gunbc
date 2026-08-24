@@ -4,19 +4,24 @@
 use self::ReferenceBindingObservation::*;
 use self::ReferenceBindingProductionGap::*;
 use self::StructuralBindingResolution::*;
+pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::*;
-use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::*;
+use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::{
+    OccurrenceCandidateIndexAuthoredOrderRefused, OccurrenceCandidateIndexDeclarationBucketRefused,
+    OccurrenceCandidateIndexExposureRefused, OccurrenceCandidateIndexModulePathRefused,
+    OccurrenceCandidateIndexReady, OccurrenceCandidateIndexTransportRefused,
+};
 use crate::std_occurrence_binding_candidates::OccurrenceModulePathIndexRefusal::*;
 pub use crate::std_occurrence_binding_candidates::{
     candidate_occurrence_ids_for_reference, occurrence_candidate_index_build,
 };
 pub use crate::std_occurrence_binding_candidates::{
-    AuthoredOrderIndexRefusal, DeclarationExposure, DeclarationExposureIndexRefusal,
-    OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild,
-    OccurrenceModulePathIndexRefusal,
+    AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal, OccurrenceBindingCandidateInputs,
+    OccurrenceCandidateIndexBuild, OccurrenceModulePathIndexRefusal,
 };
+pub use crate::std_occurrence_binding_candidates::{DeclarationExposure, OccurrenceCandidateIndex};
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::*;
@@ -24,6 +29,8 @@ use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     OccurrenceId, OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
 };
+use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, FilePath, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

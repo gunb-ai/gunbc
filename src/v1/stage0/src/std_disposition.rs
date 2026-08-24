@@ -3,6 +3,8 @@
 
 use self::ConstructionMechanism::*;
 use self::Disposition::*;
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

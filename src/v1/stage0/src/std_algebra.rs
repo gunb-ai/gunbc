@@ -7,7 +7,9 @@ use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
 use self::Ordering::*;
-pub use crate::std_types::{List, Map};
+use crate::std_error_primitives::DivError::*;
+use crate::std_error_primitives::Result::*;
+pub use crate::std_error_primitives::{DivError, Result};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -58,7 +60,7 @@ pub struct AbelianGroup<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GroupCompletion<M> {
+pub struct GroupCompletion<M: Clone> {
     pub pos: M,
     pub neg: M,
     pub _phantom: std::marker::PhantomData<M>,
@@ -66,7 +68,7 @@ pub struct GroupCompletion<M> {
 // repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the
 // pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies
 // remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).
-impl<M> std::ops::Neg for GroupCompletion<M> {
+impl<M: Clone> std::ops::Neg for GroupCompletion<M> {
     type Output = Self;
     fn neg(self) -> Self::Output {
         GroupCompletion {
@@ -76,7 +78,7 @@ impl<M> std::ops::Neg for GroupCompletion<M> {
         }
     }
 }
-impl<M> std::ops::Add for GroupCompletion<M>
+impl<M: Clone> std::ops::Add for GroupCompletion<M>
 where
     M: std::ops::Add<Output = M>,
 {
@@ -89,7 +91,7 @@ where
         }
     }
 }
-impl<M> std::ops::Sub for GroupCompletion<M>
+impl<M: Clone> std::ops::Sub for GroupCompletion<M>
 where
     M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,
 {
@@ -98,7 +100,7 @@ where
         self + (-rhs)
     }
 }
-impl<M> std::ops::Mul for GroupCompletion<M>
+impl<M: Clone> std::ops::Mul for GroupCompletion<M>
 where
     M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,
 {
@@ -111,7 +113,7 @@ where
         }
     }
 }
-impl<M> std::ops::Div for GroupCompletion<M>
+impl<M: Clone> std::ops::Div for GroupCompletion<M>
 where
     M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,
 {
@@ -238,12 +240,30 @@ pub struct FinitePowerSet<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
-compile_error!("trait_derive_emit: generic item 'FreeSemigroup' has a field applying type 'std.algebra.FreeMonoid', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'FreeSemigroup' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
 pub struct FreeSemigroup<T: Clone> {
     pub head: T,
-    pub tail: Rc<Vec<T>>,
+    pub tail: Rc<FreeMonoid<T>>,
     pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for FreeSemigroup<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FreeSemigroup")
+            .field("head", &self.head)
+            .field("tail", &self.tail)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for FreeSemigroup<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.head == other.head && self.tail == other.tail
+    }
 }
 
 #[derive(Clone)]

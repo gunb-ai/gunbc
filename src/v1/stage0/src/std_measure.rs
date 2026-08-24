@@ -19,7 +19,7 @@ pub use crate::extdeps_units_iso8601::{
 };
 pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
-    square_millimetres_per_square_metre,
+    degrees_per_turn, square_millimetres_per_square_metre,
 };
 pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
@@ -27,7 +27,8 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_nat::Nat;
-pub use crate::std_types::NonEmptyStr;
+use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -135,15 +136,15 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
 }
 
 pub fn kibi_factor() -> Nat {
-    crate::extdeps_units_iec_80000_13::iec_kibi_factor()
+    iec_kibi_factor()
 }
 
 pub fn seconds_per_minute() -> Nat {
-    crate::extdeps_units_iso8601::iso8601_seconds_per_minute()
+    iso8601_seconds_per_minute()
 }
 
 pub fn minutes_per_hour() -> Nat {
-    crate::extdeps_units_iso8601::iso8601_minutes_per_hour()
+    iso8601_minutes_per_hour()
 }
 
 pub fn hours_per_day() -> Nat {
@@ -233,10 +234,10 @@ pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
 }
 
 pub fn measure_scale_fraction_floor<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             den.clone()
@@ -248,8 +249,8 @@ pub fn measure_scale_fraction_floor<Q, S>(
 }
 
 pub fn measure_fit_count_floor<Q, S>(
-    capacity: Rc<Measure<Q, S, Nat>>,
-    each: Rc<Measure<Q, S, Nat>>,
+    capacity: Rc<Measure<Q, S, i64>>,
+    each: Rc<Measure<Q, S, i64>>,
 ) -> Nat {
     {
         let each_count = each.count.clone();
@@ -262,10 +263,10 @@ pub fn measure_fit_count_floor<Q, S>(
 }
 
 pub fn measure_scale_fraction_ceil<Q, S>(
-    m: Rc<Measure<Q, S, Nat>>,
+    m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
-) -> Rc<Measure<Q, S, Nat>> {
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             (m.count.clone() * num.clone())
@@ -277,20 +278,20 @@ pub fn measure_scale_fraction_ceil<Q, S>(
 }
 
 pub fn measure_add<Q, S>(
-    a: Rc<Measure<Q, S, Nat>>,
-    b: Rc<Measure<Q, S, Nat>>,
-) -> Rc<Measure<Q, S, Nat>> {
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: (a.count.clone() + b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) -> bool {
+pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, i64>> {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
@@ -347,7 +348,7 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 pub type BitWidth = Rc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
-    crate::extdeps_units_iec_80000_13::octet_bit_count()
+    octet_bit_count()
 }
 
 pub type Hertz = Rc<Measure<(), (), i64>>;
@@ -1144,11 +1145,11 @@ pub fn permyriad_scale_note() -> String {
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {
-    (crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count() / 2)
+    (parts_per_ten_thousand_unity_count() / 2)
 }
 
 pub fn percent_scale_hundred() -> i64 {
-    crate::extdeps_units_dimensionless::percent_unity_hundred_count()
+    percent_unity_hundred_count()
 }
 
 pub fn percent_from_computed_int_frontier() -> String {
@@ -1174,7 +1175,7 @@ pub fn basis_point_count(bp: BasisPoint) -> Nat {
 }
 
 pub fn basis_point_unity_count() -> Nat {
-    crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
+    parts_per_ten_thousand_unity_count()
 }
 
 pub fn basis_point_unit_note() -> String {
@@ -1273,36 +1274,27 @@ pub fn clock_basis_label(b: ClockBasis) -> String {
 }
 
 pub fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
-    square_millimeter(
-        (square_meter_count(area.clone())
-            * crate::extdeps_units_iso_80000_3::square_millimetres_per_square_metre()),
-    )
+    square_millimeter((square_meter_count(area.clone()) * square_millimetres_per_square_metre()))
 }
 
 pub fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
-    cubic_millimeter(
-        (cubic_meter_count(volume.clone())
-            * crate::extdeps_units_iso_80000_3::cubic_millimetres_per_cubic_metre()),
-    )
+    cubic_millimeter((cubic_meter_count(volume.clone()) * cubic_millimetres_per_cubic_metre()))
 }
 
 pub fn full_turn_arcseconds() -> Arcsecond {
-    arcsecond(crate::extdeps_units_iso_80000_3::arcseconds_per_turn())
+    arcsecond(arcseconds_per_turn())
 }
 
 pub fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
-    arcsecond(
-        (degree_count(degrees.clone())
-            * crate::extdeps_units_iso_80000_3::arcseconds_per_degree_derived()),
-    )
+    arcsecond((degree_count(degrees.clone()) * arcseconds_per_degree_derived()))
 }
 
 pub fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
-    arcsecond((turn_count(turns.clone()) * crate::extdeps_units_iso_80000_3::arcseconds_per_turn()))
+    arcsecond((turn_count(turns.clone()) * arcseconds_per_turn()))
 }
 
 pub fn quarter_turn_arcseconds() -> Arcsecond {
-    arcsecond((crate::extdeps_units_iso_80000_3::arcseconds_per_turn() / 4))
+    arcsecond((arcseconds_per_turn() / 4))
 }
 
 pub fn turn(count: Nat) -> Turn {

@@ -15,22 +15,35 @@ use self::RunnableMemoryClass::*;
 use self::WitnessCostBasis::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
-pub use crate::std_content_hash::ContentHash;
+pub use crate::std_algebra::FreeMonoid;
 use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::{
+    as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
+    fnv1a64_structural_hex_digest, serialize_content_hash,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
-use crate::std_execution_mode::ExecutionMode::*;
+use crate::std_execution_mode::ExecutionMode::Hermetic;
+use crate::std_measure::ClockBasis::{CpuClock, WallClock};
+use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{
-    byte_size, measure_count, millisecond_count, second_count, time_measure, watt,
+    byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
+    time_measure, watt,
 };
-pub use crate::std_measure::{ByteSize, Measure, Watt};
+pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 pub use crate::std_process_termination::ProcessTermination;
-use crate::std_process_termination::ProcessTermination::*;
-pub use crate::std_types::{List, NonEmptyStr};
+use crate::std_process_termination::ProcessTermination::{
+    ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
+};
+use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
+pub use crate::std_witness_admission::WitnessConsumerCadence;
+use crate::std_witness_admission::WitnessConsumerCadence::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -66,7 +79,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),

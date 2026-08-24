@@ -5,12 +5,13 @@ use self::OciContentDigest::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_content_hash::{sha256_hex_digest, sha512_hex_digest};
 pub use crate::std_content_hash::{Sha256Digest, Sha512Digest};
-use crate::std_decl_ref::DeclField::*;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -22,10 +23,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md".to_string(),
-    },
+    }),
     })
             };
         }
@@ -36,14 +37,14 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
                 Rc::new(ExternalModelScope {
-        subject: ExternalSubjectRef {
-        declaration: DeclarationRef {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
         module_path: "extdeps.container.oci.digest".to_string(),
         decl_name: "OciContentDigest".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
-    },
-        first_citation: crate::extdeps_container_oci_digest::extdeps_external_authority_anchor(),
+    }),
+    }),
+        first_citation: extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![]),
     })
             };
@@ -198,12 +199,8 @@ pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> String {
 
 pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
-        OciContentDigest::OciSha256Digest(digest) => {
-            panic!("unsupported cast from Sha256DigestHex to String")
-        }
-        OciContentDigest::OciSha512Digest(digest) => {
-            panic!("unsupported cast from Sha512DigestHex to String")
-        }
+        OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
+        OciContentDigest::OciSha512Digest(digest) => digest.hex.clone(),
         OciContentDigest::OciOtherDigest(body) => body.encoded.clone(),
     }
 }

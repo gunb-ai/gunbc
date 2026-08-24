@@ -3,11 +3,14 @@
 
 use self::RustCapability::*;
 pub use crate::std_algebra::FreeMonoid;
-use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::*;
+use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
+    ReprDeriveElemKernelBool, ReprDeriveElemKernelInt, ReprDeriveElemKernelString,
+    ReprDeriveElemKernelUnit, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
+    ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
+};
 pub use crate::std_trait_derive_shape::{
     ReprGroundingDeriveElemShape, TargetCapabilityShapeRow, TargetCapabilityShapeTable,
 };
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -40,6 +43,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
@@ -61,6 +65,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustRem,
                     RustCapability::RustNeg,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelBool,
@@ -76,6 +81,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemKernelUnit,
@@ -91,6 +97,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
@@ -106,6 +113,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier,
@@ -120,6 +128,7 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct,
@@ -132,12 +141,15 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
                     RustCapability::RustSerialize,
                     RustCapability::RustDeserialize,
                 ]),
+                _phantom: std::marker::PhantomData,
             }),
             Rc::new(TargetCapabilityShapeRow {
                 shape: ReprGroundingDeriveElemShape::ReprDeriveElemUnknown,
                 capabilities: Rc::new(vec![]),
+                _phantom: std::marker::PhantomData,
             }),
         ]),
+        _phantom: std::marker::PhantomData,
     })
 }
 

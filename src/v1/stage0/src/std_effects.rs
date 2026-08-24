@@ -8,10 +8,10 @@ use self::EffectShape::*;
 use self::IdempotencyEvidence::*;
 use self::KeySource::*;
 use self::ModifierAgreement::*;
-pub use crate::std_http_path::last_path_param;
 pub use crate::std_http_path::PathTemplate;
+pub use crate::std_http_path::{has_path_params, last_path_param};
 pub use crate::std_realization_schedule::string_list_eq;
-use crate::std_types::HttpMethod::*;
+use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 pub use crate::std_types::{HttpMethod, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -20,7 +20,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-compile_error!("trait_derive_emit: generic item 'EffectShape' has a field applying type 'std.effects.CreateCause', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'EffectShape' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EffectShape<K> {
@@ -102,7 +101,7 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
         EffectShape::DeleteEffect { .. } => true,
-        EffectShape::CreateEffect { cause: cause, .. } => match cause.clone() {
+        EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
                 key_source: key_source,
                 ..
@@ -126,9 +125,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
             _ => false,
         },
         KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
-            KeySource::CompositeKey { fields: fb, .. } => {
-                crate::std_realization_schedule::string_list_eq(fa.clone(), fb.clone())
-            }
+            KeySource::CompositeKey { fields: fb, .. } => string_list_eq(fa.clone(), fb.clone()),
             _ => false,
         },
     }
@@ -136,7 +133,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
 
 pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
-        EffectShape::CreateEffect { cause: cause, .. } => match cause.clone() {
+        EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
                 key_source: key_source,
                 ..
@@ -163,15 +160,17 @@ pub fn create_double_init_collapsible(
     b: Rc<EffectShape<Rc<KeySource>>>,
 ) -> bool {
     match (*a.clone()).clone() {
-        EffectShape::CreateEffect { cause: cause_a, .. } => match cause_a.clone() {
+        EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
             CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b.clone()).clone() {
-                EffectShape::CreateEffect { cause: cause_b, .. } => match cause_b.clone() {
-                    CreateCause::CreateIfAbsent { key_source: kb, .. } => {
-                        key_source_eq(ka.clone(), kb.clone())
+                EffectShape::CreateEffect { cause: cause_b, .. } => {
+                    match (*cause_b.clone()).clone() {
+                        CreateCause::CreateIfAbsent { key_source: kb, .. } => {
+                            key_source_eq(ka.clone(), kb.clone())
+                        }
+                        CreateCause::PostAlways => false,
+                        CreateCause::KeylessFallback { method: method, .. } => false,
                     }
-                    CreateCause::PostAlways => false,
-                    CreateCause::KeylessFallback { method: method, .. } => false,
-                },
+                }
                 EffectShape::ReadEffect => false,
                 EffectShape::UpsertEffect {
                     key_source: key_source,
@@ -374,7 +373,7 @@ pub fn check_modifier_vs_derivation(
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
-    EffectShape::CreateEffect { cause: cause, .. } => match cause.clone() {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
     CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
 }),
@@ -404,7 +403,7 @@ pub fn check_modifier_vs_derivation(
             } else {
                 if (!declared_idempotent.clone() && derived_idempotent.clone()) {
                     match (*op.shape.clone()).clone() {
-    EffectShape::CreateEffect { cause: cause, .. } => match cause.clone() {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
     CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
     reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
 }),

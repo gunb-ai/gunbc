@@ -4,43 +4,58 @@
 use self::ConstructorDeclarationLookup::*;
 use self::DeclarationLookupFailure::*;
 use self::DeclaredArgContract::*;
-use crate::std_algebra::AlgebraTypeTemplate::*;
+use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::*;
+use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 use crate::std_algebra::CostShape::*;
-pub use crate::std_algebra::{algebra_method_template_name, algebra_templates_for_profile};
 pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, CostShape,
+    algebra_method_template_name, algebra_templates_for_profile, kernel_algebra_profile,
 };
-pub use crate::std_types::{List, Map};
+pub use crate::std_algebra::{
+    AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
+};
+pub use crate::std_induction::SubValueRelation;
+use crate::std_induction::SubValueRelation::*;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_policy_candidate,
-    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type_for, qualified_all_but_last,
-    qualify_borrowed_type_names, symbol_index_lookup,
+    authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
+    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
+    symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
-pub use crate::v1_compiler_infer_service::OpEntry;
+pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
-use crate::v1_compiler_infer_sigs::FuncSigLookup::*;
+use crate::v1_compiler_infer_sigs::FuncSigLookup::{
+    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+};
 pub use crate::v1_compiler_infer_sigs::{FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
-    is_declared_container_alias_spelling, kernel_profile_lookup, node_is_keyed_collection,
-    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    is_declared_container_alias_spelling, kernel_profile_lookup, method_receiver_element_node,
+    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::*;
-use crate::v1_std_core::Connective::*;
-use crate::v1_std_core::FieldAccessStyle::*;
-use crate::v1_std_core::FieldValueShape::*;
-use crate::v1_std_core::InferredNode::*;
-use crate::v1_std_core::MethodSemantics::*;
+use crate::v1_std_core::Cardinality::{CardOptional, Required};
+use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
+use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
+use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+use crate::v1_std_core::MatchPattern::*;
+use crate::v1_std_core::MethodSemantics::{
+    AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
+};
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
@@ -50,6 +65,7 @@ pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
     InferredNode, MethodSemantics, NewlineIndex, Node,
 };
+pub use crate::v1_std_core::{ExprData, MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -84,17 +100,21 @@ pub fn lookup_func_sig(
     type_env: Rc<TypeEnv>,
     name: String,
 ) -> Rc<FuncSigLookup> {
-    match (*lookup_resolved_sig(func_env.clone(), name.clone())).clone() {
-        FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
-            Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })
-        }
-        FuncSigLookup::FuncSigAmbiguous {
-            candidates: cands, ..
-        } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
-            candidates: cands.clone(),
-        }),
-        FuncSigLookup::FuncSigUnresolved => {
-            func_sig_from_global_bare(type_env.clone(), name.clone())
+    if listed_import_required_bare_call_blocked(type_env.clone(), name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        match (*lookup_resolved_sig(func_env.clone(), name.clone())).clone() {
+            FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
+                Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })
+            }
+            FuncSigLookup::FuncSigAmbiguous {
+                candidates: cands, ..
+            } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                candidates: cands.clone(),
+            }),
+            FuncSigLookup::FuncSigUnresolved => {
+                func_sig_from_global_bare(type_env.clone(), name.clone())
+            }
         }
     }
 }
@@ -115,10 +135,7 @@ pub struct BorrowedCensusDecl {
 
 pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<BorrowedCensusDecl>> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
-            type_env.symbol_index.clone(),
-            name.clone(),
-        ) {
+        match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
             Some(node) => Some(Rc::new(BorrowedCensusDecl {
                 owner_module_path: qualified_all_but_last(name.clone()),
                 node: node.clone(),
@@ -126,31 +143,39 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
             None => None,
         }
     } else {
-        match v1_rt::map_get(
-            &type_env.symbol_index.clone().global_bare.clone(),
-            name.clone(),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                module_path: mp,
-                binding: b,
-                ..
-            }) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: mp.clone(),
-                node: b.resolved.clone(),
-            })),
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                candidates: cands, ..
-            }) => match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone()) {
-                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
-                    owner_module_path: cand.module_path.clone(),
-                    node: cand.binding.clone().resolved.clone(),
+        if listed_import_required_bare_call_blocked(type_env.clone(), name.clone()) {
+            None
+        } else {
+            match v1_rt::map_get(
+                &type_env.symbol_index.clone().global_bare.clone(),
+                name.clone(),
+            )
+            .as_deref()
+            .cloned()
+            {
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                    module_path: mp,
+                    binding: b,
+                    ..
+                }) => Some(Rc::new(BorrowedCensusDecl {
+                    owner_module_path: mp.clone(),
+                    node: b.resolved.clone(),
                 })),
+                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                    candidates: cands,
+                    ..
+                }) => {
+                    match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone())
+                    {
+                        Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                            owner_module_path: cand.module_path.clone(),
+                            node: cand.binding.clone().resolved.clone(),
+                        })),
+                        None => None,
+                    }
+                }
                 None => None,
-            },
-            None => None,
+            }
         }
     }
 }
@@ -248,10 +273,7 @@ pub fn constructor_declaration_for_admission(
             owner_module_path: owner_module_path.clone(),
             decl_name: decl_name.clone(),
         });
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
-            type_env.symbol_index.clone(),
-            qualified.clone(),
-        ) {
+        match symbol_index_lookup(type_env.symbol_index.clone(), qualified.clone()) {
             Some(node) => Rc::new(ConstructorDeclarationLookup::ExactConstructorDeclaration {
                 identity: identity.clone(),
                 declaration: node.clone(),
@@ -337,7 +359,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
                                     Rc::new(FuncSigLookup::FuncSigResolved {
-                                        sig: ResolvedFuncSig {
+                                        sig: Rc::new(ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
                                             inferred: raw_return.clone(),
@@ -345,13 +367,15 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
-                                                HashMap<
-                                                    String,
-                                                    HashMap<String, Rc<SubValueRelation>>,
+                                                Rc<
+                                                    HashMap<
+                                                        String,
+                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                                    >,
                                                 >,
                                             >(
                                             ),
-                                        },
+                                        }),
                                     })
                                 } else {
                                     {
@@ -362,7 +386,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             excluded.clone(),
                                         );
                                         Rc::new(FuncSigLookup::FuncSigResolved {
-                                            sig: ResolvedFuncSig {
+                                            sig: Rc::new(ResolvedFuncSig {
                                                 name: name.clone(),
                                                 params: node.params.clone(),
                                                 inferred: qualified_return.clone(),
@@ -370,13 +394,20 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,
-                                                    HashMap<
-                                                        String,
-                                                        HashMap<String, Rc<SubValueRelation>>,
+                                                    Rc<
+                                                        HashMap<
+                                                            String,
+                                                            Rc<
+                                                                HashMap<
+                                                                    String,
+                                                                    Rc<SubValueRelation>,
+                                                                >,
+                                                            >,
+                                                        >,
                                                     >,
                                                 >(
                                                 ),
-                                            },
+                                            }),
                                         })
                                     }
                                 }
@@ -446,10 +477,8 @@ pub fn lookup_field_type_node(
                                 source_indices.clone(),
                             ) {
                                 Some(field_child) => {
-                                    if (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                                        n.clone(),
-                                        source_indices.clone(),
-                                    ) && (field_name.clone() == "lookup".to_string()))
+                                    if (node_is_keyed_collection(n.clone(), source_indices.clone())
+                                        && (field_name.clone() == "lookup".to_string()))
                                     {
                                         {
                                             let value_child = match n
@@ -460,23 +489,13 @@ pub fn lookup_field_type_node(
                                                 .skip(1 as usize)
                                                 .next()
                                             {
-                                                Some(child) => {
-                                                    crate::v1_compiler_infer_types::child_type_node(
-                                                        child.clone(),
-                                                    )
-                                                }
-                                                None => {
-                                                    crate::v1_compiler_infer_types::nominal_type_ref(
-                                                        "V".to_string(),
-                                                    )
-                                                }
+                                                Some(child) => child_type_node(child.clone()),
+                                                None => nominal_type_ref("V".to_string()),
                                             };
                                             Some(with_optional_cardinality(value_child.clone()))
                                         }
                                     } else {
-                                        Some(crate::v1_compiler_infer_types::child_type_node(
-                                            field_child.clone(),
-                                        ))
+                                        Some(child_type_node(field_child.clone()))
                                     }
                                 }
                                 None => None,
@@ -535,9 +554,7 @@ pub fn lookup_coproduct_common_field_node(
             None
         };
         match first_field.clone() {
-            Some(field_child) => Some(crate::v1_compiler_infer_types::child_type_node(
-                field_child.clone(),
-            )),
+            Some(field_child) => Some(child_type_node(field_child.clone())),
             None => None,
         }
     }
@@ -555,23 +572,19 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
     {
         let raw_name = authored_name_at(env.source_indices.clone(), receiver_type.clone());
         if ((receiver_type.connective.clone() == Connective::Conj)
-            || crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
-                raw_name.clone(),
-            ))
+            || is_declared_container_alias_spelling(raw_name.clone()))
         {
             receiver_type.clone()
         } else {
             {
-                let resolved = crate::v1_compiler_infer_types::reground_alias_carrier_identity(
+                let resolved = reground_alias_carrier_identity(
                     resolve_scrutinee_type_node(env.clone(), receiver_type.clone()),
                     env.source_indices.clone(),
                 );
                 let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
                 if ((resolved.connective.clone() == Connective::Conj)
                     || ((resolved_name.clone() != raw_name.clone())
-                        && crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
-                            resolved_name.clone(),
-                        )))
+                        && is_declared_container_alias_spelling(resolved_name.clone())))
                 {
                     resolved.clone()
                 } else {
@@ -589,14 +602,14 @@ pub fn resolve_scrutinee_type_node_seen(
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != None) {
-            crate::v1_compiler_infer_lookup::is_type_variable(n.inferred.clone().clone().unwrap())
+            is_type_variable(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
         if n_is_type_var.clone() {
             return n.clone();
         }
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+        let normed = normalize_access_type_node(n.clone());
         if (((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) > 0))
             && (normed.inferred.clone() != None))
@@ -648,12 +661,9 @@ pub fn resolve_scrutinee_type_node_seen(
                         }
                     } else {
                         if ((canonical.clone() != "".to_string())
-                            && crate::v1_compiler_infer_types::emit_map_has(
-                                seen.clone(),
-                                canonical.clone(),
-                            ))
+                            && emit_map_has(seen.clone(), canonical.clone()))
                         {
-                            crate::v1_compiler_infer_types::nominal_type_ref(canonical.clone())
+                            nominal_type_ref(canonical.clone())
                         } else {
                             {
                                 let next_seen = if (canonical.clone() == "".to_string()) {
@@ -697,13 +707,11 @@ pub fn resolve_scrutinee_type_node_seen(
 
 pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
+        let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
-        let map_type = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
-        if (crate::v1_compiler_infer_types::node_is_keyed_collection(
-            map_type.clone(),
-            env.source_indices.clone(),
-        ) && ((map_type.children.clone().len() as i64) >= 2))
+        let map_type = normalize_access_type_node(resolved.clone());
+        if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
+            && ((map_type.children.clone().len() as i64) >= 2))
         {
             match map_type
                 .children
@@ -724,13 +732,11 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
 
 pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
+        let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
-        let map_type = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
-        if (crate::v1_compiler_infer_types::node_is_keyed_collection(
-            map_type.clone(),
-            env.source_indices.clone(),
-        ) && ((map_type.children.clone().len() as i64) >= 1))
+        let map_type = normalize_access_type_node(resolved.clone());
+        if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
+            && ((map_type.children.clone().len() as i64) >= 1))
         {
             match map_type.children.clone().first().cloned() {
                 Some(key_type) => Some(key_type.clone()),
@@ -744,13 +750,11 @@ pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<N
 
 pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
+        let normed = normalize_access_type_node(type_node.clone());
         let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
-        let set_type = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
-        if (crate::v1_compiler_infer_types::node_is_set_collection(
-            set_type.clone(),
-            env.source_indices.clone(),
-        ) && ((set_type.children.clone().len() as i64) >= 1))
+        let set_type = normalize_access_type_node(resolved.clone());
+        if (node_is_set_collection(set_type.clone(), env.source_indices.clone())
+            && ((set_type.children.clone().len() as i64) >= 1))
         {
             match set_type.children.clone().first().cloned() {
                 Some(elem_type) => Some(elem_type.clone()),
@@ -769,7 +773,7 @@ pub fn field_summary_for_type(
 ) -> Option<Rc<FieldSummary>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
+        let normed = normalize_access_type_node(resolved.clone());
         let normed_opt = (normed.return_cardinality.clone() == Cardinality::CardOptional);
         if ((field.clone() == "value".to_string()) && normed_opt.clone()) {
             Some(Rc::new(FieldSummary {
@@ -859,11 +863,7 @@ pub fn map_lookup_result_type(
     field: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    if (crate::v1_std_core::qualified_last_segment(authored_name_at(
-        source_indices.clone(),
-        product.clone(),
-    )) == "Map".to_string())
-    {
+    if (authored_name_at(source_indices.clone(), product.clone()) == "Map".to_string()) {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
                 if (raw.return_cardinality.clone() == Cardinality::CardOptional) {
@@ -944,7 +944,7 @@ pub fn lookup_structural_method(
             }
         } else {
             {
-                let enriched = crate::v1_compiler_infer_types::enrich_kernel_type(
+                let enriched = enrich_kernel_type(
                     authored_name_at(source_indices.clone(), receiver_type.clone()),
                     receiver_type.clone(),
                     source_indices.clone(),
@@ -960,9 +960,10 @@ pub fn lookup_structural_method(
                         );
                         match base_result.clone() {
                             Some(mfr) => {
-                                let profile = crate::v1_compiler_infer_types::kernel_profile_lookup(
-                                    authored_name_at(source_indices.clone(), receiver_type.clone()),
-                                );
+                                let profile = kernel_profile_lookup(authored_name_at(
+                                    source_indices.clone(),
+                                    receiver_type.clone(),
+                                ));
                                 let template_match = match profile.clone() {
                                     Some(p) => {
                                         let templates = algebra_templates_for_profile(p.clone());
@@ -1069,7 +1070,7 @@ pub fn declared_arg_types_for_method(
                             let mut __result = Vec::new();
                             for tp in non_receiver_templates.iter().cloned() {
                                 __result.push(
-                                    crate::v1_compiler_infer_types::instantiate_algebra_type(
+                                    instantiate_algebra_type(
                                         tp.clone(),
                                         receiver_type.clone(),
                                         source_indices.clone(),

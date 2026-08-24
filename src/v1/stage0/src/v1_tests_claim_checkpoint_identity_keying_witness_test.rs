@@ -2,7 +2,7 @@
 // Source module: v1.tests.claim.checkpoint_identity_keying_witness_test
 
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_artifact::RenderTarget::*;
+use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::literal_suffix;
 pub use crate::v1_compiler_emit_rust::{
     rust_scalar_checkpoint_grounding_base, rust_scalar_checkpoint_reference_base,
@@ -79,17 +79,12 @@ pub fn table_present_bool_renders_natively_for_the_corpus_prelude() -> bool {
 }
 
 pub fn literal_suffix_positive_control_symbol_not_enrolled() -> bool {
-    (crate::v1_compiler_coercion::literal_suffix(
-        RenderTarget::Rust,
-        "Symbol".to_string(),
-        "".to_string(),
-    )
-    .as_deref()
+    (literal_suffix(RenderTarget::Rust, "Symbol".to_string(), "".to_string()).as_deref()
         == Some(".to_string()".to_string()).as_deref())
 }
 
 pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
-    (crate::v1_compiler_coercion::literal_suffix(
+    (literal_suffix(
         RenderTarget::Rust,
         "String".to_string(),
         "src/v2/std/text.dag".to_string(),
@@ -97,7 +92,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
 }
 
 pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool {
-    (crate::v1_compiler_coercion::literal_suffix(
+    (literal_suffix(
         RenderTarget::Rust,
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
@@ -105,12 +100,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool
 }
 
 pub fn literal_suffix_production_call_site_never_threads_declaration_identity() -> bool {
-    (crate::v1_compiler_coercion::literal_suffix(
-        RenderTarget::Rust,
-        "String".to_string(),
-        "".to_string(),
-    )
-    .as_deref()
+    (literal_suffix(RenderTarget::Rust, "String".to_string(), "".to_string()).as_deref()
         == Some(".to_string()".to_string()).as_deref())
 }
 

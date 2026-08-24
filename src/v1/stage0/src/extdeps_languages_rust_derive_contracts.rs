@@ -3,15 +3,16 @@
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
 pub use crate::extdeps_languages_rust_capabilities::RustCapability;
-use crate::extdeps_languages_rust_capabilities::RustCapability::*;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_languages_rust_capabilities::RustCapability::{
+    RustClone, RustDebug, RustDeserialize, RustOrd, RustPartialEq, RustSerialize,
+};
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_decl_ref::DeclField::*;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-use crate::std_disposition::ConstructionMechanism::*;
-use crate::std_disposition::Disposition::*;
+use crate::std_disposition::ConstructionMechanism::SingleAuthority;
+use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
-pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -23,10 +24,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1701".to_string(),
-    },
+    }),
     })
             };
         }
@@ -37,10 +38,10 @@ pub fn im_15_1_0_vector_debug_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/im/15.1.0/im/vector/struct.Vector.html#impl-Debug-for-Vector%3CA%3E".to_string(),
-    },
+    }),
     })
             };
         }
@@ -51,10 +52,10 @@ pub fn im_15_1_0_vector_clone_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1686".to_string(),
-    },
+    }),
     })
             };
         }
@@ -65,10 +66,10 @@ pub fn im_15_1_0_vector_partial_eq_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1716".to_string(),
-    },
+    }),
     })
             };
         }
@@ -79,10 +80,10 @@ pub fn im_15_1_0_vector_deserialize_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#235".to_string(),
-    },
+    }),
     })
             };
         }
@@ -93,10 +94,10 @@ pub fn im_15_1_0_vector_serialize_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#244".to_string(),
-    },
+    }),
     })
             };
         }
@@ -107,10 +108,10 @@ pub fn im_15_1_0_ord_set_clone_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#830".to_string(),
-    },
+    }),
     })
             };
         }
@@ -121,10 +122,10 @@ pub fn im_15_1_0_ord_set_debug_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937".to_string(),
-    },
+    }),
     })
             };
         }
@@ -135,10 +136,10 @@ pub fn im_15_1_0_ord_set_partial_eq_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844".to_string(),
-    },
+    }),
     })
             };
         }
@@ -149,10 +150,10 @@ pub fn im_15_1_0_ord_set_serialize_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134".to_string(),
-    },
+    }),
     })
             };
         }
@@ -163,10 +164,10 @@ pub fn im_15_1_0_ord_set_deserialize_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125".to_string(),
-    },
+    }),
     })
             };
         }
@@ -177,10 +178,10 @@ pub fn rust_1_93_hash_set_trait_implementations_authority() -> Rc<ExternalAuthor
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/1.93.0/std/collections/struct.HashSet.html#trait-implementations".to_string(),
-    },
+    }),
     })
             };
         }
@@ -191,10 +192,10 @@ pub fn serde_1_0_228_hash_set_serialize_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/serde/1.0.228/serde/ser/trait.Serialize.html#impl-Serialize-for-HashSet%3CT,+H%3E".to_string(),
-    },
+    }),
     })
             };
         }
@@ -205,10 +206,10 @@ pub fn serde_1_0_228_hash_set_deserialize_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-HashSet%3CT,+S%3E".to_string(),
-    },
+    }),
     })
             };
         }
@@ -312,23 +313,23 @@ pub fn rust_hash_set_supplemental_generic_bound_contract_coverage_disposition(
     thread_local! {
             static CACHED: Rc<RustSupplementalGenericBoundContractCoverageDisposition> = {
                 Rc::new(RustSupplementalGenericBoundContractCoverageDisposition {
-        owner: DeclarationRef {
+        owner: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
         decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
-        lane: DeclarationRef {
+    }),
+        lane: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
         decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
+    }),
         dissolution: Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: DeclarationRef {
+        bind: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
         decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
+    }),
     }),
     })
             };

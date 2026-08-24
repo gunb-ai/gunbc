@@ -13,7 +13,8 @@ use self::UriScheme::*;
 use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
-pub use crate::std_types::List;
+pub use crate::std_algebra::trim;
+pub use crate::std_types::NonEmptyStr;
 pub use crate::std_unicode_types::{
     unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
     unicode_surrogate_last_code_point,
@@ -495,15 +496,15 @@ pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstr
             UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: cp.clone() },
         )
     } else {
-        if (cp.clone() > crate::std_unicode_types::unicode_scalar_max_code_point()) {
+        if (cp.clone() > unicode_scalar_max_code_point()) {
             Rc::new(
                 UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused {
                     cp: cp.clone(),
                 },
             )
         } else {
-            if ((cp.clone() >= crate::std_unicode_types::unicode_surrogate_first_code_point())
-                && (cp.clone() <= crate::std_unicode_types::unicode_surrogate_last_code_point()))
+            if ((cp.clone() >= unicode_surrogate_first_code_point())
+                && (cp.clone() <= unicode_surrogate_last_code_point()))
             {
                 Rc::new(
                     UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused {

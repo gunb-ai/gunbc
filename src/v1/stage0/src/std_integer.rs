@@ -6,7 +6,8 @@ use self::OverflowReturnValueRule::*;
 use self::Signedness::*;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
-pub use crate::std_machine_constraints::{Compose, MachineWidth};
+pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
+pub use crate::std_magnitude::Magnitude;
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
@@ -96,12 +97,12 @@ pub fn std_integer_std_nat_fork_note() -> String {
 
 pub type IntPlatform = crate::std_machine_constraints::Compose<
     i64,
-    crate::std_machine_constraints::MachineWidth<crate::std_machine_constraints::PointerWidth>,
+    crate::std_machine_constraints::MachineWidth<PointerWidth>,
 >;
 
 pub type UIntPlatform = crate::std_machine_constraints::Compose<
     UInt,
-    crate::std_machine_constraints::MachineWidth<crate::std_machine_constraints::PointerWidth>,
+    crate::std_machine_constraints::MachineWidth<PointerWidth>,
 >;
 
 pub type NonNegativeInt = i64;

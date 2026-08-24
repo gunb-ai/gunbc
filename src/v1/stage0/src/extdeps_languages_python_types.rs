@@ -3,10 +3,9 @@
 
 use self::PythonTypeKind::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
-pub use crate::std_types::List;
+pub use crate::std_coercion::{CallableRepr, CastRule, CastSyntax, InhabitantDecl, TypeCheckpoint};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -18,10 +17,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.python.org/3/reference".to_string(),
-    },
+    }),
     })
             };
         }

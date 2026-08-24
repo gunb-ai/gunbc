@@ -5,9 +5,9 @@ use self::Iso80000Part3::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_decl_ref::DeclField::*;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_nat::Nat;
 use crate::v1_rt;
@@ -21,10 +21,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/64974.html".to_string(),
-    },
+    }),
     })
             };
         }
@@ -35,10 +35,10 @@ pub fn iso_80000_3_amendment_1_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/87100.html".to_string(),
-    },
+    }),
     })
             };
         }
@@ -66,14 +66,14 @@ pub fn iso_80000_3_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
                 Rc::new(ExternalModelScope {
-        subject: ExternalSubjectRef {
-        declaration: DeclarationRef {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
         module_path: "extdeps.units.iso_80000_3".to_string(),
         decl_name: "iso_80000_3_standard".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    },
-    },
-        first_citation: crate::extdeps_units_iso_80000_3::extdeps_external_authority_anchor(),
+    }),
+    }),
+        first_citation: extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![iso_80000_3_amendment_1_authority()]),
     })
             };
