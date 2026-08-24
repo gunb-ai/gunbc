@@ -125,6 +125,20 @@ test fn f9_generic_carrier_green_control_clean() -> Bool {
   violation_count(source: f9_generic_green_source, wanted: "SoleConstructorViolation") == 0
 }
 
+// PrimitiveIdentity seal controls: forging the cross-module record must refuse,
+// while the sole constructor remains an accepted mint path.
+data primitive_identity_forge_source: String = "module probe_primitive_identity_forge\nimport std.primitive_projection { PrimitiveIdentity }\nfn forged() -> PrimitiveIdentity { PrimitiveIdentity { slug: \"primitive.fake\" } }\n"
+
+test fn primitive_identity_cross_module_forge_refuses() -> Bool {
+  violation_count(source: primitive_identity_forge_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+data primitive_identity_mint_source: String = "module probe_primitive_identity_mint\nimport std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }\nfn legal() -> PrimitiveIdentity { primitive_identity_slug(name: \"fake\") }\n"
+
+test fn primitive_identity_mint_control_clean() -> Bool {
+  violation_count(source: primitive_identity_mint_source, wanted: "SoleConstructorViolation") == 0
+}
+
 // ---------------------------------------------------------------------------
 // Order-dependence probe: two modules declare a bare-name-identical type
 // `DupShape`, one sole_constructor, one not (test.fixture.sole_constructor_order_probe
