@@ -1,0 +1,129 @@
+root	module	authority_symbol	normalized_relation
+A-clone	std.realization_reconcile	Reconciliation	A -> &A
+A-clone	std.realization_reconcile	Reconciliation	_ -> &_
+A-clone	v2.extdeps.languages.fidelity	FidelityDisposition	Feature -> &Feature
+A-clone	v2.extdeps.languages.fidelity	FidelityDisposition	_ -> &_
+A-clone	v2.std.algebra	ListHeadResult	T -> &T
+A-clone	v2.std.algebra	ListHeadResult	_ -> &_
+A-clone	v2.std.node_query	CoproductNullaryInhabitantLookup	T -> &T
+A-clone	v2.std.node_query	CoproductNullaryInhabitantLookup	_ -> &_
+A-clone	v2.std.passing_candidate_fold	PassingCandidateFold	T -> &T
+A-clone	v2.std.passing_candidate_fold	PassingCandidateFold	_ -> &_
+A-clone	v2.std.staging	CacheProbe	B -> &B
+A-clone	v2.std.staging	CacheProbe	_ -> &_
+ARG-ORDER	v2.compiler.eval	eval_computation_node	 -> 
+ARG-ORDER	v2.compiler.eval	eval_computation_node	Rc<EvaluationEnvironment> -> Rc<InferredTree>
+ARG-ORDER	v2.compiler.eval	eval_computation_node	Rc<InferredFacts> -> Rc<EvaluationEnvironment>
+ARG-ORDER	v2.compiler.eval	eval_computation_node	Rc<InferredTree> -> Rc<Vector<Rc<RuntimeValue>>>
+ARG-ORDER	v2.compiler.eval	eval_computation_node	Rc<RuntimeBehaviorInterpreter> -> Rc<InferredFacts>
+ARG-ORDER	v2.compiler.eval	eval_computation_node	Rc<Vector<Rc<RuntimeValue>>> -> Rc<RuntimeBehaviorInterpreter>
+ARG-ORDER	v2.compiler.eval	eval_runtime_control_node	 -> 
+B2	v2.std.logic	bool_boolean_algebra	Bool -> False
+B2	v2.std.logic	bool_boolean_algebra	Bool -> True
+B3	v2.std.integer	integer_nat_decimal_digit_char	Rc<Nat> -> {integer}
+B3	v2.std.integer	integer_nat_to_decimal_string	Rc<Nat> -> {integer}
+BOX-WRAP	v2.std.text	string_head	i64 -> Box<i64>
+C	v2.lens.complexity_lowering	cost_class_is_lowerable	Rc<ComplexityLowering> -> ()
+C	v2.lens.complexity_lowering	lowering_catalog	Vector<()> -> Vector<Rc<ComplexityLowering>>
+C	v2.lens.complexity_lowering	minimized_class	Rc<ComplexityLowering> -> ()
+C	v2.lens.coverage	missing_coverage	() -> Rc<Coverage<C>>
+C	v2.std.grammar	derive_grammar_relation_token_edges_recursive	() -> Rc<Vector<Rc<Edge>>>
+C	v2.std.grammar	derive_grammar_relation_token_edges_recursive	Witness<Rc<Vector<Rc<Edge>>>> -> Witness<()>
+D	std.realization_schedule	cost_account_predicted_zero	Rc<Measure<(), S, Rc<i64>>> -> Rc<Measure<(), _, i64>>
+D	std.realization_schedule	cost_account_predicted_zero	Rc<Measure<_, S, Rc<i64>>> -> Rc<Measure<_, _, i64>>
+D	std.realization_schedule	cost_account_time_count	Rc<Measure<_, _, i64>> -> Rc<Measure<(), S, Rc<i64>>>
+D	v2.lens.coverage	coverage_defect_canonical_carrier	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_carrier_clone	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_catamorphism	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_degenerate_type	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_discriminant_predicate	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_hollow_type	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_off_substrate_fact	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_parallel_authority	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_plausible_fallback	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_skeleton_collapse	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_template_hole	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_vacuous_arm	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+D	v2.lens.coverage	coverage_defect_wrong_home	Coverage<Rc<CoverageDefectAcceptanceKey>> -> CoverageDefectAcceptanceKey
+DIAG	v2.compiler.source_authority	source_ref_read_result_to_outcome	Rc<Diagnostic> -> Rc<NonEmptyDiagnostics>
+DIAG	v2.compiler.source_authority	source_root_ingest_from_source_refs	Rc<Diagnostic> -> Rc<NonEmptyDiagnostics>
+ELEM-COLL	std.state_durability	state_durability_boundary_requirement_list	Rc<StateDurabilityBoundary> -> Rc<Vector<Rc<StateDurabilityBoundary>>>
+ELEM-COLL	std.state_durability	state_durability_boundary_requirements	StateDurabilityBoundary -> Vector<Rc<StateDurabilityBoundary>>
+ELEM-COLL	std.state_durability	state_durability_boundary_requirements_refusal	StateDurabilityBoundary -> Vector<Rc<StateDurabilityBoundary>>
+ELEM-COLL	std.state_durability	state_durability_definition_linkage_unavailable_assertions	StateDefinitionCallerAssertion -> Vector<Rc<StateDefinitionCallerAssertion>>
+ELEM-COLL	v2.std.fold_assembly	fold_per_element_of	Rc<Outcome<Rc<Vector<Rc<Vector<Rc<Node>>>>>>> -> Rc<Outcome<Rc<Vector<Rc<Node>>>>>
+R1	std.cache_interface	cache_layer_cost_justified	Rc<Measure<(), (), i64>> -> Rc<Measure<(), (), Rc<i64>>>
+R1	std.cache_interface	cache_layer_cost_justified	Rc<Measure<_, _, i64>> -> Rc<Measure<_, _, Rc<i64>>>
+R1	std.cache_interface	cache_reach_candidate_probe	Rc<Measure<(), (), i64>> -> Rc<Measure<(), (), Rc<i64>>>
+R1	std.cache_interface	cache_reach_candidate_probe	Rc<Measure<_, _, i64>> -> Rc<Measure<_, _, Rc<i64>>>
+R1	std.checked_arithmetic	checked_int_magnitude	Rc<i64> -> i64
+R1	std.measure	positive_measure_count	Rc<i64> -> i64
+R1	std.realization_measurement	cost_account_measured_from_time_and_space	Rc<Measure<(), S, Rc<i64>>> -> Rc<Measure<(), S, i64>>
+R1	std.realization_measurement	cost_account_measured_from_time_and_space	Rc<Measure<_, _, Rc<i64>>> -> Rc<Measure<_, _, i64>>
+R1	std.realization_schedule	cost_account_measured	Rc<Measure<(), S, Rc<i64>>> -> Rc<Measure<(), S, i64>>
+R1	std.realization_schedule	cost_account_measured	Rc<Measure<_, _, Rc<i64>>> -> Rc<Measure<_, _, i64>>
+R1	v2.compiler.infer	infer_descent_witness_for_node	Witness<Rc<TerminationProof>> -> Witness<TerminationProof>
+R1	v2.compiler.name_resolve	admit_named_exports	Rc<AdmitExportsFold> -> AdmitExportsFold
+R1	v2.compiler.source_authority	source_root_ingest_build_from_source_refs	Rc<SourceRefReadResult> -> SourceRefReadResult
+R1	v2.extdeps.runtimes.v2_evaluator	v2_eval_nth_child_target	Rc<Edge> -> Edge
+R1	v2.lens.complexity_accumulator_copy.analyze	accumulator_copy_report	Rc<Vector<Finding>> -> Rc<Vector<Rc<Finding>>>
+R1	v2.lens.complexity_accumulator_copy.analyze	collect_value_identifiers_into	Rc<Edge> -> Edge
+R1	v2.lens.complexity_accumulator_copy.analyze	lowered_transform_port_readings	Rc<Vector<Rc<PortReading>>> -> Rc<Vector<PortReading>>
+R1	v2.lens.complexity_accumulator_copy.analyze	lowered_transform_port_readings	Vector<PortReading> -> Vector<Rc<PortReading>>
+R1	v2.lens.cost	symbolic_product	Rc<Nat> -> Nat
+R1	v2.lens.determinism	determinism_contract_witness	Witness<Rc<DeterminismFact>> -> Witness<DeterminismFact>
+R1	v2.lens.enforcement.standing_intent	standing_intent_model_anemia_repo_wide	Vector<NarrowingReason> -> Vector<Rc<NarrowingReason>>
+R1	v2.lens.enforcement.standing_intent	standing_intent_single_authority_consolidation	Vector<NarrowingReason> -> Vector<Rc<NarrowingReason>>
+R1	v2.lens.machine_shape	machine_shape_construction_findings	Rc<MachineShapeWalkResult> -> MachineShapeWalkResult
+R1	v2.std.compilers.lexing	token_stream_remaining	Vector<Rc<Token>> -> Rc<Vector<Rc<Token>>>
+R1	v2.std.compilers.target_model	target_value_expr_effect_apply_callee	HashMap<_, _> -> Rc<HashMap<_, _>>
+R1	v2.std.grammar	derive_grammar_relation_token_edges_recursive	Rc<DeriveGrammarRelationTokensProgress> -> DeriveGrammarRelationTokensProgress
+R1	v2.std.grammar	derive_grammar_relation_token_edges_recursive_step	Rc<DeriveGrammarRelationTokensProgress> -> DeriveGrammarRelationTokensProgress
+R2	std.cache_interface	cache_facts_for_id	Rc<CacheInterfaceFacts> -> Option<Rc<CacheInterfaceFacts>>
+R2	std.cache_interface	cache_facts_for_id	Rc<_> -> Option<Rc<_>>
+R2	std.cache_interface	cache_layer_plan_fallback	String -> Option<String>
+R2	std.cache_interface	cache_layer_plan_primary	String -> Option<String>
+R2	std.cache_interface	cache_reach_candidate_recompute	Option<String> -> None
+R2	v2.compiler.body_lowering_fold	body_lower_try_if_from_captured	Rc<Outcome<Option<Rc<Node>>>> -> Rc<Outcome<Rc<Node>>>
+R2	v2.compiler.body_lowering_fold	body_lower_try_if_from_captured	Rc<Outcome<Option<Rc<_>>>> -> Rc<Outcome<Rc<_>>>
+R2	v2.compiler.eval	eval_runtime_binding_lookup	Option<_> -> Rc<RuntimeValue>
+R2	v2.compiler.eval	inferred_facts_witness_for_eval	Option<Rc<InferredFacts>> -> Rc<InferredFacts>
+R2	v2.compiler.eval	inferred_facts_witness_for_eval	Option<Rc<_>> -> Rc<_>
+R2	v2.compiler.infer	inferred_facts_witness_for_node	Option<Rc<InferredFacts>> -> Rc<InferredFacts>
+R2	v2.compiler.infer	inferred_facts_witness_for_node	Option<Rc<_>> -> Rc<_>
+R2	v2.compiler.parse	parse_table_entries_lookup	Option<Rc<ParseMemoEntry>> -> Rc<ParseMemoEntry>
+R2	v2.compiler.parse	parse_table_entries_lookup	Option<Rc<_>> -> Rc<_>
+R2	v2.compiler.target_carriers	target_fidelity_quotient_optional	Option<Rc<Node>> -> Rc<Node>
+R2	v2.compiler.target_carriers	target_fidelity_quotient_optional	Option<Rc<_>> -> Rc<_>
+R2	v2.extdeps.languages.dag	dag_bind_target_model	Option<Rc<TargetEmitHostRuntimeRow>> -> Rc<TargetEmitHostRuntimeRow>
+R2	v2.extdeps.languages.dag	dag_bind_target_model	Option<Rc<_>> -> Rc<_>
+R2	v2.extdeps.languages.dag	dag_loop_target_model	Option<Rc<TargetEmitHostRuntimeRow>> -> Rc<TargetEmitHostRuntimeRow>
+R2	v2.extdeps.languages.dag	dag_loop_target_model	Option<Rc<_>> -> Rc<_>
+R2	v2.extdeps.languages.dag	dag_pick_target_model	Option<Rc<TargetEmitHostRuntimeRow>> -> Rc<TargetEmitHostRuntimeRow>
+R2	v2.extdeps.languages.dag	dag_pick_target_model	Option<Rc<_>> -> Rc<_>
+R2	v2.std.provenance	span_index_lookup	Option<Rc<OriginEvent>> -> Rc<OriginEvent>
+R2	v2.std.provenance	span_index_lookup	Option<Rc<_>> -> Rc<_>
+RESIDUE	std.state_durability	state_durability_boundaries_evidence_verdict	Rc<StateDurabilityEvidence<Target, ReadbackSubject>> -> Rc<Vector<Rc<StateDurabilityEvidence<Target, ReadbackSubject>>>>
+RESIDUE	v2.compiler.source_authority	normalized_source_ast_equal_witness	Rc<Node> -> Rc<NormalizedTree>
+RESIDUE	v2.lens.determinism	determinism_axis_for_node	Rc<Determinism> -> Rc<Edge>
+RESIDUE	v2.std.cardinality	termination_proof_witness_for_node	Rc<Witness<Rc<TerminationProof>>> -> Rc<Edge>
+RESIDUE	v2.std.compilers.target_model	source_atom_char_projection_from_node	i64 -> String
+RESIDUE	v2.std.compilers.target_model	target_use_site_ownership_catalog_lookup_step_for_row	TargetUseSiteOwnershipLookup -> TargetUseSiteOwnershipCatalogLookup
+RESIDUE	v2.std.compilers.target_model	target_value_expression_char_unicode_scalar	String -> i64
+T3	v2.compiler.eval	empty_runtime_bindings	HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>> -> Rc<PartialFunction<_, _>>
+T3	v2.compiler.infer	facts_map_from_entries	HashMap<Rc<Node>, Rc<InferredFacts>> -> Rc<PartialFunction<_, _>>
+T3	v2.compiler.infer	infer_emit_shape_frontier_inferred_tree	HashMap<Rc<Node>, Rc<InferredFacts>> -> Rc<PartialFunction<_, _>>
+T3	v2.compiler.parse	compute_nullable_set	OrdSet<String> -> Rc<PointwisePower<_>>
+T3	v2.compiler.parse	parse_table_empty	OrdSet<String> -> Rc<PointwisePower<_>>
+T3	v2.compiler.parse	set_symbol_insert	OrdSet<String> -> Rc<PointwisePower<_>>
+T3	v2.compiler.resolve	empty_canonical_symbol_set	OrdSet<String> -> Rc<PointwisePower<_>>
+T3	v2.extdeps.languages.llvm_ir	llvm_float_spec_facts	HashMap<String, Rc<Node>> -> Rc<PartialFunction<_, _>>
+T3	v2.extdeps.languages.llvm_ir	llvm_integer_spec_facts	HashMap<String, Rc<Node>> -> Rc<PartialFunction<_, _>>
+T3	v2.extdeps.runtimes.v2_effect_io_pure	effect_io_pure_empty_environment	HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>> -> Rc<PartialFunction<_, _>>
+T3	v2.extdeps.runtimes.v2_evaluator	v2_eval_empty_bindings	HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>> -> Rc<PartialFunction<_, _>>
+T3	v2.std.collection	map_insert	HashMap<K, V> -> Rc<PartialFunction<_, _>>
+T3	v2.std.language_model	language_model_empty_canonical_symbols	OrdSet<String> -> Rc<PointwisePower<_>>
+T3	v2.std.model_core	model_core_bool_spec_facts	HashMap<String, Rc<Node>> -> Rc<PartialFunction<_, _>>
+W	v2.compiler.compile	apply_compile_lens_introspect	Witness<Rc<Node>> -> Witness<Rc<Outcome<Rc<Witness<Rc<Node>>>>>>
+W	v2.compiler.eval	eval_runtime_value_acceptance_witness	Witness<Rc<InferredFacts>> -> Witness<Rc<RuntimeValueAcceptanceWitness>>
+W	v2.compiler.eval	eval_runtime_value_acceptance_witness	Witness<Rc<Node>> -> Witness<Rc<RuntimeValueAcceptanceWitness>>
