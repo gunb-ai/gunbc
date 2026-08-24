@@ -38,7 +38,7 @@ import gunbc.command_runner {
   run_shell_command_capture,
   LocalExec,
 }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { ls_one_per_line_command }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
@@ -237,7 +237,7 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
   uses net: Network
 {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["ls", "-1", actions_runner_base_dir] },
+    command: ls_one_per_line_command(path: actions_runner_base_dir),
     transport: LocalExec,
   ) {
     ProcessRefused { exit_code: code, stderr: err } =>
