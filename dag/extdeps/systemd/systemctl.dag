@@ -137,6 +137,14 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
+// LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
+// `ShowLoadState` operation on the service surface above is its own operation rather than a
+// SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
+// value of `not-found` is not a magnitude. Cited to systemd.unit(5) LoadState -- `loaded`, `not-found`,
+// `bad-setting`, `error`, `masked` -- of which `not-found` is the one this corpus reads positively.
+// `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
+// means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
+// into it.
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
@@ -311,13 +319,6 @@ service systemd.Systemctl {
     }
   }
 
-  // LoadState is the only observation that distinguishes an ABSENT unit from a present one, and it
-  // needs its own operation rather than a SystemdUnitProperty arm: that coproduct is numeric cgroup
-  // evidence sharing one numeric mock, and a wire value of `not-found` is not a magnitude. Cited to
-  // systemd.unit(5) LoadState -- `loaded`, `not-found`, `bad-setting`, `error`, `masked` -- of which
-  // `not-found` is the one this corpus reads positively. `systemctl show` exits 0 for a unit the
-  // manager has never heard of and prints not-found, so a nonzero exit here means the MANAGER was
-  // unreadable, which is a different refusal from an absent unit and must not be folded into it.
   operation ShowLoadState {
     input { unit: NonEmptyStr }
     output {
