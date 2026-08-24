@@ -2595,6 +2595,10 @@ fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
   )
 }
 
+fn srv3_observation_verdict(observation: Srv3ToolObservation) -> Srv3HostPredicate {
+  observation.verdict
+}
+
 fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
@@ -2609,7 +2613,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     },
   )
   let verdict = srv3_summarize_independent_observations(
-    steps: list_map(xs: observations, f: fn(o: Srv3ToolObservation) { o.verdict }),
+    steps: list_map(xs: observations, f: fn(o) { srv3_observation_verdict(observation: o) }),
   )
   let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
