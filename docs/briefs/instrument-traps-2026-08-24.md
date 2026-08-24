@@ -717,3 +717,67 @@ were told — and the cost is that a settled question reopens.
 
 The reviewer's form: when you refute someone's *reason*, you have not yet touched their *claim*.
 Say which one you are refuting.
+
+---
+
+## A pre-registration does not protect you when the null and the not-run are the same string
+
+*silent-gull-867, 2026-08-24. The sharpest statement of this class so far, and it indicts the very
+technique the rest of this brief recommends.*
+
+Everything above assumes that pre-registering a prediction disciplines the reading. It does — **but
+only when the predicted null is distinguishable from the instrument never running.**
+
+The setup: measure whether adding one alias row to a carrier changes floor behaviour. Success
+criterion, registered in advance: *counts unchanged*. Sound as far as it goes.
+
+The failure: **a `.dag` edit reaches the compiler only through regen.** Before the mirror was
+installed, the probe measured a binary that did not contain the row. And "counts unchanged" is
+exactly the string a stale binary hands back.
+
+> The probe's positive result and its instrument-never-loaded were **the same observation**.
+
+The pre-registration could not tell them apart, because the predicted no-effect and the
+never-executed produce identical output. What actually caught it was a marker asserting the
+instrument *contained the change* — `MARKER_MIRROR_PP_BEFORE=0` — not the prediction.
+
+**So the discipline has an ordering, and it is the opposite of the intuitive one:**
+
+1. **First** assert the instrument carries the treatment. A marker, a digest, a `grep -c` on the
+   *installed* artifact — something only a loaded instrument can produce.
+2. **Then** read the pre-registered prediction.
+
+Reversing them makes step 2 unfalsifiable whenever step 1 has silently failed. This is trap 13's
+absence-mood problem generalised: it is not enough that *some* prediction be a presence — the
+**instrument's own loadedness** must be a presence assertion, separate from and prior to whatever
+the experiment predicts.
+
+And it is the exact shape as the trap-14 family: the comparand — *which binary am I measuring* — was
+supplied by memory rather than by evidence.
+
+**The residue when it is done right** (from the same lane, on the repaired run): the row's effect
+was confirmed absent by identical counts across every field, plus two checks that the agreement was
+not manufactured — `declined_live` identical, so nothing agreed by declining to execute; and floor
+**preparation** clean on both arms, which is where the failure would surface, ahead of the fold
+where no decline arm can reach it. That is what a null result looks like when it carries information.
+
+## A rename with no diff and no refusal
+
+*Same lane, worth its own entry because nothing in this brief would have caught it.*
+
+`container_alias_canonical_spelling` returns the **first sorted key** mapping to an algebra. So
+adding a key that sorts ahead of the incumbent silently becomes the canonical emitted spelling for
+that algebra **corpus-wide** — adding `"FinitelySupportedFunction"` would sort ahead of `"Map"` and
+rename it everywhere.
+
+No diff shows it: the change is one added row. No refusal fires: the lookup is total and the new key
+is legitimate. No test asserts the incumbent, because the incumbent was never chosen — it was the
+alphabetical accident of a single-member set.
+
+The general shape: **a total function whose answer depends on an ordering nobody declared.** The
+ordering is an implementation detail until a second element exists, at which point it silently
+becomes policy. Neither the comparand rule nor the marker rule reaches this one; the only defence is
+noticing that a lookup returns *a* member of a set rather than *the* member, and asking what decides
+which.
+
+Only `"PartialFunction"` was added, which competes with nothing.
