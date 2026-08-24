@@ -115,10 +115,17 @@ wrong* and with *the compiler refused and I could not hear it*, and those have o
 one is a defect in the language, the other a defect in the instrument. **Attributing an instrument's
 silence to its subject is how a clean mechanism acquires a bug report it did not earn.**
 
-**A corollary for filters specifically, since four of the six were filters:** narrowing the output
-channel to the shape you expect makes every *unexpected* shape — a refusal, an argument error, a
-crash — arrive as silence. Read the raw tail first; filter only once you know what the instrument
-says when it fails.
+**A corollary for filters specifically, since four of the six were filters — and it names the
+mechanism rather than the symptom:**
+
+> **The filter is the instrument.** A grep for `^error|blocking` is not a *view* of the output; it is
+> a *hypothesis about* the output, and it discards exactly the cases where the hypothesis is wrong.
+
+Every unexpected shape — a refusal, an argument error, a crash — arrives as silence, which is why
+this is not fixed by looking harder at what came back. Read the raw tail first; filter only once you
+know what the instrument says when it fails. The same class covers any flag that suppresses a
+channel you are about to draw a conclusion from: a quiet push that hides a rejection leaves you
+claiming content that was never delivered.
 
 ## Why this is not a story about carelessness
 
