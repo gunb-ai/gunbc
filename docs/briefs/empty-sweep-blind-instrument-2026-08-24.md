@@ -66,6 +66,16 @@ That is the shape the original brief named and the first write-up walked past. T
 not blindness: **the tree is currently clean**, the last broken instance having been repaired by
 gunbc#9083. The instrument sees the class fine.
 
+**One boundary on that table, because the third row is where the risk now lives.** *Green* in the
+whole-pool row means resolution **succeeded**, never that it was **correct**. Where a name has more
+than one declarer in the pool, binding the wrong one is green at every aggregate grain — a blocking
+count cannot distinguish *found the right name* from *found a name*. Establishing which provider was
+bound needs a site whose **wrong** bind cannot typecheck: match on a sibling arm the other candidate
+does not have, and an identity question becomes a colour question. Inferring it instead from emitted
+artifacts is unsound in one direction, because emission is known to re-decide some calls from their
+leaf spelling, which erases exactly the difference being looked for — a difference in the emitted
+bytes proves divergence, but agreement proves nothing.
+
 ## Why this is not a story about carelessness
 
 Three earlier clean-looking zeroes preceded any real measurement: a missing required output flag that
