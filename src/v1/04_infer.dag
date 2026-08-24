@@ -5230,8 +5230,8 @@ fn resolved_declaration_call_target(owner_module_path: String, decl_name: String
   match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: owner_module_path, decl_name: decl_name)) {
     Present { value: row } =>
       match row.fidelity {
-        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: func_name }
-        ModeledProjection => RuntimePrimitiveCall { primitive_name: func_name }
+        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: row.primitive.slug as String }
+        ModeledProjection => RuntimePrimitiveCall { primitive_name: row.primitive.slug as String }
         DivergentProjection { divergence: _ } => SourceDeclarationCall { owner_module_path: owner_module_path, decl_name: decl_name }
       }
     Absent => SourceDeclarationCall { owner_module_path: owner_module_path, decl_name: decl_name }

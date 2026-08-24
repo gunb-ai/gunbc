@@ -9163,12 +9163,12 @@ pub fn resolved_declaration_call_target(
         Some(row) => match (*row.fidelity.clone()).clone() {
             ProjectionFidelity::HostRealizedSeam => {
                 Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-                    primitive_name: func_name.clone(),
+                    primitive_name: row.primitive.clone().slug.clone(),
                 })
             }
             ProjectionFidelity::ModeledProjection => {
                 Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-                    primitive_name: func_name.clone(),
+                    primitive_name: row.primitive.clone().slug.clone(),
                 })
             }
             ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
