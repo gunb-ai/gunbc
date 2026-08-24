@@ -1,6 +1,7 @@
 module product.fabric.demand
 
 import std.types { NonEmptyStr, Timestamp, Bool, List }
+import std.decl_ref { DeclarationRef }
 import std.measure { MoneyAmountMicro }
 import std.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
@@ -197,9 +198,19 @@ fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
 // first binding lands, admit_callers narrows the mint to that binding's entry
 // points, and the residual above shrinks from "any caller may vouch" to "a
 // named binding may vouch".
+// verification_authority names WHO CLAIMS this attestation is valid. The core
+// does not validate it and cannot; what the field buys is that the core can
+// answer who vouched without pretending to answer whether the vouching was
+// true. Without it the residual declared above becomes unattributable at
+// exactly the moment someone needs to attribute it - a future reader finding a
+// bad release cannot tell which binding minted the attestation behind it, and
+// the boundary obligation has no owner. Naming the authority is also why this
+// is a DeclarationRef rather than a string: the authority is a symbol the
+// namespace already carries, and a name is checkable where a label is not.
 type CommandAttestation<P> sole_constructor {
   principal: P
   evidence: ObservationReceiptRef
+  verification_authority: DeclarationRef
 }
 
 // The evidence receipt is a required argument rather than an optional field, so
@@ -209,8 +220,70 @@ type CommandAttestation<P> sole_constructor {
 fn attest_command_principal<P>(
   principal: P,
   evidence: ObservationReceiptRef,
+  verification_authority: DeclarationRef,
 ) -> CommandAttestation<P> {
-  CommandAttestation { principal: principal, evidence: evidence }
+  CommandAttestation {
+    principal: principal,
+    evidence: evidence,
+    verification_authority: verification_authority,
+  }
+}
+
+// AN UNATTESTED COMMAND IS UNREPRESENTABLE, which is a different and stronger
+// claim than the confinement above, and it is the one the core can actually
+// prove. Confinement makes the attestation hard to forge; it does not stop a
+// command from reaching a decision with no attestation beside it, because a
+// separately-passed parameter is mandatory only by the signature that happens
+// to ask for it. Pairing them in one sealed carrier makes "decide this command,
+// I have no attestation" have no spelling at all.
+//
+// The distinction the type name must not blur: the guaranteed invariant is
+// EVERY CORE COMMAND CARRIES AN ATTESTATION WITNESS PRODUCED BY THE DECLARED
+// AUTHORITY. It is emphatically not "every core command is authenticated". The
+// first is a theorem about this module; the second is a claim about the world,
+// and no carrier here can hold it.
+type CoreCommand<P> sole_constructor {
+  attestation: CommandAttestation<P>
+  command: DemandCommand<P>
+}
+
+type CommandAdmission<P>
+  = CommandAdmitted { core: CoreCommand<P> }
+  | CommandAdmissionRefused { refusal: DemandRefusal<P> }
+
+// THE BOUNDARY, DECLARED HERE BECAUSE IT IS WHERE IT IS CROSSED. The core owns
+// shape, identity consistency, grant accounting, resource release and effect
+// admission. It does not own identity truth, credential truth or human
+// authorization truth; those sit with the verifier, above this mint. A
+// component may only issue a conclusion about facts inside its own observation
+// boundary, and the core has no external observation channel at all - so any
+// "authentication" written inside it would necessarily be one of three
+// failures: reimplementing an external authority, trusting an input field, or
+// inventing a model of reality.
+//
+// What IS inside the boundary is internal consistency: whether the attestation
+// presented covers the principal the command acts as. That is decidable from
+// the two values in hand and needs no observation, so it is enforced HERE, at
+// construction, rather than checked later in the fold. An inconsistent
+// CoreCommand therefore does not exist to be checked - which is why
+// apply_demand_command below carries no attestation arm.
+fn admit_command<P>(
+  attestation: CommandAttestation<P>,
+  command: DemandCommand<P>,
+) -> CommandAdmission<P> {
+  let acting = acting_principal(command: command)
+  if attestation.principal != acting {
+    CommandAdmissionRefused {
+      refusal: AttestationDoesNotCoverPrincipal {
+        attested: attestation.principal,
+        acting: acting,
+      }
+    }
+  } else {
+    CommandAdmitted {
+      core: CoreCommand { attestation: attestation, command: command },
+    }
+  }
 }
 
 type DemandRefusal<P>
@@ -375,34 +448,22 @@ fn acting_principal<P>(command: DemandCommand<P>) -> P {
   }
 }
 
-// The attestation gate runs before any lookup, and that ordering is the point.
-// Checking it after the lookup would let an unattested caller learn whether a
-// key exists under another principal from the difference between the two
-// refusals, which is a smaller leak than the mutation but a leak with the same
-// owner.
+// This takes a CoreCommand and not a command plus an attestation, and it
+// carries no attestation arm. That is the climb, not an omission: admit_command
+// already made an inconsistent pairing unconstructable, so a check here would
+// be a second representation of a constraint the carrier holds - and its RED
+// would be unauthorable, permanently green, cited as coverage while carrying no
+// information.
+//
+// The ordering argument that used to live on that check survives in the new
+// home. admit_command runs before any lookup, so an unattested caller cannot
+// learn whether a key exists under another principal from the difference
+// between two refusals.
 fn apply_demand_command<P>(
   population: List<Demand<P>>,
-  attestation: CommandAttestation<P>,
-  command: DemandCommand<P>,
+  core: CoreCommand<P>,
 ) -> DemandRegistration<P> {
-  let acting = acting_principal(command: command)
-  if attestation.principal != acting {
-    RegistrationRefused {
-      refusal: AttestationDoesNotCoverPrincipal {
-        attested: attestation.principal,
-        acting: acting,
-      }
-    }
-  } else {
-    admitted_command_transition(population: population, command: command)
-  }
-}
-
-fn admitted_command_transition<P>(
-  population: List<Demand<P>>,
-  command: DemandCommand<P>,
-) -> DemandRegistration<P> {
-  match command {
+  match core.command {
     SubmitDemand { demand: d } => submit_demand_into(population: population, d: d)
     WithdrawDemand { demand: id, evidence: _ } =>
       match lookup_demand(population: population, id: id) {

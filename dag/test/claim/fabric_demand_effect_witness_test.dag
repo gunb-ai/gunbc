@@ -2,6 +2,7 @@ module test.claim.fabric_demand_effect_witness_test
 
 import std.types { NonEmptyStr, Bool, List }
 import std.currency { Usd }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { money_amount_micro, MoneyOnce }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, ExecutionAttemptKey }
@@ -12,6 +13,8 @@ import product.fabric.demand {
   ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
   DemandRefusal, SatisfactionDirective, CommandAttestation,
   attest_command_principal, AttestationDoesNotCoverPrincipal,
+  CoreCommand, CommandAdmission, CommandAdmitted, CommandAdmissionRefused,
+  admit_command,
   TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
   acting_principal,
   SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
@@ -229,22 +232,62 @@ fn both_demands() -> List<Demand<NonEmptyStr>> {
 // is not a concession to the wall - it is the whole population of routes to a
 // CommandAttestation, which is what makes the wall worth having.
 fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
-  attest_command_principal(principal: principal, evidence: "binding-auth-1")
+  attest_command_principal(
+    principal: principal,
+    evidence: "binding-auth-1",
+    verification_authority: decl_ref(
+      module_path: "test.claim.fabric_demand_effect_witness_test",
+      decl_name: "attesting",
+    ),
+  )
 }
 
+// Every route to a decision below goes through admit_command, because that is
+// the only route there is: decide_demand_command takes a CoreCommand, and a
+// CoreCommand has no cross-module literal. A test that could hand the fold a
+// command with no attestation would be testing a shape the model does not have.
+fn admitted_core(
+  attested: NonEmptyStr,
+  command: DemandCommand<NonEmptyStr>,
+) -> List<CoreCommand<NonEmptyStr>> {
+  match admit_command(attestation: attesting(principal: attested), command: command) {
+    CommandAdmitted { core: c } => [c]
+    CommandAdmissionRefused { refusal: _ } => []
+  }
+}
+
+fn admission_label(a: CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
+  match a {
+    CommandAdmitted { core: _ } => "admitted"
+    CommandAdmissionRefused { refusal: r } => refusal_label(r: r)
+  }
+}
+
+// An admission refusal and an effect refusal are the same refusal vocabulary
+// reached at two different boundaries, so the helper reports the admission
+// cause rather than inventing a third state for "never reached the fold".
 fn decide_as(
   attested: NonEmptyStr,
   population: List<Demand<NonEmptyStr>>,
   grants: List<ExecutionGrant<NonEmptyStr>>,
   command: DemandCommand<NonEmptyStr>,
 ) -> DemandCommandEffect<NonEmptyStr> {
-  decide_demand_command(
-    population: population,
-    grants: grants,
-    terminal: NoTerminalReceipt,
-    attestation: attesting(principal: attested),
-    command: command,
-  )
+  match admitted_core(attested: attested, command: command) {
+    Empty {} =>
+      CommandRefused {
+        refusal: AttestationDoesNotCoverPrincipal {
+          attested: attested,
+          acting: acting_principal(command: command),
+        }
+      }
+    Cons { head: c, tail: _ } =>
+      decide_demand_command(
+        population: population,
+        grants: grants,
+        terminal: NoTerminalReceipt,
+        core: c,
+      )
+  }
 }
 
 fn decide(
@@ -329,12 +372,25 @@ test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> 
 // execution state, same other two fields - only this one moves, and it moves
 // the output between satisfaction and execution.
 
+fn decide_with_receipt(command: DemandCommand<NonEmptyStr>) -> DemandCommandEffect<NonEmptyStr> {
+  match admitted_core(attested: "github", command: command) {
+    Empty {} => CommandRefused { refusal: UnknownDemand { demand: demand_id(principal: "github", key: "unreachable") } }
+    Cons { head: c, tail: _ } =>
+      decide_demand_command(
+        population: [],
+        grants: [],
+        terminal: TerminalReceiptPresent,
+        core: c,
+      )
+  }
+}
+
 test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool {
   let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
   let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
-  effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, attestation: attesting(principal: "github"), command: SubmitDemand { demand: may }))
+  effect_label(e: decide_with_receipt(command: SubmitDemand { demand: may }))
     == "satisfied-by-terminal-receipt"
-    && effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, attestation: attesting(principal: "github"), command: SubmitDemand { demand: may_not }))
+    && effect_label(e: decide_with_receipt(command: SubmitDemand { demand: may_not }))
       == "await-admission"
 }
 
@@ -452,7 +508,13 @@ test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> 
     == "duplicate-demand"
 }
 
-// THE IMPERSONATION WALL (review 55256, first finding). The identity presented
+// THE IMPERSONATION WALL (review 55256, first finding). The refusal is asserted
+// at admit_command rather than at the fold, because that is where it now lives:
+// an inconsistent CoreCommand is unconstructable, so the fold has no such arm to
+// exercise. The mirror still runs the full decision, which is what proves the
+// mint admits as well as refuses.
+//
+// The identity presented
 // is entirely correct - right principal, right key, registered exactly as
 // spelled - and that is the point: the principal-mismatch arm cannot see this
 // case at all, because there is no mismatch to see. What refuses it is that the
@@ -463,10 +525,8 @@ test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> 
 // withdrawal.
 
 test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
-  let impersonating = decide_as(
-    attested: "github",
-    population: both_demands(),
-    grants: [running_grant()],
+  let impersonating = admit_command(
+    attestation: attesting(principal: "github"),
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
   let truthful = decide_as(
@@ -475,7 +535,7 @@ test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
     grants: [running_grant()],
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
-  effect_label(e: impersonating) == "attestation-does-not-cover-principal"
+  admission_label(a: impersonating) == "attestation-does-not-cover-principal"
     && effect_label(e: truthful) == "still-required-attempt-continues"
 }
 
@@ -483,11 +543,9 @@ test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
 // principal it did not authenticate and then withdraw it truthfully afterwards.
 
 test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to() -> Bool {
-  effect_label(
-    e: decide_as(
-      attested: "github",
-      population: [],
-      grants: [],
+  admission_label(
+    a: admit_command(
+      attestation: attesting(principal: "github"),
       command: SubmitDemand { demand: gitlab_demand() },
     ),
   ) == "attestation-does-not-cover-principal"

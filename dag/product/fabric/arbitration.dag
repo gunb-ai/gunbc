@@ -7,7 +7,7 @@ import product.fabric.identity {
 import product.fabric.demand {
   Demand, DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   DemandRefusal, DemandRegistration, RegistrationAdvanced, RegistrationRefused,
-  CommandAttestation, ObservationReceiptRef,
+  CoreCommand, ObservationReceiptRef,
   WorkRequirement, WorkStillRequired, WorkNoLongerRequired,
   SatisfactionDirective, TerminalReceiptAvailability,
   ExecutionPresence, ExecutionInFlight, NoExecutionInFlight,
@@ -173,17 +173,12 @@ fn decide_demand_command<P>(
   population: List<Demand<P>>,
   grants: List<ExecutionGrant<P>>,
   terminal: TerminalReceiptAvailability,
-  attestation: CommandAttestation<P>,
-  command: DemandCommand<P>,
+  core: CoreCommand<P>,
 ) -> DemandCommandEffect<P> {
-  match apply_demand_command(
-    population: population,
-    attestation: attestation,
-    command: command,
-  ) {
+  match apply_demand_command(population: population, core: core) {
     RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
     RegistrationAdvanced { population: next, subject_work: w } =>
-      match command {
+      match core.command {
         SubmitDemand { demand: d } =>
           DemandAdmitted {
             population: next,
