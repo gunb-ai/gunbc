@@ -705,6 +705,54 @@ test fn witness_fabric_cell_population_moves_the_member_set_fingerprint() -> Boo
         == fabric_fingerprint_with(population: fabric_cells_observed_converged())
 }
 
+// THE SAME SUBSTRATE READ IN A DIFFERENT ORDER IS THE SAME MEMBER SET, and the reason is worth
+// stating precisely because I first fixed it the wrong way round. The previous row's second
+// conjunct compares two IDENTICALLY-ORDERED constructions, which measures determinism and passes
+// just as happily if the fingerprint were a function of arrival order -- so the property looked
+// uncovered and I added a canonicalizing sort_by over the fabric baseline rows to establish it.
+//
+// THE MUTATION RECEIPT REFUTED MY OWN FIX: with the sort deleted, the reversed-observation row
+// still PASSED. The sort was redundant, because member order never depended on observation order in
+// the first place. `fabric_cell_population` folds over the AUTHORITY'S expected subjects --
+// fabric_cell_expected_slots x fabric_cell_resource_addresses -- and looks each one up in the
+// readback, so the member list comes out in authority order for any permutation of the
+// observations. Canonicalization was validation standing exactly where construction already held
+// (DESIGN section 5), and it would have been cited forever after as the thing that made the
+// fingerprint stable. It is deleted; this row is what remains.
+//
+// SO WHAT THIS ROW GUARDS is the fold's ordering discipline, not a sort: it goes red if the member
+// list is ever derived from the observations instead of from the expected subjects. That is a real
+// and reachable regression -- the natural shape for an observer author to reach for is "map what I
+// read" -- and it is the one the mutation control below exercises.
+//
+// WHY IT MATTERS: the member-set fingerprint gates apply admission. If observation order moved it,
+// a re-read returning the same three resources in a different sequence would read as a changed
+// member set, and a plan would refuse to admit against a substrate that had not moved. A real
+// observer walking a directory offers no order guarantee, so this property is needed BEFORE the
+// observer lands, not after it starts producing permutations.
+fn fabric_cell_readback_all_present_reversed() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: reverse(fabric_cell_readback_all_present().observations),
+  }
+}
+
+fn fabric_cells_observed_converged_reversed() -> FabricCellPopulation {
+  fabric_cell_population(
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [fabric_cell_readback_all_present_reversed()],
+    }
+  )
+}
+
+test fn witness_fabric_cell_fingerprint_is_stable_under_observation_order() -> Bool {
+  fabric_fingerprint_with(population: fabric_cells_observed_converged_reversed())
+    == fabric_fingerprint_with(population: fabric_cells_observed_converged())
+    && fabric_fingerprint_with(population: fabric_cells_observed_converged_reversed())
+        != fabric_fingerprint_with(population: fabric_cells_observed_empty())
+}
+
 // AN UNREADABLE POPULATION IS NOT AN EMPTY ONE, AND THE FINGERPRINT MUST SAY SO.
 //
 // This is the empty-observation narrow at the spine seam: a host whose cells could not be read and a
