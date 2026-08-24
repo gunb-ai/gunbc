@@ -14,6 +14,7 @@ import gunbc.fabric_cell_converge {
   FabricCellAddressObservation,
   AddressObserved,
   AddressAbsent,
+  AddressObservationRefused,
   fabric_cell_population,
   fabric_cell_resource_addresses,
   FabricCellRootAddress,
@@ -843,4 +844,62 @@ test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconcil
     && count == 1
     && fabric_fingerprint_with(population: fabric_cells_observed_on_srv4())
         != fabric_fingerprint_with(population: fabric_cells_observed_empty())
+}
+
+// TWO REFUSALS OF ONE ADDRESS, DIFFERENT WORDING, MUST BE ONE MEMBER SET. The evidence join keeps
+// the FIRST refusal cause, so before this row the two arrival orders below produced different
+// baseline rows and therefore different fingerprints -- the same substrate state, two identities.
+// The disposition ARM was order-free; the VALUE inside it was not, and only the value reached the
+// hash.
+//
+// The stability row above could not see it: it reverses POSITIVE observations, so no fixture in this
+// file could author two refusals with different causes. That is the same fixture-cannot-express-the-
+// failure shape the rest of this stack kept hitting, this time inside the change whose subject is
+// order-independence. Found by asking what the JOIN's algebra requires -- join(Refused(A),
+// Refused(B)) is a cell no scenario fixture had.
+//
+// THE SECOND CONJUNCT IS WHAT KEEPS THE FIX FROM BEING A DELETION. Dropping the cause from the
+// fingerprint would also be satisfied by dropping the whole row, which would make every refused
+// address hash identically and lose the property an earlier review asked for. Two DIFFERENT
+// addresses refusing must still differ.
+fn refused_root_readback(cause: String) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: [
+      AddressObservationRefused {
+        slot: fabric_witness_slot(),
+        address: FabricCellRootAddress,
+        cause: cause,
+      }
+    ],
+  }
+}
+
+fn refused_boundary_readback(cause: String) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: [
+      AddressObservationRefused {
+        slot: fabric_witness_slot(),
+        address: FabricCellResourceBoundaryAddress,
+        cause: cause,
+      }
+    ],
+  }
+}
+
+fn fabric_population_of(entries: List<FabricCellReadback>) -> FabricCellPopulation {
+  fabric_cell_population(
+    readback: FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
+  )
+}
+
+test fn witness_fabric_cell_refusal_wording_is_not_the_member_set_identity() -> Bool {
+  fabric_fingerprint_with(
+    population: fabric_population_of(entries: [refused_root_readback(cause: "transport reset"), refused_root_readback(cause: "permission denied")])
+  ) == fabric_fingerprint_with(
+    population: fabric_population_of(entries: [refused_root_readback(cause: "permission denied"), refused_root_readback(cause: "transport reset")])
+  )
+    && fabric_fingerprint_with(population: fabric_population_of(entries: [refused_root_readback(cause: "transport reset")]))
+        != fabric_fingerprint_with(population: fabric_population_of(entries: [refused_boundary_readback(cause: "transport reset")]))
 }

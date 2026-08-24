@@ -688,10 +688,29 @@ fn fleet_converge_desired_caps() -> List<CapMember> {
 // while the attempt root was unreadable instead. The baseline exists to make the approved state and
 // the applied state the same state; a refusal is part of that state, and its shape is part of the
 // refusal.
+// THE STABLE TYPED CLASS ENTERS THE FINGERPRINT; THE UPSTREAM WORDING DOES NOT. The unreadable row
+// used to concatenate the raw `cause` string, and that made the fingerprint ORDER-DEPENDENT through
+// a path no witness here could reach: `fabric_cell_address_evidence` keeps the FIRST refusal cause,
+// so two probes refusing one address with different messages produced `cause A` in one arrival order
+// and `cause B` in the other -- the same substrate state, two fingerprints. The disposition ARM was
+// order-free; the VALUE inside it was not, and only the value reached the hash.
+//
+// This is the fixture-cannot-express-the-failure pattern one more time, and this time inside the PR
+// whose subject is that pattern: witness_fabric_cell_fingerprint_is_stable_under_observation_order
+// reverses POSITIVE observations, so it could never author two refusals with different causes.
+// Found by side-chat review, which reached it by asking what the JOIN's algebra requires rather than
+// by reading the arms -- `join(Refused(A), Refused(B))` is a cell no scenario fixture had.
+//
+// A raw transport message is also the wrong thing to hash on its own terms: it is upstream text that
+// may vary between runs for one unchanged condition, so hashing it makes a plan refuse to admit
+// against a substrate that has not moved. The ref and the class still separate every distinct
+// refusal SUBJECT -- two different addresses refusing still differ -- which is the property the
+// baseline needs. The cause remains in the rendered plan line for the reader, where varying wording
+// is information rather than identity.
 fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> String {
   match d {
-    AddressUnreadable { ref: r, cause: c } =>
-      concat(fabric_cell_address_ref_wire(ref: r), "=unreadable:", c)
+    AddressUnreadable { ref: r, cause: _ } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=unreadable")
     AddressContradicted { ref: r } =>
       concat(fabric_cell_address_ref_wire(ref: r), "=contradicted")
     AddressUnobserved { ref: r } =>
