@@ -464,6 +464,200 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
+mod bare_reference_scanner_tests {
+    use super::{bare_identifier_candidates, module_self_declared_names};
+
+    /// Every coproduct shape the corpus actually writes. The multiline form is the one
+    /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
+    /// `ExtentInFrame` and `std.realization_schedule` declares `Predicted` — two of the
+    /// four variants this guard exists for.
+    #[test]
+    fn self_declared_names_collect_every_coproduct_form() {
+        let src = "module std.probe\n\
+                   type VisibilityScope = Repo | Org | Network | World\n\
+                   type FrameExtent\n\
+                     = ExtentInFrame { length: FrameLength }\n\
+                     | ExtentFrameUnregistered { identity: Id }\n\
+                   type CostBasis\n\
+                     = Predicted\n\
+                     | Measured\n\
+                   type CostAccount<S> {\n\
+                     time: Measure<Time, S>\n\
+                   }\n\
+                   type Result<ok, err> = Ok { value: ok } | Err { value: err }\n\
+                   data volume_row: Int = 3\n\
+                   fn trim_one(s: String) -> String { s }\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "VisibilityScope",
+            "Repo",
+            "Org",
+            "Network",
+            "World",
+            "FrameExtent",
+            "ExtentInFrame",
+            "ExtentFrameUnregistered",
+            "CostBasis",
+            "Predicted",
+            "Measured",
+            "CostAccount",
+            "S",
+            "Result",
+            "ok",
+            "err",
+            "Ok",
+            "Err",
+            "volume_row",
+            "trim_one",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing self-declared name {expected}"
+            );
+        }
+    }
+
+    /// A coproduct may be spaced out. `std.measure`'s `Dimension` puts blank lines
+    /// between groups of variants and `Volume` sits after one; breaking the block scan
+    /// on the blank line dropped it and silently reopened the edge this guard closes.
+    #[test]
+    fn blank_lines_do_not_end_a_coproduct_block() {
+        let src = "module std.measure\n\
+                   type Dimension\n\
+                     = Length\n\
+                     | Mass\n\
+                   \n\
+                     | Area\n\
+                     | Volume\n\
+                   \n\
+                   type Scale =\n\
+                     | Nano\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "Dimension",
+            "Length",
+            "Mass",
+            "Area",
+            "Volume",
+            "Scale",
+            "Nano",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing {expected} across a blank line"
+            );
+        }
+    }
+
+    // A type ALIAS does not declare its target. `type List<element> = FreeMonoid<element>`
+    // declares `List`; `FreeMonoid` is a REFERENCE OUT, and collecting it here suppressed
+    // the closure edge to whichever module declares it — an UNDER-pull, the dangerous
+    // direction. Review 55399 called this correctly. An earlier revision carried it as a
+    // marked known gap; a marked gap records how debt ENDS, it does not authorize creating
+    // it, and this one pointed the wrong way.
+    //
+    // The discriminator is the right-hand side's own shape: a coproduct alternates (`|`) or
+    // carries a record payload (`{`), an alias does neither.
+    //
+    // THE ARM THAT SHAPE CANNOT DECIDE, named rather than left to be found: `type X = Foo`
+    // with a bare capitalized RHS is an alias under this rule, but the same bytes are how a
+    // single-alternative coproduct would spell itself if the grammar admits one — same text,
+    // opposite correct answers. Censused across `dag` + `src/v2` + `src/v1` rather than
+    // assumed: 60 occurrences, and every one decides ALIAS. 47 name a type declared in
+    // ANOTHER module (unambiguous alias — the suppressed edge was real, so this class is 47
+    // instances wide, not one). The other 13 name a type declared in the SAME FILE, each
+    // hand-checked: `type FileEntry {` under `type FileClassification = FileEntry`,
+    // `type ParseTableRealization {` under `type ParseTable`, and eleven more of that shape.
+    // Those 13 are inert either way — a same-file `type` head is already in this set via the
+    // declaration-head arm, so the resolve loop skips the name before the pool is consulted.
+    // ZERO of the 60 is a single-alternative coproduct.
+    //
+    // What is NOT claimed: that the ambiguity is impossible. `type X = Foo` where `Foo` is
+    // declared nowhere is undecidable from the RHS alone, and someone can author one
+    // tomorrow. The residual failure would be an OVER-pull, not an under-pull.
+    #[test]
+    fn an_alias_target_is_a_reference_out_not_a_declared_variant() {
+        let names = module_self_declared_names(
+            "type List<element> = FreeMonoid<element>\ntype Bit = Bool\n",
+        );
+        assert!(names.contains("List"), "the alias itself is declared here");
+        assert!(
+            names.contains("element"),
+            "its type parameter is bound here"
+        );
+        assert!(
+            !names.contains("FreeMonoid"),
+            "an alias TARGET is a reference out — collecting it suppresses a real closure edge"
+        );
+        assert!(
+            !names.contains("Bool"),
+            "same for a non-generic alias target"
+        );
+    }
+
+    #[test]
+    fn a_single_variant_coproduct_with_a_payload_is_still_a_declaration() {
+        let names =
+            module_self_declared_names("type FrameExtent = ExtentInFrame { length: Int }\n");
+        assert!(
+            names.contains("ExtentInFrame"),
+            "a record payload marks a variant, not an alias — the brace is the discriminator"
+        );
+    }
+
+    /// A record body's field labels are not declarations the module exports.
+    #[test]
+    fn record_field_labels_are_not_self_declared() {
+        let src = "module std.probe\n\
+                   type CostAccount {\n\
+                     observation: Observation\n\
+                   }\n";
+        let names = module_self_declared_names(src);
+        assert!(names.contains("CostAccount"));
+        assert!(
+            !names.contains("observation"),
+            "field label collected as a declaration"
+        );
+    }
+
+    /// A parenthesis-free arrow lambda binds its parameter. The guard keys on the
+    /// PRECEDING token, not the arrow, because a match arm head is also `ident =>` and
+    /// binding one would suppress a real edge — a silent under-pull.
+    #[test]
+    fn bare_arrow_lambda_parameter_is_bound_but_a_match_arm_head_is_not() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Row>) -> Bool {\n\
+                     xs |> any(t => t.name == name)\n\
+                   }\n\
+                   fn g(o: Optional<Int>) -> Int {\n\
+                     match o {\n\
+                       Absent => 0\n\
+                       Present { value: v } => v\n\
+                     }\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.bound.contains("t"),
+            "lambda parameter not treated as a binder"
+        );
+        assert!(
+            !c.bound.contains("Absent"),
+            "match arm head bound — this would silently drop a real closure edge"
+        );
+    }
+
+    /// The other two legal preceding tokens: a comma and a named argument's colon.
+    #[test]
+    fn named_argument_and_comma_positioned_lambdas_bind_too() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Int>) -> Int {\n\
+                     fold(xs, init: 0, f: acc => acc)\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(c.bound.contains("acc"));
+    }
+}
+#[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
 
@@ -2618,39 +2812,74 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
                 .into_owned()
         })
         .collect();
-    let index = build_module_path_index(&abs_roots);
     let entry_root = workspace.join(roots.entry().repo_relative_path());
-    let mut entry_paths = Vec::new();
-    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+    regen_input_sources_over_roots(&entry_root, &abs_roots)
+}
 
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new();
+/// `regen_input_sources` with its roots supplied rather than derived from the
+/// repository layout — the seam the regression test drives with a controlled
+/// fixture. The production entry point above is the only caller that computes
+/// the roots; everything below this line is root-agnostic, so the test exercises
+/// THE SAME code path production does rather than a re-implementation of it.
+fn regen_input_sources_over_roots(
+    entry_root: &Path,
+    abs_roots: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(entry_root, &mut entry_paths)?;
+
+    // Seed: every `.dag` under the entry root that declares a module path.
+    let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
     for path in &entry_paths {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(rel_path) = index.get(&module_path) {
-                let file_path = workspace.join(rel_path);
-                let file_content = std::fs::read_to_string(&file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
-                queue.push(file_content);
-            }
+        if extract_module_path(&content).is_some() {
+            seeds.push(Rc::new(v1_compiler_compile::SourceFile {
+                path: rel,
+                content,
+            }));
         }
     }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
+
+    // Grow the closure through `extend_sources_to_both_closure_fixpoint` — import
+    // edges PLUS dotted-reference PLUS bare-reference modules, to a joint fixpoint —
+    // rather than the import-only walk this function used to run.
+    //
+    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the
+    // SAME dependency edge. A walk that follows only imports is therefore not a
+    // narrower closure — it is a closure that goes BLIND the moment a module spells
+    // a dependency any other way. That function's own doc-comment calls itself "The
+    // ONE closure-extension authority" and names the loaders that call it: "Both
+    // source loaders — the per-entry witness loader and the affected-set
+    // compile-clean gate loader". There are THREE. This one was the third, and it
+    // is the one whose subject feeds regeneration of the seed itself.
+    //
+    // So the single-authority claim was true of its own enumeration and false of
+    // the concept it named — the fork survived precisely because the prose asserting
+    // its absence was load-bearing and never re-audited against the call graph.
+    //
+    // The same class was already repaired once, for the gate loader, which had run
+    // only `extend_with_reference_closure` and dropped providers reached purely by
+    // bare name (ARM1 ref-only = 3 unresolved-type diags; +bare = 0).
+    //
+    // LATENT HERE, FATAL NEXT DOOR. On this branch every seed dependency is still
+    // spelled as an import, so the import-only walk happens to reach everything and
+    // the defect cannot be observed from the corpus alone — which is why it has sat
+    // here unnoticed. On `integration/namespace-cut`, where the `dag/` imports are
+    // deleted, the identical code admits `src/v1` and NOTHING else: the queue drains
+    // on its first pass and regen refuses with `unresolved type 'std.types.SourceSpan'`
+    // while `std.types` sits present and correct in the authority. The regression
+    // test below fixes the behaviour independently of either corpus.
+    let mei = build_multi_entry_index(abs_roots);
+    let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+
+    let mut result: Vec<(String, String)> = closure
+        .into_iter()
+        .map(|s| (s.path.clone(), s.content.clone()))
+        .collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    result.dedup_by(|a, b| a.0 == b.0);
     Ok(result)
 }
 
@@ -5498,6 +5727,64 @@ mod compile_clean_via_index_verdict_equivalence {
     }
 
     /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    /// CAUSAL control for the regen-closure de-fork — the companion to
+    /// `regen_subject_admits_a_provider_reached_only_by_reference`.
+    ///
+    /// That test proves the provider ENTERS the subject. It does not prove the
+    /// provider enters BECAUSE OF THE REFERENCE, and those are different claims:
+    /// if the closure admitted every module in the wider roots for some unrelated
+    /// reason, the admitting test would still pass while the reference edge did no
+    /// work at all. That is the both-arms-green failure one level up — a test whose
+    /// subject is present for reasons the test does not control.
+    ///
+    /// So this fixture is byte-identical to that one EXCEPT that the seed does not
+    /// name the provider. The provider must then be ABSENT from the subject. Taken
+    /// together the pair establishes the edge is causal: reference present ->
+    /// admitted, reference absent -> not admitted, everything else held fixed.
+    #[test]
+    fn regen_subject_omits_a_provider_nothing_references() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-causal-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        // The ONLY difference from the admitting test: no reference to the provider.
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            !admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "an unreferenced provider must NOT be admitted -- if it is, the closure is \
+             widening the subject rather than following edges, and the admitting test \
+             proves nothing about causality; admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn planted_unresolved_import_agrees_red() {
         let corpus = Corpus::new(
@@ -5518,6 +5805,80 @@ mod compile_clean_via_index_verdict_equivalence {
     /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
     /// scoped compile-clean closure must surface through whole-tree census fill —
     /// compiling only the affected entry must not hide annotation debt elsewhere.
+    /// DISCRIMINATING RED for the regen-closure de-fork.
+    ///
+    /// A seed module that reaches its provider by REFERENCE ONLY -- no `import`
+    /// line anywhere -- must still have that provider admitted to the regen
+    /// subject. Before the de-fork, `regen_input_sources` grew its closure with
+    /// `extract_import_paths` alone, so this fixture's provider was dropped.
+    ///
+    /// THE FIXTURE'S SHAPE IS THE WHOLE CONTROL, and an earlier version of this
+    /// test got it wrong in a way worth recording: it wrote both modules into ONE
+    /// directory and passed that directory as the entry root. `collect_dag_files_result`
+    /// then picked the provider up as a SEED, so the closure was never asked to
+    /// find anything and the test passed against the old import-only walk too --
+    /// green in both arms, therefore evidence of nothing. The provider must live
+    /// OUTSIDE the entry root and inside the wider root set, which is exactly
+    /// production's shape: entry root `src/v1`, providers under `dag/`.
+    #[test]
+    fn regen_subject_admits_a_provider_reached_only_by_reference() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-defork-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        // Preconditions, asserted rather than assumed -- if a later edit adds an
+        // import to the fixture, or moves the provider under the entry root, this
+        // test would keep passing while testing nothing (which is how its first
+        // version failed).
+        let seed_text = fs::read_to_string(entry_root.join("seed.dag")).expect("read seed");
+        assert!(
+            super::extract_import_paths(&seed_text).is_empty(),
+            "fixture precondition: the seed reaches its provider by reference only"
+        );
+        let mut entry_files = Vec::new();
+        super::collect_dag_files_result(&entry_root, &mut entry_files).expect("walk entry root");
+        assert_eq!(
+            entry_files.len(),
+            1,
+            "fixture precondition: the provider must NOT be reachable as a seed"
+        );
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "a provider reached only by reference must be admitted to the regen subject; \
+             admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
@@ -7419,6 +7780,40 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             continue;
         }
         let name = &content[start..i];
+        // A PARENTHESIS-FREE arrow lambda binds its single parameter: `any(t => ...)`,
+        // `map(rm => ...)`, `fold(xs, init: 0, f: acc => ...)`. `destructuring_bound_spans`
+        // only recognises the parenthesised form `(a, b) =>` and the pattern form
+        // `{ .. } =>`, so this one leaked its binder into the reference set — and a
+        // one-letter binder resolves against the WHOLE POOL, where some module
+        // somewhere declares `fn t`. Receipt: `dag/std/algebra.dag`'s
+        // `any(t => t.name == name)` pulled `dag/test/claim/pcb_footprint_witness_test.dag`
+        // (which declares `fn t(component, terminal)`) and through it the entire PCB
+        // product corpus into the v1 seed's compile closure.
+        //
+        // The guard is the PRECEDING token, not the arrow alone: a match arm head is
+        // also `ident =>` but is preceded by `{`, `}` or a newline, whereas a lambda
+        // parameter sits in argument position — after `(`, `,` or a named-argument
+        // `:`. Measured over the corpus, all 4397 sites matching that shape are
+        // lambdas; no match-arm head is preceded by any of the three.
+        let is_bare_arrow_lambda_param = {
+            let mut j = i;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let arrow = content.as_bytes()[j..].starts_with(b"=>");
+            let mut k = start;
+            while k > 0 && bytes[k - 1].is_ascii_whitespace() {
+                k -= 1;
+            }
+            let prev = if k > 0 { bytes[k - 1] } else { b'\0' };
+            arrow && matches!(prev, b'(' | b',' | b':')
+        };
+        if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
         let was_after_colon = just_saw_colon;
         just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
@@ -7537,6 +7932,139 @@ struct BothClosureEdgeIndex {
     bare_scan_eligible: HashSet<String>,
 }
 
+/// The names a module declares FOR ITSELF, including the variant heads of its own
+/// coproducts.
+///
+/// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
+/// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
+/// and then writes `World` was scanned as referencing some other module — and the
+/// pool happens to contain `type World sole_constructor` in `dag/product/spatial_world.dag`,
+/// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
+///
+/// Three more of the identical shape in one closure: `Volume` (a variant of
+/// `std.measure`'s own `Dimension`, pulled `gunbc.roadmap_model`), `Measured` (a
+/// variant of `std.realization_schedule`'s own coproduct, pulled `std.observation`),
+/// and `ExtentInFrame` (a variant in `std.spatial_frame`, pulled `std.attribution`).
+///
+/// This is not a tiebreak and not a policy: a name the module itself declares is
+/// bound by that declaration, so it can never be a reference OUT. Skipping it is the
+/// language's own scoping rule, not a heuristic about which candidate is likelier.
+fn module_self_declared_names(content: &str) -> BTreeSet<String> {
+    let content: &str = &annotation_erased_scan_text(content);
+    let mut out = BTreeSet::new();
+    let ident_head = |s: &str| -> Option<String> {
+        let s = s.trim_start();
+        let mut end = 0;
+        for (idx, c) in s.char_indices() {
+            if c.is_alphanumeric() || c == '_' {
+                end = idx + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if end == 0 {
+            None
+        } else {
+            Some(s[..end].to_string())
+        }
+    };
+    let mut in_coproduct = false;
+    for line in content.lines() {
+        let l = line.trim_start();
+        let decl_head = [
+            "pub type ",
+            "pub data ",
+            "pub fn ",
+            "pub func ",
+            "type ",
+            "data ",
+            "fn ",
+            "func ",
+            "test fn ",
+            "test data ",
+        ]
+        .iter()
+        .find_map(|k| l.strip_prefix(*k));
+        if let Some(rest) = decl_head {
+            if let Some(name) = ident_head(rest) {
+                out.insert(name);
+            }
+            // TYPE PARAMETERS on the declaration head. `type Result<ok, err> = Ok { value: ok }
+            // | Err { value: err }` in `std.error_primitives` binds `ok` and `err`; scanned as
+            // references they resolved against the whole pool to `fn ok(out: String) ->
+            // SshSessionExecResult` in a spark serving witness test, so `std.error_primitives`
+            // acquired closure edges to that witness and to `extdeps.ssh.session` — and
+            // `extdeps.dns.domain_name`'s `Ok { value: labels |> list_push(label) }` then
+            // typed `labels` as `SshSessionExecResult`.
+            let after_name = rest.trim_start();
+            let ident_end = after_name
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(after_name.len());
+            let tail = after_name[ident_end..].trim_start();
+            if let Some(params) = tail.strip_prefix('<').and_then(|s| s.split_once('>')) {
+                for part in params.0.split(',') {
+                    if let Some(name) = ident_head(part) {
+                        out.insert(name);
+                    }
+                }
+            }
+            // `type X = ...` opens a coproduct whose variant heads continue on this
+            // line and on following lines beginning with `|`. The MULTILINE form puts
+            // the `=` on the NEXT line instead —
+            //
+            //     type FrameExtent
+            //       = ExtentInFrame { length: FrameLength }
+            //       | ExtentFrameUnregistered { .. }
+            //
+            // — so a bare `type X` head opens one too, pending its `=`. Review 55386
+            // caught this: without it `ExtentInFrame` and `Predicted` were never
+            // collected, two of the four variants this guard exists for, and the
+            // closure improvement measured for their modules came from those modules
+            // leaving the closure for an unrelated reason. Right conclusion, wrong
+            // evidence.
+            //
+            // The same-line extraction below is gated on the LINE's own `=` rather than
+            // on the flag, so widening the flag cannot silently disable it.
+            let is_type_head = l.starts_with("type ") || l.starts_with("pub type ");
+            in_coproduct = is_type_head;
+            if is_type_head {
+                if let Some((_, body)) = l.split_once('=') {
+                    // An ALIAS is not a declaration of its target. `type List<element> =
+                    // FreeMonoid<element>` declares `List`; `FreeMonoid` is a REFERENCE
+                    // OUT, and collecting it here suppresses the closure edge to whoever
+                    // declares it — an under-pull, the dangerous direction (review 55399).
+                    // The discriminator is the RHS's own shape: a coproduct alternates
+                    // (`|`) or carries a record payload (`{`); an alias does neither.
+                    let is_alias = !body.contains('|') && !body.contains('{');
+                    if is_alias {
+                        in_coproduct = false;
+                    } else {
+                        for part in body.split('|') {
+                            if let Some(name) = ident_head(part) {
+                                out.insert(name);
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if l.starts_with('|') || (in_coproduct && l.starts_with('=')) {
+            in_coproduct = true;
+            for part in l.trim_start_matches(['|', '=']).split('|') {
+                if let Some(name) = ident_head(part) {
+                    out.insert(name);
+                }
+            }
+            continue;
+        }
+        if !l.is_empty() && !l.starts_with('|') {
+            in_coproduct = in_coproduct && l.starts_with('{');
+        }
+    }
+    out
+}
+
 fn source_declares_import_lines(content: &str) -> bool {
     content
         .lines()
@@ -7649,11 +8177,16 @@ fn bare_reference_pull_paths_for_source(
     resolve_stage_slot_add(|st| {
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
+    let self_declared = module_self_declared_names(&sf.content);
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
+        // Bound by this module's own declaration — see `module_self_declared_names`.
+        if !service_head && self_declared.contains(&name) {
+            continue;
+        }
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
             in_call_position
@@ -7661,24 +8194,37 @@ fn bare_reference_pull_paths_for_source(
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+        // Returns WHAT was selected and, beside it, WHICH CENSUS STATE produced the
+        // selection. The state is the census's own verdict — `GlobalBareUniqueBinding`
+        // versus `GlobalBareAmbiguousBinding` — and it is the authority on whether a
+        // bare name has competing declarations. Reconstructing that from source with a
+        // declaration-head scanner does not work: a line-leading `=`/`|` regex
+        // undercounts (it misses `type Connective = Conj | Disj | NoConnective | Arrow`
+        // entirely) and a permissive one overcounts (it reads an alias target and a
+        // `data` initializer's head as variants), and the two answers differ by 30x on
+        // the same trace. The census already knows; carrying its verdict costs nothing.
+        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
             if service_head {
-                return v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone());
+                return (
+                    v1_rt::map_get(&census.services, name.clone())
+                        .map(|entry| entry.module_path.clone()),
+                    "service",
+                );
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => {
+                    } => (
                         if pullable(binding) {
                             Some(module_path.clone())
                         } else {
                             None
-                        }
-                    }
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        },
+                        "unique",
+                    ),
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
                         crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
@@ -7689,22 +8235,39 @@ fn bare_reference_pull_paths_for_source(
                             } else {
                                 None
                             }
-                        })
-                    }
+                        }),
+                        "ambiguous",
+                    ),
                 },
-                None => {
+                None => (
                     if in_call_position {
                         v1_rt::map_get(&census.services, name.clone())
                             .map(|entry| entry.module_path.clone())
                     } else {
                         None
-                    }
-                }
+                    },
+                    "absent",
+                ),
             }
         };
-        let target_module = match resolve_in(&census) {
-            Some(m) => Some(m),
-            None => resolve_in(&pool_bare_census(index)?),
+        // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
+        // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
+        // and a whole-pool fallback hit into one `Option<String>`, so a name that the
+        // file's own tree could NOT resolve — and that only the pool answered — was
+        // indistinguishable from one resolved in scope. The two have different meanings:
+        // the second is the closure depending on ambient pool membership rather than on
+        // anything the file's tree provides, and it is exactly the state a zero-import
+        // corpus can sit in while looking green.
+        //
+        // Carrying the provenance costs nothing (the arms already know it) and makes the
+        // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
+        // "what did it resolve to".
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+            (Some(m), state) => (Some(m), "scoped", state),
+            (None, _) => {
+                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                (m, "pool-fallback", state)
+            }
         };
         let Some(module_path) = target_module else {
             continue;
@@ -7735,8 +8298,8 @@ fn bare_reference_pull_paths_for_source(
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
-                "[bare-pull] {} -> '{}' -> {} ({})",
-                file_rel, name, module_path, dep_rel
+                "[bare-pull] {} -> '{}' -> {} ({}) [{} {}]",
+                file_rel, name, module_path, dep_rel, resolution_arm, census_state
             );
         }
         if !index.module_graph_facts.declares_repo_path(&dep_rel) {
