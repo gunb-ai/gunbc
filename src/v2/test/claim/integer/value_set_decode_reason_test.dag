@@ -1,6 +1,5 @@
 module v2.test.claim.integer.value_set_decode_reason
 
-import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -41,7 +40,7 @@ fn decode_reason(value_set: Node) -> Symbol {
 fn decode_cause_count(value_set: Node) -> Int {
   match integer_value_set_from_node(value_set: value_set) {
     Accepted { value: _, diagnostics: _ } => 9
-    Rejected { diagnostics: ds } => length(xs: ds.tail)
+    Rejected { diagnostics: ds } => count(ds.tail)
   }
 }
 
