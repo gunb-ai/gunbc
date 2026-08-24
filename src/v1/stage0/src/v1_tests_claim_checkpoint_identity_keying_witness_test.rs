@@ -24,67 +24,95 @@ pub fn checkpoint_identity_keying_witness_note() -> String {
 }
 
 pub fn table_present_name_renders_from_the_table() -> bool {
-    (rust_scalar_checkpoint_reference_base("Int".to_string(), "dag/std/integer.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Int".to_string(),
+        "dag/std/integer.dag".to_string(),
+    )
+    .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn table_absent_name_realizes_natively_for_the_std_declaration() -> bool {
-    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "dag/std/nat.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Nat".to_string(),
+        "dag/std/nat.dag".to_string(),
+    )
+    .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn same_spelling_different_declaration_does_not_realize_natively() -> bool {
-    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "src/v2/std/nat.dag".to_string())
-        == None)
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Nat".to_string(),
+        "src/v2/std/nat.dag".to_string(),
+    ) == None)
 }
 
 pub fn unknown_declaration_identity_refuses_rather_than_guessing() -> bool {
-    (rust_scalar_checkpoint_reference_base("Nat".to_string(), "".to_string()) == None)
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Nat".to_string(),
+        "".to_string(),
+    ) == None)
 }
 
 pub fn residue_table_present_int_bypasses_identity() -> bool {
-    (rust_scalar_checkpoint_reference_base("Int".to_string(), "src/v2/std/integer.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Int".to_string(),
+        "src/v2/std/integer.dag".to_string(),
+    )
+    .as_deref()
         == Some("i64".to_string()).as_deref())
 }
 
 pub fn table_present_hash_refuses_under_structural_declaration() -> bool {
-    (rust_scalar_checkpoint_reference_base("Hash".to_string(), "src/v2/std/node.dag".to_string())
-        == None)
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Hash".to_string(),
+        "src/v2/std/node.dag".to_string(),
+    ) == None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_text() -> bool {
-    (rust_scalar_checkpoint_reference_base("String".to_string(), "src/v2/std/text.dag".to_string())
-        == None)
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "String".to_string(),
+        "src/v2/std/text.dag".to_string(),
+    ) == None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_string_type() -> bool {
-    (rust_scalar_checkpoint_reference_base(
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
     ) == None)
 }
 
 pub fn table_present_bool_refuses_under_structural_declaration_logic() -> bool {
-    (rust_scalar_checkpoint_reference_base("Bool".to_string(), "src/v2/std/logic.dag".to_string())
-        == None)
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Bool".to_string(),
+        "src/v2/std/logic.dag".to_string(),
+    ) == None)
 }
 
 pub fn table_present_bool_renders_natively_for_the_corpus_prelude() -> bool {
-    (rust_scalar_checkpoint_reference_base("Bool".to_string(), "dag/std/types.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "Bool".to_string(),
+        "dag/std/types.dag".to_string(),
+    )
+    .as_deref()
         == Some("bool".to_string()).as_deref())
 }
 
 pub fn literal_suffix_positive_control_symbol_not_enrolled() -> bool {
-    (literal_suffix(RenderTarget::Rust, "Symbol".to_string(), "".to_string()).as_deref()
+    (crate::v1_compiler_coercion::literal_suffix(
+        RenderTarget::Rust,
+        "Symbol".to_string(),
+        "".to_string(),
+    )
+    .as_deref()
         == Some(".to_string()".to_string()).as_deref())
 }
 
 pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
-    (literal_suffix(
+    (crate::v1_compiler_coercion::literal_suffix(
         RenderTarget::Rust,
         "String".to_string(),
         "src/v2/std/text.dag".to_string(),
@@ -92,7 +120,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
 }
 
 pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool {
-    (literal_suffix(
+    (crate::v1_compiler_coercion::literal_suffix(
         RenderTarget::Rust,
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
@@ -100,24 +128,38 @@ pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool
 }
 
 pub fn literal_suffix_production_call_site_never_threads_declaration_identity() -> bool {
-    (literal_suffix(RenderTarget::Rust, "String".to_string(), "".to_string()).as_deref()
+    (crate::v1_compiler_coercion::literal_suffix(
+        RenderTarget::Rust,
+        "String".to_string(),
+        "".to_string(),
+    )
+    .as_deref()
         == Some(".to_string()".to_string()).as_deref())
 }
 
 pub fn reference_position_renders_the_bare_spelling() -> bool {
-    (rust_scalar_checkpoint_reference_base("String".to_string(), "dag/std/types.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
+        "String".to_string(),
+        "dag/std/types.dag".to_string(),
+    )
+    .as_deref()
         == Some("String".to_string()).as_deref())
 }
 
 pub fn declaration_position_renders_the_grounding_spelling() -> bool {
-    (rust_scalar_checkpoint_grounding_base("String".to_string(), "dag/std/types.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_grounding_base(
+        "String".to_string(),
+        "dag/std/types.dag".to_string(),
+    )
+    .as_deref()
         == Some("std::string::String".to_string()).as_deref())
 }
 
 pub fn numeric_name_grounds_in_its_own_reference_spelling() -> bool {
-    (rust_scalar_checkpoint_grounding_base("Int".to_string(), "dag/std/integer.dag".to_string())
-        .as_deref()
+    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_grounding_base(
+        "Int".to_string(),
+        "dag/std/integer.dag".to_string(),
+    )
+    .as_deref()
         == Some("i64".to_string()).as_deref())
 }
