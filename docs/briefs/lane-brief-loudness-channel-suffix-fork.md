@@ -106,14 +106,45 @@ adopted it consistently, and the population that could not reach it by name did 
 strip-then-append shape already guarantees the gates are undisturbed, since every one of them
 is a `_holds`/`_passes` pair today.
 
-## `*_verdict_diagnostic` — PRECONDITION, not a footnote
+## `*_verdict_diagnostic` — PRECONDITION DISCHARGED (read the consumer; here is what it does)
 
 Zero producers, corpus-wide, ever, while its derivation AND consumer both exist. Inert by
-§6's definition, and not excusable as new or niche. **READ WHAT THE CONSUMER DOES WITH IT
-BEFORE PROPOSING DELETION** — zero producers makes it inert, it does not make it
-interchangeable with the failure receipt, and deleting a channel whose consumer does
-something the other cannot is how a 0% arm turns out to have been the only route to
-something.
+§6's definition, and not excusable as new or niche.
+
+The precondition was: *read what the consumer does with it before proposing deletion* — zero
+producers makes it inert, it does not make it interchangeable, and deleting a channel whose
+consumer does something the other cannot is how a 0% arm turns out to have been the only
+route to something. **That read is now done, and the answer is: nothing the failure receipt
+does not.**
+
+Measured by reading `v1_compiler.cli_run`. The two channels are the same mechanism twice:
+
+|   | failure receipt | verdict diagnostic |
+|---|---|---|
+| appender | `append_failure_receipt_companion_loudness` | `append_witness_verdict_diagnostic_loudness` |
+| runner returns | `String` | `String` |
+| `NoSuchFunction` | `String::new()` — not-declared, not refused | `String::new()` — identical |
+| wrong type | refusal sentinel appended | refusal sentinel appended |
+| appends to | the same `detail` / `failure` string | the same `detail` / `failure` string |
+
+And the call sites are **in lockstep at every one of the three**, on adjacent lines, in the
+same order, against the same target:
+
+    claim_executor.rs   2598  /  2603
+    cli_run.rs         16150  / 16151   (inside seed_runner_bool_false_failure_detail)
+    cli_run.rs         24991  / 24992
+
+There is no context one reaches that the other does not. A witness declaring both would be
+concatenating two strings it could have returned from one.
+
+**So the distinction is intent, not mechanism** — "verdict" versus "failure" — and with zero
+producers ever, that intent is recorded nowhere in the corpus. A 0% arm beside a 0.03% arm,
+mechanically interchangeable at every call site, is a fork.
+
+CAVEAT: this is a code read, not execution. What it establishes is that no CALL SITE
+distinguishes them. If someone wants to keep the channel, the argument has to be a design
+argument about future intent, and it has to explain why that intent needs a second derivation
+rather than a convention inside one string.
 
 ## The precedent to cite, and it points the right way
 
