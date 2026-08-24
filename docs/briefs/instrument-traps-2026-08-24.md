@@ -1050,9 +1050,11 @@ concluded there was no multiplier, only a step function. **Round 3** checked the
 both wrong, in different ways:
 
 - *"Today pays zero" is backwards.* The **scoped** census forces the whole-corpus parse, and it does
-  so unconditionally, **above** the loop containing the fallback (`tree_bare_census_for_root` at
-  ~7764; the fallback at ~7870). A process whose names all resolve in the scoped census pays the
-  parse in full. The receipt is an ordinary run: `bare_eligible=699`, `tree_census_misses=2` — scoped
+  so unconditionally. Both calls live in one function — `v1_compiler.cli_run`
+  `bare_reference_pull_paths_for_source` — with `tree_bare_census_for_root` at its **head** and the
+  `pool_bare_census` fallback **inside the resolve loop below it**, so the census runs before any
+  name is looked up at all. A process whose names all resolve in the scoped census pays the parse in
+  full. The receipt is an ordinary run: `bare_eligible=699`, `tree_census_misses=2` — scoped
   hits throughout, parse paid anyway.
 - *The memo is real but bounds a different term* — `pool_bare_census`'s own whole-pool symbol index,
   the largest of the three and the only one no successful resolve pays for.
