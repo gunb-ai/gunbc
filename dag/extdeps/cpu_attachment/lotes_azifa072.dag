@@ -22,10 +22,25 @@ import extdeps.hardware { Hardware }
 // unresolved-referent question look answered by the part's arrival, and it is not -- what the
 // four-letter designator EXPANDS to is still unattested. A part number resolves procurement; it
 // does not retroactively expand an initialism.
+// THE AUTHORITY IS THE ROUTE TO THE DRAWING, NOT A COPY OF IT (corrected 2026-08-23). An earlier
+// revision of this module cited a File URI pointing at the vendor's PDF committed into this
+// repository. That is refused by repository policy for EVERY subject, not as a per-subject
+// judgement: product.altra_motherboard.attachment_stack states it on RepositoryCarriageStanding,
+// where the deliberately absent fourth arm is SourceExpressionMayBeCarried, because copying a
+// vendor's PDF, figure, prose or table layout is never a degree of freedom a row may grant itself.
+// The operator's clearance covered CONFIDENTIALITY -- there is no NDA on this part -- which is a
+// different question from whether this repository carries a vendor's expression of its own facts.
+// Both had to be true and only the first was checked.
+//
+// So the drawing is cited the way this repository already cites every document it does not hold:
+// by the route through which it can be obtained, with the document's exact identity carried
+// beside it in azifa072_drawing. That is the same shape as extdeps.vendor.ampere's Customer
+// Connect anchor -- a locator for the route, not for the bytes. A later reader resolves this
+// citation by asking Lotes for GAP-AZIFA072 revision 2, which is precisely how it was obtained.
 data azifa072_drawing_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: File
-    locator: "docs/extdeps/lotes_azifa072/GAP-AZIFA072-P001CCS_2_20250807.pdf"
+    scheme: Https
+    locator: "www.lotes.cc/en/contact.php"
   }
 }
 

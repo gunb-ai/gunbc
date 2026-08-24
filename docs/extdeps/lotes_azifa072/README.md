@@ -26,13 +26,22 @@ below is carriable.
 
 ## Files
 
-- `GAP-AZIFA072-P001CCS_2_20250807.pdf` — the customer drawing as received
 - `lga4926_pcb_pads.csv` — 4,926 PCB pad centres in mm, extracted from sheet 3 (below)
 - `lga4926_pad_array.svg` — the same array rendered, for eyeball verification
 
-The STEP solid is **not** committed (76 MB). It is the assembly
-`AZIFA072_B_20220208 (LGA4926 Socket)` = socket body `AZIFA072_B_220208(LGA4926 SKT)-1`
-+ protective cap `SKT4926 CAP_A_20220107`.
+**Neither the drawing nor the STEP solid is committed, and the drawing's absence is a policy
+decision rather than a size one.** `product.altra_motherboard.attachment_stack` states it on
+`RepositoryCarriageStanding`, whose deliberately absent fourth arm is `SourceExpressionMayBeCarried`:
+copying a vendor's PDF, figure, prose or table layout is refused for **every** subject, not chosen
+per subject. The operator's clearance covered confidentiality — there is no NDA on this part —
+which is a different question from whether this repository carries a vendor's expression of its
+own facts. An earlier revision of this directory committed the PDF; both conditions had to hold
+and only the first had been checked.
+
+What is carried here is what `NormalizedFactsMayBeCarried` admits: the normalized numerical facts,
+extracted and cross-checked. To obtain the source documents, ask Lotes for **GAP-AZIFA072
+revision 2** (the STEP is `AZIFA072_B_20220208 (LGA4926 Socket)` = socket body
+`AZIFA072_B_220208(LGA4926 SKT)-1` + protective cap `SKT4926 CAP_A_20220107`).
 
 ## The land pattern
 
@@ -123,7 +132,8 @@ taken from the symmetric outline will be 5.1 mm short on that edge.
 
 ## Method
 
-Both extractions are reproducible from the committed PDF. The PDF's page content was decompressed,
+Both extractions are reproducible from the drawing named above, which is not committed here (see
+**Files**). The PDF's page content was decompressed,
 its object streams expanded, per-font `ToUnicode` CMaps applied for text, and path operators
 replayed under a tracked CTM for geometry; pads are the 9-vertex closed subpaths of the sheet-3
 upper view, and scale was fixed by fitting the within-row column pitch to 1.000 mm and confirmed

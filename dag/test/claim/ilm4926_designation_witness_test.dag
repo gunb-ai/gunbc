@@ -309,16 +309,24 @@ test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
     && part_referent_is_assigned(c: official)
 }
 
-// THE DRAWING IS MOUNTING GEOMETRY, NOT A LAND PATTERN, and this witness is what stops the
-// attachment-stack progress from being read as land-pattern progress. The retention drawing
-// carries no pad array, so the board land pattern obligation must remain unresolved even though
-// a real dimensioned drawing for this designation now exists.
+// THE RETENTION DRAWING IS MOUNTING GEOMETRY, NOT A LAND PATTERN, and this witness is what stops
+// attachment-stack progress from being read as land-pattern progress. Its second conjunct changed
+// on 2026-08-23 and the reason is worth stating: the land pattern IS now established, so asserting
+// it is unresolved would be asserting a stale fact. What the witness actually defends is that the
+// retention drawing did not establish it -- so it now asserts the land pattern's authority is the
+// SOCKET-BODY drawing and specifically NOT the retention catalogue page. That keeps the original
+// claim exactly (mounting geometry establishes no pad array) and states it against the world that
+// exists rather than the one that did.
 test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
   (match lga4926_retention_drawing_scope {
     MountingAndOutlineGeometry => true
     BoardSidePadArray => false
   })
-    && !standing_is_established(s: attachment_board_land_pattern(a: ilm4926_attachment_standing))
+    && (match attachment_board_land_pattern(a: ilm4926_attachment_standing) {
+      DesignationFactEstablished { value: _, authority: auth } =>
+        auth == azifa072_drawing_authority && auth != lotes_azif0222_product_authority
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    })
 }
 
 // THE TWO ROUTES ARE DISTINGUISHED BY CARRIAGE, NOT BY PREFERENCE. Obtaining the gated Ampere
