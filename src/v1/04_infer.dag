@@ -8,6 +8,11 @@ import std.content_hash {
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
+import v1.compiler.type_head_exposure {
+  TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
+  TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
+  type_declaration_identity_key
+}
 import v1.std.core {
   Node, InternTable,
   intern, intern_str, empty_intern_table,
@@ -1881,6 +1886,37 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   )
 }
 
+fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope) -> InferResult {
+  let result = infer_expr(texpr: element, scope: scope, expected: expected)
+  match expected {
+    Present { value: formal } =>
+      let formal_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+      match element.expr_data {
+        ExprLiteral { value: _ } =>
+          if literal_introduction_type_mismatch(formal: formal, actual_expr: element, scope: scope)
+            || (is_kernel_type(name: formal_name)
+              && kernel_value_declared_type_mismatch(
+                formal: formal,
+                actual: resolved_type(n: result.typed),
+                type_env: scope.type_env,
+                source_indices: scope.type_env.source_indices
+              )) {
+            InferResult {
+              typed: result.typed,
+              diagnostics: concat(result.diagnostics, [type_mismatch_error(
+                expected: node_type_shape(n: formal, source_indices: scope.type_env.source_indices),
+                got: node_type_shape(n: resolved_type(n: result.typed), source_indices: scope.type_env.source_indices),
+                span: element.span,
+                module_name: scope.module_name
+              )])
+            }
+          } else { result }
+        _ => result
+      }
+    Absent => result
+  }
+}
+
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
@@ -1913,6 +1949,40 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
         }
       }
     }
+  }
+}
+
+fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExposure {
+  let source_indices = scope.type_env.source_indices
+  let direct = exposure_view_for_node(n: formal, source_indices: source_indices)
+  match direct {
+    ExposedTypeHead { view: _ } => direct
+    MalformedApplicationHead { cause: _ } => direct
+    _ => {
+      let identity = type_reference_identity(n: formal, source_indices: source_indices)
+      match map_get(scope.type_env.symbol_index.type_head_exposures, identity) {
+        Present { value: exposure } => exposure
+        Absent => direct
+      }
+    }
+  }
+}
+
+fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
+  match exposure {
+    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+    _ => false
+  }
+}
+
+fn literal_introduction_type_mismatch(formal: Node, actual_expr: Node, scope: InferScope) -> Bool {
+  let expected_name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+  match actual_expr.expr_data {
+    ExprLiteral { value: LitInt { value: _ } } => false
+    ExprLiteral { value: _ } =>
+      if is_kernel_type(name: expected_name) { false }
+      else { exposure_is_application(exposure: expected_type_head_exposure(formal: formal, scope: scope)) }
+    _ => false
   }
 }
 
@@ -2388,7 +2458,8 @@ fn direct_call_structured_application_mismatch_diags(
       match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
+          if literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
+            || structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             let actual_raw = resolved_type(n: actual_expr)
@@ -4614,7 +4685,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           } else { none }
         Absent => none
       }
-      let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope, expected: elem_expected))
+      let elem_results = elements |> map(e => infer_list_literal_element(element: e, expected: elem_expected, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {
@@ -8973,6 +9044,87 @@ fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: M
   )
 }
 
+fn node_declaration_file(n: Node) -> String {
+  match n.ident_span {
+    Present { value: sp } => sp.file
+    Absent => ""
+  }
+}
+
+fn node_declaration_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  type_declaration_identity_key(
+    decl_file: node_declaration_file(n: n),
+    declared_name: authored_name_at(source_indices: source_indices, node: n))
+}
+
+fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => node_declaration_identity(n: rt, source_indices: source_indices)
+    _ => node_declaration_identity(n: n, source_indices: source_indices)
+  }
+}
+
+fn application_argument_identities(arguments: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  arguments |> map(ch => type_reference_identity(n: child_type_node(ch: ch), source_indices: source_indices))
+}
+
+fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
+  let identity = node_declaration_identity(n: n, source_indices: source_indices)
+  match identity == "::" {
+    true => StuckTypeHead { cause: "declaration identity unavailable" }
+    false => match n.type_annotation != none || (n.properties |> count) > 0 {
+      true => OpaqueTypeHead { type_identity: identity }
+      false => match n.connective {
+        Arrow => ExposedTypeHead { view: CallableHead { type_identity: identity } }
+        Disj => ExposedTypeHead { view: CoproductHead { type_identity: identity } }
+        Conj => ExposedTypeHead { view: ProductHead { type_identity: identity } }
+        NoConnective => match (n.children |> count) > 0 {
+          true => {
+            let constructor_name = authored_name_at(source_indices: source_indices, node: n)
+            match constructor_name == "" {
+              true => MalformedApplicationHead { cause: "application has no constructor identity" }
+              false => ExposedTypeHead {
+                view: ApplicationHead {
+                  constructor_identity: type_declaration_identity_key(
+                    decl_file: node_declaration_file(n: n), declared_name: constructor_name),
+                  argument_identities: application_argument_identities(arguments: n.children, source_indices: source_indices)
+                }
+              }
+            }
+          }
+          false => {
+            let name = authored_name_at(source_indices: source_indices, node: n)
+            match is_kernel_type(name: name) {
+              true => ExposedTypeHead { view: KernelScalarHead { type_identity: identity } }
+              false => OpaqueTypeHead { type_identity: identity }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn declaration_head_exposure(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
+  match item.inferred {
+    Present { value: Resolved { node: target } } =>
+      exposure_view_for_node(n: target, source_indices: source_indices)
+    _ => exposure_view_for_node(n: item, source_indices: source_indices)
+  }
+}
+
+fn type_head_exposure_census(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeHeadExposure> {
+  fold(module_nodes, init: empty_map(), f: (acc, module_node) =>
+    fold(module_items(n: module_node), init: acc, f: (by_identity, item) => {
+      let identity = node_declaration_identity(n: item, source_indices: source_indices)
+      match identity == "::" {
+        true => by_identity
+        false => map_insert(by_identity, identity, declaration_head_exposure(item: item, source_indices: source_indices))
+      }
+    })
+  )
+}
+
 fn transparent_alias_representative(index: SymbolIndex, name: String) -> String {
   match map_get(index.transparent_alias_rep, name) {
     Present { value: rep } => rep
@@ -9043,7 +9195,8 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     global_bare: folded.global_bare,
     services: folded.services,
     transparent_alias_rep: transparent_alias_representatives(
-      module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts)
+      module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
+    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices)
   }
 }
 
@@ -9258,7 +9411,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep }
+  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -9280,7 +9433,8 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   let services2 = map_merge(tree.services, closure.services)
   SymbolIndex {
     entries: closure.entries, global_bare: global2, services: services2,
-    transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep)
+    transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
+    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures)
   }
 }
 
@@ -9318,7 +9472,8 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   let entries2 = map_merge(fill.entries, closure.entries)
   SymbolIndex {
     entries: entries2, global_bare: closure.global_bare, services: closure.services,
-    transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep)
+    transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
+    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures)
   }
 }
 

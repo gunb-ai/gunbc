@@ -46,7 +46,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -1490,8 +1490,8 @@ fn java_grammar() -> ParseGrammar {
   ModeledGrammar { root: java_grammar_root() }
 }
 
-fn java_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn java_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
@@ -1588,8 +1588,8 @@ fn java_method_add_lex_token_symbol(sym: Symbol) -> Bool {
     sym == ^java_token_semicolon
 }
 
-fn java_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn java_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||

@@ -2618,39 +2618,74 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
                 .into_owned()
         })
         .collect();
-    let index = build_module_path_index(&abs_roots);
     let entry_root = workspace.join(roots.entry().repo_relative_path());
-    let mut entry_paths = Vec::new();
-    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+    regen_input_sources_over_roots(&entry_root, &abs_roots)
+}
 
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new();
+/// `regen_input_sources` with its roots supplied rather than derived from the
+/// repository layout — the seam the regression test drives with a controlled
+/// fixture. The production entry point above is the only caller that computes
+/// the roots; everything below this line is root-agnostic, so the test exercises
+/// THE SAME code path production does rather than a re-implementation of it.
+fn regen_input_sources_over_roots(
+    entry_root: &Path,
+    abs_roots: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(entry_root, &mut entry_paths)?;
+
+    // Seed: every `.dag` under the entry root that declares a module path.
+    let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
     for path in &entry_paths {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(rel_path) = index.get(&module_path) {
-                let file_path = workspace.join(rel_path);
-                let file_content = std::fs::read_to_string(&file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
-                queue.push(file_content);
-            }
+        if extract_module_path(&content).is_some() {
+            seeds.push(Rc::new(v1_compiler_compile::SourceFile {
+                path: rel,
+                content,
+            }));
         }
     }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
+
+    // Grow the closure through `extend_sources_to_both_closure_fixpoint` — import
+    // edges PLUS dotted-reference PLUS bare-reference modules, to a joint fixpoint —
+    // rather than the import-only walk this function used to run.
+    //
+    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the
+    // SAME dependency edge. A walk that follows only imports is therefore not a
+    // narrower closure — it is a closure that goes BLIND the moment a module spells
+    // a dependency any other way. That function's own doc-comment calls itself "The
+    // ONE closure-extension authority" and names the loaders that call it: "Both
+    // source loaders — the per-entry witness loader and the affected-set
+    // compile-clean gate loader". There are THREE. This one was the third, and it
+    // is the one whose subject feeds regeneration of the seed itself.
+    //
+    // So the single-authority claim was true of its own enumeration and false of
+    // the concept it named — the fork survived precisely because the prose asserting
+    // its absence was load-bearing and never re-audited against the call graph.
+    //
+    // The same class was already repaired once, for the gate loader, which had run
+    // only `extend_with_reference_closure` and dropped providers reached purely by
+    // bare name (ARM1 ref-only = 3 unresolved-type diags; +bare = 0).
+    //
+    // LATENT HERE, FATAL NEXT DOOR. On this branch every seed dependency is still
+    // spelled as an import, so the import-only walk happens to reach everything and
+    // the defect cannot be observed from the corpus alone — which is why it has sat
+    // here unnoticed. On `integration/namespace-cut`, where the `dag/` imports are
+    // deleted, the identical code admits `src/v1` and NOTHING else: the queue drains
+    // on its first pass and regen refuses with `unresolved type 'std.types.SourceSpan'`
+    // while `std.types` sits present and correct in the authority. The regression
+    // test below fixes the behaviour independently of either corpus.
+    let mei = build_multi_entry_index(abs_roots);
+    let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+
+    let mut result: Vec<(String, String)> = closure
+        .into_iter()
+        .map(|s| (s.path.clone(), s.content.clone()))
+        .collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    result.dedup_by(|a, b| a.0 == b.0);
     Ok(result)
 }
 
@@ -5511,6 +5546,64 @@ mod compile_clean_via_index_verdict_equivalence {
     }
 
     /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    /// CAUSAL control for the regen-closure de-fork — the companion to
+    /// `regen_subject_admits_a_provider_reached_only_by_reference`.
+    ///
+    /// That test proves the provider ENTERS the subject. It does not prove the
+    /// provider enters BECAUSE OF THE REFERENCE, and those are different claims:
+    /// if the closure admitted every module in the wider roots for some unrelated
+    /// reason, the admitting test would still pass while the reference edge did no
+    /// work at all. That is the both-arms-green failure one level up — a test whose
+    /// subject is present for reasons the test does not control.
+    ///
+    /// So this fixture is byte-identical to that one EXCEPT that the seed does not
+    /// name the provider. The provider must then be ABSENT from the subject. Taken
+    /// together the pair establishes the edge is causal: reference present ->
+    /// admitted, reference absent -> not admitted, everything else held fixed.
+    #[test]
+    fn regen_subject_omits_a_provider_nothing_references() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-causal-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        // The ONLY difference from the admitting test: no reference to the provider.
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            !admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "an unreferenced provider must NOT be admitted -- if it is, the closure is \
+             widening the subject rather than following edges, and the admitting test \
+             proves nothing about causality; admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn planted_unresolved_import_agrees_red() {
         let corpus = Corpus::new(
@@ -5531,6 +5624,80 @@ mod compile_clean_via_index_verdict_equivalence {
     /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
     /// scoped compile-clean closure must surface through whole-tree census fill —
     /// compiling only the affected entry must not hide annotation debt elsewhere.
+    /// DISCRIMINATING RED for the regen-closure de-fork.
+    ///
+    /// A seed module that reaches its provider by REFERENCE ONLY -- no `import`
+    /// line anywhere -- must still have that provider admitted to the regen
+    /// subject. Before the de-fork, `regen_input_sources` grew its closure with
+    /// `extract_import_paths` alone, so this fixture's provider was dropped.
+    ///
+    /// THE FIXTURE'S SHAPE IS THE WHOLE CONTROL, and an earlier version of this
+    /// test got it wrong in a way worth recording: it wrote both modules into ONE
+    /// directory and passed that directory as the entry root. `collect_dag_files_result`
+    /// then picked the provider up as a SEED, so the closure was never asked to
+    /// find anything and the test passed against the old import-only walk too --
+    /// green in both arms, therefore evidence of nothing. The provider must live
+    /// OUTSIDE the entry root and inside the wider root set, which is exactly
+    /// production's shape: entry root `src/v1`, providers under `dag/`.
+    #[test]
+    fn regen_subject_admits_a_provider_reached_only_by_reference() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-defork-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        // Preconditions, asserted rather than assumed -- if a later edit adds an
+        // import to the fixture, or moves the provider under the entry root, this
+        // test would keep passing while testing nothing (which is how its first
+        // version failed).
+        let seed_text = fs::read_to_string(entry_root.join("seed.dag")).expect("read seed");
+        assert!(
+            super::extract_import_paths(&seed_text).is_empty(),
+            "fixture precondition: the seed reaches its provider by reference only"
+        );
+        let mut entry_files = Vec::new();
+        super::collect_dag_files_result(&entry_root, &mut entry_files).expect("walk entry root");
+        assert_eq!(
+            entry_files.len(),
+            1,
+            "fixture precondition: the provider must NOT be reachable as a seed"
+        );
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "a provider reached only by reference must be admitted to the regen subject; \
+             admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
