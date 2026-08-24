@@ -8,6 +8,39 @@ the join over them. It is a measurement, not a repair and not a gate: no count h
 as a merge-blocking literal (DESIGN.md §5 — a figure copied from the current tree is not an
 oracle).
 
+## The sizing rule this cohort establishes
+
+**Read this before sizing any emitter root, from this board or from a future one.**
+
+- **Size by DISTINCT SITES, never by manifestations.** A manifestation is one rustc diagnostic; a
+  site is one thing a repair edits. The ratio between them is not 1 and is not constant.
+- **Never sum per-module figures.** Module closures overlap almost completely, so a total added
+  across boards counts one emitted defect once per door it is visible through. Measured here, that
+  sum overstates by **7.0x** on the shim-free view — and the multiplier is a property of how many
+  entries someone happened to board, so it rises with no change to the tree.
+- **Never extrapolate one module across sixteen.** `00_compile` boards 189 distinct sites and not
+  one of them is outside `03_ingest`'s set; `discovery_enumeration` boards two. Neither is a
+  sixteenth of anything.
+
+The falsifying example is two rows of this board's own weighting, and it is the whole argument:
+
+| root | distinct sites | manifestations | diagnostics per site |
+|---|---:|---:|---:|
+| `PRIMITIVE_REPR_FORK` | **4** | 104 | 26.0 |
+| `ABSENT_CLONE_BOUND` | **22** | 129 | 5.9 |
+
+Ranked by diagnostics these two are comparable and would be staffed comparably. Ranked by what a
+repair actually edits they are five-fold apart, and the smaller one is the one to take first. So
+the inflation above is not a constant anyone can divide out afterwards: **it varies per root, and
+it varies in the direction that reverses the ranking.**
+
+**Scope of the rule.** It is a *planning* rule — it decides which root you pick and how you rank
+roots against each other. It does not reach a lane already on one traced root verifying with a
+two-arm before/after measurement, because such a measurement is unit-agnostic: whatever it counts,
+it counts the same way on both arms. Re-quoting a repair already past planning in distinct sites
+would change no decision it is still making. The exception is a lane whose acceptance test is an
+exact count, where the unit still decides something (`eager-lark-892`'s is one).
+
 ## Subject, ref, provenance
 
 | | |
