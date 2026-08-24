@@ -5197,7 +5197,22 @@ data resolved_call_target_identity_note: String = "A call is resolved once, wher
 fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
     FuncSigResolved { sig: _ } =>
-      match func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+      resolved_call_target_from_declaration_lookup(
+        declaration_lookup: func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: func_name),
+        func_name: func_name
+      )
+    FuncSigUnresolved =>
+      if infer_builtin_call_type(name: func_name) != none {
+        RuntimePrimitiveCall { primitive_name: func_name }
+      } else {
+        CallableTargetUndetermined
+      }
+    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
+  }
+}
+
+fn resolved_call_target_from_declaration_lookup(declaration_lookup: ConstructorDeclarationLookup, func_name: String) -> CallTargetIdentity {
+  match declaration_lookup {
         ExactConstructorDeclaration { identity: identity, declaration: _ } =>
           resolved_declaration_call_target(owner_module_path: identity.owner_module_path, decl_name: identity.decl_name, func_name: func_name)
         AdmissionBearingDeclarationUnavailable { identity: identity, cause: _ } =>
@@ -5208,14 +5223,6 @@ fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: 
           } else {
             CallableTargetUndetermined
           }
-      }
-    FuncSigUnresolved =>
-      if infer_builtin_call_type(name: func_name) != none {
-        RuntimePrimitiveCall { primitive_name: func_name }
-      } else {
-        CallableTargetUndetermined
-      }
-    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
   }
 }
 

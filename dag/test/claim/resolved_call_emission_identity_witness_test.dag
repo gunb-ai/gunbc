@@ -1,6 +1,12 @@
 module test.claim.resolved_call_emission_identity_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v1.std.core { SourceDeclarationCall }
+import v1.compiler.infer { resolved_call_target_from_declaration_lookup }
+import v1.compiler.infer_lookup {
+  ExactDeclarationIdentity, DeclarationNotIndexedAtQualifiedName,
+  AdmissionBearingDeclarationUnavailable
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -58,4 +64,14 @@ fn w_product_data_call_initializer_reaches_typed_call_emission() -> Bool {
     ["make_probe_identity()"],
     ["unsupported mock expression"]
   )
+}
+
+fn w_unavailable_declaration_retains_exact_call_identity() -> Bool {
+  resolved_call_target_from_declaration_lookup(
+    declaration_lookup: AdmissionBearingDeclarationUnavailable {
+      identity: ExactDeclarationIdentity { owner_module_path: "test.fixture.owner", decl_name: "declared_call" },
+      cause: DeclarationNotIndexedAtQualifiedName { qualified_name: "test.fixture.owner.declared_call" }
+    },
+    func_name: "declared_call"
+  ) == SourceDeclarationCall { owner_module_path: "test.fixture.owner", decl_name: "declared_call" }
 }
