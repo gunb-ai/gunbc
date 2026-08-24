@@ -291,3 +291,45 @@ before it is enrolled: **can this row go red?** Not *does it pass* — DESIGN §
 check whose RED is unauthorable is a decoration, worse than absent because it is cited as
 coverage. Trap 12 is what that rule looks like when the unauthorable-RED is caused not by the
 corpus but by the marshalling in the assertion's own read path.
+
+---
+
+## Trap 11a — anchoring one term of a disjunction leaves the disjunction unanchored
+
+Same session, ~30 minutes after writing trap 11 and its correction.
+
+Having established that `grep -q MARKER` matches ctrl-build's echo of my own command, I re-armed
+the wait as:
+
+```sh
+until grep -qx 'PHASE_RED_DONE' out.txt \
+   || grep -q 'Remote run completed\|PATTERN_MISS\|NO_BINARY' out.txt
+do sleep 20; done
+```
+
+The success marker is anchored. The **failure sentinels are not** — and `PATTERN_MISS` and
+`NO_BINARY` are strings *in the script*, so they appear in the echoed header exactly like the
+marker did. The wait returned immediately, against a dispatch that was still building.
+
+**Why this is worth a numbered entry rather than a footnote to trap 11.** I did not forget the
+lesson; I applied it to the term I was thinking about. The fix in trap 11 is phrased as a fact
+about *the marker* — anchor the marker to a whole line — and I implemented exactly that
+sentence. The disjunction's other arms were never re-examined, because they are not "the
+marker", they are the error cases, and the correction as written did not reach them.
+
+That is the general failure of a remedy stated at the wrong grain: **a rule about one term does
+not survive being embedded in a compound predicate.** The rule that does survive is a rule about
+the *channel*: on a stream that carries the request alongside the response, **every** literal you
+match must have a shape the request cannot have — success markers, failure sentinels, error
+strings, all of them. Not the one you happened to be reasoning about.
+
+Corrected form, with every arm anchored:
+
+```sh
+until grep -qxE 'PHASE_RED_DONE|PATTERN_MISS|NO_BINARY' out.txt; do sleep 20; done
+```
+
+Cost this time: one wasted read and a wrong "still in progress" reading, caught within a minute
+because I checked for the markers instead of trusting the wait's return. Had I reported off it,
+I would have said a mutation probe had not started when it had — the inverse of trap 11's
+failure, from the identical cause.
