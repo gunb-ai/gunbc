@@ -17462,6 +17462,10 @@ pub fn build_symbol_index_census_raw_nodes(
                 source_indices.clone(),
                 corpus_item_counts.clone(),
             ),
+            type_head_exposures: type_head_exposure_census(
+                module_nodes.clone(),
+                source_indices.clone(),
+            ),
         })
     }
 }
@@ -18084,6 +18088,7 @@ pub fn census_with_resolved_fn_sigs(
             global_bare: global2.clone(),
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
+            type_head_exposures: index.type_head_exposures.clone(),
         })
     }
 }
@@ -18140,6 +18145,10 @@ pub fn symbol_index_with_bare_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 tree.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
+            ),
+            type_head_exposures: v1_rt::rc_map_merge(
+                tree.type_head_exposures.clone(),
+                closure.type_head_exposures.clone(),
             ),
         })
     }
@@ -18221,6 +18230,10 @@ pub fn symbol_index_with_qualified_fill(
             transparent_alias_rep: v1_rt::rc_map_merge(
                 fill.transparent_alias_rep.clone(),
                 closure.transparent_alias_rep.clone(),
+            ),
+            type_head_exposures: v1_rt::rc_map_merge(
+                fill.type_head_exposures.clone(),
+                closure.type_head_exposures.clone(),
             ),
         })
     }
