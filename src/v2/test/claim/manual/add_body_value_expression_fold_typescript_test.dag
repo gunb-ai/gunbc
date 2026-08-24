@@ -1,6 +1,5 @@
 module v2.test.manual.add_body_value_expression_fold_typescript
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn add_body_fold_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
@@ -62,7 +61,7 @@ fn add_body_fold_target_model_minus_catalog() -> v2.std.compilers.target_model.T
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_minus()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
@@ -76,7 +75,7 @@ fn add_body_fold_target_model_missing_operator_catalog() -> v2.std.compilers.tar
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_empty()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),

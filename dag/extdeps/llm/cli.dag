@@ -1,7 +1,5 @@
 module extdeps.llm.cli
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -288,7 +286,7 @@ fn shape_codex_exec_argv_for_program(
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
-    env_program: "env",
+    env_program: env_path_resolved_program as String,
     program: program,
     codex_home: codex_home,
     cwd: cwd,

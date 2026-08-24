@@ -1,6 +1,5 @@
 module test.claim.memory_provisioning_witness_test
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data gb: std.nat.Nat = 1000000000
@@ -13,8 +12,9 @@ fn rdimm(part: std.types.NonEmptyStr, capacity: std.nat.Nat) -> extdeps.memory.t
     capacity_bytes: std.measure.byte_size(count: capacity),
     data_rate_mts: 3200,
     ecc: true,
-    buffering: extdeps.memory.types.Registered,
-    chip_width: std.measure.bit_width(count: 4),
+    buffering: Registered,
+    die_stacking: MonolithicDie,
+    chip_width: bit_width(count: 4),
     rank_count: 2,
   }
 }
@@ -36,11 +36,11 @@ fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
     data_rate_mts: 4800,
     ecc: true,
     buffering: Registered,
+    die_stacking: MonolithicDie,
     chip_width: bit_width(count: 4),
     rank_count: 2,
   }
 }
-
 
 // ---------------------------------------------------------------------------
 // The surveyed market: the ratios are READ from cited rows, not asserted.
@@ -159,7 +159,6 @@ test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // EVIDENCE POLARITY IS DERIVED, NOT DECLARED.
@@ -775,7 +774,6 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
   }
 }
 
-
 // GitHub's x64 sizes are unreadable for the same reason its arm64 sizes are:
 // the two-vCPU/seven-GB standard runner makes the ratio non-integral. Asserted
 // separately from the arm row because they are different surveyed populations
@@ -1039,7 +1037,6 @@ test fn the_population_names_its_overshoot() -> Bool {
     PopulationDerivationRefused { board_label, cause } => false
   }
 }
-
 
 // RED CONTROL for the labelling seam (review 53633). A sample mixing "GB" and
 // "GiB" rows has no single ratio, and the census REFUSES rather than adopting

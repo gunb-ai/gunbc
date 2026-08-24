@@ -1,7 +1,5 @@
 module extdeps.standards.rfc_8118
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -428,4 +426,21 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
   }
 }
 
-data project_navigable_uri_fragment_decompose_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: extdeps.uri Uri decomposes authority, path, query, and fragment as typed fields. Until then Uri.locator compresses all wire parts into one NonEmptyStr, so whether a base already carries a fragment is not a modeled question — only a string scan. project_navigable_uri refuses BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would synthesize a second # (RFC")
+// THE MODELING GAP THIS ROW STANDS ON. `Uri.locator` compresses authority, path, query
+// and fragment into one NonEmptyStr, so "does this base already carry a fragment" is not
+// a modeled question here — only a string scan. project_navigable_uri therefore refuses
+// BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would
+// synthesize a second `#`.
+//
+// The trigger is the DISAPPEARANCE of that compressed field rather than the arrival of
+// the decomposed ones, and the two are the same event stated from the side that is
+// verifiable today: `extdeps.uri` `Uri.locator` exists now and cannot survive a
+// decomposition into typed authority/path/query/fragment fields. Naming the fields that
+// would arrive would be a forward reference to names nobody has chosen.
+data project_navigable_uri_fragment_decompose_dissolve_on: DissolutionCondition = retires_dissolution(
+  ref: decl_field_ref(
+    module_path: "extdeps.uri",
+    decl_name: "Uri",
+    field_name: "locator",
+  )
+)

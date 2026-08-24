@@ -1,6 +1,5 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-
 data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes.\\n\\nTHE SERVE BINARY LEFT THIS ROSTER AND ITS ABSENCE IS NOW ASSERTED, which is the substantive half of the 15-to-16 move. This branch gives apply an ensure-serve-binary step, so the binary is something the deployment INSTALLS rather than a precondition it demands — and a roster that still required it would refuse every first apply to a host that does not yet have one, which is the exact bootstrap this change exists to perform. dirname and chmod entered for the same reason: they are what installing it costs.\\n\\nThe negative conjunct is the one that would catch the regression. Re-adding the binary as a required executable keeps the count at 16 by displacing something else, so the literal alone cannot see it; asserting the binary is NOT required states the precondition/product distinction directly."
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
@@ -195,6 +194,13 @@ test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
   }
 }
 
+// THE CHMOD LITERAL MOVED FROM /usr/bin TO /bin AND THAT IS A REPAIR, NOT A LOOSENING. This roster
+// and the install step that execs chmod each spelled their own absolute path, and they disagreed:
+// the roster demanded /usr/bin/chmod while extdeps.tools.chmod -- the tool's authority, and the
+// path this repository actually recorded for these hosts -- says /bin/chmod. The preflight was
+// therefore gating a path no sanctioned caller runs, and it passed only because usrmerge makes
+// both resolve. Both sites now read the authority, so this literal is the one independent
+// statement of the value left, and it reds if that authority moves without anyone looking here.
 test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let required = dashboard_required_target_executables(instance: lab)
@@ -203,13 +209,13 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     platform_path => any(required, path => path == platform_path),
   )
     && count(required) == 16
-    && any(required, path => path == ("/usr/bin/sh" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/tee" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/env" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/install" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/ln" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/dirname" as std.types.FilePath))
-    && any(required, path => path == ("/usr/bin/chmod" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/sh" as FilePath))
+    && any(required, path => path == ("/usr/bin/tee" as FilePath))
+    && any(required, path => path == ("/usr/bin/env" as FilePath))
+    && any(required, path => path == ("/usr/bin/install" as FilePath))
+    && any(required, path => path == ("/usr/bin/ln" as FilePath))
+    && any(required, path => path == ("/usr/bin/dirname" as FilePath))
+    && any(required, path => path == ("/bin/chmod" as FilePath))
     && !any(required, path => path == lab.serve_binary)
     && !any(
       required,

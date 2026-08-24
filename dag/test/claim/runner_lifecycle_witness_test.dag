@@ -1,6 +1,5 @@
 module test.claim.runner_lifecycle
 
-
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
     && runner_slot_add_step_index(step: AddStepMemoryCaps) == 8
@@ -50,11 +49,15 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
     }
 }
 
-test fn witness_srv3_srv4_committed_width_six() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 6
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
+// RENAMED 2026-08-23: the width is 21, not six. The two hosts still agree with each other and with
+// gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
+// per-host allocation rows and the function that derives width have not drifted apart. Naming the
+// number in the test's own identity meant the name went stale the moment the fleet's memory did.
+test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
+  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
+    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
@@ -120,4 +123,36 @@ test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bo
   !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 5))
+}
+
+// THE COLLISION ROW. Before the suffix fork was dissolved, runner_incarnation enumerated indices 1
+// through 8 and returned the literal "00" for everything above, while the other four sites derived
+// the pad. So at index 9 the fleet had two answers -- srv3-09 and srv3-00 -- and worse, EVERY index
+// above 8 produced that same "00", meaning two distinct slots would contend for one registration in
+// the GitHub runner namespace. This row goes red against the enumerator and green against the
+// derived rule, and it is written at 9 because that is the first index where they differed.
+test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_range() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
+  (runner_slot_incarnation(host: operator_host_srv3, slot_index: 9, unit_active: true).registration_name as String)
+    == runner_slot_instance_name(slot: slot)
+    && runner_slot_instance_name(slot: slot) == "srv3-09"
+}
+
+// NON-COLLISION, STATED AS THE PROPERTY RATHER THAN AS TWO SAMPLES. Two different indices above the
+// old enumerated range must not share a name. Under the enumerator both were "00"; under the derived
+// rule they differ. Without this row the one above is satisfied by any function that happens to
+// return "srv3-09" at 9, including another bucket with one more arm.
+test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bool {
+  runner_slot_index_suffix(index: 9) != runner_slot_index_suffix(index: 10)
+    && runner_slot_index_suffix(index: 10) != runner_slot_index_suffix(index: 11)
+    && runner_slot_index_suffix(index: 9) == "09"
+    && runner_slot_index_suffix(index: 10) == "10"
+}
+
+// THE UNCHANGED-BELOW-THE-RANGE CONTROL. The consolidation must not move any name the fleet actually
+// uses today, so the committed range keeps its existing spelling.
+test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool {
+  runner_slot_index_suffix(index: 1) == "01"
+    && runner_slot_index_suffix(index: 5) == "05"
+    && runner_slot_index_suffix(index: 6) == "06"
 }

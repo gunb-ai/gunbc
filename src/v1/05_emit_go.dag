@@ -328,9 +328,9 @@ fn emit_go_typed_expr(texpr: v1.std.core.Node, registry: Map<String, v1.compiler
     render_pattern: pat => v1.compiler.emit.emit_unified_pattern(pattern: pat, target: v1.compiler.artifact.Go, source_indices: scope.type_env.source_indices))
 }
 
-fn emit_go_transport_body(transport: v1.std.core.Node, op_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>, depth: Int) -> String {
-  v1.compiler.emit.emit_unified_transport_dispatch(
-    transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: v1.compiler.artifact.Go,
+fn emit_go_transport_body(bound: BoundOperation, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+  emit_unified_transport_dispatch(
+    bound: bound, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
     render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
@@ -341,8 +341,8 @@ fn emit_go_service_def(item: v1.std.core.Node, registry: Map<String, v1.compiler
     item: item, target: v1.compiler.artifact.Go, registry: registry, env: env,
     render_service_fields: (name, transport, ops, si) =>
       emit_go_service_struct(name: name, fallback_transport: transport, op_children: ops, source_indices: si),
-    render_transport_body: (transport, op_name, si, depth) =>
-      emit_go_transport_body(transport: transport, op_name: op_name, source_indices: si, depth: depth))
+    render_transport_body: (bound, op_name, si, depth) =>
+      emit_go_transport_body(bound: bound, op_name: op_name, source_indices: si, depth: depth))
 }
 
 fn emit_go_service_struct(name: String, fallback_transport: v1.std.core.Node, op_children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {

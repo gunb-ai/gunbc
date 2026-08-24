@@ -1,0 +1,115 @@
+module test.claim.fabric_envelope_witness_test
+
+fn shape_of(threads: Int, arch: Architecture?, bytes: Int) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: threads) },
+    envelope: cpu_memory_envelope(
+      min_threads: hardware_thread_count(count: threads),
+      architecture: arch,
+      min_bytes: byte_size(bytes),
+    ),
+  }
+}
+
+fn eight_gib() -> Int { 8589934592 }
+fn six_gib() -> Int { 6442450944 }
+
+// THE REPORTED WRONG ANSWER, EXECUTED.
+//
+// An 8 GiB x64 workload was declared FUNGIBLE with a 6 GiB arm offer whenever thread counts and
+// the textual capability ref matched, because offer_covers_shape compared threads and nothing
+// else. That is a routing decision, not a missing annotation: the broker sends work to a machine
+// that cannot run it and nothing downstream refuses, because fungibility already said yes.
+//
+// The assertion names BOTH failing axes rather than merely that it refuses -- a fold that caught
+// only memory would pass a "does it refuse" check while still routing arm work to an x64 request.
+test fn an_eight_gib_x64_need_is_not_covered_by_a_six_gib_arm_offer() -> Bool {
+  let needed = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: eight_gib())
+  let offered = shape_of(threads: 2, arch: Present { value: Aarch64 }, bytes: six_gib())
+  let unmet = unmet_shape_axes(offered: offered, needed: needed)
+  !offer_covers_shape(offered: offered, needed: needed)
+    && (unmet |> count) == 2
+    && any(unmet, a => match a {
+         MemoryNotCovered { required: _, offered: _ } => true
+         ThreadsNotCovered { required: _, offered: _ } => false
+         ArchitectureMismatch { required: _, offered: _ } => false
+         MemoryNotOffered { required: _ } => false
+         ArchitectureNotOffered { required: _ } => false
+       })
+    && any(unmet, a => match a {
+         ArchitectureMismatch { required: _, offered: _ } => true
+         ThreadsNotCovered { required: _, offered: _ } => false
+         MemoryNotCovered { required: _, offered: _ } => false
+         MemoryNotOffered { required: _ } => false
+         ArchitectureNotOffered { required: _ } => false
+       })
+}
+
+// THE POSITIVE CONTROL: A BIGGER, MATCHING-ARCH OFFER STILL COVERS.
+// Without it the witness above would pass against a fold that refuses everything.
+test fn a_larger_same_arch_offer_still_covers() -> Bool {
+  let needed = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
+  let offered = shape_of(threads: 8, arch: Present { value: X86_64 }, bytes: eight_gib())
+  offer_covers_shape(offered: offered, needed: needed)
+    && (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
+}
+
+// ARCHITECTURE IS EQUALITY, NOT ORDER, AND THE ASYMMETRY PROVES IT.
+//
+// A bigger arm machine does not "cover" an x64 need in the way more memory covers less memory: a
+// binary built for one does not run on the other. If architecture were folded into an at-least
+// comparison this witness goes green in one direction and the model silently starts routing across
+// ABIs.
+test fn a_larger_arm_offer_does_not_cover_an_x64_need() -> Bool {
+  let needed = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
+  let offered = shape_of(threads: 64, arch: Present { value: Aarch64 }, bytes: eight_gib())
+  !offer_covers_shape(offered: offered, needed: needed)
+}
+
+// AN UNSTATED AXIS IS SKIPPED, NOT REPORTED AS CHECKED.
+//
+// Work that states no memory requirement must not be refused by an offer that states none either,
+// and must not be recorded as having had memory verified. Unstated is nothing-to-check; treating
+// it as satisfied-by-everything is the same conflation, one step further along.
+test fn an_unstated_requirement_neither_refuses_nor_claims_a_check() -> Bool {
+  let needed = Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 2) },
+    envelope: unstated_envelope(),
+  }
+  let offered = Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 2) },
+    envelope: unstated_envelope(),
+  }
+  offer_covers_shape(offered: offered, needed: needed)
+    && (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
+}
+
+// THE ENVELOPE REACHES THE WORK IDENTITY, WHICH IS THE HALF A FUNGIBILITY FIX ALONE WOULD MISS.
+//
+// shape_material hand-renders fields, so a new axis is included only if someone remembers. Two
+// works differing ONLY in memory must not derive the same key: fungibility compares the envelope,
+// so if identity ignored it, deduplication and matching would disagree about whether two things
+// are the same work -- exactly the divergence that module's own note records for threads.
+test fn two_shapes_differing_only_in_memory_do_not_share_material() -> Bool {
+  let small = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
+  let large = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: eight_gib())
+  shape_material(shape: small) != shape_material(shape: large)
+}
+
+test fn two_shapes_differing_only_in_architecture_do_not_share_material() -> Bool {
+  let x64 = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
+  let arm = shape_of(threads: 2, arch: Present { value: Aarch64 }, bytes: six_gib())
+  shape_material(shape: x64) != shape_material(shape: arm)
+}
+
+// AN UNSTATED AXIS AND A STATED-ZERO AXIS ARE DIFFERENT WORKS.
+// The material renders absence as its own token rather than as an empty string, so the two cannot
+// collapse onto one identity.
+test fn unstated_and_stated_do_not_collapse_in_the_material() -> Bool {
+  let unstated = Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 2) },
+    envelope: unstated_envelope(),
+  }
+  let stated = shape_of(threads: 2, arch: none, bytes: 0)
+  shape_material(shape: unstated) != shape_material(shape: stated)
+}

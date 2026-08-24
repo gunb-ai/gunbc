@@ -1,6 +1,5 @@
 module extdeps.tools.sed
 
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -24,4 +23,17 @@ service sed.Sed {
       nonzero => String "sed -i failed"
     }
   }
+}
+
+// The same in-place substitution the service operation above declares, addressed as an ArgvCommand
+// for the callers that run a sequence of commands rather than one modeled operation. Both spell
+// -i in exactly one place: here.
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data sed_program: NonEmptyStr = "sed"
+
+fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
+  argv_command(program: sed_program, arguments: ["-i", expression, path])
 }

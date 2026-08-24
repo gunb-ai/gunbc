@@ -1,19 +1,10 @@
 module gunbc.fleet_container
 
-
-type CpuRequirement { min_threads: std.measure.HardwareThreadCount, architecture: extdeps.toolchain.types.Architecture? }
-type GpuRequirement { min_vram: std.measure.ByteSize, runtimes: List<extdeps.gpu.types.GpuRuntime> }
-type MemoryRequirement { min_bytes: std.measure.ByteSize }
-type StorageRequirement { min_bytes: std.measure.ByteSize, persistence: extdeps.storage.types.PersistenceKind }
-type NetworkRequirement { egress: product.network_topology.NetworkEgressClass?, ambient_allowed: Bool }
-
-type ResourceEnvelope {
-  cpu: CpuRequirement?
-  gpu: GpuRequirement?
-  memory: MemoryRequirement?
-  storage: StorageRequirement?
-  network: NetworkRequirement?
-}
+// THE REQUIREMENT VOCABULARY MOVED TO product.fabric.envelope AND IS CONSUMED HERE.
+//
+// These are machine questions, not container questions -- a bare-metal host and a rented VM answer
+// them identically -- so owning them inside a model of our fleet's containers put a general fact in
+// a specific home. Consumed, not redeclared (DESIGN section 3).
 
 type ContainerBaseline
   = ContainerBaselineMeasured { idle: ResourceEnvelope }
@@ -40,7 +31,6 @@ data gha_runner_container: FleetContainerType = GhaRunnerContainer {
 data agent_session_container: FleetContainerType = AgentSessionContainer {
   baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
 }
-
 
 type BaselineResolution
   = BaselineResolved { bytes: std.measure.ByteSize }

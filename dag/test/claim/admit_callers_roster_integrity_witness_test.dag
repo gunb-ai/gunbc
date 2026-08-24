@@ -1,0 +1,102 @@
+module test.claim.admit_callers_roster_integrity_witness
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE FOR THE ADMIT_CALLERS ROSTER-INTEGRITY WALL, on the
+// source -> .dag-acceptance path.
+//
+// THE CLASS, measured before the repair: an admit_callers entry that is not an interpretable
+// decl_ref(...) call was DROPPED during collection, so N authored entries became fewer than N
+// and, when every entry was uninterpretable, ZERO. fn_admit_callers then answered
+// Present-and-empty -- present, and empty -- and the admission wall refused every caller with a
+// diagnostic naming the CALL SITE and the CALLEE while never mentioning the roster expression,
+// which was the only thing wrong in the file. DESIGN names this: bottom-as-answer conflated with
+// bottom-as-ignorance, the empty-observation narrow. "I could not interpret any entry" was
+// rendered as "there are zero permitted callers".
+//
+// WHY THE PARSER GUARD DID NOT COVER IT, which is what made the trap credible: parse refuses a
+// SYNTACTICALLY empty list with "admit_callers requires at least one decl_ref caller". An author
+// meeting that guard reasonably concludes an empty roster is unrepresentable. It is not -- the
+// guard counts list CHILDREN before interpretation, and nothing re-checked after collection had
+// dropped all of them. Non-empty in, empty out, no diagnostic.
+//
+// THE REPAIR IS CONSTRUCTION, not a count check placed after the fact. Collection now maps every
+// authored entry to a total per-entry outcome, so the result length equals the authored length
+// and a shrunk roster has no spelling at that seam. A post-collection non-empty check would have
+// been strictly weaker AND wrong on the merits: three entries with one malformed still collect to
+// a nonempty list and pass any threshold while silently dropping a caller the author admitted.
+// Only a per-entry refusal reaches that case, so the partial arm below is not a bonus test -- it
+// is the arm a count check would fail.
+//
+// PATH SCOPE, per DESIGN 4b's requirement of a rung per path: this asserts source -> .dag
+// acceptance only. The refusal sits in the admission arm of inference, so nothing reaches
+// emission with a shrunk roster -- but that is a consequence of where the wall sits, not a
+// second measurement, and it is not claimed as one.
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// RED ARM ONE, the all-malformed roster. Measured pre-repair as: compiles to a
+// ConstructorCallAdmissionRefused naming "permitted callers: []" -- the wall firing on a
+// legitimate caller because the roster emptied. The entry here is a DEFINED String data row, so
+// there is no undefined name for resolution to reject and no type error for inference to raise:
+// the ONLY defect in the file is that the entry is not a decl_ref call. That single-defect
+// framing is what lets this arm attribute rather than merely refuse.
+data all_entries_uninterpretable_source: String = "module probe_admit_roster_all_bad\nimport std.types { String }\ndata probe_defined_string: String = \"not a decl_ref\"\ntype ProbeSeal { body: String }\nfn probe_seal(body: String) -> ProbeSeal\n  admit_callers: [\n    probe_defined_string,\n  ]\n  = ProbeSeal { body: body }\nfn probe_caller() -> ProbeSeal = probe_seal(body: \"x\")\n"
+
+test fn w_uninterpretable_admit_callers_entry_is_refused_at_the_entry() -> Bool {
+  violation_count(source: all_entries_uninterpretable_source, wanted: "AdmitCallersEntryNotDeclRef") >= 1
+}
+
+// RED ARM TWO, the PARTIAL drop -- the arm a post-collection count check cannot see. One valid
+// entry naming the real caller, one uninterpretable entry beside it. Pre-repair this COMPILED:
+// the roster was nonempty, the valid entry admitted the caller, and the dropped entry was
+// completely silent. An author who wrote two admitted callers got one, with no signal.
+data partially_uninterpretable_source: String = "module probe_admit_roster_partial\nimport std.types { String }\ndata probe_defined_string: String = \"not a decl_ref\"\ntype ProbeSeal { body: String }\nfn probe_seal(body: String) -> ProbeSeal\n  admit_callers: [\n    decl_ref(module_path: \"probe_admit_roster_partial\", decl_name: \"probe_caller\"),\n    probe_defined_string,\n  ]\n  = ProbeSeal { body: body }\nfn probe_caller() -> ProbeSeal = probe_seal(body: \"x\")\n"
+
+test fn w_partially_uninterpretable_roster_is_refused() -> Bool {
+  violation_count(source: partially_uninterpretable_source, wanted: "AdmitCallersEntryNotDeclRef") >= 1
+}
+
+// GREEN ARM, and it is what stops the wall being a wrecking ball. A well-formed roster admitting
+// its real caller must still compile, and must raise NEITHER the new entry diagnostic NOR an
+// admission refusal. Without this a repair that refused every admit_callers declaration would
+// score identically on both red arms above.
+data well_formed_roster_source: String = "module probe_admit_roster_ok\nimport std.types { String }\ntype ProbeSeal { body: String }\nfn probe_seal(body: String) -> ProbeSeal\n  admit_callers: [\n    decl_ref(module_path: \"probe_admit_roster_ok\", decl_name: \"probe_caller\"),\n  ]\n  = ProbeSeal { body: body }\nfn probe_caller() -> ProbeSeal = probe_seal(body: \"x\")\n"
+
+test fn w_well_formed_roster_raises_no_entry_diagnostic() -> Bool {
+  violation_count(source: well_formed_roster_source, wanted: "AdmitCallersEntryNotDeclRef") == 0
+}
+
+test fn w_well_formed_roster_still_admits_its_caller() -> Bool {
+  violation_count(source: well_formed_roster_source, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// GREEN ARM, the wall it must not weaken. An UNLISTED caller is still refused: this repair
+// changes which rosters are representable, never who a valid roster admits. If this ever goes
+// green the repair has eaten the admission wall it was meant to protect.
+data unlisted_caller_source: String = "module probe_admit_roster_unlisted\nimport std.types { String }\ntype ProbeSeal { body: String }\nfn probe_seal(body: String) -> ProbeSeal\n  admit_callers: [\n    decl_ref(module_path: \"probe_admit_roster_unlisted\", decl_name: \"admitted_caller\"),\n  ]\n  = ProbeSeal { body: body }\nfn admitted_caller() -> ProbeSeal = probe_seal(body: \"x\")\nfn unlisted_caller() -> ProbeSeal = probe_seal(body: \"y\")\n"
+
+test fn w_unlisted_caller_is_still_refused() -> Bool {
+  violation_count(source: unlisted_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// THE SECOND ROUTE, DECLARED OPEN RATHER THAN ASSERTED CLOSED. A WELL-FORMED decl_ref naming a
+// module that does not exist is interpretable, so it survives collection and this repair does not
+// touch it -- it is simply retained and can never match any caller's coordinates. Measured: a
+// roster carrying only such an entry refuses its caller while LISTING that entry, and a roster
+// carrying one beside a valid entry compiles with nothing anywhere naming the missing module.
+// So the effective roster still differs from the authored roster by a second route, and the
+// diagnostic below is the receipt that this arm is unchanged, NOT a claim that the class is
+// closed. Closing it requires a declared decision -- resolve admission targets against the module
+// graph, or state that admission targets are deliberately unresolved coordinates because a roster
+// may legitimately name a caller outside the current compile's closure.
+data unresolvable_but_well_formed_source: String = "module probe_admit_roster_unresolvable\nimport std.types { String }\ntype ProbeSeal { body: String }\nfn probe_seal(body: String) -> ProbeSeal\n  admit_callers: [\n    decl_ref(module_path: \"no.such.module.zzz.probe\", decl_name: \"no_such_decl_zzz\"),\n  ]\n  = ProbeSeal { body: body }\nfn probe_caller() -> ProbeSeal = probe_seal(body: \"x\")\n"
+
+test fn w_unresolvable_entry_is_not_an_entry_diagnostic() -> Bool {
+  violation_count(source: unresolvable_but_well_formed_source, wanted: "AdmitCallersEntryNotDeclRef") == 0
+}

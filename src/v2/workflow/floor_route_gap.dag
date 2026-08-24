@@ -388,28 +388,7 @@ fn floor_route_gap_chunk_03() -> List<String> {
       head: "v2.test.execution.floor_diff_observe_witness.witness_invalid_base_name_status_fails_closed",
       tail:   std.algebra.Cons {
       head: "v2.test.execution.proactive_verification_ledger_overlap_execution.proactive_verification_ledger_overlap_execution_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.barrier_witness.walk_plan_stage_barrier_witness_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.cleanup.walk_plan_stage_cleanup_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.common.walk_plan_stage_materialize_harness_authority_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.overlap_peer_a.walk_plan_stage_overlap_peer_a_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.overlap_peer_b.walk_plan_stage_overlap_peer_b_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.receipt_refusal_poison.walk_plan_stage_receipt_refusal_poison_holds",
-      tail: std.algebra.Cons {
-      head: "v2.test.fixture.walk_plan_stage.stage2_marker.walk_plan_stage_stage2_marker_holds",
-      tail:    std.algebra.Empty {}
-    }
-    }
-    }
-    }
-    }
-    }
-    }
+      tail:    Empty {}
     }
     }
     }

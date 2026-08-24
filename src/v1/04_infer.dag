@@ -510,8 +510,21 @@ fn constructor_call_admission_diags(
       name: callee_name
     ) {
       ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
-        match v1.std.core.fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
-          Present { value: permitted } =>
+        match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
+          Present { value: entries } =>
+            let uninterpretable = admit_callers_entry_uninterpretable_spans(entries: entries)
+            if uninterpretable |> count > 0 {
+              uninterpretable |> map(entry_span =>
+                make_error_node(
+                  diagnostic: AdmitCallersEntryNotDeclRef {
+                    constructor_decl_name: identity.decl_name,
+                    span: entry_span
+                  },
+                  module_name: scope.module_name
+                )
+              )
+            } else {
+              let permitted = admit_callers_entry_coords(entries: entries)
               match caller_decl_coords(scope: scope) {
                 Present { value: caller } =>
                   if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
@@ -546,6 +559,7 @@ fn constructor_call_admission_diags(
                     )
                   ]
               }
+            }
           Absent => []
         }
       NotAdmissionBearingReference => []
@@ -884,7 +898,23 @@ fn record_lit_fields_from_expected(type_name: String?, expected: v1.std.core.Nod
   }
 }
 
-fn record_lit_instantiated_fields(type_name: String?, expected: v1.std.core.Node?, scope: InferScope) -> List<v1.std.core.Node>? {
+fn field_type_expr_is_stripped_placeholder(te: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: te) == ""
+    && te.children |> count == 0
+    && te.params |> count == 0
+}
+
+fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let te = field_node_type_expr(n: sf)
+  if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
+    match sf.inferred {
+      Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+      _ => te
+    }
+  } else { te }
+}
+
+fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
   match type_name {
     Present { value: tn } =>
       match expected {
@@ -911,7 +941,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: v1.std.core.Node
                     v1.std.core.Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: v1.std.core.Resolved { node: substitute_generics(n: v1.std.core.field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
+                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
                       return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                       transport: sf.transport, properties: sf.properties,
                       type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -980,7 +1010,22 @@ fn set_element_types_mismatch(recv_elem: v1.std.core.Node, operand_elem: v1.std.
     && !v1.compiler.infer_types.node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
-fn type_node_is_callable(n: v1.std.core.Node) -> Bool {
+fn node_admits_list_literal(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_element_collection(n: n, source_indices: source_indices)
+    || ((n.children |> count) == 1
+        && match container_template_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))) {
+             Present { value: _ } => true
+             Absent => false
+           })
+}
+
+fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) != ""
+    || n.children |> count > 0
+    || n.params |> count > 0
+}
+
+fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
@@ -1754,6 +1799,142 @@ fn type_name_transparently_aliases_to(
           alias_name: peeled_name, target_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
     Absent => false
+  }
+}
+
+// THE DECLARED-FIELD INHABITANCE WALL (DESIGN 4b floor: "values inhabit declared types").
+//
+// The state this refuses: a record-literal field declared as a COPRODUCT is initialised with a
+// value whose type is one of that coproduct's own VARIANT PAYLOAD types. The payload is not a
+// member of the parent, so the assignment is unsound -- but until this wall the seam judged only
+// kernel scalars (kernel_value_declared_type_mismatch bails unless the ACTUAL is a kernel type)
+// and record literals (structured_application_site_type_mismatch bails unless the actual EXPR is
+// an ExprRecordLit). An actual that is a CALL -- the overwhelmingly common spelling -- was judged
+// by nothing, so the program compiled and died at the first total match over the field.
+//
+// The receipt is #8865's minimal pair, and the class is not synthetic: it is the mechanism that
+// permitted the 2026-08-22 outage. v2.extdeps.languages.dag built `Node { occurrence_id: <raw
+// OccurrenceId> }` where the field is declared `NodeOccurrenceId` and `OccurrenceId` is the
+// payload of its `MintedOccurrence` arm; the value entered the bad state at that record literal,
+// stayed latent two months, and surfaced 2,000 lines and one pipeline stage away as
+// `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
+//
+// THE SCOPE IS THE RECORD-LITERAL FIELD SEAM, AND ONLY IT. This wall does not judge `let`
+// bindings, method arguments, or the direct-call argument seam (whose TYPE judgment is separately
+// switched off for `v2.*` by module_skips_direct_call_arg_check). Per gunbc#8868, the seam
+// enumeration for this class is UNFINISHED -- assume a further seam until someone enumerates
+// them -- so this closes one seam and says so rather than closing the class.
+//
+// WHY THE PREDICATE IS KEYED ON PAYLOAD MEMBERSHIP RATHER THAN ON MISMATCH IN GENERAL. Once the
+// two names are established incompatible and the formal is a non-generic coproduct, ANY actual is
+// arguably wrong; refusing all of them would make this a general field-type wall, whose
+// false-positive classes are exactly the four representation gaps the conformance wall measured
+// (brand aliases, optionality's two forms, anonymous literals, expansion depth). Requiring the
+// actual to be a DECLARED PAYLOAD TYPE OF ONE OF THE FORMAL'S OWN VARIANTS positively identifies
+// the confusion instead of inferring it from an absence, so a refusal here always names a
+// spelling the author can point at: the wrapping arm is in the same declaration.
+//
+// NAME IDENTITY IS BORROWED, NOT REBUILT. A first measured version of this wall refused the direct
+// shape (`CppHolder { subject: cpp_inner() }`) and stayed SILENT on the production specimen this
+// lane was given as its acceptance target -- `v2.std.materialize` storing `content_hash(n)` into a
+// field declared `ContentHash` -- and the isolating pair says why: an otherwise identical fixture
+// whose producer returns a TRANSPARENT ALIAS of the payload type was not refused, while the same
+// fixture returning the payload type outright was. `content_hash` returns `v2.std.node` `Hash`,
+// which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
+// aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
+// recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
+// census construction. This wall therefore consumes `transparent_alias_identity_agrees` over the
+// `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
+// the coordination ruling recorded on that lane.
+//
+// COST. Every guard ahead of the declaration walk is a string compare or a cardinality read, and
+// the walk itself is bounded by the formal declaration's own variant/field count -- never by the
+// corpus. Nothing is re-derived from normalized structure: the judgment reads the same resolved
+// formal node the seam already holds, and the alias relation is a map lookup on a census built once.
+fn coproduct_variant_payload_admits_type_name(
+  decl: Node,
+  actual_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  decl.children |> any(variant =>
+    variant.children |> any(payload =>
+      let payload_type = match payload.inferred {
+        Present { value: Resolved { node: rt } } => rt
+        _ => field_node_type_expr(n: payload)
+      }
+      let payload_name = authored_name_at(source_indices: source_indices, node: payload_type)
+      let names_agree = application_type_names_compatible(
+        formal_name: payload_name,
+        lit_name: actual_name,
+        type_env: type_env,
+        module_name: module_name,
+        source_indices: source_indices) || transparent_alias_identity_agrees(
+          index: type_env.symbol_index, left: payload_name, right: actual_name)
+      payload_name != "" && names_agree
+    )
+  )
+}
+
+// The wall's decision procedure, over the record-literal field seam's own formal/actual pair.
+//
+// TWO EXCLUSIONS ARE LOAD-BEARING AND NEITHER IS INCIDENTAL. `Optional` is the language's own
+// cardinality carrier rather than an ordinary coproduct -- a `T` standing in an `Optional<T>`
+// position is the declared spelling, not a payload escape -- so both the CardOptional cardinality
+// and a formal or actual literally named `Optional` are excluded before any declaration is walked.
+// And a GENERIC coproduct is excluded because its payload positions can be type variables, which
+// makes "the actual is one of this coproduct's payload types" undecidable from the declaration
+// alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
+// forbids a fabricated success.
+fn coproduct_payload_where_parent_required(
+  formal: Node,
+  actual: Node,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let either_optional = formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional
+  if either_optional || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
+    false
+  } else {
+    let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let either_is_optional_carrier = qualified_last_segment(name: formal_name) == "Optional" ||
+      qualified_last_segment(name: actual_name) == "Optional"
+    if formal_name == "" || actual_name == "" || either_is_optional_carrier {
+      false
+    } else if application_type_names_compatible(
+        formal_name: formal_name,
+        lit_name: actual_name,
+        type_env: scope.type_env,
+        module_name: scope.module_name,
+        source_indices: source_indices) {
+      false
+    } else if transparent_alias_identity_agrees(
+        index: scope.type_env.symbol_index, left: formal_name, right: actual_name) {
+      false
+    } else {
+      let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
+      match lookup_type_by_name(env: scope.type_env, name: formal_name) {
+        Present { value: decl } =>
+          let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
+          let names_a_variant = has_child_named(n: decl, name: qualified_last_segment(name: actual_name), source_indices: source_indices) ||
+            has_child_named(n: decl, name: qualified_last_segment(name: actual_rep), source_indices: source_indices)
+          if decl_is_concrete_coproduct == false {
+            false
+          } else if names_a_variant {
+            false
+          } else {
+            coproduct_variant_payload_admits_type_name(
+              decl: decl,
+              actual_name: actual_name,
+              type_env: scope.type_env,
+              module_name: scope.module_name,
+              source_indices: source_indices)
+          }
+        Absent => false
+      }
+    }
   }
 }
 
@@ -2567,7 +2748,7 @@ fn method_pipe_map_keys_values_fallback(recv_rt: v1.std.core.Node, method_name: 
   }
 }
 
-data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. What remains genuinely has no surface: a lambda parameter whose type never propagates so the receiver has no authored name at all (the LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag and the StoreObjectFold lambdas in extdeps/git/object_store.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) a lambda parameter receiver whose type never propagates from the declared fn type it is bound under; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/tools/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
+data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. What remains genuinely has no surface: a lambda parameter whose type never propagates so the receiver has no authored name at all (the LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag; the StoreObjectFold lambdas in extdeps/git/object_store.dag were the second instance and are RESOLVED — once a generic field's substituted type reached the field expectation and an unestablished return stopped being certified as resolved, their `map` and `flat_map` rows measured zero observed and were deleted), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) a lambda parameter receiver whose type never propagates from the declared fn type it is bound under; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/tools/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
 
 data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
 
@@ -2707,7 +2888,7 @@ fn frontier_occurrence_budget_diags(module_name: String, module_span: std.types.
     |> flat_map(r => frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name, module_span: module_span))
 }
 
-data frontier_occurrence_budget_note: String = "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows are not all singletons (v2.compiler.tokenize admits seven `apply` calls, extdeps.mercurial three `any`, gunbc.scm_compatibility.mercurial three `map`), so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS EQUALITY, AND IT WAS FIRST WRITTEN AS A CEILING, WHICH DID NOT RATCHET. `observed > declared` was justified here on the reasoning that a narrower compile closure sees fewer occurrences of a module's rows, so equality would red a partial build. That reasoning is WRONG about this check: it runs per MODULE, and every occurrence of a module's rows is present whenever that module is typechecked at all — a closure that omits the module never runs its rows, so there is no partial-visibility case to protect. What the ceiling actually did was let seven shrink to six while the declared seven stood, so a seventh call could return silently: a static limit, not a ratchet, and the note claimed the ratchet anyway (codex review 45491). Equality closes it in the only way that works — fixing a call reds until the declared count is lowered, which removes the headroom a reintroduction would have slipped into. Both directions are asserted in the witness, because the under-count half is the half that makes it a ratchet and it is the one an author is tempted to relax. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes."
+data frontier_occurrence_budget_note: String = "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows are not all singletons (v2.compiler.tokenize admits seven `apply` calls; the extdeps.mercurial `any` and gunbc.scm_compatibility.mercurial `map` rows cited here were three apiece until the lambda-parameter receiver class was resolved and both dissolved to zero observed, so they are deleted and the surviving multi-occurrence example is tokenize's), so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS EQUALITY, AND IT WAS FIRST WRITTEN AS A CEILING, WHICH DID NOT RATCHET. `observed > declared` was justified here on the reasoning that a narrower compile closure sees fewer occurrences of a module's rows, so equality would red a partial build. That reasoning is WRONG about this check: it runs per MODULE, and every occurrence of a module's rows is present whenever that module is typechecked at all — a closure that omits the module never runs its rows, so there is no partial-visibility case to protect. What the ceiling actually did was let seven shrink to six while the declared seven stood, so a seventh call could return silently: a static limit, not a ratchet, and the note claimed the ratchet anyway (codex review 45491). Equality closes it in the only way that works — fixing a call reds until the declared count is lowered, which removes the headroom a reintroduction would have slipped into. Both directions are asserted in the witness, because the under-count half is the half that makes it a ratchet and it is the one an author is tempted to relax. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes."
 
 fn frontier_occurrence_budget_checked(module_name: String, module_span: std.types.SourceSpan, diagnostics: List<v1.std.core.ErrorNode>) -> List<v1.std.core.ErrorNode> {
   concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
@@ -4259,7 +4440,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       let empty_list_diags = if count(elem_results) == 0 {
         match expected {
           Present { value: exp } =>
-            if v1.compiler.infer_types.node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
+            if node_admits_list_literal(n: exp, source_indices: scope.type_env.source_indices) {
               match exp.children |> first {
                 Present { value: _ } => []
                 Absent => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
@@ -4323,7 +4504,13 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { std.induction.SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
-              Present { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: v1.std.core.param_node_type_expr(n: cp), provenance: param_prov)
+              Present { value: cp } =>
+                let cpt = param_node_type_expr(n: cp)
+                if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
+                  extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
+                } else {
+                  extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
+                }
               Absent => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
@@ -4349,10 +4536,14 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       let body_expected = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
-          let declared_ret = v1.compiler.infer_types.resolved_type(n: exp)
-          if v1.compiler.infer_types.is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
-            Present { value: declared_ret }
-          } else { none }
+          match exp.inferred {
+            Present { value: Resolved { node: declared_ret } } =>
+              if type_node_is_established(n: declared_ret, source_indices: scope.type_env.source_indices)
+                && is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
+                Present { value: declared_ret }
+              } else { none }
+            _ => none
+          }
         } else { none }
       } else { none }
       let body_scope = InferScope {
@@ -5226,6 +5417,15 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
             [type_mismatch_error(
               expected: v1.compiler.infer_types.node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: v1.compiler.infer_types.node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if expected_node.return_cardinality != CardOptional
+            && coproduct_payload_where_parent_required(
+              formal: formal_peeled, actual: actual_peeled, scope: scope) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
               module_name: scope.module_name
             )]
@@ -8124,7 +8324,6 @@ fn build_module_interface(
   }
 }
 
-
 fn local_binding_for_item(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.TypeBinding? {
   if is_namespace_alias_item(item: item, source_indices: source_indices) {
     none
@@ -9773,14 +9972,16 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
   let init = v1.compiler.infer_emit_info.EmitInfoBuildState {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
-    fn_decl_items: empty_map()
+    fn_decl_items: empty_map(),
+    structural_alias_fn_surface_names: empty_map(),
+    structural_alias_direct_fn_names: empty_set()
   }
   let built_raw = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       v1.compiler.infer_emit_info.add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  let built = v1.compiler.infer_emit_info.EmitInfoBuildState { type_summaries: v1.compiler.infer_emit_info.close_fn_fields(summaries: built_raw.type_summaries), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, v1.std.core.intern_str(table: m.type_env.intern_table, id: ident))

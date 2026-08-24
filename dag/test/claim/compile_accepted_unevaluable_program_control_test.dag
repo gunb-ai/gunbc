@@ -1,0 +1,103 @@
+module test.claim.compile_accepted_unevaluable_program_control
+
+// WHY THIS FILE EXISTS. Required-floor run 32633501354 (main, head 907f19c2cc) reported
+// `known_red_runtime_errored=164`: 164 identities the compiler ACCEPTED and the interpreter could
+// not evaluate. That counter is the class's only observer, and it goes to zero as the 164 are
+// repaired — one lane is already repairing 21 of them. The specimens are being deleted, so the
+// evidence has to stop being the specimens.
+//
+// The partition of the 164, its producer, and the per-identity rows are
+// docs/plans/receipts/floor-runtime-error-partition-2026-08-23/. Read it before adding a row here:
+// it also records, with the measurements behind it, which families CANNOT be fixtured on this
+// surface and why, so that this file is not mistaken for coverage of the whole 164.
+//
+// WHAT IS FIXTURED HERE, and it is one family of the five: HOST-PRIMITIVE-CONTRACT, 11 of the 164.
+// A host primitive's argument list is not checked at compile in ANY direction — measured on this
+// same surface at this head: two arguments, zero arguments, and one argument of the wrong type all
+// compile clean, and `atom_identity_hash`'s host arm then refuses each at evaluation with
+// `requires exactly one string argument`. The refusal text is the host's own, which is what makes
+// these three REDs claims about a wall rather than guesses about intent.
+//
+// WHAT IS NOT FIXTURED HERE, stated so its absence is not read as its non-existence:
+// REFERENCE-UNAVAILABLE, 149 of the 164 and the dominant family. Both `.dag`-callable
+// compile-observation surfaces REFUSE its shape — `compile_dag_rust_emit_check` returns false on a
+// bare reference to an unimported module's `data`, and `compile_dag_diagnostic_census` reports it
+// blocking — while the floor's own witness loader ACCEPTS it, because that loader additionally runs
+// `cli_run` `extend_with_bare_reference_closure` and resolves the name through the tree census. A
+// fixture written on either surface would therefore be permanently green while the production path
+// stays open, and would be cited as coverage of the class it never touches. Its next-rung trigger
+// is a compile-observation surface that resolves names by the witness loader's rule.
+data compile_accepted_unevaluable_program_note: String = "The subject is the v1 compile path reached through compile_dag_rust_emit_check, which returns false on any hard diagnostic. Each RED below asserts REFUSAL of a program the host will refuse at evaluation anyway, so the assertion is that the refusal moves from evaluation to compile — not that the program changes meaning. All three RED rows return false today and are enrolled in v2.workflow.floor_expected_red; when the argument contract for host primitives is checked at compile they PASS, the enrolled-but-passing arm reds the build naming them, and they stay here afterwards as the regression control that the wall is still real (DESIGN 4b(4): the climb deletes the redundant production handling, never the evidence)."
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_note: String = "ReadsLiveTree, for the same reason the two sibling files on this surface declare it: compile_dag_rust_emit_check resolves its virtual source against build_module_path_index_from_witness_roots, which walks the live tree. The declaration is honest rather than convenient — it costs floor admission under the DeclinedLiveTree arm rather than buying it, and that arm's deletion (gunbc#8977, gunbc#8982) is what admits this file to execution."
+
+// Positive control 1 of 2. A trivial well-formed source compiles: the surface is not always-false,
+// so a false below is a refusal rather than a harness that cannot say yes.
+test fn control_clean_source_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cauc_clean\n\nimport std.types { Int }\n\nfn f() -> Int { 1 }\n",
+    "src/cauc_clean.rs",
+    [],
+    []
+  )
+}
+
+// Positive control 2 of 2. A source that cannot parse is refused: the surface is not always-true,
+// so a true is an acceptance rather than a harness that cannot say no.
+test fn control_broken_source_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cauc_broken\n\nfn f( -> Int { 1 }\n",
+    "src/cauc_broken.rs",
+    [],
+    []
+  )
+}
+
+// Positive control 3 of 3, and the one that makes the three REDs discriminating rather than a
+// blanket claim that this primitive never compiles: the CORRECT call — exactly one string — must
+// keep compiling. A wall that refused this would have refused the contract instead of enforcing it.
+test fn control_correct_primitive_call_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cauc_prim_ok\n\nimport std.types { Int }\n\nfn f() -> Int { atom_identity_hash(\"a\") }\n",
+    "src/cauc_prim_ok.rs",
+    [],
+    []
+  )
+}
+
+// RED 1: too many arguments. Live specimens: the four v2.test.manual.bootstrap_footprint_anchor
+// rows and the seven test.claim.srv3_subsumption / test.claim.host_phase_status rows in the run's
+// receipt, all of which throw `atom_identity_hash requires exactly one string argument`.
+test fn primitive_call_with_extra_argument_must_refuse_at_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cauc_prim_over\n\nimport std.types { Int }\n\nfn f() -> Int { atom_identity_hash(\"a\", \"b\") }\n",
+    "src/cauc_prim_over.rs",
+    [],
+    []
+  )
+}
+
+// RED 2: too few arguments. The zero-argument direction is authored separately because a check
+// written as a ceiling would admit it — the same defect shape the method-frontier count rows
+// record — and because a caller who deletes an argument is the likelier author of it.
+test fn primitive_call_with_missing_argument_must_refuse_at_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cauc_prim_under\n\nimport std.types { Int }\n\nfn f() -> Int { atom_identity_hash() }\n",
+    "src/cauc_prim_under.rs",
+    [],
+    []
+  )
+}
+
+// RED 3: right arity, wrong type. Arity and inhabitance are two facts, and a wall that closed only
+// the count would leave this one open — so it is asserted where it can flip independently.
+test fn primitive_call_with_wrong_argument_type_must_refuse_at_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cauc_prim_type\n\nimport std.types { Int }\n\nfn f() -> Int { atom_identity_hash(7) }\n",
+    "src/cauc_prim_type.rs",
+    [],
+    []
+  )
+}

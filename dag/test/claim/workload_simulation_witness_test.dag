@@ -1,0 +1,172 @@
+module test.claim.workload_simulation_witness
+
+// The subject is WHETHER DEMAND SHAPE CHANGES THE ACQUISITION VERDICT. A simulation that
+// answered the same way for flat and bursty demand would be an expensive way to restate a
+// unit price, so every witness here is a pair that must DIVERGE, plus the refusals that
+// prove the fold cannot be talked into a cheap answer.
+
+// One owned lane: 10 concurrent slots, continuous billing, near-zero marginal cost, and a
+// commitment owed every slot whether or not anything runs. One rented lane: effectively
+// unbounded, no commitment, billed per job-slot at 100 micros with a 60-slot quantum.
+fn owned_lane() -> SupplyLane {
+  SupplyLane {
+    label: "owned",
+    capacity: 10,
+    variable_per_slot: money_amount_micro(count: 0),
+    committed_per_slot: money_amount_micro(count: 300),
+    billing_quantum_slots: 0,
+  }
+}
+
+fn rented_lane() -> SupplyLane {
+  SupplyLane {
+    label: "rented",
+    capacity: 1000,
+    variable_per_slot: money_amount_micro(count: 100),
+    committed_per_slot: money_amount_micro(count: 0),
+    billing_quantum_slots: 60,
+  }
+}
+
+// A SECOND RENTED LANE THAT BILLS PER SLOT, SO ONE WITNESS MOVES ONE AXIS.
+// rented_lane above bills a 60-slot minimum increment, and that increment is so much larger
+// than a one-slot job that it dominates every total it appears in -- owning wins under every
+// arrival shape simply because renting wastes fifty-nine slots per job. That is a real and
+// important effect, and it is exactly why it gets its own witness instead of being left to
+// contaminate the shape witnesses: a test whose fixture moves two axes cannot say which one
+// produced its answer. The lanes below hold billing continuous so that demand shape is the
+// only thing left varying.
+fn rented_lane_per_slot() -> SupplyLane {
+  SupplyLane {
+    label: "rented-per-slot",
+    capacity: 1000,
+    variable_per_slot: money_amount_micro(count: 100),
+    committed_per_slot: money_amount_micro(count: 0),
+    billing_quantum_slots: 0,
+  }
+}
+
+fn portfolio() -> List<SupplyLane> { [owned_lane(), rented_lane_per_slot()] }
+fn rent_only() -> List<SupplyLane> { [rented_lane_per_slot()] }
+
+fn verdict_pays_off(v: AcquisitionVerdict) -> Bool {
+  match v {
+    CommitmentPaysOff { saved, occupancy_permille } => true
+    CommitmentCostsMore { excess, occupancy_permille } => false
+    CommitmentBreaksEven { occupancy_permille } => false
+    VerdictRefusedUnplacedWork { unplaced_slot_jobs } => false
+  }
+}
+
+fn verdict_costs_more(v: AcquisitionVerdict) -> Bool {
+  match v {
+    CommitmentPaysOff { saved, occupancy_permille } => false
+    CommitmentCostsMore { excess, occupancy_permille } => true
+    CommitmentBreaksEven { occupancy_permille } => false
+    VerdictRefusedUnplacedWork { unplaced_slot_jobs } => false
+  }
+}
+
+fn verdict_refused(v: AcquisitionVerdict) -> Bool {
+  match v {
+    CommitmentPaysOff { saved, occupancy_permille } => false
+    CommitmentCostsMore { excess, occupancy_permille } => false
+    CommitmentBreaksEven { occupancy_permille } => false
+    VerdictRefusedUnplacedWork { unplaced_slot_jobs } => true
+  }
+}
+
+fn run_for(shape: ArrivalShape) -> AcquisitionVerdict {
+  acquisition_verdict(
+    with_commitment: simulate(shape: shape, lanes: portfolio(), slots: 600),
+    all_rented: simulate(shape: shape, lanes: rent_only(), slots: 600),
+  )
+}
+
+// STEADY DEMAND FILLS THE COMMITMENT, SO OWNING WINS.
+// Ten concurrent jobs, every slot, exactly the owned lane's width. The commitment costs 300
+// per slot for all 600 slots; the same work rented costs 10 jobs at 100 per slot, so rent
+// runs to 600000 against the commitment's 180000.
+test fn flat_demand_at_committed_width_makes_the_commitment_pay() -> Bool {
+  verdict_pays_off(v: run_for(shape: FlatArrival { concurrent: 10 }))
+}
+
+// THE SAME COMMITMENT, THE SAME TOTAL WORK, ARRIVING IN BURSTS -- AND THE VERDICT FLIPS.
+// One slot in sixty carries 600 concurrent jobs and the other fifty-nine carry none. Mean
+// demand is 10 -- identical to the flat case above -- so the owned lane is idle almost
+// always while its commitment accrues every slot, and the burst overflows it 60x over. Rent
+// pays only for the ten burst slots it is used in; the commitment pays for all 600. This is
+// the peak-to-average axis deciding the
+// answer, which is the whole reason the model sweeps shapes instead of fitting one curve.
+// If this ever agreed with the flat case, the simulation would have collapsed into a unit
+// price comparison and this test goes red.
+test fn bursty_demand_of_equal_mean_makes_the_same_commitment_lose() -> Bool {
+  verdict_costs_more(v: run_for(shape: BurstyArrival {
+    base: 0, burst: 600, every_slots: 60, burst_width: 1,
+  }))
+}
+
+// The two verdicts above must not merely differ in wording -- they must be opposite arms
+// reached from the SAME commitment and the SAME mean demand. Asserting the pair together
+// is what makes either one load-bearing.
+// MEAN DEMAND IS HELD AT TEN ON BOTH SIDES AND ONLY THE SHAPE MOVES. Flat ten every slot
+// and six hundred once in sixty are the same 6000 job-slots of work; the verdicts are
+// opposite arms. An earlier revision of this test asserted the same arm on both sides while
+// its own comment claimed a flip, and it went red the first time it was executed -- the
+// assertion, not the model, was wrong. If these two ever agree again, the simulation has
+// collapsed into a unit-price comparison and this witness is the thing that says so.
+test fn demand_shape_alone_flips_the_acquisition_verdict() -> Bool {
+  let flat = run_for(shape: FlatArrival { concurrent: 10 })
+  let bursty = run_for(shape: BurstyArrival { base: 0, burst: 600, every_slots: 60, burst_width: 1 })
+  verdict_pays_off(v: flat) && verdict_costs_more(v: bursty)
+}
+
+// BILLING QUANTUM IS VISIBLE IN THE TOTAL, NOT JUST IN THE TYPE, AND IT ROUNDS DURATION.
+// A supplier's minimum increment applies to each job's runtime, so one one-slot job on a
+// 60-slot increment bills sixty and continuous capacity bills one. The second pair is the
+// discriminating half: sixty concurrent jobs bill sixty EACH, not sixty between them. An
+// earlier revision billed the slot's concurrency instead of each job's duration, which
+// passed typechecking because both are Nat and produced 60 where 3600 is correct.
+test fn quantum_rounding_bills_a_partial_increment_as_a_whole_one() -> Bool {
+  billed_slots_per_job(quantum_slots: 60) == 60
+    && billed_slots_per_job(quantum_slots: 0) == 1
+    && (60 * billed_slots_per_job(quantum_slots: 60)) == 3600
+}
+
+// THE INCREMENT ALONE, WITH DEMAND HELD FLAT, IS WORTH A WITNESS OF ITS OWN.
+// Same rate, same work, same shape: the only difference is that one rented lane bills a
+// 60-slot minimum and the other bills per slot. Sixty-fold on the rented total is the waste
+// that makes short CI jobs favour owned capacity regardless of headline rate, and it is the
+// arbitrage the product exists to find.
+test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool {
+  let flat = FlatArrival { concurrent: 5 }
+  let coarse = simulate(shape: flat, lanes: [rented_lane()], slots: 600)
+  let fine = simulate(shape: flat, lanes: [rented_lane_per_slot()], slots: 600)
+  money_amount_micro_count(m: coarse.variable_spend) == (money_amount_micro_count(m: fine.variable_spend) * 60)
+}
+
+// UNPLACED WORK REFUSES THE COMPARISON RATHER THAN CHEAPENING IT.
+// Two portfolios that could not serve the same amount of work do not have comparable
+// totals, and the cheaper number would be cheaper because it ran less. The fold refuses.
+test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Bool {
+  let tiny = [SupplyLane {
+    label: "tiny", capacity: 1, variable_per_slot: money_amount_micro(count: 0),
+    committed_per_slot: money_amount_micro(count: 1), billing_quantum_slots: 0,
+  }]
+  let overloaded = simulate(shape: FlatArrival { concurrent: 50 }, lanes: tiny, slots: 10)
+  overloaded.unplaced_slot_jobs > 0
+    && verdict_refused(v: acquisition_verdict(with_commitment: overloaded, all_rented: overloaded))
+}
+
+// Occupancy is the number the acquisition decision actually turns on, so it is reported
+// rather than left for a reader to divide out. Flat demand at exactly the committed width
+// is full occupancy; the bursty case is nearly empty.
+test fn committed_occupancy_separates_a_filled_lane_from_an_idle_one() -> Bool {
+  let filled = simulate(shape: FlatArrival { concurrent: 10 }, lanes: portfolio(), slots: 600)
+  let idle = simulate(
+    shape: BurstyArrival { base: 0, burst: 600, every_slots: 60, burst_width: 1 },
+    lanes: portfolio(), slots: 600,
+  )
+  filled.committed_occupancy_permille == 1000 && idle.committed_occupancy_permille < 100
+}
+

@@ -1,0 +1,164 @@
+module product.fabric.isolation
+
+// WHAT A TENANT IS PROMISED ABOUT WHO ELSE CAN SEE ITS RUN.
+//
+// This is the fabric CORE's half of isolation, and the split is the point: the core states the
+// guarantees a unit of work REQUIRES and an offer PROVIDES, while the mechanism that delivers them
+// -- an OCI container, systemd-nspawn, a microVM, a dedicated host -- is a realization handler.
+// Work and Grant never learn whether the executor used Podman or a VM, exactly as DESIGN section 3
+// puts transport outside the interface: a core that named containers could not admit a supplier
+// who satisfies the same guarantees another way, and the guarantee is what the tenant is owed.
+//
+// EXCLUSIVITY IS NOT IN THIS FILE, AND CONFLATING THE TWO IS THE EXPENSIVE MISTAKE. Isolation
+// answers "what can this run observe once it starts"; ALLOCATION EXCLUSIVITY answers "may two
+// grants reserve the same cell at all", and that is a property of the durable grant store, not of
+// a sandbox. A container provides no exclusivity whatsoever: two brokers can each start one on the
+// same cell. Treating the sandbox as the exclusion wall is how a fabric double-books hardware
+// while every individual run looks correctly isolated.
+data fabric_isolation_note: String = "Core isolation vocabulary: what work requires and an offer provides. The delivering mechanism (container, nspawn, microVM) is a realization handler and is deliberately unnamed here. Allocation exclusivity is a separate guarantee owned by the grant store, not by isolation."
+
+// THE GUARANTEES, AS A CLOSED SET OF NAMED AXES RATHER THAN A BAG OF BOOLEANS.
+//
+// Each is something a tenant can be told and an offer can be held to. They are separate members
+// rather than one "isolated: Bool" because they fail independently and are satisfied by different
+// mechanisms: a shared-kernel container gives fresh filesystem and private namespaces but cannot
+// give DedicatedKernel, and an offer that conflates them would answer yes to a question it cannot
+// keep.
+//
+// DedicatedKernel is the tenancy boundary and the reason this is a coproduct rather than a
+// severity scale. Containers isolate much and share the kernel; for arbitrary customer code that
+// distinction is the whole risk model, and it must be expressible as a REQUIREMENT that an
+// otherwise-capable offer fails to meet.
+type IsolationGuarantee
+  = FreshWritableRoot
+  | PrivateProcessNamespace
+  | PrivateNetworkNamespace
+  | PrivateUserNamespace
+  | AttemptScopedSecrets
+  | DefaultDenyEgress
+  | DedicatedKernel
+
+fn isolation_guarantee_label(g: IsolationGuarantee) -> String {
+  match g {
+    FreshWritableRoot => "fresh-writable-root"
+    PrivateProcessNamespace => "private-process-namespace"
+    PrivateNetworkNamespace => "private-network-namespace"
+    PrivateUserNamespace => "private-user-namespace"
+    AttemptScopedSecrets => "attempt-scoped-secrets"
+    DefaultDenyEgress => "default-deny-egress"
+    DedicatedKernel => "dedicated-kernel"
+  }
+}
+
+// ONE TYPE FOR BOTH SIDES, BECAUSE REQUIRED AND PROVIDED ARE THE SAME KIND OF FACT.
+//
+// A separate OfferIsolationCapability record would be a second spelling of one concept, and the
+// comparison below would then have to translate between them -- the nicknaming violation DESIGN
+// section 3 names, arriving as symmetry.
+type IsolationProfile {
+  guarantees: List<IsolationGuarantee>
+}
+
+fn isolation_profile_contains(profile: IsolationProfile, wanted: IsolationGuarantee) -> Bool {
+  any(profile.guarantees, g => g == wanted)
+}
+
+// THE MATCH RETURNS THE MISSING GUARANTEES, NOT A BOOLEAN.
+//
+// "This offer is not isolated enough" is unactionable; "this offer cannot provide DedicatedKernel"
+// tells a broker exactly which supplier class to look for and tells an operator exactly what to
+// provision. A Bool here would be the typed-cause-erased-at-the-consumer failure: both a
+// shared-kernel host and a host with no network namespacing would answer false, and their remedies
+// are unrelated.
+//
+// The empty list means satisfied, and that is safe HERE because the list is derived by filtering
+// the REQUIRED set -- an empty result means every required guarantee was found, never that the
+// question could not be asked. A caller that built the required set from an unreadable source
+// would owe its own refusal upstream; this fold cannot manufacture one it was not given.
+fn unsatisfied_isolation_guarantees(
+  required: IsolationProfile,
+  provided: IsolationProfile,
+) -> List<IsolationGuarantee> {
+  filter(required.guarantees, g => !isolation_profile_contains(profile: provided, wanted: g))
+}
+
+fn isolation_profile_satisfies(required: IsolationProfile, provided: IsolationProfile) -> Bool {
+  (unsatisfied_isolation_guarantees(required: required, provided: provided) |> count) == 0
+}
+
+fn unsatisfied_isolation_wire(missing: List<IsolationGuarantee>) -> String {
+  join(map(missing, g => isolation_guarantee_label(g: g)), ", ")
+}
+
+// THE PROFILE A SHARED-KERNEL SANDBOX CAN HONESTLY OFFER.
+//
+// Named for what it IS rather than for a mechanism, so a handler using nspawn rather than OCI can
+// claim the same profile without the name lying. DedicatedKernel is absent by construction, which
+// is the whole content of the row: it is the guarantee this class cannot make, and an offer that
+// listed it would be claiming a wall it does not have.
+fn shared_kernel_sandbox_profile() -> IsolationProfile {
+  IsolationProfile {
+    guarantees: [
+      FreshWritableRoot,
+      PrivateProcessNamespace,
+      PrivateNetworkNamespace,
+      PrivateUserNamespace,
+      AttemptScopedSecrets,
+      DefaultDenyEgress,
+    ],
+  }
+}
+
+fn dedicated_kernel_sandbox_profile() -> IsolationProfile {
+  IsolationProfile {
+    guarantees: [
+      FreshWritableRoot,
+      PrivateProcessNamespace,
+      PrivateNetworkNamespace,
+      PrivateUserNamespace,
+      AttemptScopedSecrets,
+      DefaultDenyEgress,
+      DedicatedKernel,
+    ],
+  }
+}
+
+// WHAT THE FLEET'S RUNNER SLOTS PROVIDE TODAY, WHICH IS MEASURABLY LESS THAN THE SANDBOX PROFILE.
+//
+// A slot is a systemd unit with cgroup ceilings, not a sandbox. It gets per-slot memory and CPU
+// entitlement, and it gets a per-slot _work checkout -- but the writable root is REUSED across
+// attempts by design (the persistent checkout that avoids re-cloning), the process namespace is
+// the host's, and /home/ghrunner is one directory shared by every slot on the machine.
+//
+// So this profile is EMPTY, and that is a measurement rather than a pessimistic default. The
+// shared home is not hypothetical: it has produced two independent mid-run file deletions
+// (rust-cache cleanup, then rustup-init rewriting shims under a running job), and the second
+// appeared after the first was fixed precisely because nothing in the model forbade a third.
+// Writing the empty profile is what lets an offer built on today's slots FAIL a requirement it
+// cannot meet, instead of silently passing one nobody stated.
+fn current_runner_slot_profile() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// WHAT ARBITRARY CUSTOMER WORK REQUIRES, WHICH IS WHERE THE REAL GAP LIVES.
+//
+// Our own floor run requires nothing here and says so -- it has run for months on slots providing
+// none of these, and inventing a requirement it does not have would model it as ineligible for the
+// executor it is demonstrably green on. The requirement belongs to work whose TENANT IS NOT US:
+// once someone else's code runs on our hardware, a reused writable root and a shared home stop
+// being an efficiency choice and become a disclosure between tenants.
+//
+// DedicatedKernel is deliberately NOT required here. It is the guarantee for untrusted or
+// hostile-by-assumption code, and requiring it of every customer workload would refuse every
+// container-based supplier including our own fleet's future one. Keeping it a separate axis is
+// what lets a stricter tenancy class ask for it later without re-cutting this profile.
+fn tenant_workload_isolation_requirement() -> IsolationProfile {
+  IsolationProfile {
+    guarantees: [
+      FreshWritableRoot,
+      PrivateProcessNamespace,
+      PrivateUserNamespace,
+      AttemptScopedSecrets,
+    ],
+  }
+}

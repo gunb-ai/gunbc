@@ -1,10 +1,5 @@
 module v2.lens.testgen
 
-
-
-
-
-
 type TypeConstructionSubject
 
   = ConnectiveKernel { connective: v2.std.node.Connective }
@@ -1499,28 +1494,18 @@ fn coproduct_exhaustiveness_generator(
 fn coproduct_exhaustiveness_generators_for_decl(
   decl: v2.std.concept_index.ConceptDecl
 ) -> List<Generator<TestgenConcept>> {
-  fold(
-    coproduct_arm_key_list_from_node(node: decl.node),
-    init: std.algebra.Empty,
-    f: fn(acc, arm) {
-      list_snoc_item(
-        xs: acc,
-        item: coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
-      )
+  list_map(
+    xs: coproduct_arm_key_list_from_node(node: decl.node),
+    f: fn(arm) {
+      coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
     }
   )
 }
 
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
-  fold(
-    enumerate_coproduct_decls(),
-    init: std.algebra.Empty,
-    f: fn(acc, decl) {
-      list_append(
-        left: acc,
-        right: coproduct_exhaustiveness_generators_for_decl(decl: decl)
-      )
-    }
+  list_flat_map(
+    xs: enumerate_coproduct_decls(),
+    f: fn(decl) { coproduct_exhaustiveness_generators_for_decl(decl: decl) }
   )
 }
 

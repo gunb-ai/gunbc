@@ -1,6 +1,6 @@
 module test.claim.build_fulfillment_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SYNTHETIC FIXTURES CARRY EVERY PRICE. The real rows below (the ALTRAD8UD-1L2T
 // and Mt. Collins geometries, the Q80-30 and M128-30 catalog rows) are cited by
@@ -31,8 +31,9 @@ data fixture_dimm: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   capacity_bytes: test.claim.build_fulfillment_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 2,
 }
 

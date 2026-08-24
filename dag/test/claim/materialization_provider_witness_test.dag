@@ -1,6 +1,5 @@
 module test.claim.materialization_provider_witness
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), identity DERIVED not asserted (blocker 3 plus review 44265 — the doors take no ComputationIdentity parameter at all, so a caller cannot assert a grade; the served grade comes from the binding, and every non-Ok binding derives IdentityUnknown with a located cause), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the witnesses construct request VARIANTS and read kind/outputs through the derivations — an under-specified obligation roster is unrepresentable, which is why no witness can even express the weakened-roster attack any more; the chained-eviction witness folds the first admission instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
@@ -190,7 +189,7 @@ test fn red_wrong_content_refuses_never_hits() -> Bool {
     req: witness_closure_request(),
     probe: std.materialization_provider.ProbeFound {
       artifact: witness_complete_closure_artifact(),
-      observed_digest: content_hash_atom(value: "closure-payload-corrupt")
+      observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
     }
   )
   lookup_is_refused_wrong_content(l: poisoned) && (lookup_is_hit(l: poisoned) == false)
@@ -254,9 +253,6 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
     && (lookup_is_hit(l: refused) == false)
 }
-
-
-
 
 test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
   let a = provider_admit(
@@ -364,8 +360,6 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
   )
   admission_is_refused_wrong_content_write(a: a) && (admission_is_admitted(a: a) == false)
 }
-
-
 
 data forged_roster_witness_note: String = "The attack codex review 44278 named, now closed by construction and exercised on BOTH doors: the bytes at the key are the v1 shape (graph + source_indices, NO compile-clean diagnostic union), so the realization's read-back is witness_v1_shape_digest. The caller submits an artifact whose carried roster claims all three outputs — under the old label-beside-digest shape that roster satisfied artifact_completeness and the door answered BindingOk, admitting bytes that could green a red. Because the content digest is now DERIVED from the carried parts, claiming a part the bytes do not hold changes the derivation, so the forgery is no longer self-consistent and lands on the wrong-content refusal instead. The paired positive control below (same artifact, its OWN derived digest) shows the refusal is discriminating rather than a blanket red: the honest complete artifact still serves and still admits."
 
@@ -526,7 +520,6 @@ test fn consumer_target_frontier_names_seven_caches_with_typed_binds() -> Bool {
     && materialization_provider_targets_contain(id: resolved_graph_cache_id)
     && materialization_provider_targets_all_bound()
 }
-
 
 test fn served_hit_carries_a_derived_structural_grade() -> Bool {
   let served = provider_serve(req: witness_closure_request(), probe: witness_good_probe())

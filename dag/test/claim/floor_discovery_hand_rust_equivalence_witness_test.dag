@@ -1,7 +1,5 @@
 module test.claim.floor_discovery_hand_rust_equivalence_witness
 
-
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data floor_discovery_hand_rust_equivalence_note: String = "Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation controls. Producer authority is exercised here; Rust bridge cross-checks (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in gunbc.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in cli_run.rs on the same fixture spellings."
@@ -27,6 +25,8 @@ data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
 data fixture_test_fn_content: String = "test fn floor_discovery_roster_fixture_witness() -> Bool { true }\n"
 data fixture_test_data_content: String = "test data floor_discovery_data_fixture: Bool = true\n"
 data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
+data fixture_barren_test_entry: String = "dag/test/claim/floor_discovery_barren_fixture_test.dag"
+data fixture_barren_test_content: String = "module test.claim.floor_discovery_barren_fixture_test\n\nfn floor_discovery_barren_helper() -> Bool { true }\n"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
 data fixture_live_tree_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
 
@@ -163,7 +163,6 @@ test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
   }
 }
 
-
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {
   gunbc.floor_discovery_scaffold.floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
 }
@@ -252,6 +251,59 @@ test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> B
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
     Absent => false
   }
+}
+
+// The `*_test.dag` suffix is one half of a two-sided rule: a `test`-marked decl may live
+// ONLY in such a file (the misplaced-decl control above), and such a file must declare at
+// least ONE. Without this second half a witness file enrolls nothing and the floor reports
+// nothing missing -- discovery cannot distinguish "no witnesses here" from "no witnesses
+// authored yet", so the file is silently uncovered. Nine such files stood in tree.
+test fn floor_discovery_barren_test_sidecar_refuses_red_control() -> Bool {
+  match floor_discovery_barren_test_sidecar_refusal_for_content(
+    repo_path: fixture_barren_test_entry,
+    content: fixture_barren_test_content
+  ) {
+    Present { value: msg } =>
+      string_contains(s: msg, pattern: "test fn")
+        && string_contains(s: msg, pattern: fixture_barren_test_entry)
+    Absent => false
+  }
+}
+
+// The positive control: the SAME path with one authored test decl must be admitted, so the
+// row above discriminates on the decl scan rather than on the filename.
+test fn floor_discovery_populated_test_sidecar_admitted_holds() -> Bool {
+  match floor_discovery_barren_test_sidecar_refusal_for_content(
+    repo_path: fixture_barren_test_entry,
+    content: fixture_test_fn_content
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The other direction: an ordinary module declaring no test decls is not barren -- the rule
+// is scoped to entries the sidecar suffix claims, never to the corpus at large.
+test fn floor_discovery_non_test_entry_is_never_barren_holds() -> Bool {
+  match floor_discovery_barren_test_sidecar_refusal_for_content(
+    repo_path: fixture_misplaced_entry,
+    content: fixture_barren_test_content
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn floor_discovery_barren_refusal_reason_carries_its_path_holds() -> Bool {
+  let msg = floor_discovery_sidecar_refusal_reason(violations: [
+    FloorDiscoverySidecarViolation {
+      entry_path: fixture_barren_test_entry,
+      kind: BarrenTestSidecar,
+      required_suffix: floor_test_sidecar_suffix
+    }
+  ])
+  string_contains(s: msg, pattern: fixture_barren_test_entry)
+    && string_contains(s: msg, pattern: "at least one")
 }
 
 test fn floor_discovery_sidecar_combined_refusal_reports_both_holds() -> Bool {

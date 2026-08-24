@@ -1,6 +1,5 @@
 module gunbc.devboot.produce
 
-
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
 //
 // EVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.
@@ -39,10 +38,7 @@ fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String
 
 fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
   let index_path = devboot_snapshot_index_path(work_root: work_root)
-  let prepared = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root]
-  )
+  let prepared = devboot_ensure_directory(repo_root: repo_root, path: work_root)
   let cleared = devboot_witness_run(
     site: retained_devboot_rm_file,
     workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
@@ -101,10 +97,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
     site: retained_devboot_rm_rf,
     workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir]
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: source_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
     address: devboot_repo_address(repo_root: repo_root),
     index: checkout_index as FilePath,
@@ -788,7 +781,6 @@ fn devboot_produce_build(store_root: String, repo_root: String, work_root: Strin
   }
 }
 
-
 // THE BUILD IS DERIVED FROM THE ADMITTED SUBJECT, and the previous revision's failure to do so was a false share of the exact kind the identity carriers exist to prevent. It computed the subject digest faithfully and then ran a fixed `cargo build --release --bin gunbc` regardless of what had been admitted, so a caller asking for the library, a different binary, a debug profile, a feature set or another target would have received the release CLI STORED UNDER ITS OWN SUBJECT'S DIGEST. Every later reuse would then serve those wrong bytes as an exact match, because the record and the request really would agree -- the wall in gunbc.devboot.outcome compares subjects, and both sides would have been the subject nobody built.
 //
 // SO EVERY AXIS EITHER REACHES THE ARGV OR REFUSES. The product picks the cargo target flag and the artifact filename; the profile picks the flag and the output directory; features become --features. What this producer cannot yet realize faithfully is REFUSED with a located cause rather than silently ignored, which is the difference between a bounded capability and a lie: a refusal costs the caller a build it could not have had anyway, while ignoring the axis costs it correctness.
@@ -957,8 +949,13 @@ fn devboot_run_build_plan(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+      ],
+      command_argv: concat(["cargo"], args),
+    ),
   )
   if !built.success {
     ProduceRefused {

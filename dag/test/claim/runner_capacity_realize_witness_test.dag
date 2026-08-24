@@ -1,6 +1,5 @@
 module test.claim.runner_capacity_realize_witness
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
@@ -15,6 +14,18 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // actually carry. srv4 contributes the addition (slot 06, no fabric slot); srv3 contributes none
 // (slot 06 is its compute-fabric slot), so this also exercises the seam on a host pair that
 // DISAGREES rather than one where both sides happen to match.
+// THE NUMBERS MOVED BECAUSE THE OBSERVATION BECAME REAL, NOT BECAUSE THE SEAM CHANGED. This row's
+// claim is unchanged -- width six reaches the apply seam and is planned rather than refused. What
+// moved is what the planner SEES: the observation is now decoded from the roster instead of
+// synthesized as a dense prefix, and the roster the production path carries is missing slot 03 on
+// both managed hosts. So srv3 plans one addition where it previously planned none, and srv4 plans
+// two where it planned one. Those extra actions are not new work invented by this change; they are
+// work that was always outstanding and that a synthesized observation could not see.
+//
+// THE IDENTITY-LEVEL ASSERTION LIVES IN runner_capacity_plan_witness at_the_committed_width_...,
+// which pins WHICH slots these are. Counts are load-bearing here only for the seam's own question,
+// and a count alone could not have caught the dense-prefix subtraction defect -- which is stated
+// here so a future reader does not mistake this row for coverage of that class.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 6,
@@ -23,8 +34,8 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 1
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 1
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
     PlanRefused { reason: _ } => false
   }
 }
@@ -110,26 +121,53 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
   }
 }
 
-test fn replay_apply_is_no_op_when_observed_width_satisfies_request() -> Bool {
+// RENAMED FROM ...observed_width_satisfies_request BECAUSE A WIDTH NO LONGER SATISFIES ANYTHING.
+// The claim is that re-applying a CONVERGED population plans nothing, and convergence is set
+// equality rather than a count reaching a number -- a host holding {01,02,04,05} has count four and
+// is not converged at width five. The fixture now hands whole populations.
+test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
   runner_capacity_reapply_plans_zero_additions(
-    srv3_width: 7,
-    srv4_width: 7,
-    observed_srv3: 7,
-    observed_srv4: 7,
+    srv3_width: 5,
+    srv4_width: 5,
+    observed_srv3: committed_slot_identities(host: operator_host_srv3),
+    observed_srv4: committed_slot_identities(host: operator_host_srv4),
   )
-    && runner_capacity_reapply_plans_zero_additions(
-      srv3_width: 5,
-      srv4_width: 5,
-      observed_srv3: 5,
-      observed_srv4: 5,
-    )
 }
 
+// THE NON-VACUITY CONTROL, without which the row above is satisfied by a planner that never plans
+// anything. One member removed from srv3's population must produce work.
+test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
+  !runner_capacity_reapply_plans_zero_additions(
+    srv3_width: 5,
+    srv4_width: 5,
+    observed_srv3: [],
+    observed_srv4: committed_slot_identities(host: operator_host_srv4),
+  )
+}
+
+// MOVED OFF THE SEVEN-WIDE FIXTURE, AND WHERE IT LANDED TOOK TWO TRIES WORTH RECORDING. Seven is not
+// a width any host is admitted to carry, and once registrations are decoded rather than counted,
+// srv3-07 resolves to no committed slot -- so the old fixture made the planner refuse, correctly,
+// and this row was asserting convergence against a fleet that cannot exist.
+//
+// I FIRST REPLACED IT WITH A CONVERGED-SIX ROSTER AND THAT WAS ALSO WRONG, for a reason worth more
+// than the fix. A six-wide GitHub roster puts srv4-06 in the observation, and there is no LOCAL
+// incarnation for it: local_incarnations_for_host is bounded by materialized_width_for_host, which
+// is a hardcoded FIVE on every host. So the planner refused with an unaccounted registration, and it
+// was right again. Convergence is not a property of the GitHub roster alone -- it is agreement
+// between the desired population, the GitHub population AND the local one, and the local side is
+// still a synthesized constant. A converged fleet at six is therefore not representable today, and
+// authoring a fixture that claimed otherwise would have been asserting a state the fleet cannot be in.
+//
+// AND THE FIXTURE I NEEDED ALREADY EXISTED. organization_runner_roster_materialized_slots_online_evidence
+// is exactly this: both managed hosts registered 01-05 and online, converged at the materialized
+// width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
+// module's own authority note forbids -- caught by trying to make it green rather than by review.
 test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
-    roster: organization_runner_roster_converged_seven_evidence(),
+    srv3_width: 5,
+    srv4_width: 5,
+    roster: organization_runner_roster_materialized_slots_online_evidence(),
   )
   match plan {
     PlanReady { hosts: _ } =>

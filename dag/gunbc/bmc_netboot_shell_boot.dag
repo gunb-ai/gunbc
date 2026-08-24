@@ -1,6 +1,5 @@
 module gunbc.bmc_netboot_shell_boot
 
-
 data tftp_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -12,15 +11,11 @@ data tftp_authority: extdeps.external_authority.ExternalAuthority = extdeps.exte
 data shell_boot_local_kernel: std.types.NonEmptyStr = "fs0:\\vmlinuz"
 data shell_boot_local_initrd: std.types.NonEmptyStr = "fs0:\\initrd"
 
-fn bmc_tftpd_serve_command(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> extdeps.exec.command.ArgvCommand {
-  extdeps.exec.command.ArgvCommand {
-    argv: [
-      join([plan.netboot_dir as String, "/busybox"], ""),
-      "udpsvd", "-E", "0.0.0.0", "69",
-      join([plan.netboot_dir as String, "/busybox"], ""),
-      "tftpd", "-r", plan.netboot_dir as String,
-    ],
-  }
+fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
+  busybox_tftpd_over_udpsvd_command(
+    busybox_bin: join([plan.netboot_dir as String, "/busybox"], "") as NonEmptyStr,
+    document_root: plan.netboot_dir,
+  )
 }
 
 fn shell_boot_kernel_cmdline(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {

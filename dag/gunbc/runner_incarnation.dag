@@ -1,6 +1,5 @@
 module gunbc.runner_incarnation
 
-
 data runner_incarnation_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 data runner_incarnation_process_identity_note: String = "LocalRunnerSlotIncarnation deliberately carries NO process/PID field today. Staleness for ReplaceRunnerIncarnation is expressed through slot, unit, unit_active, and registration_name until gunbc.runner_lifecycle ObserveRunnerLocalState grounds a live process identity producer. Adding a phantom process field without that producer would be specification-without-execution (DESIGN section 5). The seam witness proves the modeled fields survive HostEffect projection; a dedicated process identity lands with ObserveRunnerLocalState wet read-back."
@@ -155,7 +154,7 @@ fn runner_slot_incarnation(
   slot_index: std.nat.Nat,
   unit_active: Bool,
 ) -> LocalRunnerSlotIncarnation {
-  let registration_name = join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as std.types.NonEmptyStr
+  let registration_name = join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
   LocalRunnerSlotIncarnation {
     slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: slot_index },
     unit: join(["actions-runner@", registration_name as String, ".service"], "") as std.types.NonEmptyStr,

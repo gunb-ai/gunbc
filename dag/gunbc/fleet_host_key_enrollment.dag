@@ -1,6 +1,5 @@
 module gunbc.fleet_host_key_enrollment
 
-
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
 // fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at
 // ProbeHostKeyUnenrolled — the transport refuses verification because the probing
@@ -163,9 +162,9 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 func verify_enrollment_outcome() -> String
   uses net: std.resources.Network
 {
-  match gunbc.command_runner.run_shell_command_capture(
-    command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
-    transport: extdeps.exec.command.LocalExec,
+  match run_shell_command_capture(
+    command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"),
+    transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } => concat("outcome=", std.algebra.trim(s: t))
     ProcessOutputAbsent => "outcome=UNKNOWN cause=verify admitted but printed nothing"
@@ -185,19 +184,19 @@ func verify_enrollment_outcome() -> String
 // outcome and now has to be said in its own words.
 
 fn scan_host_key_lines(host: String) -> String {
-  let endpoint = gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)
-  match gunbc.command_runner.run_shell_command_capture(
-    command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
-    transport: extdeps.exec.command.LocalExec,
+  let endpoint = fleet_probe_endpoint_for(host: host)
+  match run_shell_command_capture(
+    command: ssh_keyscan_command(host: endpoint, key_type: "ed25519", timeout_seconds: 5),
+    transport: LocalExec,
   ) {
     ProcessOutputPresent { text: key_text } => {
       let key_file = join(["target/fleet-host-key-scan-", host, ".pub"], "")
       let w = Filesystem.Write(path: key_file, content: key_text)
       let fingerprint_text = if w.success {
-        gunbc.command_runner.process_outcome_receipt_text(
-          outcome: gunbc.command_runner.run_shell_command_capture(
-            command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keygen", "-l", "-f", key_file] },
-            transport: extdeps.exec.command.LocalExec,
+        process_outcome_receipt_text(
+          outcome: run_shell_command_capture(
+            command: ssh_keygen_fingerprint_command(key_file: key_file),
+            transport: LocalExec,
           )
         )
       } else {
@@ -284,17 +283,17 @@ func fleet_host_key_enroll_apply() -> String
         "echo \"  UserKnownHostsFile $(pwd)/target/fleet-known-hosts-fragment\" ) >> \"$CFG\"; ",
         "fi; chmod 600 \"$CFG\"",
       ], "")
-      let applied = gunbc.command_runner.run_shell_commands(
-        commands: [ extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],
-        transport: extdeps.exec.command.LocalExec,
+      let applied = run_shell_commands(
+        commands: [ posix_sh_program_command(script: pin_cmd) ],
+        transport: LocalExec,
       )
       match applied {
         ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=", why, "\n"], "")
         ExitSuccess =>
           join(map(fleet_host_key_enrollments, k => {
-            let f = gunbc.command_runner.run_shell_command_capture(
-              command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
-              transport: extdeps.exec.command.LocalExec,
+            let f = run_shell_command_capture(
+              command: ssh_keygen_known_hosts_find_command(host: k.endpoint, known_hosts_file: staged),
+              transport: LocalExec,
             )
             join([
               "enroll host=", k.host as String, " endpoint=", k.endpoint,
@@ -349,17 +348,18 @@ fn fleet_automation_authorized_keys_line() -> String {
 // absent means write it, unreadable means stop and say so. Matching the arms makes the third
 // state impossible to fall through: a refusal now refuses instead of mutating the file.
 
-func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
-  uses net: std.resources.Network{
-  let user = gunbc.command_runner.run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: extdeps.exec.command.LocalExec)
-  let hostname = gunbc.command_runner.run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname"] }, transport: extdeps.exec.command.LocalExec)
+func fleet_authorized_key_self_enroll_wet() -> ProcessExit
+  uses net: Network
+{
+  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
+  let hostname = run_shell_command_capture(command: hostname_read_command(), transport: LocalExec)
   let line = fleet_automation_authorized_keys_line()
   let staged = "target/fleet-authorized-key-line"
   let w = Filesystem.Write(path: staged, content: concat(line, "\n"))
   let outcome = if w.success {
-    let check = gunbc.command_runner.run_shell_command_capture(
-      command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
-      transport: extdeps.exec.command.LocalExec,
+    let check = run_shell_command_capture(
+      command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"),
+      transport: LocalExec,
     )
     match check {
       ProcessRefused { exit_code: _, stderr: ce } =>
@@ -370,9 +370,9 @@ func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
     if std.algebra.trim(s: ct) == "present" {
       "outcome=already-present"
     } else {
-      let apply = gunbc.command_runner.run_shell_command_capture(
-        command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""] },
-        transport: extdeps.exec.command.LocalExec,
+      let apply = run_shell_command_capture(
+        command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""),
+        transport: LocalExec,
       )
       match apply {
         ProcessRefused { exit_code: _, stderr: ae } =>

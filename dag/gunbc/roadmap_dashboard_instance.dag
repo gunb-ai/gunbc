@@ -68,9 +68,16 @@ data srv1_dashboard_live_id: std.types.NonEmptyStr = "srv1-live" as std.types.No
 data srv1_dashboard_lab_id: std.types.NonEmptyStr = "srv1-lab-codex-feedback-v0" as std.types.NonEmptyStr
 data srv2_dashboard_preview_id: std.types.NonEmptyStr = "srv2-preview-codex-feedback-v0" as std.types.NonEmptyStr
 
-data srv1_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as std.types.FilePath
-data srv2_dashboard_preview_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as std.types.FilePath
-data dashboard_environment_binding_executable: std.types.FilePath = "/usr/bin/env" as std.types.FilePath
+data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as FilePath
+data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
+// DERIVED FROM THE TOOL AUTHORITY, NOT A SECOND DECLARATION OF IT. This row is a product-layer
+// NAME for a fact that belongs to env(1): which absolute path this deployment's capability
+// bindings exec. It used to be the only place in the repository where env's path was declared at
+// all, which made a product module the upstream authority for a coreutils binary -- a section-3
+// layer inversion sitting underneath the nickname. extdeps.tools.env owns the fact now; the name
+// survives here because the binding surface reads better for it, and because a name that resolves
+// to the authority is not a fork.
+data dashboard_environment_binding_executable: FilePath = env_binary_path as String as FilePath
 
 fn dashboard_instance_child(root: std.types.FilePath, child: String) -> std.types.FilePath {
   join([root as String, "/", child], "") as std.types.FilePath

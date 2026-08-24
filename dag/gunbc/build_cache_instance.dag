@@ -46,6 +46,63 @@ type RunnerSlotIdentity {
 // which is one concept under two names, the nicknaming DESIGN section 3 forbids. Comparing on BOTH
 // coordinates is the substance: an equality blind to slot_index would report any slot on a host as
 // the host's fabric member.
+// THE TWO-DIGIT SUFFIX IS ONE RULE AND IT WAS THREE IMPLEMENTATIONS, ONE OF WHICH WAS WRONG.
+// runner_lifecycle and runner_host_deploy each derived it arithmetically; runner_incarnation
+// ENUMERATED it -- if index == 1 then "01", up to 8 -- with an else arm returning the literal "00".
+// So above index 8 the three disagreed, measured: srv3-09 from the derived pair, srv3-00 from the
+// enumerator. That is not a wrong name, it is a COLLISION -- every index above 8 mapped to the same
+// string, so two slots would contend for one registration in the GitHub runner namespace.
+//
+// IT WAS UNREACHABLE ONLY BY ACCIDENT, AND THE ACCIDENT WAS ANOTHER DEFECT. Nothing could hand the
+// enumerator an index above 8 because the widths were capped -- first by a bucketed slot-index
+// enumerator, then by host_memory_admitted_width's else arm, which answers zero for every host it
+// does not enumerate. The second of those is being repaired in this same change, which is exactly
+// why the suffix is repaired WITH it: widening that arm removes the guard, so landing it alone would
+// convert a dormant collision into a live one.
+//
+// THE REACHABLE POPULATION OF THAT ARM IS EMPTY TODAY, AND TWO EARLIER REVISIONS OF THIS BLOCK GOT
+// IT WRONG IN OPPOSITE DIRECTIONS. The first dated the risk to the commit that first lets a rented
+// host exist, which names a future event and the wrong subject. The second, correcting it, said srv5
+// and srv6 reach the arm right now -- also false, and false in the more dangerous direction, because
+// it reads as a live defect. Measured: gunbc.fleet_intent_network declares six host rows, but every
+// call that reaches this table draws its argument from gunbc.fleet_runner_connectivity fleet_hosts,
+// which enumerates four. srv5 and srv6 are the DGX Spark inference pair; nothing on the runner path
+// ever hands them to a width function, so they are not answered zero -- they are not asked.
+//
+// THE CORRECTION THAT MATTERS IS THAT ZERO IS THE WRONG ANSWER SHAPE, NOT THAT IT IS REACHED.
+// Were srv5 to arrive here it would be told it has a CI capacity of zero, when the truth is that the
+// question does not apply to an inference appliance. gunbc.host_phase_status fleet_subsumption_enrollments
+// already carries that distinction as a participation per host, so the fact exists and this table
+// cannot see it.
+//
+// THE STRUCTURAL TRIGGER, recorded as a property of the call sites rather than as a date:
+// the first width read whose host argument is not drawn from a closed roster.
+// Until such a read exists the arm is unreachable in practice; the moment one does, it answers zero
+// for a real host and that zero is indistinguishable from a measured one. The nearest candidate is
+// gunbc.build_cache_endpoint_observe runner_slot_lifecycle_for, whose host arrives on an observed
+// instance identity rather than from an enumeration -- NOT VERIFIED to be open, named here so the
+// next reader checks it instead of re-deriving that it is the place to look.
+//
+// DERIVED RATHER THAN REFUSED, because a refusal would still be a second representation of a rule
+// the arithmetic already states -- it concedes the bad state is writable and then guards it.
+// Deriving leaves no fall-through to route, so there is nothing to guard and nothing to forget.
+//
+// THIS FUNCTION IS TOTAL ON PURPOSE AND ITS TOTALITY IS NOT A MISSING BOUND. Index 99 gets a
+// well-formed name here, for a slot that should not exist, and that is CORRECT: whether index 99
+// exists is the ADMISSION CEILING's question, answered by gunbc.runner_slot_allocation from the
+// host's memory and disk admissions. Naming names; admission admits. A bound added here would be a
+// second representation of the ceiling, free to disagree with it, and it would re-create in this
+// function exactly the fall-through this change removed -- because any bound needs an else arm, and
+// that arm has no honest answer to return. If you are reading this because a name looked wrong for
+// an index that should not exist, the defect is upstream at the ceiling, not here.
+fn runner_slot_index_suffix(index: Nat) -> String {
+  if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
+}
+
+fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
+  join([slot.host as String, "-", runner_slot_index_suffix(index: slot.slot_index)], "")
+}
+
 fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
   (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
 }

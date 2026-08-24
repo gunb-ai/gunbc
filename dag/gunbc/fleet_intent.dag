@@ -191,13 +191,15 @@ data srv4_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvm
   persistence: extdeps.storage.types.Persistent,
 )
 
-data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — srv1/srv2/srv3 host memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module × stick_count), srv1/srv2/srv3 observed 2026-07-16 (deferral scaffolds retired on observation); srv4 is NOT yet observed — its 128 GiB literal carries srv4_memory_population_deferral, the same declared-deferral shape srv1/srv2 used pre-observation; (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). The usable figure requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — every host's memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module x stick_count). srv1, srv3 and srv4 carry 8 x 64 GiB Samsung (512 GiB each) as of 2026-08-22; srv2 alone still carries 8 x 16 GiB Hynix from its 2026-07-16 observation, because its 64 GiB install failed memory training and was reverted (see gunbc.host_memory_qualification). The srv3/srv4 rows are authenticated Redfish reads taken 2026-08-22; srv1's is operator-relayed at the population grain with no independent read, a WEAKER evidence class carried in prose only -- the row's shape is identical to the measured hosts', so nothing downstream can tell them apart. The fleet is HETEROGENEOUS as of that date, and srv2 must not inherit any widened commitment derived from the other three. (2) OS-USABLE budget — the MemTotal-shaped CI runner budget authority, which is a SEPARATE fact with its own provenance requirement.\n\nTHE UPGRADE MAKES THE SPLIT LOAD-BEARING RATHER THAN PEDANTIC, so it is restated here in the direction the mistake would now be made. The temptation before was to write 128 GiB nominal over a 125 GiB usable figure, a 3 GiB error. The temptation NOW is to write 512 GiB over it, a 387 GiB error, on the two hosts where a conservation wall would spend it. A management controller reports what is installed; only the kernel reports what is usable after firmware and kernel reservations. srv3 and srv4 now carry MEASURED current-boot MemTotal in gunbc.ci_floor_measurement (about 502.25 GiB each, read over SSH 2026-08-22); srv1 and srv2 still carry a conservative lower bound there, because no /proc/meminfo read has been taken on either. THE 512-VERSUS-502 GAP IS THE WHOLE POINT OF THE SPLIT: about 10 GiB per host disappears between what the management controller reports installed and what the kernel reports usable, and a wall spending nominal would overcommit by that much on every upgraded host. The remaining bound is dissolved by one ordinary /proc/meminfo read on srv1 and srv2 and by nothing that can be reached over Redfish."
 
-data srv1_memory_population_observation_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+data srv1_memory_population_observation_2026_07_16_note: String = "srv1 BMC 192.168.1.183 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
+
+data srv1_memory_population_observation_2026_08_22_note: String = "srv1 UPGRADED to the 64 GiB Samsung population on 2026-08-22 and POSTed cleanly on the first attempt. OPERATOR-SUPPLIED OBSERVATION, not a read this lane took: reported from the host as 8 x M393A8G40D40-CRB totalling 502 GB as dmidecode/free render it. srv1's host does not accept the fleet-automation key and its BMC credential is not in Secret Manager, so no independent confirmation was available here.\n\nATTRIBUTION IS THE POINT OF THAT SENTENCE. srv3 and srv4 carry BMC Redfish reads taken directly; this row does not, and recording the difference is what keeps a relayed figure from being cited later as though it had the same standing (DESIGN 4b, rung honesty at a declared subject grain). It is admitted because the reporting path is the operator observing their own machine, which is the same class of evidence srv1 and srv2's 2026-07-16 rows already rest on.\n\nDissolve-on: an independent read of srv1 at either grain -- a BMC Redfish Memory collection once a credential exists, or /proc/meminfo plus dmidecode over a key authorized on that host."
 
 data srv1_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
   ],
 }
 
@@ -209,12 +211,15 @@ data srv2_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps
   ],
 }
 
-data srv3_memory_population_observation_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
+data srv3_memory_population_observation_2026_07_16_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-07-16 (factory cred): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0 HMA82GR7AFR8N-VK RankCount=2 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×7); dimm7 HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×1). Part-number decode: AFR8N=x8 2R → hma82gr7afr8n_vk_catalog; AFR4N=x4 1R → existing hma82gr7afr4n_vk_catalog. Mixed 7+1 population totals 128 GiB — the fact the old gibibyte(128) literal was hiding."
+
+data srv3_memory_population_superseded_note: String = "THE 2026-07-16 MIXED HYNIX POPULATION IS HISTORY, NOT THE CURRENT FACT, and it is kept because a superseded observation is still a true observation of its moment (DESIGN A3). It read 7 x HMA82GR7AFR8N-VK plus 1 x HMA82GR7AFR4N-VK, 128 GiB total, at 2666 MT/s. Those modules left the chassis in the 2026-08-22 replacement; the row below is what is in it now. Deleting the old reading would erase the only record of what the 7+1 mix was, which is the population every measurement taken before 2026-08-22 was taken against -- including gunbc_ci_srv3_memavailable_high_water, the receipt the managed-host overhead bound still rests on."
+
+data srv3_memory_population_observation_2026_08_22_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-08-22T20:15:38Z, taken through the rotated credential in Secret Manager (bmc-srv3-admin). MemorySummary TotalSystemMemoryGiB=512; per-DIMM dimm0..dimm7 ALL M393A8G40D40-CRB CapacityMiB=65536 OperatingSpeedMhz=2133 RankCount=2 Manufacturer=Samsung, eight distinct serial numbers, banks DDR4_A1 through H1 (one per channel). Uniform 8-stick population of m393a8g40d40_crb0q_catalog totals 512 GiB.\n\nTHE READ WAS TAKEN MID-BOOT AND THAT IS WHY THE TIMESTAMP IS PRECISE. At 20:14:31 the same endpoint still reported 128 GiB and the old Hynix parts with BootProgress=None; the host had powered on at 20:13:15 after a blackout and had not completed POST. It reported SystemHardwareInitializationComplete at 20:15:05 and 512 GiB at 20:15:38. A reader who catches this endpoint before POST completes gets the PREVIOUS population with no indication it is stale, which is a live trap for exactly this kind of observation and is recorded so the next observer waits for BootProgress rather than trusting a quiet answer.\n\nOPERATING SPEED IS THE PART'S RATING, NOT A DOWNTRAIN. 2133 is what this DDR4-2133 module is specified at; the fleet moved 2666 -> 2133 by installing it. That is a real bandwidth reduction bought for 4x capacity and it is a trade the operator made deliberately, not a fault to chase.\n\nREDFISH RankCount=2 IS RECORDED HERE AND NOT IN THE CATALOG ROW. It is an observation of this host's controller enumeration; the module's logical rank organization is the OEM's fact and lives in extdeps.memory.samsung. See that row's note for why the two are not competing answers."
 
 data srv3_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr8n_vk_catalog, stick_count: 7 },
-    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 1 },
+    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
   ],
 }
 
@@ -245,27 +250,13 @@ data srv3_host: ComputeHost = ComputeHost {
   storage: [srv3_nvme0],
   network_interfaces: [],
 }
-type FleetHostMemoryPopulationDeferral {
-  host: product.placement_supply.HostIdentity
-  bmc_host: std.types.NonEmptyStr
-  cause: std.types.NonEmptyStr
-  dissolution: std.dissolution.DissolutionCondition
-}
 
-data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
-  host: gunbc.fleet_intent_network.operator_host_srv4,
-  bmc_host: "192.168.1.195",
-  cause: "per-DIMM Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
-  dissolution: std.dissolution.unbound_dissolution(description: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)"),
-}
+data srv4_memory_population_observation_note: String = "srv4 BMC 192.168.1.195 Redfish observation 2026-08-22, taken between 19:46Z and 20:15Z (the exact minute was not recorded at read time and is NOT reconstructed here -- the window is bounded below by the 19:45:57Z correctable-ECC entry this session read first and above by the srv3 read at 20:15:38Z). srv3 carries a precise timestamp because its read was taken against a live boot transition and the clock mattered; this one was not, and a fabricated second would be worth less than an honest window. Taken through the rotated credential in Secret Manager (bmc-srv4-admin) -- the authenticated read this host's deferral named as its dissolution condition, so that scaffold is RETIRED by this row rather than carried forward. MemorySummary TotalSystemMemoryGiB=512; per-DIMM dimm0..dimm7 ALL M393A8G40D40-CRB CapacityMiB=65536 OperatingSpeedMhz=2133 RankCount=2 Manufacturer=Samsung, eight distinct serials, banks DDR4_A1 through H1, every module State=Enabled Health=OK and system HealthRollup=OK.\n\nTHE DEFERRAL'S OWN INSTRUCTION SAID TO DECODE AGAINST THE SK HYNIX CATALOG AND THAT INSTRUCTION IS SUPERSEDED, which is worth saying because following it literally would have produced a wrong row. It was written when the expected finding was srv1's uniform Hynix population; what is actually installed is a Samsung part that had no catalog row at all until 2026-08-22. The deferral was right that srv1's population must not be assumed, and wrong about which catalog the answer would come from.\n\nONE CORRECTABLE ECC EVENT IS ON RECORD FOR THIS POPULATION, logged 2026-08-22T19:45:57Z on Socket 0 / Channel 0 / DIMM 0 (bank 13, row 166, column 96), about three minutes after an unclean restart following a power blackout. It was corrected by ECC and no uncorrectable event accompanied it. It is recorded here rather than left in the BMC log because it is the only memory event this population has produced and because a repeat at the same bank/row/column would distinguish a marginal device from a single upset -- see gunbc.host_memory_qualification for the qualification standing this does not by itself change."
 
-data srv4_memory_population_deferral_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: std.disposition.SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
-    module_path: "gunbc.fleet_intent",
-    decl_name: "srv4_memory_population",
-    field: std.decl_ref.WholeDeclaration,
-  },
+data srv4_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+  ],
 }
 
 data srv4_host: ComputeHost = ComputeHost {
@@ -273,7 +264,7 @@ data srv4_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv4_baseboard },
   bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: extdeps.memory.types.Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv4_memory_population),
   storage: [srv4_nvme0],
   network_interfaces: [],
 }

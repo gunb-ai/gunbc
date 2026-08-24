@@ -1,5 +1,9 @@
 module test.claim.fabric_witness_run
 
+// Nat is imported explicitly because the strict floor does not supply it ambiently the way
+// `gunbc run` does. This file carried no import list at all and resolved anyway under the
+// looser path, so adding a Nat-typed parameter passed locally and refused in CI.
+
 // The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
 // separate coproducts, so every witness here is a refusal on ONE of them or one
 // of the controls that prove refusal is not the only reachable arm on either. A
@@ -18,29 +22,79 @@ fn t_max_buy() -> std.measure.MoneyAmountMicro {
 }
 
 fn t_offer(
-  threads: std.measure.HardwareThreadCount,
-  caps: product.fabric.work.CapabilityManifestRef,
-  trust: product.fabric.work.TrustDomainRef,
-  quote: product.fabric.supply.OfferQuote,
-) -> Offer<std.types.NonEmptyStr> {
-  product.fabric.supply.Offer {
-    id: product.fabric.identity.FabricIdentity { principal: "gunbc", key: "offer-srv1" },
+  threads: HardwareThreadCount,
+  caps: CapabilityManifestRef,
+  trust: TrustDomainRef,
+  quote: OfferQuote,
+) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
-    shape: product.fabric.work.Shape { hard: product.fabric.work.HardRequirements { threads: threads } },
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
     capabilities: caps,
     trust_domain: trust,
+    isolation: current_runner_slot_profile(),
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
     quote: quote,
-    evidence: product.fabric.supply.ObservedSupply {
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
       observed_at: "2026-08-19T00:00:00Z",
       receipt: "gunbc.observation.fleet-1",
     },
   }
 }
 
-fn t_quote(amount: std.measure.MoneyAmountMicro, currency: std.currency.CurrencyCode) -> product.fabric.supply.OfferQuote {
-  product.fabric.supply.QuotedFlatPerGrant(std.measure.MoneyRate { amount: amount, currency: currency })
+fn t_offer_with_quantum(
+  quote: OfferQuote,
+  quantum: Second,
+) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
+    executor: "gunbc",
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: unstated_envelope() },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: current_runner_slot_profile(),
+    quantity_bound: 1,
+    ready_at: "2026-08-19T00:00:00Z",
+    quote: quote,
+    billing_quantum: quantum,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-19T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// BILLING QUANTUM CHANGES THE BILL, AND THIS IS THE INPUT THAT PROVES IT.
+//
+// One rate, one 90-second job, two suppliers. Continuous capacity is billed the 90
+// seconds it used. An hourly-quantum supplier is billed the whole hour and wastes 3510
+// seconds of it. If the fold ever went back to assuming one quantum for everybody, these
+// two would collapse to the same number and this test goes red -- which is the point:
+// the waste is the modeled advantage of owned compute, and a rate comparison that cannot
+// see it ranks suppliers by the wrong number.
+test fn billing_quantum_separates_continuous_capacity_from_an_hourly_supplier() -> Bool {
+  let ninety = ExactGrantDuration { seconds: second(count: 90) }
+  let rate = QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd })
+  let continuous = offer_affordability_for(
+    offer: t_offer_with_quantum(quote: rate, quantum: second(count: 0)),
+    maximum_buy_order: money_amount_micro(count: 100),
+    budget_currency: Usd,
+    duration: ninety,
+  )
+  let hourly = offer_affordability_for(
+    offer: t_offer_with_quantum(quote: rate, quantum: second(count: 3600)),
+    maximum_buy_order: money_amount_micro(count: 100),
+    budget_currency: Usd,
+    duration: ninety,
+  )
+  affordable(a: continuous) && !affordable(a: hourly)
+}
+
+fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
+  QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
 }
 
 // THE OWNED-FLEET OFFER CARRIES AN ASKING PRICE, NOT AN OPPORTUNITY COST.
@@ -59,7 +113,7 @@ fn t_quote(amount: std.measure.MoneyAmountMicro, currency: std.currency.Currency
 // AFFORDABILITY SCREENING and it is not selection -- nothing here chooses among
 // several affordable offers, and choosing would need the interval, tariff,
 // commitment state and alternative uses that no carrier holds yet.
-fn t_fleet_offer() -> Offer<std.types.NonEmptyStr> {
+fn t_fleet_offer() -> SupplierOffer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -71,9 +125,10 @@ fn t_fleet_offer() -> Offer<std.types.NonEmptyStr> {
 fn fungible(e: product.fabric.supply.OfferFungibility) -> Bool {
   match e {
     Fungible => true
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
     TrustDomainMismatch { required: _, offered: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
+    IsolationNotProvided { missing: _ } => false
+    ShapeAxesNotCovered { unmet: _ } => false
   }
 }
 
@@ -91,11 +146,11 @@ fn affordable(a: product.fabric.supply.DemandOfferAffordability) -> Bool {
   }
 }
 
-fn floor_fungibility(offer: Offer<std.types.NonEmptyStr>) -> product.fabric.supply.OfferFungibility {
+fn floor_fungibility(offer: SupplierOffer<NonEmptyStr>) -> OfferFungibility {
   floor_offer_fungibility(offer: offer)
 }
 
-fn floor_affordability(offer: Offer<std.types.NonEmptyStr>) -> product.fabric.supply.DemandOfferAffordability {
+fn floor_affordability(offer: SupplierOffer<NonEmptyStr>) -> DemandOfferAffordability {
   floor_offer_affordability(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
 }
 
@@ -134,7 +189,8 @@ test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
   )) {
     TrustDomainMismatch { required: _, offered: _ } => true
     Fungible => false
-    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    ShapeAxesNotCovered { unmet: _ } => false
+    IsolationNotProvided { missing: _ } => false
     CapabilitiesNotOffered { required: _, offered: _ } => false
   }
 }
@@ -206,7 +262,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
 // went red on a claim nobody had reread. It now uses its OWN zero-quoted offer,
 // because the property under test is the strictness of the comparison and has
 // nothing to do with the fleet.
-fn t_free_offer() -> Offer<std.types.NonEmptyStr> {
+fn t_free_offer() -> SupplierOffer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -241,7 +297,7 @@ test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
 // THE COMMAND. Derived facts, not restatements.
 
 test fn floor_argv_carries_every_declared_source_root() -> Bool {
-  let argv = floor_run_command().argv
+  let argv = argv_words(command: floor_run_command())
   all(witness_layer_roots, r => any(argv, a => a == r))
     && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
@@ -284,7 +340,7 @@ test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
 // witness in favour of construction would have dropped the one clause that caught it, so the
 // clause is carried here rather than lost with its old carrier.
 test fn fabric_command_names_the_consolidated_mode() -> Bool {
-  let argv = floor_run_command().argv
+  let argv = argv_words(command: floor_run_command())
   any(argv, a => a == "--required-ci") && !any(argv, a => a == "--required-floor")
 }
 

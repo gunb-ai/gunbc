@@ -200,8 +200,9 @@ data lrdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.type
   capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
   data_rate_mts: 2133,
   ecc: true,
-  buffering: extdeps.memory.types.LoadReduced,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: LoadReduced,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 4,
 }
 
@@ -214,8 +215,9 @@ data rdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types
   capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
   data_rate_mts: 2666,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 2,
 }
 

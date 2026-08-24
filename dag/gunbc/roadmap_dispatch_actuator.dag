@@ -1,6 +1,5 @@
 module gunbc.roadmap_dispatch_actuator
 
-
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: std.disposition.Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as std.types.NonEmptyStr
 }
@@ -154,7 +153,6 @@ type DispatchBriefFields {
 }
 
 data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contains only fields consumed by fill_dispatch_brief. Sizing remains typed on RoadmapNode and is projected only where rendered."
-
 
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
@@ -1029,7 +1027,7 @@ fn dispatch_provider_inner_argv(
     ClaudeCodeProvider =>
       DispatchProviderInnerArgvReady {
         argv: concat(
-          ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+          [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
             session_uuid: session_uuid,
@@ -1141,7 +1139,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   tmux_spawn_inner_argv(
     session_name: session_name,
     worktree_path: worktree_path,
-    inner_argv: concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    inner_argv: concat([env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
   )
 }
 

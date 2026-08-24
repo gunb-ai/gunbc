@@ -1,6 +1,5 @@
 module gunbc.gitignore_authority
 
-
 data gitignore_authority: List<gunbc.gitignore_model.IgnoreGroup> = [
   gunbc.gitignore_model.IgnoreGroup {
     producer: gunbc.gitignore_model.Derivable { kind: CargoArtifacts },
@@ -101,6 +100,10 @@ data gitignore_authority: List<gunbc.gitignore_model.IgnoreGroup> = [
       PythonAuditScriptAllowlisted,
       PythonProbeScriptAllowlisted,
       FloorCutNameResolutionPartitionScriptAllowlisted,
+      ShadowDirectCallArgConformanceSummarizeScriptAllowlisted,
+      ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted,
+      ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted,
+      E0308ClassifySitesScriptAllowlisted,
     ]
   },
   gunbc.gitignore_model.IgnoreGroup {

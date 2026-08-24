@@ -1,0 +1,390 @@
+module v2.workflow.floor_terminal_ledger_wire_test
+
+// THE FIXTURE'S SNAPSHOT IS BUILT THROUGH THE PRODUCTION ADMISSION, so a bad hex here degrades to
+// `UnpublishedWorkingTree` -- and `an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses`
+// asserts this binding IS candidate-bound, so the degradation fails a test instead of passing
+// silently. The alternative spelling, `git_object_id_from_untagged_hex(...) as GitObjectId` on the
+// absent arm, type-checks and RENDERS THE OPTIONAL WRAPPER -- the same trap this module refuses in
+// its parser, and it would have sat here unreachable until the day it was reached.
+fn fixture_snapshot(hex: String) -> RepositorySnapshot {
+  match admit_repository_snapshot_wire(wire: hex) {
+    SnapshotAdmitted { snapshot: s } => s
+    SnapshotWireUnrecognized { offending: _ } => UnpublishedWorkingTree
+  }
+}
+
+fn ident(f: String) -> WitnessIdentity {
+  WitnessIdentity { module_path: "test.claim.example", function: f }
+}
+
+fn binding() -> LedgerBinding {
+  LedgerBinding {
+    repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
+    prepared_subject: structural_content_hash(digest: "0000000000000002")
+  }
+}
+
+fn passing_row(f: String) -> ClaimTerminalRow {
+  ClaimTerminalRow {
+    identity: ident(f: f),
+    expectation: ExpectedToHold,
+    terminal: Returned { observation: ObservedVerdict { holds: true } }
+  }
+}
+
+fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
+  match render_ledger(binding: binding(), rows: rows) {
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
+    LedgerRendered { text: t } => t
+  }
+}
+
+// EVERY TERMINAL SHAPE, NOT A SAMPLE. A tag collision shows up in exactly one arm and nowhere
+// else, so a test over three representative shapes would pass while two dispositions were fused.
+fn every_shape() -> List<ClaimTerminalRow> {
+  [
+    ClaimTerminalRow {
+      identity: ident(f: "pass"),
+      expectation: ExpectedToHold,
+      terminal: Returned { observation: ObservedVerdict { holds: true } }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "fail"),
+      expectation: ExpectedToHold,
+      terminal: Returned { observation: ObservedVerdict { holds: false } }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "known_red_held"),
+      expectation: ExpectedRed,
+      terminal: Returned { observation: ObservedVerdict { holds: false } }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "known_red_now_passing"),
+      expectation: ExpectedRed,
+      terminal: Returned { observation: ObservedVerdict { holds: true } }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "unreadable"),
+      expectation: ExpectedToHold,
+      terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-bool" } }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "runtime_errored"),
+      expectation: ExpectedToHold,
+      terminal: RuntimeErrored { message: "boom" }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "budget_refused"),
+      expectation: ExpectedToHold,
+      terminal: BudgetRefused {
+        safety: SafetyInterrupted {
+          raised_by: "wall",
+          elapsed_cpu_at_least: 0,
+          elapsed_wall_at_least: 0
+        }
+      }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "host_tool_unresolved"),
+      expectation: ExpectedToHold,
+      terminal: HostToolUnresolved { name: "rustfmt", probed: [] }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "route_gap"),
+      expectation: ExpectedToHold,
+      terminal: RouteGap { route: "shell" }
+    }
+  ]
+}
+
+fn readback_rows_of(text: String) -> List<LedgerReadbackRow> {
+  match parse_ledger(text: text) {
+    LedgerUnreadable { reason: _, at: _ } => []
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: _,
+      rows: rows,
+      footer_row_count_wire: _,
+      footer_digest: _
+    } => rows
+  }
+}
+
+// THE LOAD-BEARING TEST FOR THE ARTIFACT: THE DISPOSITION SURVIVES THE FILE.
+//
+// A ledger that preserved identities but lost what happened to them would satisfy every
+// structural check in the wire module and answer none of the obligation's question. So this
+// walks EVERY terminal shape through render -> parse -> disposition and requires agreement with
+// `claim_disposition` on the typed row it started from.
+fn disposition_survives(row: ClaimTerminalRow) -> Bool {
+  match parse_readback_row(line: render_row(row: row)) {
+    Absent => false
+    Present { value: parsed } =>
+      match readback_disposition(row: parsed) {
+        Absent => false
+        Present { value: d } => d == claim_disposition(row: row)
+      }
+  }
+}
+
+test fn the_disposition_survives_the_round_trip_for_every_terminal_shape() -> Bool {
+  let rows = every_shape()
+  let readback = readback_rows_of(text: rendered_text(rows: rows))
+  readback.length() == rows.length()
+    && rows.length() == 9
+    && filter(rows, r => !disposition_survives(row: r)).length() == 0
+}
+
+// A COUNT CANNOT SEE AN EDITED ROW, AND THE DIGEST CAN. Same shape as the ledger's own
+// load-bearing case one layer up: the file's row count is untouched, one row's identity is not.
+test fn the_digest_catches_an_edited_row_while_the_count_stays_equal() -> Bool {
+  let honest = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
+  let tampered = honest.replace(pattern: "example.b", replacement: "example.z")
+  honest.split(delimiter: "\n").length() == tampered.split(delimiter: "\n").length()
+    && readback_digest_agrees(readback: parse_ledger(text: honest))
+    && !readback_digest_agrees(readback: parse_ledger(text: tampered))
+}
+
+// THE FOOTER IS COMPARED TO THE PLANNED POPULATION, NEVER TO THE ROWS THE READER PARSED.
+// A truncation that also rewrote the footer agrees with itself; it does not agree with the
+// roster the caller already holds.
+test fn a_truncated_ledger_with_a_consistent_footer_still_fails_the_planned_count() -> Bool {
+  let three = [passing_row(f: "a"), passing_row(f: "b"), passing_row(f: "c")]
+  let short = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
+  readback_footer_count_agrees(readback: parse_ledger(text: short), planned_rows: 2)
+    && !readback_footer_count_agrees(readback: parse_ledger(text: short), planned_rows: three.length())
+}
+
+// A FIELD CARRYING THE SEPARATOR IS REFUSED, NOT SANITIZED. The neighbouring disposition writer
+// replaces tabs with spaces, which publishes a different fact than the one observed.
+test fn a_field_carrying_the_separator_makes_the_ledger_unrenderable() -> Bool {
+  let poisoned = ClaimTerminalRow {
+    identity: ident(f: "a"),
+    expectation: ExpectedToHold,
+    terminal: RouteGap { route: "shell\tinjected" }
+  }
+  match render_ledger(binding: binding(), rows: [poisoned]) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "field-carries-separator"
+  }
+}
+
+// ONE UNREADABLE LINE REFUSES THE WHOLE FILE. Returning the lines that did parse would report a
+// truncated population as a complete one, and the reconciliation would then blame the run for
+// losing claims it actually executed -- the empty-observation narrow, at the reader.
+test fn one_unparseable_line_refuses_the_whole_file() -> Bool {
+  let honest = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
+  let damaged = honest.replace(pattern: "example.b\texpect-hold", replacement: "example.b")
+  readback_rows_of(text: honest).length() == 2
+    && match parse_ledger(text: damaged) {
+         LedgerRead {
+           repository_snapshot: _,
+           prepared_subject: _,
+           roster_identity: _,
+           rows: _,
+           footer_row_count_wire: _,
+           footer_digest: _
+         } => false
+         LedgerUnreadable { reason: r, at: _ } => r == "ledger-row-unparseable"
+       }
+}
+
+// A FOREIGN FORMAT REFUSES RATHER THAN BEING READ AS AN EMPTY LEDGER.
+test fn a_ledger_in_an_unrecognized_format_is_unreadable_not_empty() -> Bool {
+  match parse_ledger(text: "some-other-thing/9\ta\tb\tc\n#end\t0\t0000000000000000") {
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: _,
+      rows: _,
+      footer_row_count_wire: _,
+      footer_digest: _
+    } => false
+    LedgerUnreadable { reason: r, at: _ } => r == "ledger-format-unrecognized"
+  }
+}
+
+// THE SEED-FACING RENDERER AND THE TYPED ONE MUST PRODUCE THE SAME BYTES, or the module has two
+// renderers and the artifact has no single author. Asserted over EVERY terminal shape.
+fn seed_row_of(row: ClaimTerminalRow) -> SeedLedgerRow {
+  SeedLedgerRow {
+    qualified: witness_identity_qualified_name(identity: row.identity),
+    expectation_wire: render_expectation(expectation: row.expectation),
+    terminal_tag: render_terminal_tag(terminal: row.terminal),
+    terminal_detail: render_terminal_detail(terminal: row.terminal),
+    seed_disposition_wire: render_disposition(disposition: claim_disposition(row: row))
+  }
+}
+
+fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: map(rows, r => seed_row_of(row: r))
+  ) {
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
+    LedgerRendered { text: t } => t
+  }
+}
+
+test fn the_seed_facing_renderer_produces_the_same_bytes_as_the_typed_one() -> Bool {
+  let rows = every_shape()
+  let typed = rendered_text(rows: rows)
+  typed != "" && seed_rendered_text(rows: rows) == typed
+}
+
+// THE MIRROR COMPARATOR'S DISCRIMINATING RED. The seed's disposition and this module's are two
+// INDEPENDENT derivations of one fact; a row where they disagree must stop the line rather than
+// publish whichever one the writer happened to send.
+test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let lying = SeedLedgerRow {
+    qualified: honest.qualified,
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: honest.terminal_detail,
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [honest, lying]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
+      r == "seed-disposition-disagrees" && o == honest.qualified
+  }
+}
+
+// A SEED BUILT AGAINST A VOCABULARY THIS MODULE DOES NOT KNOW CANNOT PUBLISH. It refuses rather
+// than rendering a row whose meaning the reader would derive differently.
+test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let futuristic = SeedLedgerRow {
+    qualified: honest.qualified,
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: "returned-superposed",
+    terminal_detail: "",
+    seed_disposition_wire: "passed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [futuristic]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "seed-terminal-tag-unrecognized"
+  }
+}
+
+// THE DIAGNOSIS SURVIVES THE REFUSAL, AND CANNOT BE READ AS A LEDGER.
+//
+// A refusal that named one identity and destroyed the file would take the other rows with it --
+// the only rows that say whether the defect is isolated to one arm or spans a whole terminal
+// shape. So the rows survive under a format token `parse_ledger` refuses, which makes "a partial
+// file cited as a ledger" unspellable rather than forbidden by a convention.
+//
+// WHAT THE ASSERTION LINES CHECK, in order: every row survives: header + refusal line + three rows
+//   ... and it is not a ledger: reading it back refuses on the format, not on its contents
+test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_ledger() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let other = seed_row_of(row: passing_row(f: "b"))
+  let lying = SeedLedgerRow {
+    qualified: "test.claim.example.c",
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: honest.terminal_detail,
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [honest, other, lying]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: d } =>
+      r == "seed-disposition-disagrees"
+        && o == "test.claim.example.c"
+        && d.split(delimiter: "\n").length() == 5
+        && d.split(delimiter: "\t3").length() == 2
+        && d.split(delimiter: "test.claim.example.a").length() == 2
+        && d.split(delimiter: "test.claim.example.b").length() == 2
+        && d.split(delimiter: "test.claim.example.c").length() == 3
+        && match parse_ledger(text: d) {
+             LedgerRead {
+               repository_snapshot: _,
+               prepared_subject: _,
+               roster_identity: _,
+               rows: _,
+               footer_row_count_wire: _,
+               footer_digest: _
+             } => false
+             LedgerUnreadable { reason: pr, at: _ } => pr == "ledger-format-unrecognized"
+           }
+  }
+}
+
+// A ROW CARRYING A NEWLINE CANNOT FORGE THE DIAGNOSIS'S LINE STRUCTURE UNDETECTED.
+//
+// Nothing parses this file, so the victim would be a person: a row whose detail carries a
+// newline appears as two lines, and one crafted to carry `#refused …` after that newline would
+// show a diagnostician a refusal reason nobody wrote. The refusal line states how many rows
+// follow it, so observed-lines against stated-count is a self-check written by the same fold
+// that writes the rows -- the forgery is visible without escaping the bytes a diagnostician
+// needs to see raw.
+//
+// WHAT THE ASSERTION LINES CHECK, in order: the refusal line says 2 rows follow
+//   ... but header + refusal + 2 rows would be 4 lines, and the forged newline makes 5
+//   ... so a reader comparing stated rows to observed lines sees the discrepancy
+test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() -> Bool {
+  let honest = seed_row_of(row: passing_row(f: "a"))
+  let forger = SeedLedgerRow {
+    qualified: "test.claim.example.c",
+    expectation_wire: honest.expectation_wire,
+    terminal_tag: honest.terminal_tag,
+    terminal_detail: "innocent\n#refused\tfabricated-reason\ttest.claim.example.a\t1",
+    seed_disposition_wire: "failed"
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [honest, forger]
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: d } =>
+      d.split(delimiter: "\t2").length() == 2
+      && d.split(delimiter: "\n").length() == 5
+      && d.split(delimiter: "\n").length() != 4
+  }
+}
+
+// AN UNPUBLISHED SNAPSHOT IS A SHAPE, NOT A MAGIC STRING, and an unrecognised one REFUSES rather
+// than being read as unpublished -- a typo'd commit id must not silently downgrade
+// candidate-bound evidence to unbound evidence.
+test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> Bool {
+  let rows = [seed_row_of(row: passing_row(f: "a"))]
+  let unpublished = match render_ledger_from_seed(
+    repository_snapshot: "unpublished",
+    prepared_subject: "0000000000000002",
+    rows: rows
+  ) {
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
+    LedgerRendered { text: t } => t.split(delimiter: "unpublished").length() == 2
+  }
+  let garbage = match render_ledger_from_seed(
+    repository_snapshot: "not-a-commit",
+    prepared_subject: "0000000000000002",
+    rows: rows
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
+      r == "seed-repository-snapshot-unrecognized" && o == "not-a-commit"
+  }
+  unpublished && garbage
+    && ledger_is_candidate_bound(binding: binding())
+    && !ledger_is_candidate_bound(binding: LedgerBinding {
+         repository_snapshot: UnpublishedWorkingTree,
+         prepared_subject: structural_content_hash(digest: "0000000000000002")
+       })
+}

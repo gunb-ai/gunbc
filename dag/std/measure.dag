@@ -1,7 +1,5 @@
 module std.measure
 
-
-
 type Quantity =
     Time
   | Length
@@ -111,7 +109,15 @@ fn minutes_per_hour() -> std.nat.Nat {
   extdeps.units.iso8601.iso8601_minutes_per_hour()
 }
 
-fn milliseconds_per_second() -> std.nat.Nat {
+fn hours_per_day() -> Nat {
+  iso8601_hours_per_day()
+}
+
+fn seconds_per_day() -> Nat {
+  hours_per_day() * minutes_per_hour() * seconds_per_minute()
+}
+
+fn milliseconds_per_second() -> Nat {
   milli_per_unit()
 }
 

@@ -1,6 +1,5 @@
 module gunbc.spark.serving_converge_slice_wet
 
-
 data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.spark.dgx_procurement OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host was observed."
 
 data spark_serving_converge_slice_wet_receipt_path: String = "target/spark-serving-converge-slice-wet-receipt.txt"
@@ -166,6 +165,11 @@ fn spark_serving_converge_slice_would_apply_verdict(
 // longer free. Whether terminal evidence is owed on EVERY convergence or on a declared cadence is an
 // evidence-frequency policy, and it needs its own carrier rather than being settled here by whichever
 // call site happened to be written first.
+// THE CONVERGED RECEIPT CARRIES WHERE THE GENERATION RAN, not merely that it ran.
+// unit_outcome=active is a PLACEMENT fact and nvidia_driver=580 is a PREREQUISITE fact; neither
+// says the model was in accelerator memory. Residency is the behaviour fact, and it is read only
+// on the converged arm below -- after a converged verdict, within keep_alive of the generation
+// that verdict proves.
 fn spark_serving_terminal_health_verdict(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
@@ -173,7 +177,12 @@ fn spark_serving_terminal_health_verdict(
 ) -> String {
   let health = spark_serving_observe_terminal_health(context: context, host: host)
   if spark_serving_health_is_converged(health: health) {
-    join([converged_verdict, " ", spark_serving_health_wire(health: health)], "")
+    join([
+      converged_verdict, " ", spark_serving_health_wire(health: health),
+      " ", spark_serving_residency_wire(
+        r: spark_serving_observe_residency(context: context, host: host, health: health),
+      ),
+    ], "")
   } else {
     join([converged_verdict, "-but-", spark_serving_health_wire(health: health)], "")
   }

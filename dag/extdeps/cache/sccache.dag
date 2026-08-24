@@ -1,8 +1,5 @@
 module extdeps.cache.sccache
 
-
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -97,7 +94,20 @@ data sccache_toolchain_capability: extdeps.toolchain.types.ToolchainCapability =
   linked_cache_interface: Present { value: sccache_local_id },
 }
 
-data sccache_install_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf.")
+// The sccache binary install — curl the release tarball, `sha256sum -c` verify, tar,
+// mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with a pinned
+// version and per-arch sha256 — is rendered as a POSIX shell provisioning sequence
+// (medium-as-string). The SccacheBinaryRelease row remains the typed authority for
+// version and digests; only the ACTUATION is shell.
+//
+// It dissolves when host_effect_apply binds a verified-download-plus-install effect
+// (FetchAndVerify then InstallBinary) without the shell leaf, at which point
+// `sccache_install_script` is deleted rather than edited. The trigger names that
+// declaration, so the obligation is answered against the tree rather than by reading
+// this paragraph.
+data sccache_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_install_script")
+)
 
 data sccache_installed_binary_path_note: String = "Single authority for WHERE the cited release lands on a host. sccache_install_script writes it and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version, digest verification AND path, both firing on the same host (P1:runner-deploy-slot then P1b:build-cache-provision)."
 

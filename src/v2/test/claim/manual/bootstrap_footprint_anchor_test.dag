@@ -34,8 +34,8 @@ fn bootstrap_footprint_anchor_bad_projection_inputs() -> v2.workflow.bootstrap.B
 // refuses at runtime: "atom_identity_hash requires exactly one string argument".
 // These rows re-promote when either the code-point encoding carries a string identity or
 // content_hash gains a non-symbol atom arm.
-fn bootstrap_footprint_canonical_holds() -> Bool {
-  match v2.workflow.bootstrap.bootstrap_footprint(inputs: v2.workflow.bootstrap.bootstrap_projection_inputs) {
+test fn bootstrap_footprint_canonical_holds() -> Bool {
+  match bootstrap_footprint(inputs: bootstrap_projection_inputs) {
     Holds { value: fp } =>
       fp.closure_hash ==
         v2.std.node.content_hash(n: v2.workflow.bootstrap.bootstrap_projection_closure_node(inputs: v2.workflow.bootstrap.bootstrap_projection_inputs))
@@ -43,7 +43,7 @@ fn bootstrap_footprint_canonical_holds() -> Bool {
   }
 }
 
-fn bootstrap_footprint_non_canonical_violates() -> Bool {
+test fn bootstrap_footprint_non_canonical_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_projection_inputs()
   match v2.workflow.bootstrap.bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
@@ -66,7 +66,7 @@ fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> v2.workflo
   }
 }
 
-fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
+test fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_content_hash_projection_inputs()
   match v2.workflow.bootstrap.bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
@@ -109,7 +109,7 @@ fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> v2.workflow.boo
   }
 }
 
-fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
+test fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
   let bad_runtime = bootstrap_footprint_anchor_bad_runtime_model()
   let canonical_runtime = v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
   (bad_runtime.runtime_identity == canonical_runtime.runtime_identity)

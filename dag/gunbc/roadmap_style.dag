@@ -1,6 +1,5 @@
 module gunbc.roadmap_style
 
-
 data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of gunbc.design.material and gunbc.design.theme — the design-library lift's own justification bar (a layer earns extraction when its second consumer arrives). Day atlas is the base projection (an operational tool read in daylight), night via prefers-color-scheme — same Theme rows as the public site, zero new colors. The old hand-hex stylesheet (traffic-light status chips, #0969da links, #2da44e progress bar) is deleted: status is conveyed by the state WORD plus quiet material differences — done recedes to text-dim, review carries a brass BORDER mark (brass is never a text material — review finding 2: day brass is 3.96:1, clears the 3:1 graphical bar, fails the 4.5:1 text bar); the progress bar fill is the figure role (progress = derived fact, lit). This dissolves the css_rule props-as-String scaffold that lived here (css_rule_props_scaffold): the stylesheet is now typed CssDecl rows on the shared BuildRule machinery. Figure-class styling (.mark-point/.mark-sink/.mark-edge and friends) is IMPORTED from moodboard.figure_rules — the single authority for figure role rows, accent_study precedent — never re-minted here (review 40756); roadmap_rules() is the full serialized set (instance rules + figure rules + behavior rules) so the unthemed-color census and the brass-never-text check see exactly what the page ships. P2 (token migration): every length/font literal now routes through a gunbc.design.scale token var (spacing/type/font + dimension), with scale_root_css() emitted in :root alongside the theme vars — proven visually-neutral (resolving the tokens reproduces the pre-migration CSS byte-for-byte) and gated by the untokened-length census over roadmap_instance_rules(). Residue named: gunbc.site.moodboard.figure_rules (imported here) still carries raw border/radius px — its dimension-token lift is moodboard's own follow-on, the sibling of the color lift, so the length census scopes to this module's authored rules."
 
 data island_venom_note: String = "The workspace's danger completion (operator-directed 2026-07-24, remodel W1b): island-pastel carries no danger hue by design and the base set stays pure — the completion lives HERE, at the consuming layer (gunbc.design.palette swatch_set_for_use_note). venom is the ACNH scorpion's tail — a venom red-brown sampled from the tail stinger (inspiration, not citation, the same standing as the island set itself). It is a FILL material for the loud/fail bands with ivory ink (graded AAA by the palette witnesses); venom-on-loam grades DecorationOnly, so venom is never a text color on the workspace's dark inks. Consumed by the band→material binding (W1c) and the /sandbox swatch auditioner (W1f)."
@@ -436,7 +435,122 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: FontStyle, value: "italic"),
       decl(prop: FontSize, value: scale_var(t: text_12)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "daily-workspace" }, decls: [
+    StaticRule { selector: ClassSelector { name: "fleet-hardware-standing" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-heading" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-outstanding" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-subject" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-axis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: hardware_axis_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-cell" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_standing_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-confirmed" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-refused" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-misfiled" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-unread" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontStyle, value: "italic"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-detail" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "fleet-capacity-panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-title" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-subject" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: capacity_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-metric" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: capacity_metric_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-standing" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-withdrawn" }, decls: [
+      decl(prop: Opacity, value: "0.6"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-withdrawn-total" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-declared-note" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontStyle, value: "italic"),
+      decl(prop: MarginTop, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
       decl(prop: MaxWidth, value: scale_var(t: measure_page)),
       decl(prop: MarginLeft, value: "auto"),

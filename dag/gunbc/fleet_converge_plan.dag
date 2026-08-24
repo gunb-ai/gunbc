@@ -1,6 +1,5 @@
 module gunbc.fleet_converge_plan
 
-
 type TimerRetirementMemberAt = std.types.NonEmptyStr
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
@@ -28,8 +27,9 @@ fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -
 fn fleet_converge_plan_subject(
   host: std.types.NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -38,6 +38,7 @@ fn fleet_converge_plan_subject(
       observed_timers: observed_timers,
       observed_caps: observed_caps,
       observed_spark: observed_spark,
+      observed_slots: observed_slots,
     ),
   }
 }
@@ -45,16 +46,18 @@ fn fleet_converge_plan_subject(
 fn fleet_converge_member_set_fingerprint(
   host: std.types.NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
-) -> std.content_hash.ContentHash {
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
+) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
       observed_spark: observed_spark,
-    ) as std.types.NonEmptyStr,
+      observed_slots: observed_slots,
+    ) as NonEmptyStr,
   )
 }
 
@@ -66,8 +69,9 @@ fn fleet_converge_apply_subject_admits(
   planned_subject: FleetConvergePlanSubject,
   observed_host: std.types.NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -77,6 +81,7 @@ fn fleet_converge_apply_subject_admits(
         observed_timers: observed_timers,
         observed_caps: observed_caps,
         observed_spark: observed_spark,
+        observed_slots: observed_slots,
       ),
     ) == std.content_hash.ContentHashEqual
 }
@@ -109,8 +114,9 @@ fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
   host: std.types.NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> Bool {
   std.algebra.trim(s: planned_fingerprint_text) == (
     std.content_hash.serialize_content_hash(
@@ -119,6 +125,7 @@ fn fleet_converge_member_set_fingerprint_matches(
         observed_timers: observed_timers,
         observed_caps: observed_caps,
         observed_spark: observed_spark,
+        observed_slots: observed_slots,
       ),
     ) as String
   )
@@ -221,8 +228,135 @@ fn membership_plan_lines_cap(plan: gunbc.membership_reconcile.MembershipPlan<gun
   map(plan.actions, a => cap_action_line(action: a))
 }
 
-fn fleet_converge_desired_caps() -> List<gunbc.host_axis_caps.CapMember> {
-  let slot = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
+data slot_family_is_the_third_member_family_note: String = "THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole point of the consolidation (operator directive 2026-08-22: this all belongs in fleet convergence). Timers and caps already flowed through membership_reconcile and slot standup did not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path with none of those. A width change landing through the second one is unreviewed by construction.\n\nDESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan proposes is the width the admission axes committed -- not a number authored beside them. An unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is the absorbing failure arm pointed the destructive direction.\n\nOBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been established to be a genuine reading of the host rather than an unread one rendered as empty."
+
+fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => concat("ADD runner-slot ", runner_slot_member_key(m: m) as String)
+    MemberChanged { at: _, from: f, to: t } =>
+      concat(
+        concat("CHANGE runner-slot ", runner_slot_member_key(m: f) as String),
+        concat(" -> ", runner_slot_member_key(m: t) as String),
+      )
+    MemberRemoved { at: _, from: m } => concat("REMOVE runner-slot ", runner_slot_member_key(m: m) as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL runner-slot ", runner_slot_member_key(m: m) as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+type FleetConvergeSlotFamily
+  = SlotFamilyPlanned { plan: RunnerSlotProvisionPlan }
+  | SlotFamilyUnmodeledHost { host: HostIdentity }
+  | SlotFamilyArtifactUnpublished { host: HostIdentity }
+
+// ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
+// the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
+// the host and reconciled the roster on their own, the reviewer could approve one membership and
+// apply could execute a different one, and the bundle hash would not catch it because both halves
+// would be internally consistent. Resolving once and deriving both projections makes that
+// disagreement unrepresentable rather than checked.
+fn fleet_converge_slot_family(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> FleetConvergeSlotFamily {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
+    RunnerHostDeployFound { deploy: d } =>
+      match actions_runner_binary_artifact_for_arch(
+        binary_release: actions_runner_release_2_334_0,
+        arch: altra_max_m12830_catalog.architecture,
+      ) {
+        Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
+        Present { value: a } =>
+          SlotFamilyPlanned {
+            plan: runner_slot_provision_plan(deploy: d, artifact: a, observed: observed_slots),
+          }
+      }
+  }
+}
+
+fn fleet_converge_slot_lines(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> List<String> {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: h } =>
+      [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [concat("REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=", h as String)]
+    SlotFamilyPlanned { plan: p } => map(p.membership.actions, a => slot_action_line(action: a))
+  }
+}
+
+// SLOT ADD IS THE ONE MEMBER FAMILY THIS SCRIPT ACTUALLY EXECUTES BESIDE TIMER TEARDOWN, and the
+// reason is principal, not appetite. Cap drop-ins live under /etc/systemd and belong to the
+// deploy principal (fleet_converge_cap_apply_shell_note); slot directories live under the runner
+// user's own /opt/actions-runner, which is exactly the principal converge already runs as. So
+// emitting ADD here is converge acting within its own authority rather than reaching outside it.
+//
+// REMOVE AND CHANGE EMIT NOTHING, AND THAT IS THE FAIL-CLOSED ARM RATHER THAN AN OVERSIGHT.
+// gunbc.runner_slot_provision runner_slot_member_ownership returns Absent for every observed slot
+// because no provenance signal exists yet to tell a gunbc-managed directory from one somebody put
+// there by hand. Reconcile therefore yields MemberRemovalRefused rather than MemberRemoved, those
+// refusals ARE rendered into plan.txt for the reviewer, and nothing deletes a directory whose
+// ownership was never established. Teardown becomes emittable when the provenance signal lands,
+// not before.
+//
+// AN UNMODELED HOST STOPS THE SCRIPT RATHER THAN CONTRIBUTING NO LINES. Silence here would be
+// indistinguishable from "this host had nothing to do", so apply would report success for a host it
+// could not identify -- the fabricated plausible output at the actuation seam. The emitted exit is
+// the line-stop.
+// AN UNMODELED HOST COUNTS AS A REFUSAL RATHER THAN AS ZERO REFUSALS. Zero is what a reviewer reads
+// as "nothing was refused on this axis", and a host nobody modeled is the largest refusal the slot
+// family can produce -- so reporting it as zero would make the most severe state look like the
+// cleanest one.
+fn fleet_converge_slot_refusal_count(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> Int {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: _ } => 1
+    SlotFamilyArtifactUnpublished { host: _ } => 1
+    SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
+  }
+}
+
+fn slot_apply_lines(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> List<String> {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: h } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-UNMODELED-HOST runner-slot host=",
+          concat(h as String, "' >&2"),
+        ),
+        "exit 1",
+      ]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=",
+          concat(h as String, "' >&2"),
+        ),
+        "exit 1",
+      ]
+    SlotFamilyPlanned { plan: p } =>
+      if membership_added_count(plan: p.membership) == 0 {
+        ["# runner-slot: no slots to add"]
+      } else {
+        concat([p.base_dir_script], p.upsert_extract_scripts)
+      }
+  }
+}
+
+fn fleet_converge_desired_caps() -> List<CapMember> {
+  let slot = gunbc_runner_slot_desired()
   [
     gunbc.host_axis_caps.desired_cap_member(
       dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
@@ -262,8 +396,9 @@ fn fleet_converge_desired_caps() -> List<gunbc.host_axis_caps.CapMember> {
 fn observed_baseline_text(
   host: std.types.NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> String {
   join(
     concat(
@@ -272,10 +407,13 @@ fn observed_baseline_text(
         map(observed_timers, m => concat("timer:", m.unit_name as String)),
       ),
       concat(
-        map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-        map(observed_spark, m => concat(
-          "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
-        )),
+        concat(
+          map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+          map(observed_spark, m => concat(
+            "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+          )),
+        ),
+        map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
       ),
     ),
     "\n",
@@ -935,18 +1073,24 @@ fn fleet_converge_locked_apply_script(
   ])
 }
 
-fn fleet_converge_apply_shell(timer_plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
+fn fleet_converge_apply_shell(
+  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> String {
   join(
     concat(
       [
         concat("# ", std.dissolution.dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
         concat("# ", fleet_converge_cap_apply_shell_note),
-        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown only",
+        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown and runner-slot ADD",
         "set -euo pipefail",
       ],
       ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
       timer_apply_lines(plan: timer_plan),
       ["sudo -n systemctl daemon-reload"],
+      ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
+      slot_apply_lines(host: host, observed_slots: observed_slots),
     ),
     "\n",
   )
@@ -956,14 +1100,16 @@ fn fleet_converge_plan_artifact(
   host: std.types.NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
     observed_spark: observed_spark,
+    observed_slots: observed_slots,
   )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = gunbc.host_axis_caps.caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -974,6 +1120,7 @@ fn fleet_converge_plan_artifact(
     observed_timers: observed_timers,
     observed_caps: observed_caps,
     observed_spark: observed_spark,
+    observed_slots: observed_slots,
   )
   let planned_generation = prior_generation + 1
   let body = join(
@@ -994,9 +1141,12 @@ fn fleet_converge_plan_artifact(
       timer_lines,
       ["# cap-axis"],
       cap_lines,
+      ["# runner-slot"],
+      fleet_converge_slot_lines(host: host, observed_slots: observed_slots),
       [
-        concat("# cap-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: cap_plan))),
-        concat("# timer-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: timer_plan))),
+        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
+        concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
       ],
     ),
     "\n",
@@ -1007,9 +1157,13 @@ fn fleet_converge_plan_artifact(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
-  let apply_shell = fleet_converge_apply_shell(timer_plan: timer_plan)
-  match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
-    std.content_hash.Fnv1a64(structural) =>
+  let apply_shell = fleet_converge_apply_shell(
+    timer_plan: timer_plan,
+    host: host,
+    observed_slots: observed_slots,
+  )
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) =>
       Present {
         value: FleetConvergePlanArtifact {
           subject: subject,
@@ -1047,14 +1201,16 @@ fn fleet_converge_observed_baseline_matches(
   host: std.types.NonEmptyStr,
   observed_baseline_hex: std.content_hash.Fnv1a64StructuralDigestHex,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<gunbc.host_axis_caps.CapMember>,
-  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  observed_slots: List<RunnerSlotMember>,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
     observed_spark: observed_spark,
+    observed_slots: observed_slots,
   )
   match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
     std.content_hash.Fnv1a64(structural) => structural.digest == observed_baseline_hex

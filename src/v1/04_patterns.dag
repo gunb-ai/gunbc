@@ -1,11 +1,5 @@
 module v1.compiler.infer_patterns
 
-
-
-
-
-
-
 fn generic_use_slot_bindings(scrut_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> Map<String, v1.std.core.Node> {
   let decl = resolve_generic_use_decl(env: env, n: scrut_node)
   fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
@@ -252,30 +246,21 @@ fn variant_not_found_result(scrut: v1.std.core.Node, variant_name: String, modul
   )
 }
 
-// A pattern's KIND is not a function of how many bindings it carries. A
-// zero-field record -- `type MtJadeRev1_0 {}` -- destructures with none, and
-// requiring at least one sent it down the variant path to be looked up as a
-// variant of ITSELF: `variant 'MtJadeRev1_0' not found in type 'MtJadeRev1_0'`,
-// the same name on both sides, which cannot be a real variant miss. The two
-// surviving conjuncts in record_destructure are what actually decide it -- the
-// scrutinee is a product record, and the pattern head names that same record --
-// and both are identity facts rather than a count.
-
 // A qualified pattern head must bind what the bare spelling binds. The dotted
 // branch answers from the SYMBOL INDEX, which returns the coproduct's
 // DECLARATION -- uninstantiated -- while the bare branch answers from the
-// scrutinee, which carries the instantiation. So `Ok { value: r }` bound r to
-// the scrutinee's argument and `probe.gen.Ok { value: r }` bound it to the
-// declaration's type PARAMETER, and every field read off r reported
-// `no field 'root' on type 'T'`. Measured on a two-function probe whose only
-// difference is the spelling of the head.
+// scrutinee, which carries the instantiation. So a bare `Ok { value: r }` bound
+// r to the scrutinee's type ARGUMENT and the qualified spelling of the same
+// pattern bound it to the declaration's type PARAMETER, so every field read off
+// r reported no such field on type 'T'. Measured on a two-function probe whose
+// only difference is the spelling of the head.
 //
 // The index lookup still runs first and still decides ADMISSION: a head naming
-// a variant of some other coproduct misses there exactly as before. What
-// changes is where the bound NODE comes from once admission succeeds -- the
-// scrutinee when it carries that variant, the declaration otherwise, which is
-// the pre-existing answer for a scrutinee that does not.
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: v1.compiler.infer_env.TypeEnv, field_binding_count: Int) -> NodeLookupResult {
+// a variant of some other coproduct misses there exactly as before. What changes
+// is where the bound NODE comes from once admission succeeds -- the scrutinee
+// when it carries that variant, the declaration otherwise, which is the
+// pre-existing answer for a scrutinee that does not.
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])

@@ -1,6 +1,5 @@
 module gunbc.accelerator_demo_plan
 
-
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }
   | EffectfulSubgraph
@@ -52,10 +51,10 @@ fn relu_mul_add_schedule() -> std.realization_schedule.Schedule {
   [[std.realization_schedule.RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
 }
 
-fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> std.realization_schedule.RealizationPlan<std.measure.Nano> {
-  std.realization_schedule.RealizationPlan {
-    target: demo_target_label
-    objective: std.realization_schedule.RealizationObjective { goals: [] }
+fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<Nano> {
+  RealizationPlan {
+    target: std.content_hash.content_hash_of_value(value: demo_target_label)
+    objective: RealizationObjective { goals: [] }
     schedule: schedule
     total: demo_plan_total()
   }

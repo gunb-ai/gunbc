@@ -27,16 +27,66 @@ fn spark_grant_listing_reports_no_passwordless_grant(detail: String) -> Bool {
   string_contains(detail, "a password is required")
 }
 
-// A grant is HELD when the enumeration names the exact command the grant authorizes. The listing is
-// sudo's own rendering of sudoers, and the command string comes from the same row the installer
-// writes -- so this is a join against one authority, not a guess at a format.
+fn spark_grant_listing_entry_commands(line: String) -> List<String> {
+  match line.split(delimiter: "NOPASSWD: ").skip(n: 1).last() {
+    Absent => []
+    Present { value: rest } => map(rest.split(delimiter: ","), c => trim(c))
+  }
+}
+
+fn spark_grant_listing_names_command(listing: String, command: String) -> Bool {
+  any(flat_map(listing.split(delimiter: "\n"), l => spark_grant_listing_entry_commands(line: l)),
+      c => c == command)
+}
+
+// A grant is HELD when a listing ENTRY names exactly the command the grant authorizes -- entry by
+// entry, not substring over the whole blob.
+//
+// THE SUBSTRING JOIN THIS REPLACES WAS PREFIX-BLIND, and the failure it admits is the dangerous
+// direction: it answers HELD for any installed command the desired one is a prefix of. Concretely,
+// `/usr/bin/loginctl enable-linger` contains as a substring every narrower and every wider grant
+// beginning with those bytes, so a sudoers entry authorizing MORE than the model desires reads as
+// convergence, and a host over-granted relative to the population reports converged=true with
+// nothing naming the excess. The grain at which sudo's answer is meaningful is one ENTRY; a
+// substring test over the concatenation is a test at no grain at all.
+//
+// THE ENTRY IS PARSED AT SUDO'S OWN SEAM. `sudo -n -l` renders each authorization as
+// `    (root) NOPASSWD: <command>`, so the command is exactly what follows the last `NOPASSWD: ` on
+// its line, trimmed. Splitting on that marker rather than on whitespace keeps the parse anchored to
+// a token sudo emits, not to a layout guess -- a command containing spaces stays one command.
+//
+// A LINE WITH NO MARKER YIELDS NO COMMAND, and that is a refusal to answer rather than a `false`
+// dressed up as one: the banner lines, the `Matching Defaults entries` block and the blank
+// separators are not entries, so they contribute nothing to the join instead of contributing a
+// negative vote. The command string still comes from the same row the installer writes, so this
+// remains a join against one authority -- now at the grain that authority actually uses.
+//
+// ONE ENTRY LINE MAY CARRY SEVERAL COMMANDS, so the marker split is not the last one. sudo renders
+// a multi-command Cmnd_Spec comma-separated on a single line, and reading that line as ONE command
+// would match neither of the two it names. MEASURED on both live hosts 2026-08-22, each grant is
+// its own drop-in and therefore its own line -- so the comma case does not occur on srv5 or srv6
+// today, and this split is written for the shape sudo may emit rather than only the shape these two
+// hosts currently do. Splitting cannot make a wrong answer right-looking: if a command's own
+// ARGUMENT ever contained a comma, the fragments match nothing, the grant reads not-held, and the
+// installer reinstalls -- the same safe direction as not splitting at all, over a strictly larger
+// set of listings read correctly.
+//
+// `NOPASSWD: ALL` READS NOT HELD, and that is correct rather than a defect, though it is surprising
+// enough to be worth naming here before someone files it. `ALL` is a sudoers wildcard, not the
+// command string any grant authorizes, so no equality holds and the reconcile reports the grant
+// missing on a host that can in fact run it. The alternative -- teaching the join that `ALL`
+// subsumes everything -- would make a blanket grant answer for every specific one, which is exactly
+// the host-grained "is provisioned" Bool this module exists to avoid.
 fn spark_managed_grant_standing_from_outcome(
   grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant,
   outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome,
 ) -> SparkManagedGrantStanding {
   match outcome {
     GrantEnumerated { listing: l } =>
-      if string_contains(l, spark_managed_grant_sudoers_command(grant: grant) as String) {
+      if spark_grant_listing_names_command(
+           listing: l,
+           command: spark_managed_grant_sudoers_command(grant: grant) as String,
+         ) {
         GrantHeld { grant: grant }
       } else {
         GrantNotHeld { grant: grant }

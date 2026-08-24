@@ -1,0 +1,56 @@
+module test.claim.hermetic_mock_fidelity_witness
+
+// THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_diagnosed` over the live roster is
+// the positive control; on its own it would be satisfied by an empty roster and by a roster with
+// no fabricating rows, so it carries no information about the check. The two rows below are the
+// discriminating half: a fabricating row naming NO fact must be rejected, and a non-fabricating
+// row with an empty list must be accepted -- which is what establishes that the predicate reads
+// the discrimination and the fact list together rather than either alone.
+//
+// THERE IS NO "row carries a trigger" WITNESS HERE, and its absence is deliberate. The trigger
+// is derived per fact by a total function, so a row without one has no spelling; a check for it
+// would be permanently green by construction and would be cited as coverage while carrying no
+// information (DESIGN section 4b). What replaced it is the third row below, which asserts the
+// derivation is not degenerate.
+
+fn undiagnosed_fabricating_row() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Undiagnosed.Run",
+    discrimination: UnconditionalArm {},
+    fabricates: [],
+    rung: OutsideTheLadder {},
+    ceiling: StructurallyGuaranteed {}
+  }
+}
+
+fn honest_row_names_nothing() -> HermeticMockRow {
+  HermeticMockRow {
+    operation: "probe.Honest.Run",
+    discrimination: InputDiscriminating {},
+    fabricates: [],
+    rung: StructurallyGuaranteed {},
+    ceiling: StructurallyGuaranteed {}
+  }
+}
+
+test fn hermetic_mock_live_roster_is_diagnosed() -> Bool {
+  hermetic_mock_fidelity_all_diagnosed()
+}
+
+test fn hermetic_mock_undiagnosed_fabricating_row_is_rejected() -> Bool {
+  !hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
+}
+
+test fn hermetic_mock_honest_row_needs_no_fabrication_list() -> Bool {
+  hermetic_mock_row_names_what_it_fabricates(r: honest_row_names_nothing())
+}
+
+// THE REACHABILITY REMEDY IS NOT THE OTHER TWO, asserted rather than left in a comment because
+// this is the distinction the whole census turned on: a mock that varied with its declared input
+// would close ExitStatus and CapturedOutput and leave TransportReachability standing. If the
+// three ever collapse to one string, that remedy has been quietly folded into the others and
+// this row reds.
+test fn hermetic_mock_reachability_trigger_is_distinct() -> Bool {
+  !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: ExitStatus {}))
+    && !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: CapturedOutput {}))
+}

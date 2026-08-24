@@ -1,7 +1,5 @@
 module extdeps.languages.rust.types
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -25,7 +23,12 @@ data rust_checkpoint_hash_row_retired_note: String = "The Hash row is RETIRED, n
 
 data rust_checkpoint_scalar_arity_note: String = "A TypeCheckpoint row states one thing: how a target SPELLS a dag type whose Rust arity is zero. It cannot express arity, so membership of this table IS the emitter's arity-0 claim — v1.compiler.05_emit_rust rust_scalar_checkpoint_reference_base reads it, and rust_render_checkpoint_scalar_bare strips every type argument from any leaf it matches (the E0109 wall, rust_checkpoint_scalar_phantom_params_note). Witness/witness rows were removed here 2026-08-16: Witness is the generic enum v2.std.witness.Witness<C> (src/v2/std/witness.dag), arity 1 by its single authority std.types container_type_arity, so the rows made the emitter drop the argument of every Witness<T> in type position and emit `Rc<Witness>` — rustc E0107 'missing generics for enum Witness', 4 sites in the 06_translate closure alone (docs/probes/root_d_generic_arity_2026-08-16.md). Nothing else was lost with them: coerce_primitive_type renders the bare leaf name 'Witness' through qualified_last_segment either way, and is_copy's Absent arm and Present\{false\} arm are the same decision at every consumer. A generic type may not be added to this table; its spelling is not the missing fact, its arity is."
 
-data rust_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
+// THE TYPE-NAME CATALOG IS NOT HERE. `integer_types` and `float_types` — bare `List<String>`
+// name lists with no consumers — once sat in this module and were deleted; the single
+// authority for how a Rust primitive is spelled is `extdeps.languages.rust.primitives`
+// `rust_grounding_primitives`, through its `target_name` rows. A name list here would be
+// a second spelling authority for one fact.
+data rust_algebra_inhabitants: List<InhabitantDecl> = [
 
   { algebra: "FreeMonoid",
     template: "Vec<\{0\}>",

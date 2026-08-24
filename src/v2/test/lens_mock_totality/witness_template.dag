@@ -1,6 +1,5 @@
 module v2.test.lens_mock_totality.witness_template
 
-
 fn published_mock_case_eq(a: std.hermetic_replay.PublishedMockCase, b: std.hermetic_replay.PublishedMockCase) -> Bool {
   a.operation_key == b.operation_key && a.case_id == b.case_id
 }

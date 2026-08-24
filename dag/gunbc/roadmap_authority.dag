@@ -3116,7 +3116,7 @@ fn guarantee_ladder_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
       volume: gunbc.roadmap_model.VolumeMedium,
       t: fields(
         headline: "Argument-type compatibility grounding: adjudicate what the exemption papers over",
-        boundary: "module_skips_direct_call_arg_check exempts v2.*/v1.compiler.* from the argument TYPE judgment because of representation-gap false positives — the same four classes the conformance lane grounds, at the argument seam, plus the unlocated historical '104 TypeMismatch false positives' (no receipt found by two audits; adjudicate or refute it by measurement). Ground the argument-position relation so the exemption's reason dissolves.",
+        boundary: "module_skips_direct_call_arg_check exempts v2.* from the argument TYPE judgment because of representation-gap false positives — the same four classes the conformance lane grounds, at the argument seam, plus the unlocated historical '104 TypeMismatch false positives' (no receipt found by two audits; adjudicate or refute it by measurement). Ground the argument-position relation so the exemption's reason dissolves.",
         displaced_cost: "The compiler's own sources are currently un-judged at every argument position — the largest single acceptance hole by module count.",
         first_slice: "Measure: run the check exemption-free in census mode, bucket every red by representation class.",
         red_control: "Each grounded class's argument-position probe pair; corpus reds adjudicated never exempted.",

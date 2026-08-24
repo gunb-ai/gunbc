@@ -1,6 +1,5 @@
 module gunbc.build_cache_endpoint_observe
 
-
 data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
 
 data observe_is_the_missing_producer_note: String = "THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON. gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could produce none of them and said so in its own body, returning ProcTableUnreadable with the detail 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the admission was reachable only from tests, and gunbc.host_effect_realize realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident was fixed by is computed by a function no production caller called.\n\nWHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled states -- no transport, no effect, no host. The reads themselves are performed by gunbc.host_effect_realize, which is where a transport already exists, and are handed back as BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode reachable from a fixture, so the discriminating REDs run against specimen text rather than against a host, and it keeps this module free of the effect graph it would otherwise have to import.\n\nEVERY READ IS NON-MUTATING, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A COURTESY. The one probe that would be easiest to reach for -- sccache --show-stats -- is refused as evidence anywhere in this lane, because extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records by measurement that it prints a full table whether or not any server exists. It therefore cannot establish absence, which is precisely the question the path axis asks. A real compile WOULD establish it and is a mutation. Neither is admissible."
@@ -48,38 +47,42 @@ type BuildCacheEndpointSurvey {
 
 data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a tool that answers the same question in one call because the receipt and gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution bought nothing. The measurement that produced the error is worth as much as the one that corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that the walk could not be done. A zero with no nonzero beside it in the same run is not a measurement. It is recorded rather than quietly corrected because the false claim had already been written into three carrier notes and a PR body as a capability boundary, and a fabricated boundary is worse than a missing feature -- it tells the next person not to try.\n\nWHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is readable now, so the arm is produced and the admitted unlink is reachable."
 
-fn proc_net_unix_read_argv() -> List<String> {
-  ["cat", procfs_path_literal(p: ProcNetUnix) as String]
+// THE READS ARE COMMANDS, NOT WORD LISTS. Each of these was a bare argv literal whose first element
+// happened to be a tool name; they now derive from the cited coreutils authorities, and the two
+// transports that consume them take the same value -- the local one runs it, the ssh ones flatten it
+// with extdeps.exec.command argv_words. One construction, two addressings.
+fn proc_net_unix_read_command() -> ArgvCommand {
+  cat_command(path: procfs_path_literal(p: ProcNetUnix) as String)
 }
 
 data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
 
-fn boot_id_read_argv() -> List<String> {
-  ["cat", boot_id_path]
+fn boot_id_read_command() -> ArgvCommand {
+  cat_command(path: boot_id_path)
 }
 
-fn endpoint_path_kind_argv(path: NonEmptyStr) -> List<String> {
-  ["stat", "-c", "%F", "--", path as String]
+fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
+  stat_file_type_command(path: path as String)
 }
 
 fn proc_pid_path(pid: std.nat.Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_argv(pid: std.nat.Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "cgroup")]
+fn owner_cgroup_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_argv(pid: std.nat.Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "stat")]
+fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_argv(pid: std.nat.Nat) -> List<String> {
-  ["stat", "-c", "%U", "--", proc_pid_path(pid: pid, leaf: "")]
+fn owner_principal_command(pid: Nat) -> ArgvCommand {
+  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_argv(pid: std.nat.Nat) -> List<String> {
-  ["readlink", proc_pid_path(pid: pid, leaf: "exe")]
+fn owner_executable_command(pid: Nat) -> ArgvCommand {
+  readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
 // --- decoders ---------------------------------------------------------------

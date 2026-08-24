@@ -52,13 +52,61 @@ fn hand_authored_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
-fn hand_authored_production_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  v2.std.algebra.list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
+fn hand_authored_all_production_doc_works() -> List<DeclarationRef> {
+  list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
-fn hand_authored_cited_symbol_control_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  v2.std.algebra.list_flat_map(
-    xs: v2.std.algebra.filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+data outside_index_works_note: String = "FOUR DOCUMENTS BIND TO THE WITNESS THAT IS THEIR EVIDENCE, AND NO RESOLVER CAN REACH IT. v2.std.decl_index decl_facts does not index declarations in test .dag files — deliberately, and gunbc.ci_layer_roots records that exclusion in the row explaining why a second walk must not repeat it — so a reference into a witness module refuses as DeclarationRefDeclarationAbsent no matter how correct it is. These four references are correct: the declarations exist, and the citation is the honest one to make, because the witness IS what the document binds to.\n\nMEASURED, WITH A POSITIVE CONTROL, so this is a cause and not an assumption (2026-08-21, BuildBuddy). All four files report indexed_in_decl_facts=false and module_declared=true, while src/v2/lens/cited_symbol_resolution.dag and dag/gunbc/doc_graph_roots.dag — the controls — report true and true. The src/v2 root is therefore walked; the exclusion is on the TEST file, not the root, which is why the src/v2/test row belongs to the same class as the three under dag/test/claim rather than to a second one.\n\nWHAT THIS IS NOT: an exemption list. The rows carry std.decl_ref CitationIndexCoverage — one axis, the same one gunbc.lambda_argument_typing_gate and gunbc.list_membership_operation_gap carry, not a second shape — and the population is COUNTED rather than silently subtracted. The dodge this admits in principle, marking a resolvable reference outside-index to escape a red, is refused by execution rather than by review: v2.lens.cited_symbol_resolution's report REFUSES a row marked outside-index that actually resolves, and refuses a count disagreement, and that report runs on every CI run as claim_executor --required-cited-symbol, its own required check in the cited-symbol job of .github/workflows/witnesses.yml (NOT a --required-ci phase; that mode stays at three). A marking that lies fails the run that made it.\n\nDISSOLVE-ON: decl_facts covers test modules, or a witness-declaration index becomes reachable from the resolver — at which point these rows delete and the four references join the ordinary citable population."
+
+type OutsideIndexWork {
+  reference: DeclarationRef,
+  coverage: CitationIndexCoverage,
+}
+
+data hand_authored_outside_index_works: List<OutsideIndexWork> = [
+  OutsideIndexWork {
+    reference: DeclarationRef { module_path: "test.claim.floor_materialization_witness", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
+    coverage: OutsideDeclIndexTestWitnessModule,
+  },
+  OutsideIndexWork {
+    reference: DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_witness", decl_name: "witness_control_response_parser_drop_fixture_holds", field: WholeDeclaration },
+    coverage: OutsideDeclIndexTestWitnessModule,
+  },
+  OutsideIndexWork {
+    reference: DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_live_witness", decl_name: "witness_wet_receipt_control_response_parser_drop_holds", field: WholeDeclaration },
+    coverage: OutsideDeclIndexTestWitnessModule,
+  },
+  OutsideIndexWork {
+    reference: DeclarationRef { module_path: "v2.test.round_trip.dag_comment_wall_test", decl_name: "dag_comment_wall_line_comment_refused", field: WholeDeclaration },
+    coverage: OutsideDeclIndexTestWitnessModule,
+  },
+]
+
+fn hand_authored_outside_index_declaration_refs() -> List<DeclarationRef> {
+  map(
+    filter(hand_authored_outside_index_works, w => citation_is_outside_index(coverage: w.coverage)),
+    w => w.reference
+  )
+}
+
+fn hand_authored_outside_index_count() -> Int {
+  length(xs: hand_authored_outside_index_declaration_refs())
+}
+
+fn declaration_ref_is_outside_index(r: DeclarationRef) -> Bool {
+  any(
+    hand_authored_outside_index_declaration_refs(),
+    o => o.module_path == r.module_path && o.decl_name == r.decl_name
+  )
+}
+
+fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
+  filter(hand_authored_all_production_doc_works(), r => !declaration_ref_is_outside_index(r: r))
+}
+
+fn hand_authored_cited_symbol_control_declaration_refs() -> List<DeclarationRef> {
+  list_flat_map(
+    xs: filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
     f: fn(b) { hand_authored_bind_works(b: b) }
   )
 }
@@ -930,7 +978,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "space-lens-minimal-project",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.fleet_container", decl_name: "ResourceEnvelope", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "product.fabric.envelope", decl_name: "ResourceEnvelope", field: WholeDeclaration },
     additional_works: [
       std.decl_ref.DeclarationRef { module_path: "std.realization_schedule", decl_name: "cost_account_predicted_zero", field: std.decl_ref.WholeDeclaration },
       std.decl_ref.DeclarationRef { module_path: "gunbc.ci_input_envelope", decl_name: "InputEnvelope", field: std.decl_ref.WholeDeclaration },
@@ -1220,7 +1268,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-23",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_string_grounded_type_alias_decl_line", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base", field: WholeDeclaration },
     additional_works: [],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "emit_representation_mismatch brick clears and probe transport lands in .dag (#5828)") },
   },
@@ -1490,9 +1538,9 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "compiler-guarantee-recovery-gap-analysis",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v1.compiler.infer", decl_name: "module_skips_direct_call_arg_check", field: std.decl_ref.WholeDeclaration },
-    additional_works: [std.decl_ref.DeclarationRef { module_path: "v2.std.constraints", decl_name: "solve_constraints", field: std.decl_ref.WholeDeclaration }],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "ONE row, TWO anchored carriers — both in the typed works field (post-merge review 2026-07-31: the prior revision carried the second anchor only in this prose), BOTH conditions gate dissolution (merged from a two-row form per review 45305: home+slug is this list's symbolic identity, so two rows gave one doc two independently removable authority rows). Condition zero, the authority: the recovered guarantee statement and tier claims are modeled as .dag claim rows (the guarantee authority of the analysis Sec 11/12, grounding the StandingIntent thread) and PROJECTED into DESIGN.md via gunbc.design_document — never hand-edited into the markdown, which is a projection, so a direct DESIGN.md edit does NOT satisfy this trigger (analysis Sec 7b; wording corrected from 're-homed into DESIGN.md' per review 45299) — and every Tier 1/Tier 2 row in the analysis is either closed on its carrier or migrated to a registered gunbc.plan.Plan row. Carrier (1), the primary_work ref: v1.compiler.infer module_skips_direct_call_arg_check — the one named in-tree violation of the dimension contract's 'no escape hatch' clause (docs/thesis/correctness-dimensions.md): it exempts v2.* and v1.compiler.* from direct-call argument checking, so the compiler being bootstrapped is authored under weaker checks than ordinary source; its deletion is the analysis's terminal Tier 1 acceptance. Carrier (2): v2.std.constraints solve_constraints — passes graph.root as source_facts, algebra AND the sole candidate, and v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds requires algebra == source_facts && candidate == source_facts, so the grounding proof reduces to well_formed(root) relabelled CanonicalGrounding; that half dissolves when a candidate is derived rather than supplied, or the generic arm returns a typed compile refusal instead of an accepted self-grounded InferredTree. The row deletes only when BOTH carriers are closed") },
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "module_skips_direct_call_arg_check", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.std.constraints", decl_name: "solve_constraints", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "ONE row, TWO anchored carriers — both in the typed works field (post-merge review 2026-07-31: the prior revision carried the second anchor only in this prose), BOTH conditions gate dissolution (merged from a two-row form per review 45305: home+slug is this list's symbolic identity, so two rows gave one doc two independently removable authority rows). Condition zero, the authority: the recovered guarantee statement and tier claims are modeled as .dag claim rows (the guarantee authority of the analysis Sec 11/12, grounding the StandingIntent thread) and PROJECTED into DESIGN.md via gunbc.design_document — never hand-edited into the markdown, which is a projection, so a direct DESIGN.md edit does NOT satisfy this trigger (analysis Sec 7b; wording corrected from 're-homed into DESIGN.md' per review 45299) — and every Tier 1/Tier 2 row in the analysis is either closed on its carrier or migrated to a registered gunbc.plan.Plan row. Carrier (1), the primary_work ref: v1.compiler.infer module_skips_direct_call_arg_check — the one named in-tree violation of the dimension contract's 'no escape hatch' clause (docs/thesis/correctness-dimensions.md): it exempts v2.* from direct-call argument checking, so the compiler being bootstrapped is authored under weaker checks than ordinary source. RESTATED 2026-08-22, for two independent reasons. (i) The prior condition made that exemption's DELETION the analysis's terminal Tier 1 acceptance; the deletion is gunbc#8924, which is CLOSED and held indefinitely by decision — the PR is a complete measured artifact whose only missing precondition is a resolve-layer seam whose repair was declined at the owning layer on 2026-08-22 with no owner and no schedule — so the trigger could not fire by any work this repository has an owner for, which is an untracked stall (DESIGN §4b(2)) wearing a trigger's costume. (ii) It also said the exemption covers v1.compiler.*, which cut A (gunbc#8873) falsified: that arm was deleted as dead and the predicate now tests the 'v2.' prefix alone, so the scope claim was stale as well as unfireable. The condition is therefore restated to the state that actually settles this carrier, both arms reachable by work someone can start: EITHER the exemption is deleted — #8924 stands ready and either of its two named reopening conditions puts it back in flight, namely the resolve-layer change scoped on its own merits as a type-system change, or a measurement showing that seam's blast radius exceeds the 9 declarations under src/v2/extdeps/formatters/ — OR the exemption is RETAINED under a ruling recorded on an in-tree carrier, declaring previous rung, temporary rung, reason, bounded population and restoration trigger per DESIGN §4b(3), so the Tier 1 row closes as a declared stall with a named owner instead of waiting on a deletion nobody owns. A closed PR body is not such a carrier: the hold is recorded nowhere in-tree today, which is exactly why this row still read as live. Carrier (2): v2.std.constraints solve_constraints — passes graph.root as source_facts, algebra AND the sole candidate, and v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds requires algebra == source_facts && candidate == source_facts, so the grounding proof reduces to well_formed(root) relabelled CanonicalGrounding; that half dissolves when a candidate is derived rather than supplied, or the generic arm returns a typed compile refusal instead of an accepted self-grounded InferredTree. The row deletes only when BOTH carriers are closed") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

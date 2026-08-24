@@ -1,6 +1,5 @@
 module gunbc.typed_remote_file_write
 
-
 data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back land before that arm is writable."
 
 data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and first production consumer follow on #8281 integration branch — not a Scaffold row and no DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
@@ -76,7 +75,7 @@ fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
 }
 
 fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
-  ["chmod", remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
+  [chmod_path_resolved_program as String, remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
 }
 
 fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {

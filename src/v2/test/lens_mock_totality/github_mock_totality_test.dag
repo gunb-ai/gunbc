@@ -1,6 +1,5 @@
 module v2.test.lens_mock_totality.github_mock_totality
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGithubMock {

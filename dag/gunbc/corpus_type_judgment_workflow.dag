@@ -1,6 +1,5 @@
 module gunbc.corpus_type_judgment_workflow
 
-
 // THE CORPUS TYPE-JUDGMENT MEASUREMENT, ON A BUTTON.
 //
 // It runs the required run's own preparation -- the same subject, the same whole-corpus compile --
@@ -38,10 +37,8 @@ data corpus_type_judgment_workflow_job_id: std.types.String = "corpus_type_judgm
 // `gunbc.ci_layer_roots` authority internally and REFUSES supplied roots, so there is no
 // `--source-root` to render here. The workflow therefore has no spelling for "measure part of it",
 // which is the constraint held as construction rather than as a flag a future editor must not add.
-fn corpus_type_judgment_run_command() -> extdeps.exec.command.ArgvCommand {
-  extdeps.exec.command.ArgvCommand {
-    argv: ["target/release/claim_executor", "--corpus-type-judgment"],
-  }
+fn corpus_type_judgment_run_command() -> ArgvCommand {
+  claim_executor_command(mode_flag: "--corpus-type-judgment", operands: [])
 }
 
 fn corpus_type_judgment_checkout_step() -> extdeps.github.actions.Step {

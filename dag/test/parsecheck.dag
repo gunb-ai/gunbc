@@ -1,0 +1,8 @@
+module test.parsecheck
+fn parsecheck_holds() -> Bool {
+  ucs_mr_1x648ru_a.underlying_module.rank_count == 8
+    && fleet_dimm_verdicts.length() == 4
+    && fleet_dimm_expectations.length() == 4
+    && srv1_memory_population.rows.length() == 1
+    && the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost()
+}

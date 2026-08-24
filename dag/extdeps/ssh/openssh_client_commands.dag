@@ -1,0 +1,77 @@
+module extdeps.ssh.openssh_client_commands
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh-keygen.1"
+  }
+}
+
+data ssh_keyscan_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh-keyscan.1"
+  }
+}
+
+data ssh_add_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh-add.1"
+  }
+}
+
+// THE OPENSSH CLIENT UTILITIES THIS REPOSITORY INVOKES AS PROCESSES, one module because they are one
+// upstream (the OpenSSH portable distribution ships all three from one release), with a citation per
+// utility because they are three separate manual pages making three separate contracts.
+//
+// These builders were previously hand-spelled at their call sites in gunbc.fleet_host_key_enrollment
+// and gunbc.fleet_ssh_credential_verify -- five bare word lists in which the flags of a security
+// tool lived beside the code that read its output.
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data ssh_keygen_program: NonEmptyStr = "ssh-keygen"
+data ssh_keyscan_program: NonEmptyStr = "ssh-keyscan"
+data ssh_add_program: NonEmptyStr = "ssh-add"
+
+// -y DERIVES the public key from a private key file and prints it. It reads the private half, which
+// is why the caller supplying the path is asserting it holds one -- this is not a public-key reader.
+fn ssh_keygen_public_key_command(identity_file: String) -> ArgvCommand {
+  argv_command(program: ssh_keygen_program, arguments: ["-y", "-f", identity_file])
+}
+
+// -l prints the FINGERPRINT of the key in the named file, rather than the key. A fingerprint is what
+// a human compares and what a receipt records; the key itself is what gets installed. Two different
+// products, so two different builders.
+fn ssh_keygen_fingerprint_command(key_file: String) -> ArgvCommand {
+  argv_command(program: ssh_keygen_program, arguments: ["-l", "-f", key_file])
+}
+
+// -F SEARCHES a known-hosts file for a host and exits nonzero when it is absent, which is what makes
+// it a presence probe rather than a reader. The file is named explicitly (-f) because the point of
+// the probe is to ask about a SPECIFIC staged fragment, not about whatever known_hosts the invoking
+// user happens to have.
+fn ssh_keygen_known_hosts_find_command(host: String, known_hosts_file: String) -> ArgvCommand {
+  argv_command(program: ssh_keygen_program, arguments: ["-F", host, "-f", known_hosts_file])
+}
+
+// THE TIMEOUT IS A PARAMETER AND IS NOT OPTIONAL, because ssh-keyscan's default is to wait, and a
+// converge that waits on an unreachable host has turned a refusal into a hang. -t names the key type
+// so the scan returns one algorithm's key rather than whatever set the far side advertises -- a
+// caller pinning a host key must say which key it is pinning.
+fn ssh_keyscan_command(host: String, key_type: String, timeout_seconds: Int) -> ArgvCommand {
+  argv_command(
+    program: ssh_keyscan_program,
+    arguments: ["-T", to_string(timeout_seconds), "-t", key_type, host],
+  )
+}
+
+// -l LISTS the identities the agent currently holds, by fingerprint. It contacts the agent named by
+// SSH_AUTH_SOCK in the process environment -- which is an ENVIRONMENT fact and deliberately not an
+// argument here: this builder models ssh-add's argv, and how the caller arranges the agent socket is
+// the caller's own realization concern.
+fn ssh_add_list_identities_command() -> ArgvCommand {
+  argv_command(program: ssh_add_program, arguments: ["-l"])
+}

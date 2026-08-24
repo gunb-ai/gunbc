@@ -1,6 +1,5 @@
 module gunbc.build_cache_endpoint_path
 
-
 data build_cache_endpoint_path_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data endpoint_path_state_authority_note: String = "WHY THE ENDPOINT PATH NEEDS ITS OWN STATE MACHINE, AND WHY EndpointAbsent WAS NOT ENOUGH. gunbc.build_cache_instance's EndpointAbsent answers one question — is anybody listening — and that is the right question for PLACEMENT, because an endpoint with no listener has no owner whose cgroup could be classified. It is the wrong question for ACTUATION, and srv4 is the specimen that proves it. Observed 2026-08-01: no listener, no process, no unit, a server.sock file present on disk, and an error log whose entire contents are 'Address in use (os error 98)'. A server born inside a runner cgroup died with that cgroup without unlinking its socket, so every later server fails to bind and the whole cache tree holds one file. srv4 has been uncached since roughly 2026-07-26 for this reason alone.\n\nUnder EndpointAbsent, srv4 and a host that simply has no cache yet are the SAME state. They are not: one needs a unit started, the other needs a file removed FIRST and then a unit started, and starting the unit without removing the file reproduces error 98 forever. That is a state-space conflation of exactly the kind DESIGN's failure-mode list names, and its cost is measured rather than hypothetical — a host silently uncached for a week.\n\nSO THE PATH IS A SEPARATE AXIS FROM THE OWNER. EndpointPathState answers 'what is at this path', BuildCacheEndpointObservation answers 'who owns this endpoint'. They are not redundant readings of one fact: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, which is precisely the distinction the ownership axis is not built to carry."
@@ -118,7 +117,7 @@ fn stale_socket_unlink_command(admission: StaleSocketUnlinkAdmission) -> StaleSo
       match i.endpoint {
         SccacheServerUnixSocket { path: p } =>
           StaleSocketUnlinkCommandReady {
-            command: extdeps.exec.command.ArgvCommand { argv: ["rm", "-f", p as String] },
+            command: rm_force_command(path: p as String),
           }
         SccacheServerTcpPort { port: _ } =>
           StaleSocketUnlinkCommandRefused {

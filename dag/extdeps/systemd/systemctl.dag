@@ -1,7 +1,5 @@
 module extdeps.uri.extdeps.systemd.systemctl
 
-
-
 data extdeps_external_authority_anchor: extdeps.uri.extdeps.external_authority.ExternalAuthority = extdeps.uri.extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.extdeps.uri.Uri {
     scheme: extdeps.uri.extdeps.uri.Https
@@ -353,4 +351,41 @@ service systemd.Systemctl {
       } "hermetic systemd.Systemctl.Status active"
     }
   }
+}
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it.
+data systemctl_program: NonEmptyStr = "systemctl"
+
+// ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
+// contradiction and is not. That split exists because the user-scope consumer converges the two
+// facts separately and observes them separately. This builder serves a different consumer: runner
+// slot activation, where the fused form is what is deployed today and what the sudoers grant on
+// those hosts names. Splitting it here would be a change to a live actuation shipped inside an argv
+// refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
+// activation path later wants the two facts apart, that is its own change with its own witness.
+//
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
+// ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
+// system manager, so an unelevated invocation is not a weaker version of this request, it is a
+// different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
+// than being re-spelled as two more literals here.
+fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: append(
+      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      items: units,
+    ),
+  )
 }

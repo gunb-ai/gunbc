@@ -1,6 +1,5 @@
 module extdeps.tools.stat
 
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -26,4 +25,32 @@ fn stat_owner_user_argv(path: String) -> List<String> {
 
 fn stat_owner_group_argv(path: String) -> List<String> {
   [stat_binary_path as String, "-c", "%g", path]
+}
+
+// %U IS THE OWNER'S NAME, %u IS THE OWNER'S NUMERIC UID, and the pair above answers the numeric
+// question. They are not two spellings of one probe: a receipt line naming "briansrls" and a
+// comparison against uid 1000 need different tokens, and a caller that reached for the wrong one
+// would get a plausible answer of the wrong kind. This builder is the name form, which is what a
+// human-readable ownership receipt wants.
+// `--` ON EVERY ROW, INCLUDING THIS ONE, AND IT IS A ONE-TOKEN BEHAVIOUR CHANGE STATED RATHER THAN
+// SLIPPED IN. The name row previously omitted the end-of-options guard while the type and inode rows
+// carried it, so the same module answered one question two ways. A path beginning with a dash is
+// read as an option without it -- and these operands come from observed host state (a socket path, a
+// /proc entry), which is exactly where such a path can appear. The emitted argv for the one existing
+// consumer (gunbc.command_runner's ownership receipt probe) gains "--" and can lose no meaning: the
+// guard only changes how a leading-dash operand is read, and that reading was wrong before.
+fn stat_owner_user_name_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%U", "--", path])
+}
+
+// %F IS THE HUMAN-READABLE FILE TYPE ("socket", "directory", "regular file") and %i is the inode
+// number. Both take `--` before the operand: a path beginning with a dash would otherwise be read as
+// an option, and these two are the probes whose operand comes from observed host state rather than
+// from a literal, which is exactly where that can happen.
+fn stat_file_type_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%F", "--", path])
+}
+
+fn stat_inode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }

@@ -15,14 +15,14 @@ fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedC
   }
 }
 
-fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
-  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
-    source: test.claim.json_protocol_schema_memory_split_wet_witness_test.committed_admitted_codex_runtime_source(),
+test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
   )
 }
 
-fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
-  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
-    source: test.claim.json_protocol_schema_memory_split_wet_witness_test.committed_admitted_codex_runtime_source(),
+test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
   )
 }

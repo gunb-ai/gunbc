@@ -1,6 +1,5 @@
 module v2.workflow.locality_affinity
 
-
 fn list_add_distinct_hash(xs: List<std.content_hash.ContentHash>, v: std.content_hash.ContentHash) -> List<std.content_hash.ContentHash> {
   if hashes_contain(hs: xs, h: v) { xs } else { concat(xs, [v]) }
 }
@@ -34,7 +33,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
                 if std.measure.measure_le(a: prior, b: f) && std.measure.measure_le(a: f, b: prior) {
                   AffinityCollectOk {
                     footprint: fp,
-                    consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                    consumers: list_add_distinct_hash(xs: cs, v: Fnv1a64(content_hash(n: e.dependent)))
                   }
                 } else {
                   AffinityCollectRefused {
@@ -44,7 +43,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
               Absent =>
                 AffinityCollectOk {
                   footprint: optional_present(value: f),
-                  consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                  consumers: list_add_distinct_hash(xs: cs, v: Fnv1a64(content_hash(n: e.dependent)))
                 }
             }
           } else {

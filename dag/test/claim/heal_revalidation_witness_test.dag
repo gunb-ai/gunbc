@@ -1,11 +1,10 @@
 module test.claim.heal_revalidation_witness
 
-
-data prior_head: std.types.CommitSha = "1111111111111111111111111111111111111111"
-data healed_head: std.types.CommitSha = "2222222222222222222222222222222222222222"
-data other_head: std.types.CommitSha = "3333333333333333333333333333333333333333"
-data required_roster: std.content_hash.Fnv1a64Structural = content_hash_atom(value: "heal-roster")
-data required_gate: std.content_hash.Fnv1a64Structural = content_hash_atom(value: "heal-gate")
+data prior_head: CommitSha = "1111111111111111111111111111111111111111"
+data healed_head: CommitSha = "2222222222222222222222222222222222222222"
+data other_head: CommitSha = "3333333333333333333333333333333333333333"
+data required_roster: ContentHash = Fnv1a64(content_hash_atom(value: "heal-roster"))
+data required_gate: ContentHash = Fnv1a64(content_hash_atom(value: "heal-gate"))
 
 fn produced() -> gunbc.heal_revalidation.HealOutcome {
   gunbc.heal_revalidation.HealProduced {

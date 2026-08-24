@@ -1,0 +1,16 @@
+module test.claim.qualified_arm_start_witness_test
+
+data qualified_arm_start_witness_note: String = "WHERE AN UNBRACED MATCH-ARM BODY ENDS. parse_match_arm_stmts consumes statements until looks_like_arm_start reports that the next tokens open a new arm, and that predicate recognised only a bare `_` and an UPPERCASE-start leaf. A NAMESPACE-QUALIFIED pattern begins with its lowercase module head, so it answered false: the body kept consuming, swallowed the next arm pattern as one more statement, and the parse died on the FatArrow that followed. The reported span is that ARROW -- several lines below the arm that actually ended -- which is why the trigger had to be bisected rather than read off the diagnostic. MINIMAL REPRODUCTION, every clause load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Drop the let and the body is a single expression that never enters the statement loop; make the following pattern `_` or an uppercase leaf and the predicate already answered true. Four separate reproductions of the neighbouring shapes all parsed. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it (src/v1/05_emit.dag) -- and that file is invalid under the parser its own branch carries, surviving only because the built binary there predates its own committed mirror. So this is a grammar gap the cut made REACHABLE rather than a cut-branch accommodation. ZERO-DRIFT: the new scan runs only where the old predicate already answered false, and requires the TERMINAL segment to be uppercase with the arrow following the path or its brace group, so no previously-accepted parse changes -- receipt, a full required-regen drifted only v1_compiler_parse.rs, this repair itself. dissolve-on: never -- permanent regression control for qualified arm starts."
+
+fn w_qualified_arm_start_ends_the_previous_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module armstart_probe\n\nimport test.fixture.armstart_provider \{ ArmStartKind \}\n\nfn armstart_pick(k: ArmStartKind) -> String \{\n  match k \{\n    test.fixture.armstart_provider.ArmStartAlpha =>\n      let a = \"alpha\"\n      a\n    test.fixture.armstart_provider.ArmStartBeta => \"beta\"\n  \}\n\}\n",
+    "src/armstart_probe.rs",
+    ["pub fn armstart_pick", "\"alpha\"", "\"beta\""],
+    []
+  )
+}
+
+test fn qualified_arm_start_ends_the_previous_body() -> Bool {
+  w_qualified_arm_start_ends_the_previous_body()
+}

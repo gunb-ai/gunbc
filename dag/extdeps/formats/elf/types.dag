@@ -1,6 +1,5 @@
 module extdeps.formats.elf.types
 
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -47,6 +46,11 @@ type ElfDecodeReason
   | UnsupportedElfMachine { raw: Int }
   | UnsupportedElfSegmentType { raw: Int }
 
+// THE SOLE DECODE-OUTCOME AUTHORITY for this module, stated because a parallel one was
+// once carried alongside it: `elf.segments.PhdrDecodeOutcome` answered the same question
+// for program headers and has been deleted. Program-header decode reports through this
+// type and `ElfDecodeReason`, and a second outcome coproduct for one decode is the §3
+// violation that fork was.
 type ElfDecodeOutcome<T>
   = ElfDecoded { value: T }
   | ElfRejected { reason: ElfDecodeReason }

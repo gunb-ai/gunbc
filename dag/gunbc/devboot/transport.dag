@@ -1,7 +1,6 @@
 module gunbc.devboot.transport
 
-
-data devboot_shell_transport_note: std.types.String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+data devboot_shell_transport_note: String = "Counted retained-transport roster for the WitnessBin.Run sites of gunbc.devboot.build, gunbc.devboot.produce, and this module -- the directory ensure runs HERE, on the six callers' behalf, so a roster scoped to the other two modules would no longer name every site. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 
 // THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
 // distinction is the point. Every row in this roster declares the same dissolution target,
@@ -139,7 +138,6 @@ fn devboot_observe_ref(repo_root: std.types.String, ref_name: std.types.String) 
   devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
 }
 
-
 type WitnessBinRunOutcome {
   success: std.types.Bool
   exit_code: std.types.Int
@@ -160,4 +158,35 @@ fn devboot_witness_run(
     stdout: out.stdout,
     stderr: out.stderr,
   }
+}
+
+// SIX CALL SITES SPELLED THIS THEMSELVES, AND THE SPELLING WAS A SECOND AUTHORITY. Each of
+// build.dag's four and produce.dag's two named the binary as bare "mkdir" and rebuilt ["-p", dir]
+// beside it, while extdeps.tools.mkdir already owned both halves -- the binary path, and -p as the
+// idempotent ensure form rather than a create. That is DESIGN section 3's fork: the same fact
+// written seven times, six of them without the citation that says why -p is there.
+//
+// The retained row does NOT dissolve with this. The site still reaches the host through a raw
+// WitnessBin.Run, so retained_devboot_mkdir stays exactly where it was and still points at
+// host_effect_apply; what ends is devboot's private spelling of the tool, not the untyped effect.
+// The honest rung is mitigatable (DESIGN section 4b): one construction site instead of six is
+// fewer places to diverge, not a wall -- a caller can still hand devboot_witness_run a bare
+// "mkdir", and nothing in the corpus refuses it. The next rung is the same host_effect_apply
+// migration the row already names.
+//
+// THE SPELLING IS UNCHANGED AND THAT IS DELIBERATE. This cites the authority's PATH-RESOLVED row,
+// so the argv devboot runs is byte-identical to what it ran before -- what ends is the private
+// spelling, not the resolution. An earlier revision of this migration adopted the absolute
+// /usr/bin/mkdir instead, reasoning that devboot's own `ldd --version` probe pins it to glibc
+// Linux; extdeps.tools.env landed the distinction that shows why that was wrong. What a host must
+// SATISFY is not what its filesystem LOOKS LIKE, and devboot's producer compiles on whichever box
+// the operator invoked it from -- a host this repository has not read. Asserting a path there
+// fabricates a host fact (DESIGN section 5) rather than repairing an unspecific one.
+fn devboot_ensure_directory(repo_root: String, path: String) -> WitnessBinRunOutcome {
+  devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: mkdir_path_resolved_program as String,
+    args: mkdir_parents_args(path: path),
+  )
 }

@@ -1,0 +1,166 @@
+module test.claim.transport_field_refusal_witness
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Regression control for the parser's transport/config field refusals (DESIGN §5: a failure arm
+// must refuse, never widen or fabricate). Three reflexes are pinned here, each with a positive
+// control beside it so a harness that always returned false could not fake the reds.
+//
+// The class this closes: parse_file_fields substituted an empty string literal for an omitted
+// `path:`, so `transport file \{ \}` and `transport file \{ path: "" \}` produced byte-identical
+// nodes and the rust realization emitted a write to "" with zero diagnostics. is_file_transport is
+// DEFINED as "carries a base_path", so no downstream arm could ever see the absence -- the
+// fabrication made the state unobservable, not merely unchecked. The refusal belongs at parse,
+// where an absent path is decidable from the tokens alone.
+//
+// The sibling reflex is the silent drop: every field-loop's fallthrough arm parsed an
+// unrecognized field and threw it away, so a mis-authored key was accepted and erased. That was
+// not hypothetical -- extdeps.cloud.gcp authored `transport file \{ op: READ, path: ... \}` and the
+// `op: READ` was swallowed whole, never resolved, never reported.
+//
+// base_url and endpoint deliberately do NOT refuse on absence and are not tested here: an omitted
+// rest `base_url` is the norm (the base comes from the service config), an empty base plus a
+// full-URL path template is the authored absolute-form idiom recorded in
+// extdeps.transports.rest, and `config \{ \}` is legal for services with no endpoint at all.
+// Their fabricated "" is a state-space conflation with its own lane, not a refusal this parser
+// can make from the tokens.
+
+data file_ok_source: String = "module tfr_file_ok\nservice Fs \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
+
+data file_no_path_source: String = "module tfr_file_no_path\nservice Fs \{\n  operation Write \{\n    input \{ content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ verb: \"write\" \}\n  \}\n\}\n"
+
+data file_unknown_source: String = "module tfr_file_unknown\nservice Fs \{\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ op: READ, path: \"\{path\}\" \}\n  \}\n\}\n"
+
+data shell_ok_source: String = "module tfr_shell_ok\nservice shell.Run \{\n  operation Exec \{\n    input \{ script: String \}\n    output \{ result: String \}\n    transport shell \{ argv: [\"sh\", \"-lc\", \"\{script\}\"] \}\n    mock_response \{\n      0 => \"done\" \"result\"\n    \}\n  \}\n\}\n"
+
+data shell_unknown_source: String = "module tfr_shell_unknown\nservice shell.Run \{\n  operation Exec \{\n    input \{ script: String \}\n    output \{ result: String \}\n    transport shell \{ argv: [\"sh\", \"-lc\", \"\{script\}\"], env: \"PATH\" \}\n    mock_response \{\n      0 => \"done\" \"result\"\n    \}\n  \}\n\}\n"
+
+data rest_ok_source: String = "module tfr_rest_ok\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\" \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+data rest_unknown_source: String = "module tfr_rest_unknown\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\", timeout: 5 \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+data config_unknown_source: String = "module tfr_config_unknown\nservice test.Svc \{\n  config \{\n    endpoint: \"https://api.example.com\"\n    timeout: 5\n  \}\n  operation GetItems \{\n    output \{ items: List<String> \}\n    transport rest \{ method: GET, path: \"/items\" \}\n    response \{\n      200 => List<String>\n    \}\n    mock_response \{\n      200 => [\"a\"] \"items\"\n    \}\n  \}\n\}\n"
+
+fn compiles(source: String, out_path: String) -> Bool {
+  compile_dag_rust_emit_check(source, out_path, [], [])
+}
+
+// The stage-naming counters. A single compiles/does-not-compile boolean is GREEN whether parse
+// refused the declaration or the parser fabricated "" and the emission wall caught it downstream
+// -- which are exactly the two states this change separates, so the oracle that watches it must
+// name the stage rather than the outcome. -1 on the not-runnable arm keeps could-not-measure out
+// of both the >= 1 and the == 0 assertions (DESIGN §5: top-as-ignorance is not top-as-answer).
+fn parse_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "ParseError")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn not_modeled_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TransportEmissionNotModeled")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// Positive controls -- the harness accepts well-formed sources, so the reds below are refusals of
+// the authored defect and not a check that is false for everything.
+test fn w_control_file_transport_with_path_compiles() -> Bool {
+  compiles(source: file_ok_source, out_path: "src/tfr_file_ok.rs")
+}
+
+test fn w_control_shell_transport_compiles() -> Bool {
+  compiles(source: shell_ok_source, out_path: "src/tfr_shell_ok.rs")
+}
+
+test fn w_control_rest_transport_compiles() -> Bool {
+  compiles(source: rest_ok_source, out_path: "src/tfr_rest_ok.rs")
+}
+
+// RED 1 -- an omitted `path:` refuses instead of fabricating "". Before the fix this compiled
+// clean and emitted a filesystem write against the empty path.
+test fn w_red_file_transport_without_path_refuses() -> Bool {
+  !compiles(source: file_no_path_source, out_path: "src/tfr_file_no_path.rs")
+}
+
+// RED 2 -- an unrecognized file-transport field refuses instead of being dropped. This is the
+// exact shape extdeps.cloud.gcp carried in tree.
+test fn w_red_file_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: file_unknown_source, out_path: "src/tfr_file_unknown.rs")
+}
+
+// RED 3 -- the same reflex in the shell field loop.
+test fn w_red_shell_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: shell_unknown_source, out_path: "src/tfr_shell_unknown.rs")
+}
+
+// RED 4 -- the same reflex in the rest field loop.
+test fn w_red_rest_transport_unknown_field_refuses() -> Bool {
+  !compiles(source: rest_unknown_source, out_path: "src/tfr_rest_unknown.rs")
+}
+
+// RED 5 -- the same reflex in the service config field loop.
+test fn w_red_service_config_unknown_field_refuses() -> Bool {
+  !compiles(source: config_unknown_source, out_path: "src/tfr_config_unknown.rs")
+}
+
+// The emission-refusal fixture: a well-formed declaration whose VERB is unmodeled, so it parses
+// clean and the emission wall is what refuses it. It exists to prove the two counters below
+// actually discriminate -- without it, `parse_blocking_count >= 1` could be satisfied by a
+// counter that is nonzero for everything, and `not_modeled_blocking_count == 0` by one that is
+// always zero.
+data emit_refuse_source: String = "module tfr_emit_refuse\nservice Fv \{\n  operation Chmod \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"chmod\" \}\n  \}\n\}\n"
+
+// The stage discriminator, and the row the plain !compiles oracle above cannot supply. Revert the
+// parse arm and let the emitter catch the pathless case: every `!compiles` red in this file STAYS
+// GREEN, and this one goes red. That is the regression a two-stage design can otherwise silently
+// undo.
+test fn w_red_pathless_file_transport_refuses_at_parse_not_emission() -> Bool {
+  parse_blocking_count(source: file_no_path_source) >= 1
+    && not_modeled_blocking_count(source: file_no_path_source) == 0
+}
+
+// The other half of the discriminator, in the opposite direction: a source the EMISSION wall
+// refuses reports the emission class and no parse error. Together the two rows show each counter
+// answering both ways, so neither assertion above is satisfied by a constant.
+test fn w_control_unmodeled_verb_refuses_at_emission_not_parse() -> Bool {
+  not_modeled_blocking_count(source: emit_refuse_source) >= 1
+    && parse_blocking_count(source: emit_refuse_source) == 0
+}
+
+// A clean source is blocking-free at BOTH stages, so neither counter is nonzero for everything.
+test fn w_control_valid_file_transport_is_clean_at_both_stages() -> Bool {
+  parse_blocking_count(source: file_ok_source) == 0
+    && not_modeled_blocking_count(source: file_ok_source) == 0
+}
+
+// THE CLASSIFICATION GUARD. The `//` annotation on v1.compiler.core is_rest_transport records WHY
+// rest's always-written base_url is load-bearing; DESIGN §4c is explicit that an annotation is
+// never evidence a machine claim holds, because no Accepted program can read one. Prose is the
+// right home for the rationale and cannot be the guard for the invariant, so the invariant is
+// asserted here.
+//
+// It is asserted through EMISSION SHAPE rather than by calling is_rest_transport directly, and
+// that is a reachability fact rather than a preference: CI's source roots are `dag` and `src/v2`,
+// so v1.compiler.core is not in the witness pool and the predicate cannot be named from here. The
+// consequence is the better subject anyway -- it runs the real pipeline instead of the predicate
+// in isolation.
+//
+// What goes red: delete the fabricated base_url from `rest_transport_node` because it looks like a
+// lazy default, and every rest transport reclassifies as `local` -- no rest client is emitted, and
+// the first row below fails. That is the exact failure the annotation exists to prevent, and until
+// now nothing in the corpus would have caught it.
+test fn w_red_rest_transport_classifies_as_rest_not_local() -> Bool {
+  compile_dag_rust_emit_check(rest_ok_source, "src/tfr_rest_ok.rs", ["self.base_url"], [])
+}
+
+// The other answer, so the row above is not satisfied by an oracle that matches everything: a
+// SHELL transport is not classified rest and emits no rest client. Without this pair, `must_contain
+// ["self.base_url"]` proves nothing about discrimination -- the same defect the stage counters had
+// before their inverse row was added.
+test fn w_control_shell_transport_emits_no_rest_client() -> Bool {
+  compile_dag_rust_emit_check(shell_ok_source, "src/tfr_shell_ok.rs", ["Command::new"], ["self.base_url"])
+}

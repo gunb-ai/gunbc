@@ -1,6 +1,6 @@
 module test.claim.node_power_envelope_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RELOCATED 2026-08-19 from test.claim.hardware_selection, whose module was
 // deleted at the root. Four of its eight claims tested the deleted candidate
@@ -22,8 +22,9 @@ data mod_2rx4_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   capacity_bytes: test.claim.node_power_envelope_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 2,
 }
 
@@ -34,8 +35,9 @@ data mod_1rx4_16g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.ty
   capacity_bytes: std.measure.byte_size(count: 17179869184),
   data_rate_mts: 2666,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 1,
 }
 
@@ -46,8 +48,9 @@ data mod_1rx8_32g_impossible: extdeps.memory.types.DramModuleCatalogRow = extdep
   capacity_bytes: test.claim.node_power_envelope_witness.stick_32g,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 8),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 8),
   rank_count: 1,
 }
 
@@ -319,8 +322,9 @@ data rdimm_64g_2rx4: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.
   capacity_bytes: sixty_four_gib_stick,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 2,
 }
 

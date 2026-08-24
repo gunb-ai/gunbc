@@ -1,7 +1,5 @@
 module gunbc.repo_local_git_config
 
-
-
 data repo_local_git_config_authority_note: String = "Repository-local Git configuration desired state for gunbc integration-policy projections (generated-file conflict policy charter, lane 2). The merge-driver definition for merge=generated-artifact and core.hooksPath are modeled facts reconciled against observed read-back — a documented manual git config command with no read-back is declared-but-unrealized configuration and does not satisfy the lane. merge.generated-artifact.driver no longer answers `true`. `true` took the ours side and exited 0, so git recorded a CLEAN merge while the other side's authority-derived bytes were dropped with no signal — the DESIGN section 5 absorbing fallback at the integration boundary, measured twice on PR #7836 against the stage0 seed. The binding now names the emitted refusing driver (gunbc.generated_artifact_merge_driver), which leaves the ours side in the worktree verbatim with no conflict markers, marks the path unmerged, and exits nonzero with the located regeneration recipe. Git invokes a low-level merge driver only when BOTH sides changed the path relative to the merge base, so the refusal fires exactly where taking either side drops the other side and adds no stop to a merge that was previously correct. It raises the class to mechanically preventable, not to structural: commit-writer admission plus regeneration receipts remain the boundary a writer cannot pass. Bindings are Ensured: reconcile upserts drift, never tears down a binding absent from desired. Read-back uses git config --local --get so a matching global/system value cannot fabricate convergence. Hook install argv and git.Core.ConfigLocal\{Get,Set\}\{,InRepo\} transport both derive from extdeps.git shape_git_config_local_* — one executable authority, cwd-relative for generated hooks and -C repo for the actuator."
 
 type RepoLocalGitConfigMemberAt = String
@@ -72,6 +70,14 @@ fn repo_local_git_config_reconcile(
 
 fn reconcile_install_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
   extdeps.git.shape_git_config_local_argv(key: binding.key, value: binding.value)
+}
+
+// THE COMMAND FORM OF THE SAME INSTALL. The hook emitter renders one command to text and the
+// actuator hands words to a transport; both now derive from extdeps.git git_config_local_set_args,
+// so neither re-spells --local. The emitter previously wrapped this argv in a hand-written
+// ArgvCommand record, which is the construction extdeps.exec.command's seal removes.
+fn reconcile_install_command(binding: RepoLocalGitConfigBinding) -> ArgvCommand {
+  git_config_local_set_command(key: binding.key, value: binding.value)
 }
 
 fn reconcile_read_back_argv(binding: RepoLocalGitConfigBinding) -> List<String> {

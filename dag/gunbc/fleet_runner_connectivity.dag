@@ -1,6 +1,5 @@
 module gunbc.fleet_runner_connectivity
 
-
 data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
@@ -22,11 +21,88 @@ type FleetAchievedRunnerWidths
     }
   | AchievedWidthsUnobserved { reason: String }
 
+type RegistrationSlotDecoding
+  = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
+  | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+
+// THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
+// naming authority read in the opposite direction from the first, and the two could disagree without
+// anything detecting it. The committed population is finite and already enumerable, so decoding is a
+// total decision over it: which committed identity's own name equals this registration's name. That is
+// the forward naming authority read backward (DESIGN section 4, one grammar in both directions) rather
+// than an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
+// the answer RegistrationNamesNoCommittedSlot, which is a fact about the fleet rather than about text.
+//
+// THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
+// NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
+// (runner_lifecycle, runner_host_deploy, runner_incarnation, and host_registration_name_for_slot
+// just below, which reached it through a shared bucketed helper). Three derived the pad
+// arithmetically; runner_incarnation's slot_suffix ENUMERATED indices 1 through 8 with an else arm
+// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00 from
+// the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced the
+// same string and two slots would contend for one GitHub registration.
+//
+// All of them now route through gunbc.build_cache_instance runner_slot_index_suffix, which is the
+// identity's own module and therefore the rule's layer. Derived, total over Nat, no fall-through to
+// reach. My census of this fork said three sites twice -- to a reviewer and in a PR body -- and it
+// was five; the two I missed were the ones that reached the rule INDIRECTLY, which is the same
+// shape as every other undercount in this lane: I grepped for the thing I was looking for rather
+// than enumerating the declarations.
+//
+// ONE INDEPENDENT IMPLEMENTATION SURVIVES DELIBERATELY, in host_converge_slice1_witness_test, which
+// builds its own expected name inline. That is not a missed site: a witness that computes its
+// expectation by calling the production function proves only that the function equals itself. Its
+// pad is an independent oracle and consolidating it would convert a check into a tautology.
+fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+  fold(
+    fleet_hosts(),
+    init: [],
+    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+  )
+}
+
+fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+  match fold(
+    fleet_committed_slot_identities(),
+    init: none,
+    f: (acc, id) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if runner_slot_instance_name(slot: id) == (reg.name as String) {
+            Present { value: id }
+          } else {
+            none
+          }
+      }
+  ) {
+    Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
+    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+  }
+}
+
 type RunnerSlotConnectivityVerdict
-  = SlotConnectivityHealthy { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityDetached { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityOrphaned { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
-  | SlotConnectivityUnknown { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: String }
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
+  | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+  | SlotConnectivityUnexpectedRegistration {
+      registration_id: Nat
+      registration_name: NonEmptyStr
+      decoded: RegistrationSlotDecoding
+    }
+
+// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT OF IT.
+// The other four arms each carry a RunnerSlotIdentity taken from a LOCAL incarnation, because they are
+// produced by mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
+// provisioned locally has no incarnation to be mapped from, so it was not mis-reported by those four --
+// it was unsayable, and no check could close it because there was nothing for a check to read.
+// Giving this arm a slot field would have rebuilt that same blindness inside the fix: it would have
+// forced an unexpected registration to be described in terms of a local slot that by construction does
+// not exist. It carries `decoded` instead, so a consumer can tell the two cases apart -- a registration
+// whose name resolves to a COMMITTED slot identity is the disjointness violation this model exists for
+// (an actions-runner sitting on a fabric-purpose slot), while one that resolves to nothing is a
+// foreign runner in the org. Those are different facts and a single Bool would have merged them.
 
 type FleetRunnerCapacityWidthSnapshot {
   desired_width: Int
@@ -152,10 +228,8 @@ fn unit_active_width_for_host(host: product.placement_supply.HostIdentity) -> In
   materialized_width_for_host(host: host)
 }
 
-data converged_seven_roster_observed_on: std.types.NonEmptyStr = "converged-seven-fixture" as std.types.NonEmptyStr
-
-fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> std.types.NonEmptyStr {
-  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as std.types.NonEmptyStr
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+  join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
@@ -205,52 +279,19 @@ fn count_host_online_at_width(
   )
 }
 
-fn roster_is_converged_seven_fixture(roster: OrganizationRunnerRosterEvidence) -> Bool {
-  match roster {
-    RosterObserved { observed_on: observed_on, registrations: _ } =>
-      (observed_on as String) == (converged_seven_roster_observed_on as String)
-    RosterReadUnavailable { reason: _ } => false
-  }
-}
-
-data converged_seven_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 101, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 102, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 103, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 104, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 105, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 106, name: "srv3-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 107, name: "srv3-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data converged_seven_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 201, name: "srv4-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 202, name: "srv4-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 203, name: "srv4-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 204, name: "srv4-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 205, name: "srv4-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 206, name: "srv4-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 207, name: "srv4-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data converged_seven_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
-  converged_seven_srv3_registrations,
-  converged_seven_srv4_registrations,
-)
-
-fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRosterEvidence {
-  RosterObserved {
-    observed_on: converged_seven_roster_observed_on,
-    registrations: converged_seven_managed_registrations,
-  }
-}
-
-data width_five_online_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 301, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 302, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 303, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 304, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 305, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+// THE CONVERGED-SEVEN FIXTURE CLUSTER IS DELETED HERE -- six declarations, all dead. It described
+// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are decoded
+// against the committed population rather than counted, srv3-07 resolves to no committed slot at all,
+// so the planner refused it. Its last consumer was retargeted onto the roster below, which is the
+// same concept authored once: both managed hosts registered 01-05 and online, converged at the
+// materialized width. Keeping the seven-wide rows beside it would have been a second name for a
+// fleet state, and a test fixture is not exempt from that.
+data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
 data width_five_online_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [

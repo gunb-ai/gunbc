@@ -1,6 +1,5 @@
 module gunbc.spark.serving_terminal_health
 
-
 // RESOURCES CONVERGED IS NOT SERVING. Membership reconciliation answers "is every declared member in
 // its desired state" -- runtime materialized, model store complete, unit written, enabled, lingering.
 // A host can satisfy every one of those and still answer nothing: the process can be up and wedged,
@@ -11,6 +10,17 @@ module gunbc.spark.serving_terminal_health
 // exists to move reading true for a host that cannot serve a token, which is worse than reading false
 // -- a false negative gets investigated, a false positive gets built on. So terminal health is a
 // SEPARATE verdict over a SEPARATE observation, and the two facts are joined rather than fused.
+// A PROBE THAT PRODUCED NO STDOUT HAS NOT TOLD US WHY. Three different things yield an empty
+// capture and they have three different owners: the leg never executed (transport), the command ran
+// and exited non-zero (the far side answered, and the answer was a failure), or it ran and answered
+// with nothing. Collapsing them into "" discards the only fact that decides who repairs it -- and,
+// worse, invites the decoder to NARRATE a cause it never observed. So the capture carries what
+// happened, and the decoder is allowed to say only what the capture supports.
+type SparkServingProbeCapture
+  = ProbeNeverRan { cause: NonEmptyStr }
+  | ProbeFailed { exit_code: Int, stderr: String }
+  | ProbeAnswered { stdout: String }
+
 type SparkServingTerminalHealth
   = ServingConverged {
       reported_version: std.types.NonEmptyStr
@@ -111,6 +121,17 @@ fn spark_serving_health_version_probe_argv() -> List<String> {
   ]
 }
 
+// The residency probe reuses the VERSION timeout, not the generate one. It is a plain GET that
+// reads already-resident state -- it never loads a model -- so pricing it like a generation would
+// give a slow answer a longer rope than a fast question deserves.
+fn spark_serving_health_ps_probe_argv() -> List<String> {
+  [
+    "curl", "-fsS",
+    "--max-time", spark_serving_health_version_timeout_word(),
+    spark_serving_local_endpoint_url(endpoint: ApiPs),
+  ]
+}
+
 fn spark_serving_health_generate_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
@@ -128,17 +149,57 @@ fn spark_serving_health_generate_probe_argv() -> List<String> {
 // answer, and that is `ServingHealthUnobserved` -- never healthy (nothing was seen) and never
 // unhealthy (nothing was refuted). Collapsing an unobserved probe into either direction is the
 // empty-observation narrow: the run reports a verdict it never earned.
+// THE CAUSE STRINGS THIS FUNCTION USED TO EMIT WERE FABRICATED. On an empty version capture it
+// asserted "the endpoint was not reached", and on an empty generation capture it asserted "the
+// endpoint answered its version but served nothing" -- neither of which the empty string could
+// establish. The second was actively misleading: a failure to PLACE the request body produced
+// exactly that message, sending a reader to investigate the model or the accelerator when the fault
+// was a scratch write on our own side. A conflated state given a confident explanation is worse than
+// a conflated state, because it is actionable and wrong.
+fn spark_serving_probe_capture_unobserved_cause(
+  label: NonEmptyStr,
+  capture: SparkServingProbeCapture,
+) -> NonEmptyStr {
+  match capture {
+    ProbeNeverRan { cause: c } =>
+      join([label as String, " probe never executed: ", c as String], "") as NonEmptyStr
+    ProbeFailed { exit_code: code, stderr: err } =>
+      join([
+        label as String, " probe ran and exited ", to_string(code),
+        " -- the far side answered and the answer was a failure; stderr: ", err,
+      ], "") as NonEmptyStr
+    ProbeAnswered { stdout: _ } =>
+      join([label as String, " probe answered with empty output"], "") as NonEmptyStr
+  }
+}
+
+fn spark_serving_probe_capture_stdout_or_empty(capture: SparkServingProbeCapture) -> String {
+  match capture {
+    ProbeNeverRan { cause: _ } => ""
+    ProbeFailed { exit_code: _, stderr: _ } => ""
+    ProbeAnswered { stdout: out } => out
+  }
+}
+
 fn spark_serving_health_from_captures(
-  version_stdout: String,
-  generate_stdout: String,
+  version: SparkServingProbeCapture,
+  generate: SparkServingProbeCapture,
 ) -> SparkServingTerminalHealth {
+  let version_stdout = spark_serving_probe_capture_stdout_or_empty(capture: version)
+  let generate_stdout = spark_serving_probe_capture_stdout_or_empty(capture: generate)
   if trim(s: version_stdout) == "" {
     ServingHealthUnobserved {
-      cause: "version probe produced no output: the endpoint was not reached, so neither health nor sickness was observed" as std.types.NonEmptyStr,
+      cause: spark_serving_probe_capture_unobserved_cause(
+        label: "version" as NonEmptyStr,
+        capture: version,
+      ),
     }
   } else if trim(s: generate_stdout) == "" {
     ServingHealthUnobserved {
-      cause: "generation probe produced no output: the endpoint answered its version but served nothing, so completion was not observed" as std.types.NonEmptyStr,
+      cause: spark_serving_probe_capture_unobserved_cause(
+        label: "generation" as NonEmptyStr,
+        capture: generate,
+      ),
     }
   } else {
     match spark_serving_parse_version_json(stdout: version_stdout) {
@@ -285,5 +346,76 @@ fn spark_serving_health_defect_wire(defect: SparkServingHealthDefect) -> String 
       join(["generation-wrong-model observed=", o as String], "")
     HealthGenerationUnexpectedText { observed: o } =>
       join(["generation-unexpected-text observed=", o as String], "")
+  }
+}
+
+// ── Where the tokens were computed, not merely where the weights sit ─────────────────────────────
+//
+// THE ORDERING IS A CORRECTNESS PROPERTY AND IT IS ENFORCED BY CONSTRUCTION, NOT BY A COMMENT.
+// /api/ps reports RESIDENCY, which is a fact about where weights currently sit -- not about where
+// the tokens for any particular request were computed. Residency only answers the placement question
+// when it is read within keep_alive of a generation WE issued, so a comment saying "do not reorder
+// these" would be a validation conceding that reordering is writable.
+//
+// Instead the decode REQUIRES a SparkServingServedProof, and the only producer of that value is the
+// converged arm of a terminal-health verdict. Reading residency without the generation that
+// justifies it is therefore not expressible. The proof is not ceremonial either: it carries the
+// served model name, which is the key the residency lookup needs, so the value that orders the two
+// probes is the same value that makes the second one answerable.
+type SparkServingServedProof sole_constructor {
+  reported_version: NonEmptyStr
+  served_model: NonEmptyStr
+}
+
+type SparkServingResidency
+  = ResidencyUnobserved { cause: NonEmptyStr }
+  | NothingResident
+  | ResidentInVram { vram_lexeme: NonEmptyStr }
+  | ResidentOutsideVram
+
+fn spark_serving_served_proof(health: SparkServingTerminalHealth) -> SparkServingServedProof? {
+  match health {
+    ServingConverged { reported_version: v, served_model: m } =>
+      Present { value: SparkServingServedProof { reported_version: v, served_model: m } }
+    ResourcesConvergedButServingUnhealthy { defect: _ } => none
+    ServingHealthUnobserved { cause: _ } => none
+  }
+}
+
+fn spark_serving_residency_from_capture(
+  proof: SparkServingServedProof,
+  capture: SparkServingProbeCapture,
+) -> SparkServingResidency {
+  let stdout = spark_serving_probe_capture_stdout_or_empty(capture: capture)
+  if trim(s: stdout) == "" {
+    ResidencyUnobserved {
+      cause: spark_serving_probe_capture_unobserved_cause(
+        label: "residency" as NonEmptyStr,
+        capture: capture,
+      ),
+    }
+  } else {
+    match spark_serving_parse_ps_vram_for_model(
+      stdout: stdout,
+      model: proof.served_model as String,
+    ) {
+      SparkServingReadbackAbsent => NothingResident
+      SparkServingReadbackRefused { cause: c } => ResidencyUnobserved { cause: c }
+      SparkServingReadbackPresent { value: lex } =>
+        if trim(s: lex) == "0" {
+          ResidentOutsideVram
+        } else {
+          ResidentInVram { vram_lexeme: lex as NonEmptyStr }
+        }
+    }
+  }
+}
+
+fn spark_serving_residency_wire(r: SparkServingResidency) -> String {
+  match r {
+    ResidencyUnobserved { cause: c } => join(["residency-unobserved ", c as String], "")
+    NothingResident => "nothing-resident -- the model is not loaded right now, which is not a statement about CPU or GPU"
+    ResidentInVram { vram_lexeme: l } => join(["resident-in-vram size_vram=", l as String], "")
+    ResidentOutsideVram => "resident-outside-vram size_vram=0 -- loaded, and not in accelerator memory"
   }
 }

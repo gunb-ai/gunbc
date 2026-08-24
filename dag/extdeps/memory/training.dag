@@ -1,6 +1,5 @@
 module extdeps.memory.training
 
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
@@ -102,6 +101,11 @@ fn module_executes_step(module: extdeps.memory.types.DramModuleCatalogRow, step:
 // load-reduced ones. The buyer's intuition that a lower speed grade is simply
 // a discount is therefore wrong at capacities near the density ceiling: the
 // older part is not the same module clocked slower, it is a different topology.
+// MonolithicDie in the constructed row below is load-bearing, not a default carried over from
+// the input. This builds the COUNTERFACTUAL plain module -- the one that would exist if the
+// capacity were reachable without the two escapes the comment above names, extra ranks and
+// stacking. Propagating module.die_stacking would ask "is this capacity reachable given that it
+// is already stacked", which is trivially yes and answers nothing.
 fn hypothetical_module_at_rank_count(
   module: extdeps.memory.types.DramModuleCatalogRow,
   rank_count: Int,
@@ -114,6 +118,7 @@ fn hypothetical_module_at_rank_count(
     data_rate_mts: module.data_rate_mts,
     ecc: module.ecc,
     buffering: Registered,
+    die_stacking: MonolithicDie,
     chip_width: module.chip_width,
     rank_count: rank_count,
   }

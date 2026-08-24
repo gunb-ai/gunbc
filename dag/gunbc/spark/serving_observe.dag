@@ -1,6 +1,5 @@
 module gunbc.spark.serving_observe
 
-
 data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
 
 data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
@@ -947,7 +946,6 @@ fn spark_serving_report_observations_were_made(report: SparkServingObservationRe
   }
 }
 
-
 func spark_serving_observe_wet() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
@@ -1014,7 +1012,6 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> std.process.Proc
     },
   )
 }
-
 
 // RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
 // GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
@@ -1764,19 +1761,85 @@ fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
 // The write refusing does NOT fabricate a health verdict: the probe then reads nothing, the capture
 // is empty, and the fold says unobserved. A body we could not place and a server that did not answer
 // are both "we did not learn", which is the honest arm for either.
+// THE PLACEMENT RESULT IS CONSUMED, not discarded. Its failure used to be invisible: the binding was
+// `let _prepared = ...`, execution continued, curl was handed `--data @<a file that is not there>`,
+// and the resulting empty capture decoded as "the endpoint answered its version but served nothing".
+// So OUR OWN failed scratch write was reported as the model serving nothing.
+//
+// With nothing to ask WITH, asking is NOT-APPLICABLE rather than unobserved -- a different arm, not a
+// rename of the same one -- so this refuses before either probe runs and names the placement as the
+// cause.
 fn spark_serving_observe_terminal_health(
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  host: product.placement_supply.HostIdentity,
-) -> gunbc.spark.serving_terminal_health.SparkServingTerminalHealth {
-  let _prepared = spark_serving_place_health_request_body(context: context, host: host)
-  spark_serving_health_from_captures(
-    version_stdout: spark_serving_probe_stdout_or_empty(
-      context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
-    ),
-    generate_stdout: spark_serving_probe_stdout_or_empty(
-      context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
-    ),
-  )
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingTerminalHealth {
+  if spark_serving_place_health_request_body(context: context, host: host) == false {
+    ServingHealthUnobserved {
+      cause: "the health request body was not placed on the host, so no generation probe was issued -- this is a defect on the OBSERVING side and says nothing about whether the host serves" as NonEmptyStr,
+    }
+  } else {
+    spark_serving_health_from_captures(
+      version: spark_serving_probe_capture(
+        context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
+      ),
+      generate: spark_serving_probe_capture(
+        context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
+      ),
+    )
+  }
+}
+
+// A capture that distinguishes never-ran from ran-and-failed from ran-and-answered. The old
+// `spark_serving_probe_stdout_or_empty` mapped the first two onto the third's empty case, which is
+// the empty-observation narrow: a non-zero exit is a REAL observation from the far side, and
+// recording it as silence loses the one fact that says whose problem it is.
+// RESIDENCY IS OBSERVED ONLY THROUGH A CONVERGED VERDICT, and the signature is what enforces it:
+// spark_serving_residency_from_capture takes a SparkServingServedProof, whose sole constructor is
+// the converged arm of spark_serving_served_proof. So an unhealthy or unobserved host has nothing
+// to pass and this function cannot ask the question at all -- it answers ResidencyUnobserved with
+// the reason being the HEALTH verdict, not a failed probe.
+//
+// That ordering is a data dependency rather than a convention: /api/ps reports what is resident
+// NOW, so it answers "where did the generation run" only within keep_alive of a generation we
+// actually issued. Asking it of a host that never generated returns a true fact about an
+// unrelated moment.
+fn spark_serving_observe_residency(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  health: SparkServingTerminalHealth,
+) -> SparkServingResidency {
+  match spark_serving_served_proof(health: health) {
+    Absent =>
+      ResidencyUnobserved {
+        cause: "no generation was proven on this host, so nothing anchors a residency read to a moment we caused" as NonEmptyStr,
+      }
+    Present { value: proof } =>
+      spark_serving_residency_from_capture(
+        proof: proof,
+        capture: spark_serving_probe_capture(
+          context: context, host: host, raw_words: spark_serving_health_ps_probe_argv(),
+        ),
+      )
+  }
+}
+
+fn spark_serving_probe_capture(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> SparkServingProbeCapture {
+  match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
+    Absent =>
+      ProbeNeverRan {
+        cause: "the probe leg did not execute: no transport result was produced" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        ProbeAnswered { stdout: r.stdout }
+      } else {
+        ProbeFailed { exit_code: r.exit_code, stderr: r.stderr }
+      }
+  }
 }
 
 // Placing the body is two ordinary legs -- make the directory, write the bytes -- through the same
@@ -1913,7 +1976,6 @@ fn spark_serving_observe_runtime_materialization(
       }
   }
 }
-
 
 // ONE OBSERVATION IN, ONE PROJECTION OUT.
 //

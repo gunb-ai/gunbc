@@ -1,6 +1,5 @@
 module gunbc.fleet_probe_identity_observe
 
-
 // Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY
 // observation of (a) whether the fleet automation PUBLIC key is present in the
 // runner-reachable authorized_keys on the host this job runs on (srv1 — the only host
@@ -11,8 +10,12 @@ module gunbc.fleet_probe_identity_observe
 // bytes, no payload digests, no secret payloads of any kind touch this module.
 data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
 
-fn observe_capture_line(label: String, argv: List<String>) -> String {
-  match run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: LocalExec) {
+// IT TAKES THE COMMAND, NOT ITS WORDS. As a List<String> parameter this was a laundering seam --
+// a caller handed it a hand-spelled vector and it constructed the record on their behalf, so the
+// words never passed a builder. The label stays a separate parameter: what a receipt line is CALLED
+// is a fact about the receipt, not about the process.
+fn observe_capture_line(label: String, command: ArgvCommand) -> String {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
     ProcessOutputPresent { text: t } =>
       join([label, " outcome=observed value=", trim(s: t), "\n"], "")
     ProcessOutputAbsent =>
@@ -23,7 +26,7 @@ fn observe_capture_line(label: String, argv: List<String>) -> String {
 
 fn observe_authorized_keys_line(home: String) -> String {
   let path = concat(home, "/.ssh/authorized_keys")
-  match run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["cat", path] }, transport: LocalExec) {
+  match run_shell_command_capture(command: cat_command(path: path), transport: LocalExec) {
     ProcessOutputPresent { text: read_text } =>
     if string_contains(s: read_text, pattern: fleet_automation_ssh_key.material) {      join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
     } else {
@@ -41,15 +44,16 @@ fn observe_authorized_keys_line(home: String) -> String {
 // open. An unreadable home yields "" here and the guarded call below skips the probe entirely
 // rather than reading /.ssh/authorized_keys off a fabricated root.
 
-func fleet_probe_identity_observe_wet() -> std.process.ProcessExit
-  uses net: std.resources.Network{
-  let user = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
+func fleet_probe_identity_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let passwd_home = run_shell_command_capture(
-    command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "getent passwd \"$(whoami)\" | cut -d: -f6"] },
+    command: posix_sh_program_command(script: "getent passwd \"$(whoami)\" | cut -d: -f6"),
     transport: LocalExec,
   )
   let job_home = run_shell_command_capture(
-    command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
+    command: posix_sh_program_command(script: "echo \"$HOME\""),
     transport: LocalExec,
   )
   let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
@@ -59,10 +63,10 @@ func fleet_probe_identity_observe_wet() -> std.process.ProcessExit
     "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
     if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
     if jh != ph && jh != "" { observe_authorized_keys_line(home: jh) } else { "" },
-    observe_capture_line(label: "gcloud-binary", argv: ["sh", "-c", "command -v gcloud || echo absent"]),
-    observe_capture_line(label: "gcloud-auth-list", argv: ["sh", "-c", "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent"]),
-    observe_capture_line(label: "adc-env", argv: ["sh", "-c", "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\""]),
-    observe_capture_line(label: "adc-file-passwd-home", argv: ["sh", "-c", "test -f \"$(getent passwd \"$(whoami)\" | cut -d: -f6)/.config/gcloud/application_default_credentials.json\" && echo present || echo absent"]),
+    observe_capture_line(label: "gcloud-binary", command: posix_sh_program_command(script: "command -v gcloud || echo absent")),
+    observe_capture_line(label: "gcloud-auth-list", command: posix_sh_program_command(script: "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent")),
+    observe_capture_line(label: "adc-env", command: posix_sh_program_command(script: "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\"")),
+    observe_capture_line(label: "adc-file-passwd-home", command: posix_sh_program_command(script: "test -f \"$(getent passwd \"$(whoami)\" | cut -d: -f6)/.config/gcloud/application_default_credentials.json\" && echo present || echo absent")),
   ], "")
   let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
   if w.success {

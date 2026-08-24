@@ -1,6 +1,5 @@
 module extdeps.sudo.elevation
 
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -8,6 +7,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE ABSOLUTE PATH IS THE CLAIM THIS ONE BINARY MUST MAKE, and callers that previously spelled a
+// bare `sudo` now render this row -- a real change in the emitted words, stated here because the
+// -E row below states its own delta and this one was left implicit until review 55022 asked.
+// extdeps.exec.command program_spelling_is_an_observation_claim is the general authority: an
+// absolute path asserts a filesystem someone read, and a bare name declines to. sudo is the case
+// where declining is the WORSE claim, because a sudoers rule matches on the absolute path -- a
+// PATH-resolved spelling would let the caller's own PATH decide which binary crosses the privilege
+// boundary, which is the opposite of what elevation is for. It is also the spelling sudo_elevate
+// above already used, so the alternative was two spellings of one binary inside one module.
 data sudo_binary_path: NonEmptyStr = "/usr/bin/sudo"
 
 // ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
@@ -49,4 +57,23 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
     bin_path: sudo_binary_path as String,
     args: list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
+}
+
+// -E PRESERVES THE INVOKING ENVIRONMENT, and it is a SEPARATE row from sudo_elevate rather than a
+// flag on it, because the two make different security claims: the default drops the caller's
+// environment, and -E carries it across the privilege boundary. A caller that needs variables set
+// before sudo to survive it must say so; a caller that does not must not silently get it.
+//
+// IT DOES NOT ADD -n, AND THAT IS PRESERVED RATHER THAN CHOSEN. Its one caller
+// (gunbc.runner_host_deploy) emits an operator-run installer command that has always been able to
+// prompt on a tty. Adding non-interactive refusal here would be a live behaviour change shipped
+// inside an argv refactor, which is exactly what this lane refuses to do silently; if that command
+// should fail instead of prompting, that is its own change with its own witness.
+data sudo_preserve_environment_flag: NonEmptyStr = "-E"
+
+fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
+  )
 }

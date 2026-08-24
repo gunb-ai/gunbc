@@ -172,3 +172,100 @@ test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
     GrantStandingUnobserved { grant: _, cause: _ } => false
   }
 }
+
+// THE PREFIX-BLINDNESS THE SUBSTRING JOIN ADMITTED, as an executing refusal rather than a claim.
+//
+// This listing authorizes a WIDER grant than the population desires: the entry ends in a subject
+// the desired command does not name, so the host holds more privilege than the model asked for.
+// `string_contains(listing, "/usr/bin/loginctl enable-linger")` is TRUE over it -- the desired
+// command is a proper prefix of the installed one -- so the join this PR replaces reported
+// converged and named nothing. The entry-grained join answers not-held, which is the honest
+// answer: what is installed is not what was modeled.
+//
+// This is the discriminating RED for the change. Restoring the substring join turns this test
+// green, which is the only reason it can be trusted to be measuring the fix.
+data srv6_listing_wider_than_desired: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger some-other-account\n"
+
+//
+// IT ASSERTS THE INSTALL-SET SIZE, NOT CONVERGENCE, and the difference is the whole test. An
+// earlier draft asserted `!converged` over this listing and was VACUOUS: the fixture names no
+// reboot entry, so the reboot grant is unheld under either join and convergence is false whichever
+// way the linger question is answered. The mutation control proved it -- restoring the substring
+// join left the test GREEN, so it was measuring the reboot grant's absence and nothing about the
+// change it was written for. Counting the install set isolates the one grant whose standing the
+// two joins disagree about: 2 under the entry-grained join (neither grant held), 1 under the
+// substring join (linger wrongly held).
+test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool {
+  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 2
+}
+
+// A BANNER LINE CONTRIBUTES NOTHING RATHER THAN A NEGATIVE VOTE. The listing's prose header names
+// the account and the host and carries no `NOPASSWD:` marker, so it yields no command at all -- the
+// join skips it instead of counting it as an entry that failed to match.
+test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
+  spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
+    && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: "User gunbc-automation may run the following commands on srv6:\n" })
+}
+
+// THE ORDERING WITNESS. It is RED on this branch by construction and that is its whole function.
+//
+// The exactness fix above and the grant-spelling correction in gunbc#8860 are two defects that
+// CANCEL. Today the modeled linger command omits the subject the hosts actually hold, and the
+// substring join is the only reason that mismatch does not surface: `/usr/bin/loginctl
+// enable-linger` is a substring of the installed `/usr/bin/loginctl enable-linger
+// gunbc-automation`, so the grant reads HELD despite the model naming a different command. Make
+// the join exact FIRST and the linger grant reads NOT-HELD on two converged live hosts, and the
+// remedy the reconcile reports is to install a grant that is already there.
+//
+// So the order is load-bearing: #8860's spelling must land before this join tightens. A note in a
+// PR body cannot enforce that -- it depends on a human merging two PRs in one direction -- so the
+// constraint is executed instead. This asserts the modeled command is BYTE-EQUAL to the line
+// measured on srv5 and srv6, which is false until #8860 merges and true after. Merging this branch
+// first therefore cannot go green.
+//
+// It is not written against #8860's variant shape, deliberately: it reads only the population's
+// rendered command strings, so it compiles identically before and after that PR and measures the
+// one fact the ordering depends on.
+data measured_installed_linger_command: String = "/usr/bin/loginctl enable-linger gunbc-automation"
+
+test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() -> Bool {
+  any(spark_managed_grant_population, g =>
+    spark_managed_grant_sudoers_command(grant: g) as String == measured_installed_linger_command)
+}
+
+// A MULTI-COMMAND ENTRY LINE, which sudo renders comma-separated for one Cmnd_Spec. MEASURED on
+// both live hosts 2026-08-22: each grant is its own drop-in and so its own line, so this shape does
+// not occur on srv5 or srv6 today. It is covered because it is a shape sudo MAY emit, and reading
+// such a line as one command would match neither grant it names -- convergence would never complete
+// on a host that plainly holds both, and the diagnostic would report grants missing that are
+// visibly present.
+//
+// THE FIXTURE IS BUILT FROM THE POPULATION, NOT HAND-SPELLED, and that is what keeps this test
+// about the PARSE. A hand-written line has to pick a spelling, and the linger spelling is exactly
+// what gunbc#8860 changes -- so the first draft of this test hardcoded the post-#8860 command and
+// returned FALSE here, reporting a comma-splitting defect when what it had actually measured was
+// the subject's absence from today's modeled command. Two ordering-dependent tests where one was
+// intended, and the second one lying about which axis it failed on.
+//
+// Rendering the line from `spark_managed_grant_sudoers_command` makes it agree with the model on
+// spelling BY CONSTRUCTION -- normally the thing that disqualifies a fixture, since one that agrees
+// by construction cannot falsify what it renders from. It is right here because the spelling axis
+// is OWNED BY ANOTHER TEST in this file, `the_modeled_linger_command_is_byte_equal_to_the_line_the
+// _hosts_hold`, which pins the modeled command against a line measured on srv5 and srv6. This test
+// owns only the entry-splitting axis. Do not "fix" this back into a hand-spelled literal: that
+// silently restores the two-axis failure and makes a parse test fail for a spelling reason. What it still discriminates is its own axis: drop the
+// comma split and the line reads as one command, neither grant matches, and the install set is 2
+// rather than 0.
+fn spark_grant_line_naming_every_grant_on_one_line() -> String {
+  join(
+    ["    (root) NOPASSWD: ",
+     join(map(spark_managed_grant_population, g => spark_managed_grant_sudoers_command(grant: g) as String), ", "),
+     "\n"],
+    "")
+}
+
+test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
+  spark_managed_grants_to_install(
+    outcome: GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
+  ).length() == 0
+}

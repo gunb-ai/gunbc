@@ -1,6 +1,5 @@
 module gunbc.roadmap_page
 
-
 fn roadmap_page_max_depth() -> Int { 12 }
 
 data finish_line_placement_note: String = "The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the one-line program strip (program_progress_markup_of, the ProgramProgressView consumer); the four claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was re-pinned by execution (see the A1 re-pin note in test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL denominator — accepted finish lines over the four — never the global roadmap population, which belonged to a different question (review: the section visually implied a denominator of four while reporting an unrelated global one)."
@@ -58,7 +57,6 @@ fn dashboard_instance_banner() -> std.markup.Fragment {
     ]),
   ])
 }
-
 
 data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
@@ -240,14 +238,12 @@ data github_blob_base_note: String = "The per-surface link projection (remodel W
 
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 
-
 fn children_of(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, parent: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNode> {
   nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
   })
 }
-
 
 data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
@@ -785,9 +781,9 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat(main_prefix, concat([fleet_hardware_standing_panel(), fleet_capacity_panel()], concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws) ])))),
+          [ workspace_markup(ws: ws)]))))),
         dispatch_client_script(),
       ]),
     ],

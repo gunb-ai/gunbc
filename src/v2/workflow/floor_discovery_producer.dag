@@ -1,8 +1,5 @@
 module v2.workflow.floor_discovery_producer
 
-
-
-
 type FloorDiscoveryProducerResult
   = FloorDiscoveryAccepted { rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow> }
   | FloorDiscoveryRefused { reason: String }
@@ -373,7 +370,14 @@ fn floor_discovery_apply_test_sidecar_rules(
       floor_discovery_record_disposition_refusal(state: state, reason: reason)
     EntryLiveTreeResolved { disposition: reads_live } => {
       let test_names = floor_discovery_scan_test_decl_names(content: content)
-      if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
+      if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
+        floor_discovery_collect_sidecar_violation(
+          state: state,
+          entry_path: repo_path,
+          kind: BarrenTestSidecar,
+          required_suffix: floor_test_sidecar_suffix
+        )
+      } else if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
         fold(
           test_names,
           init: state,
@@ -572,9 +576,33 @@ fn floor_discovery_paths_for_sidecar_kind(
   )
 }
 
+data floor_discovery_barren_test_sidecar_reason_prefix: String = "a `*_test.dag` entry must declare at least one `test fn`/`test data` decl; floor discovery enrolls nothing from: "
+
+fn floor_discovery_barren_test_sidecar_refusal_for_content(
+  repo_path: String,
+  content: String
+) -> Optional<String> {
+  if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
+    optional_present(
+      value: concat(floor_discovery_barren_test_sidecar_reason_prefix, repo_path)
+    )
+  } else {
+    optional_absent()
+  }
+}
+
 fn floor_discovery_sidecar_refusal_reason(
   violations: List<v2.workflow.floor_discovery.FloorDiscoverySidecarViolation>
 ) -> String {
+  let barren_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: BarrenTestSidecar
+  )
+  let barren_clause = if barren_paths == "" {
+    ""
+  } else {
+    concat(floor_discovery_barren_test_sidecar_reason_prefix, barren_paths, "; ")
+  }
   let test_paths = floor_discovery_paths_for_sidecar_kind(
     violations: violations,
     kind: TestMarkedDecl
@@ -583,8 +611,11 @@ fn floor_discovery_sidecar_refusal_reason(
     violations: violations,
     kind: WireContractDecl
   )
-  if test_paths != "" && wire_paths != "" {
+  if test_paths == "" && wire_paths == "" {
+    barren_clause
+  } else if test_paths != "" && wire_paths != "" {
     concat(
+      barren_clause,
       "`test`-marked decls must live in `*_test.dag` files; found in: ",
       test_paths,
       "; wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
@@ -592,11 +623,13 @@ fn floor_discovery_sidecar_refusal_reason(
     )
   } else if test_paths != "" {
     concat(
+      barren_clause,
       "`test`-marked decls must live in `*_test.dag` files; found in: ",
       test_paths
     )
   } else {
     concat(
+      barren_clause,
       "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
       wire_paths
     )

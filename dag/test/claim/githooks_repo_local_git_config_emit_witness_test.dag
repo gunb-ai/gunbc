@@ -1,26 +1,24 @@
 module test.claim.githooks_repo_local_git_config_emit
 
-
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_converge_shell_uses_reconcile_install_argv() -> Bool {
+test fn witness_converge_shell_uses_reconcile_install_command() -> Bool {
   let shell = emit_repo_local_git_config_converge_shell()
   let merge_cmd = shell_command_render(
-    command: extdeps.exec.command.ArgvCommand { argv: reconcile_install_argv(
-      binding: gunbc.repo_local_git_config.RepoLocalGitConfigBinding {
+    command: reconcile_install_command(
+      binding: RepoLocalGitConfigBinding {
         key: generated_artifact_merge_driver_key,
         value: generated_artifact_merge_driver_value,
       }
-    ) }
+    )
   )
   let hooks_cmd = shell_command_render(
-    command: extdeps.exec.command.ArgvCommand { argv: reconcile_install_argv(
-      binding: gunbc.repo_local_git_config.RepoLocalGitConfigBinding {
+    command: reconcile_install_command(
+      binding: RepoLocalGitConfigBinding {
         key: core_hooks_path_key,
         value: core_hooks_path_value,
       }
-    ) }
+    )
   )
   string_contains(s: shell, pattern: merge_cmd)
     && string_contains(s: shell, pattern: hooks_cmd)

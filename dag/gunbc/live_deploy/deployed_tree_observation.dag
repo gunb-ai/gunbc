@@ -1,6 +1,5 @@
 module gunbc.live_deploy.deployed_tree_observation
 
-
 // ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
 //
 // The revision and the tree state are two facts that only mean something together: the deployed tree
@@ -163,7 +162,7 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
 fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
   ]
 }
@@ -172,7 +171,7 @@ fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: Strin
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
 fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "--no-optional-locks",
     "status", "--porcelain=v1", "-z", "--untracked-files=all",
   ]
@@ -191,7 +190,7 @@ fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) ->
 // module refuses to trust.
 fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String,
     "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]

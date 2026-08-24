@@ -140,7 +140,7 @@ fn prepared_floor_identity_map_contains(
   identities: Map<std.realization_schedule.ScheduleWitnessEntry, Bool>,
   witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> Bool {
-  match map_get(identities, witness) {
+  match identities.lookup(witness) {
     Absent => false
     Present { value: _ } => true
   }
@@ -230,7 +230,7 @@ fn prepared_floor_probe_for_witness(
   index: PreparedFloorIdentityIndex,
   witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> PreparedFloorEntryProbe? {
-  map_get(index.probes.by_witness, witness)
+  index.probes.by_witness.lookup(witness)
 }
 
 data prepared_floor_identity_index_cost_law: String = "THE SELECTED/PROBE JOIN IS INDEXED ON THE EXISTING ScheduleWitnessEntry IDENTITY. The former duplicate, missing, unexpected, and serve lookups filtered an entire population once per row, so preparing n witnesses performed quadratic identity comparisons before any artifact could be served. Each side now makes one pass through the existing native Map substrate: the witnessed map establishes membership, the duplicated map preserves multiplicity standing, and the probe map serves the already-proven singleton row. The four refusal projections then make one linear pass each while preserving input order. There is no digest-key shortcut and therefore no collision state — every map key is ScheduleWitnessEntry itself, whose structural equality is the same entry/function/kind grain as schedule_witness_entry_eq."

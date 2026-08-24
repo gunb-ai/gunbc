@@ -1,6 +1,5 @@
 module extdeps.systemd.unit_file
 
-
 // THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
 //
 // `extdeps.systemd` models a unit's observable PROPERTIES (LoadState, ActiveState, MemoryMax) and
@@ -101,15 +100,46 @@ type SystemdUnitDirective
   | Requires { target: std.types.NonEmptyStr }
 
 type SystemdServiceDirective
-  = ServiceType { mode: std.types.NonEmptyStr }
-  | ExecStart { command: std.types.NonEmptyStr }
-  | Restart { policy: std.types.NonEmptyStr }
-  | Environment { assignment: std.types.NonEmptyStr }
-  | EnvironmentFile { path: std.types.NonEmptyStr }
-  | WorkingDirectory { path: std.types.NonEmptyStr }
-  | ServiceUser { name: std.types.NonEmptyStr }
-  | ServiceGroup { name: std.types.NonEmptyStr }
-  | ServiceSlice { name: std.types.NonEmptyStr }
+  = ServiceType { mode: NonEmptyStr }
+  | ExecStart { command: NonEmptyStr }
+  | Restart { policy: NonEmptyStr }
+  | Environment { assignment: NonEmptyStr }
+  | EnvironmentFile { path: NonEmptyStr }
+  | WorkingDirectory { path: NonEmptyStr }
+  | ServiceUser { name: NonEmptyStr }
+  | ServiceGroup { name: NonEmptyStr }
+  | ServiceSlice { name: NonEmptyStr }
+  | ServiceNice { priority: Int }
+  | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
+  | TimeoutStartSec { duration: NonEmptyStr }
+
+// THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
+//
+// `Nice=` and `IOSchedulingClass=` are what let a maintenance service share a host with the work
+// that host exists to do: the first lowers CPU priority, the second takes the service out of the
+// I/O scheduler's contending classes entirely. A renderer that cannot express them can still
+// produce a unit that RUNS -- it simply competes with the production workload while doing so, so
+// the omission is invisible in the rendered text and shows up as someone else's latency.
+// `TimeoutStartSec=` bounds a `Type=oneshot` service that would otherwise hang forever.
+//
+// `IOSchedulingClass=` takes one of exactly three values, fixed by the kernel's I/O scheduler
+// rather than by systemd, so it is a closed coproduct here for the same reason the monotonic and
+// wallclock timers above are separate variants: an authority that closes a value set and then
+// carries it as `NonEmptyStr` has re-opened it, and every consumer must then re-validate what the
+// upstream already decided. `Nice=` genuinely is an integer over -20..19 -- a range this type does
+// not narrow, which is a bound left unmodeled and not a value set left open.
+type SystemdIoSchedulingClass
+  = IoSchedulingRealtime
+  | IoSchedulingBestEffort
+  | IoSchedulingIdle
+
+fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) -> String {
+  match scheduling_class {
+    IoSchedulingRealtime => "realtime"
+    IoSchedulingBestEffort => "best-effort"
+    IoSchedulingIdle => "idle"
+  }
+}
 
 // `ServiceUser`/`ServiceGroup` follow `ServiceType`'s precedent exactly, and for the same reason it
 // exists: `User` and `Group` are words this corpus uses for other subjects, and the wire name is
@@ -179,6 +209,10 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceUser { name: v } => join(["User=", v as String], "")
     ServiceGroup { name: v } => join(["Group=", v as String], "")
     ServiceSlice { name: v } => join(["Slice=", v as String], "")
+    ServiceNice { priority: v } => join(["Nice=", to_string(v)], "")
+    ServiceIoSchedulingClass { scheduling_class: v } =>
+      join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
+    TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
   }
 }
 
