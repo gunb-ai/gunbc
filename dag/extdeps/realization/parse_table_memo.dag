@@ -66,6 +66,7 @@ data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
+    auth: None
     read_latency: InProcessNs
     consistency: Strong
   }
