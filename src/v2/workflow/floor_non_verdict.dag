@@ -48,12 +48,20 @@ import v2.std.text { String }
 // other direction: the false regression that produced this module was a comparison whose
 // `planned` counts matched on both sides while the trees did not.
 //
-// WHY REPAID DOES NOT GATE, and why the asymmetry with `floor_route_gap` is deliberate rather
-// than an oversight. That roster REFUSES its stale rows, because a supplied route is a debt
-// repaid and the row must come out. Copying that here would make the very PR that repairs this
-// population red the floor on the merge that fixes it -- gunbc#9020 resolves 99 of these 142 in
-// one landing. Staleness is therefore REPORTED per identity with the remedy ("delete the row"),
-// and the direction that matters is walled.
+// REPAYMENT AND ROSTER DELETION ARE ONE ACT, and an earlier revision of this header said the
+// opposite. It argued that refusing a stale row "punishes the fix", because gunbc#9020 repairs
+// 99 of these in one landing and would go red for it. That argument is wrong, and review 55361
+// found why: A STALE ROW IS A LIVE EXEMPTION. The identity is repaired, the row stays, and if
+// that witness later stops producing a verdict again it is ALREADY ROSTERED -- so the exact
+// regression this wall exists to refuse is admitted in silence. Repayment without deletion turns
+// a bounded debt row into a permanent licence, which is the absorbing fallback wearing the word
+// "diagnostic".
+//
+// Refusing does not punish a repair; it requires the repair to be COMPLETE. The run names every
+// row to delete, the deletion is mechanical, and this is the discipline `floor_route_gap` and
+// the expected-red staleness join already enforce. The asymmetry was the error and consistency
+// with them is the repair -- which is worth recording, because the asymmetry had an argument
+// behind it and was endorsed before a reviewer found the hole in it.
 //
 // EMPTY IS THE INTENDED TERMINAL STATE. When every enrolled identity reaches its subject and
 // answers, this module deletes, and the two collections become ordinary conjuncts over nothing.

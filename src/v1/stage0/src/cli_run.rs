@@ -41478,9 +41478,18 @@ pub struct RequiredFloorOutcome {
     /// honest: the arms above are true observations, and returning CLEAN over them while an
     /// enrolled assertion has stopped asserting is what was below floor.
     pub non_verdict_unenrolled: Vec<String>,
-    /// REPORTED, NOT BLOCKING, and the asymmetry with `stale_route_gap` is the content rather
-    /// than an oversight. A repaid row must not red the run that repaid it — that punishes the
-    /// fix — so staleness here reports its remedy and the growth direction is what is walled.
+    /// BLOCKING, and an earlier revision of this field had it reported-only on the argument that
+    /// refusing a repaid row "punishes the fix". That argument was wrong, and review 55361 found
+    /// why: a stale row is a LIVE EXEMPTION. The identity is repaired, the row stays, and if the
+    /// witness later stops producing a verdict again it is ALREADY ROSTERED — so the regression
+    /// this wall exists to refuse is admitted in silence. Repayment without deletion converts a
+    /// bounded debt row into a permanent licence, which is the absorbing fallback wearing the
+    /// word "diagnostic".
+    ///
+    /// Refusing does not punish a repair; it requires the repair to be COMPLETE. The diagnostic
+    /// names every row to delete, deletion is mechanical, and this is exactly the discipline
+    /// `stale_route_gap` and the expected-red staleness join already enforce. Consistency with
+    /// them turned out to be the correct answer rather than the lazy one.
     pub stale_non_verdict: Vec<String>,
     /// See `known_red_runtime_errored`.
     pub known_red_observation_unreadable: Vec<String>,
@@ -43743,8 +43752,9 @@ pub fn run_required_floor(
                  make the missing verdict acceptable, and the roster is frozen against growth."
             ));
         }
-        // REPORTED, NOT GATING. An identity enrolled here that produced a verdict this run has
-        // been repaired and its row must come out -- but saying so is the whole remedy.
+        // REFUSED, NOT MERELY REPORTED. A repaid row left standing is a live exemption: the
+        // identity is fixed today, and if it regresses tomorrow it is already rostered and the
+        // wall admits it. So repayment and roster deletion are one act.
         for identity in &admission.repaid {
             let ran = receipted.contains(identity.as_str());
             outcome.stale_non_verdict.push(if ran {

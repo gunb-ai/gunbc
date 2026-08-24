@@ -11994,7 +11994,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// EIGHT CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
@@ -12010,9 +12010,18 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 /// therefore gates on GROWTH at identity grain — an identity producing no verdict that
 /// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
 /// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()

@@ -1,8 +1,10 @@
 module gunbc.floor_non_verdict_enrollment
 
 import std.types { List, String, Int }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_authority { RoadmapNodeId }
 
 // AN EXPECTED-RED ENROLLMENT DISCHARGED BY AN OUTCOME THAT IS NOT A VERDICT, REPORTED AND NOT
 // GATING.
@@ -146,3 +148,29 @@ data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolu
 data floor_non_verdict_routing_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.cli_run", decl_name: "run_required_floor")
 
 data floor_non_verdict_gate_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.claim_executor", decl_name: "required_floor_outcome_is_clean")
+
+// THE FORWARD-FREEZE ENUMERATION FOR THIS CHANGE'S HAND-AUTHORED RUST.
+//
+// `gunbc.seed_growth_admission` `seed_growth_forward_freeze_policy_note` requires every PR that
+// adds hand-written src/v1 Rust to enumerate exact item identity, .dag authority, why Rust is
+// still needed, owning lane, deletion trigger, current boundary, hand-item delta and hand-LOC
+// delta -- and rules that unenumerated hand growth is a stop-line, with no netting of deletions
+// against additions. This change added hand Rust and shipped without the row; review 55361
+// caught it. The row is authored here, beside the obligation it declares, and joined into the
+// closed roster in that module.
+data floor_non_verdict_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "NonVerdictAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "non_verdict_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "non_verdict_admits", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "unchanged_population_is_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "repayment_is_admitted_and_reported_per_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "growth_stops_the_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "a_swap_that_leaves_the_count_unmoved_still_stops_the_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "an_empty_roster_refuses_every_observed_non_verdict", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed. `claim_executor` is the only witness-executing consumer in the tree, so a wall that must stop THAT line has to be readable by it; a modeled admission alone would be a specification with no consumer at the point the run is admitted or refused. The rule itself is modeled in v2.workflow.floor_non_verdict_admission and this Rust is its mirror, not a second authority -- the carrier records the mirror as MITIGATABLE with derivation as its next rung, on the footing v1_compiler.required_regen_host already carries for its hand-mirrored ordering.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE -- it serves the v2 self-host program. The required floor is the instrument that guards that program, and the defect repaired here is below floor: the composition returned CLEAN while an enrolled expected-red assertion had ceased to assert anything. This is defect repair on the self-host path, not growth of the seed for its own sake, and the roster-plumbing seam it uses is the one floor_route_gap already established.\n\nHAND-ITEM DELTA: +8, enumerated above rather than counted from what was touched. Three are production -- the admission record, the pure function over two identity sets, and the admission predicate -- and five are the unit tests that discriminate it, including the equal-count swap that a count-based implementation passes in silence.\n\nHAND-LOC DELTA: +195 in cli_run.rs, +65 in claim_executor.rs and +85 in the new test file against origin/main, a large share of it doc comments carrying the receipts and the refusal strings.\n\nWHAT IS NOT GROWTH AND IS NOT LISTED: the two new fields on RequiredFloorOutcome (non_verdict_unenrolled, stale_non_verdict), the new conjuncts inside required_floor_outcome_is_clean, the roster read, and the report lines. None of them adds a declaration -- each modifies an existing item -- so their disposition is ExistingSeedItemModified, and listing them would net modifications into an addition census.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all eight declarations when the self-emitted claim executor drives the floor's execution, at which point v2.workflow.floor_non_verdict_admission is the sole authority and the seed's copy goes with the rest of the mirror. This is the same trigger the terminal ledger's seam carries and it is joined here rather than restated.",
+  current_boundary: "v2.workflow.floor_non_verdict_admission non_verdict_admits -> v1_compiler.cli_run non_verdict_admission -> v1_compiler.claim_executor required_floor_outcome_is_clean"
+}
