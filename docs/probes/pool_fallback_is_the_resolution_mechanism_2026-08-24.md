@@ -1,8 +1,35 @@
 # The name-derived loader resolves by falling through to a whole-tree pool, and the instrument watching it is blind to the failure that bit
 
-**Status of every claim: verified by reading the live tree at `bd84f669681` (2026-08-24).** Symbols
-are named; the two line references are given because they sit inside a function body, where §3's
-citation rule admits a position beside the symbol.
+**Evidence status — two classes, and an earlier revision of this line wrongly covered both with one
+claim.** Symbols are named; line references appear only where the subject sits inside a function
+body, which is where §3's citation rule admits a position beside the symbol.
+
+**MECHANISM CLAIMS — verified by reading the live tree at `bd84f669681` (2026-08-24).** Every
+statement about what the loader does, what `pool_bare_census` is built over, what
+`[floor-bare-name-ambiguity]` reports, what forces the whole-corpus parse and where, and how
+bare-eligibility is decided. These are re-checkable from the tree by any reader and nothing in this
+document's argument rests on anything else.
+
+**MEASUREMENT FIGURES — REPORTED BY OTHER LANES, NOT VERIFIED HERE, AND CARRYING NO DURABLE
+RECEIPT.** Specifically `0 PoolAmbiguous`, `37389 scoped versus 733 pool-fallback` and its
+`510/223` directional split (crisp-crab-430), and `bare_eligible=699` /
+`tree_census_misses=2` / the 14.24s `pool_parse` term (witty-lark-109, whose PR gunbc#9090 carries
+its own receipt). **No run id, artifact or repository receipt is cited for the first group**, and it
+cannot be reproduced from the tree named above. Treat every one as a lane report, re-measure before
+relying on it, and do not cite this document as their source.
+
+**This distinction is load-bearing, not a disclaimer.** The argument in §2–§4 stands entirely on the
+mechanism claims. The reported figures set *scale* and supply the anecdote in §3 about a zero being
+read as reassuring; **if every one of them is wrong, the mechanism finding and the §4 ask are
+unaffected** — indeed a wrong `0 PoolAmbiguous` would strengthen §3 rather than weaken it.
+
+**Recorded because it is this document's own subject, committed in this document's own header.** The
+line previously read *"Status of every claim: verified by reading the live tree"*. That was true of
+the mechanism half and false of the measurement half, and it was caught in review (`review 55425`)
+rather than by me. A blanket verification claim covering figures taken on trust from another lane is
+exactly the failure §4b(1) names — reporting a stronger evidentiary standing than the executed
+evidence establishes — and it is the same shape as every specimen §4d records: **the claim did not
+move, the comparand did.** Here the comparand was *which assertions the word "verified" ranged over*.
 
 ---
 
@@ -63,8 +90,11 @@ Its operands are `scopes_with_ambiguity`, `scope_constructions`, `ambiguous_tota
 
 The failure that actually bit is not ambiguous. Once the kernel layer is bypassed there is exactly
 **one** `List` in the pool, so the lookup returns a unique binding and the ambiguity counters report
-zero. crisp-crab-430 measured precisely that — **0 PoolAmbiguous under the regen roots** — and it
-was read across several lanes as reassuring.
+zero. crisp-crab-430 reported precisely that — **0 PoolAmbiguous under the regen roots**, a lane report
+carrying no durable receipt — and it was read across several lanes as reassuring. **The anecdote does
+not depend on the figure being right:** what §3 establishes is that the counter *cannot* report
+anything else for this class, so any zero it produces is uninformative whether or not this particular
+one was measured correctly.
 
 **Unique-but-wrong and ambiguous are different states, and only the second is counted.**
 
@@ -86,8 +116,9 @@ the investigation**, because there is nothing downstream to trip over.
 instrumenting it yields the true size of the class in a single run — *how many names in the cut
 corpus resolve only because the pool answered*.
 
-The baseline exists for comparison: crisp-crab-430 measured **37389 scoped versus 733 pool-fallback**
-on an import-**bearing** tree. The same measurement on the cut corpus is the population, and nobody
+The baseline exists for comparison, **as a lane report with no durable receipt** (see the evidence
+status above): crisp-crab-430 measured **37389 scoped versus 733 pool-fallback** on an
+import-**bearing** tree. The same measurement on the cut corpus is the population, and nobody
 has it.
 
 **Why this ranks above repairing the two blockers.** If the fallback count on the cut corpus is
