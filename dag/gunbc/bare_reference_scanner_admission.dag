@@ -1,0 +1,70 @@
+module gunbc.bare_reference_scanner_admission
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Terminal }
+import std.types { String }
+import v2.std.collection { List }
+
+data bare_reference_scanner_admission_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for the SEED-GROWTH RECEIPT owed by the bare-reference scanner change (gunbc#9102). It declares WHICH hand-authored Rust declarations that change adds to the seed, why they are there, and what retires them. It does NOT admit them: the realization disposition for the scanner itself is an operator judgment (ScaffoldAdmitted / TerminalOrRetainedKernel / RejectedForFinalConstruction) and is deliberately NOT asserted here. A receipt that also granted its own admission would be the self-authorized dissolution failure DESIGN names — an author who can write a scaffold can equally write a row claiming it was approved. The row is Terminal because the RECEIPT is permanent: it survives the scanner it describes, recording what was owed and on what trigger it was discharged."
+}
+
+data bare_reference_scanner_presumption_note: String = "THE SCAFFOLD PRESUMPTION STANDS AND IS NOT ARGUED AWAY HERE. module_self_declared_names re-parses language structure from raw source text; the facts it reconstructs — declarations, coproduct variants, type parameters, lambda binders — belong to parsing or ingestion, which already own them; and it sits in cli_run.rs. None of those three grounds scales with size, so the measured 115 lines rather than a circulated ~603 changes HOW MUCH debt is on the table, never WHETHER the presumption applies. A 115-line raw-text scanner re-derives the same parser-owned facts as a 603-line one.\n\nWHAT THE CORRECT FIGURE DOES CHANGE: the operator is being asked to dispose of ONE production item of 115 lines, not nine items of 603.\n\nWHY THE SCANNER EXISTS AT ALL, stated as the cost of NOT having it rather than as a justification: the bare-reference census resolves a name against the whole pool. Without knowing which names a module BINDS or DECLARES, a lambda parameter, a type parameter and a module's own coproduct variant are each scanned as references out and pulled a module that happened to declare that spelling. Measured on the import-free corpus: 172 sources / 65 blocking without the guards, 94 / 2 with them, main byte-identical at 99 / 0 in every arm.\n\nTHE TERMINAL CONSTRUCTION IS NOT THIS. It is the parse phase publishing the binder and declaration facts it already computes, so no consumer re-derives them from text. Until that surface exists the scanner is the only thing standing between an import-free corpus and a whole-pool over-pull, and that is an argument for a bounded exception, never for keeping it."
+
+data bare_reference_scanner_not_growth_note: String = "WHAT IS NOT GROWTH AND IS DELIBERATELY NOT LISTED, so a modification is never netted into an addition census. THREE existing items are MODIFIED rather than added — bare_identifier_candidates (a new arm inside its existing scan loop), bare_reference_pull_paths_for_source (two new skip conditions in its existing resolve loop, plus provenance carried on the existing trace line), and project_roadmap_acceptance_event_history_from_authority_text_builtin. Their disposition is ExistingSeedItemModified. Listing them above would inflate the addition count by three and understate nothing, which is exactly the direction that makes a census look conservative while being wrong.\n\nA TRAP FOR ANYONE RE-RUNNING THIS CENSUS BY GREP: a naive scan for added Rust declarations returns ELEVEN extra hits that are fixture .dag source inside Rust STRING LITERALS — lines such as `fn f(xs: List<Int>) -> Int (open brace)` and `type Result<ok, err> = ...` authored as test input text. They are data, not declarations. Counting them is the same shape as counting a script's own echo as its output, and excluding them by hand is what turns roughly twenty into nine."
+
+data bare_reference_scanner_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "module_self_declared_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "bare_reference_scanner_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "self_declared_names_collect_every_coproduct_form",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "blank_lines_do_not_end_a_coproduct_block",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "an_alias_target_is_a_reference_out_not_a_declared_variant",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "a_single_variant_coproduct_with_a_payload_is_still_a_declaration",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "record_field_labels_are_not_self_declared",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "bare_arrow_lambda_parameter_is_bound_but_a_match_arm_head_is_not",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "named_argument_and_comma_positioned_lambdas_bind_too",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED HERE: the bare-reference census runs inside the seed's own source loader, deciding which files enter a closure BEFORE any parse result exists to consult. It cannot read a parse-phase binder surface that the closure it is constructing has not yet produced. That is a bootstrap ordering constraint, not seed-shrink debt.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE — does the change serve the v2 self-host program. An import-free corpus is the namespace cut, and without these guards the cut's regen subject refuses with roughly 65 hard diagnostics. This is defect repair on the self-host path.\n\nHAND-ITEM DELTA: +9, enumerated above rather than counted, in two populations — ONE production item (module_self_declared_names) and EIGHT test scaffolding items (the module plus seven test fns). THREE existing items are modified and are listed in bare_reference_scanner_not_growth_note instead, never netted in here.\n\nHAND-LOC DELTA: +413 / -17 against origin/main, entirely in src/v1/stage0/src/cli_run.rs. No other HAND-MAINTAINED .rs file changed; the branch's other .rs deltas (v1_compiler_infer.rs, v1_compiler_infer_env.rs, v1_compiler_type_head_exposure.rs, emitted_population.rs, lib.rs) are GENERATED mirrors carrying regen output, exempt under gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths, and are not seed growth. A large share is the doc comments carrying the receipts for each guard and the census of the arm the shape rule cannot decide.\n\nWHAT THIS RECEIPT DOES NOT DO: it does not admit the scanner. The realization disposition is an operator judgment and fails closed in its absence — see bare_reference_scanner_admission_authority_disposition.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all nine declarations when the parse phase publishes the binder and declaration facts this scanner re-derives from text — module-local declaration names, coproduct variant heads, declaration type parameters, and lambda binder names — so the source loader consults a parse-owned surface instead of scanning source. That is the same terminal construction bare_reference_scanner_presumption_note names, and it retires the scanner whole rather than shrinking it.",
+  current_boundary: "gunbc.bare_reference_scanner_admission -> v1_compiler.cli_run module_self_declared_names -> v1_compiler.cli_run bare_reference_pull_paths_for_source -> the both-closure edge index"
+}
