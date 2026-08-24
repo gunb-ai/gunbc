@@ -38,7 +38,7 @@ is load-bearing and is not flattened anywhere below.
 
 ### Source
 
-`v2.lens.application` `LensApplicationConfig` (`src/v2/lens/application.dag:75`)
+`v2.lens.application` `LensApplicationConfig` (`src/v2/lens/application.dag`)
 
 ```dag
 type LensApplicationConfig<Output, Budget, Projected>
@@ -123,7 +123,7 @@ variant produces.
 
 ### Source
 
-`std.change` `keyed_three_way_patch_monoid` (`dag/std/change.dag:150`)
+`std.change` `keyed_three_way_patch_monoid` (`dag/std/change.dag`)
 
 ```dag
 fn keyed_three_way_patch_monoid<K, V>(
@@ -185,8 +185,8 @@ They are **not the same case** and must not be treated as one category:
 `src/v2/lens/affected_set.dag`
 
 ```dag
-import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }   // :5
-import v2.std.algebra    { TailAbsent, TailFound, contains, length, list_append, ... }           // :6
+import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }
+import v2.std.algebra    { TailAbsent, TailFound, contains, length, list_append, ... }
 ```
 
 and the call sites use named arguments matching the v2 signature:
@@ -252,12 +252,17 @@ Three sites in `05_emit_rust.dag` consult the runtime table by leaf spelling. A 
 `map_contains_key(rt_functions()` returns exactly these — the census is exhaustive, not a sample:
 
 ```dag
-8505:  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
-9149:  } else if map_contains_key(rt_functions(), function_name) == false {
-9789:  if map_contains_key(rt_functions(), method_name) {
+v1.compiler.emit_rust `emit_typed_call`
+  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
+
+v1.compiler.emit_rust `emit_rust_generic_method_call`
+  } else if map_contains_key(rt_functions(), function_name) == false {
+
+v1.compiler.emit_rust `rust_receiver_has_callable_method_field`
+  if map_contains_key(rt_functions(), method_name) {
 ```
 
-Line 8505 is the mechanism in one expression. The **first** conjunct is keyed on resolved semantics
+The site in `emit_typed_call` is the mechanism in one expression. The **first** conjunct is keyed on resolved semantics
 (`callee_is_function_value`); the **second** is keyed on `func`, the leaf spelling. So emission does not ignore
 `CallSemantics` — the carrier as declared distinguishes only function-value from not-function-value, and
 `PlainCallSemantics` carries no target identity for the second conjunct to consult. **The substitution happens
@@ -300,7 +305,7 @@ code-partitioned view does not surface it: each code's rows look like unrelated 
 
 ### Source
 
-`std.change` `keyed_collect_keys` (`dag/std/change.dag:252`)
+`std.change` `keyed_collect_keys` (`dag/std/change.dag`)
 
 ```dag
 reverse(rows |> fold(init: [], f: fn(acc, row) {
@@ -342,7 +347,7 @@ Both rows are the same emitted line.
 
 ### Source
 
-`v2.lens.affected_set` `affected_set_closure` (`src/v2/lens/affected_set.dag:415`)
+`v2.lens.affected_set` `affected_set_closure` (`src/v2/lens/affected_set.dag`)
 
 ```dag
 let state = fold(
@@ -368,17 +373,39 @@ help: consider adjusting the signature so it borrows its argument
 
 ## Reproduction
 
+The recipe pins the tree and scripts the blocker-lift, because neither is optional: at the pinned
+tree the parse blocker of defect 1 below is present, so a run without step 2 refuses with `EMIT_REFUSE`
+and produces no board at all.
+
 ```bash
+# 1. the tree the board was measured at
+git checkout faf6583461a4f7d042ae670e563758869d439159
+
+# 2. lift the one parse blocker (defect 1). #9027 repaired it by moving a trailing annotation
+#    block above the file's final declaration; taking that one file from the merge commit is the
+#    exact form of "with the blocker lifted", and it touches nothing else.
+git checkout 1ed02057a5fac683893afcbb427fa8933cc0f2a4 -- \
+  dag/test/manual/command_runner_local_argv_receipt_test.dag
+
+# 3. measure
 CSSL_STD_SEED_LINK=1 \
 PROBE_KEEP_LOG_DIR=<dir> \
-PROBE_EXPECT_BASE_SHA=$(git rev-parse HEAD) \
+PROBE_EXPECT_BASE_SHA=faf6583461a4f7d042ae670e563758869d439159 \
 docs/probes/curated_cargo_probe_one.sh src/v2/lens/affected_set.dag
 ```
+
+Step 2 leaves the working tree differing from `HEAD`, which is the condition defect 2's stamp does not
+detect — but it is harmless *here*, and for a stated reason rather than by luck: the lifted file is
+`dag/` subject data the binary compiles at run time (case 1 of the discriminator below), not a build
+input of the compiler, so no stale binary can misreport it. Checking out the pinned SHA in step 1 moves
+`HEAD` and therefore misses the `target/release/gunbc.tree` key on its own, forcing the rebuild.
+
+The A arm is this same recipe with the #9041 diff applied to `src/v2/lens/application.dag` before step 3.
 
 The probe's output directory is a `mktemp -d` removed on exit; only the kept `affected_set.cargo.log`
 survives. On a remote dispatch, any extraction must run inside the same dispatch.
 
-**Two instrument defects govern whether these numbers are reproducible.**
+**Three instrument defects govern whether these numbers are reproducible.**
 
 1. **Clean `main` refuses this entry outright.** `dag/test/manual/command_runner_local_argv_receipt_test.dag`
    ends in a trailing unattached `//` block, which DESIGN §4c refuses. An `--entry` compile is *scoped in what
@@ -435,7 +462,9 @@ nineteen symbols cited here were re-verified against `origin/main` rather than t
 resolve. Exactly one cited file had moved (`src/v1/05_emit_rust.dag`, +105/-91), and because its symbols are
 cited by name with no line number, nothing rotted. That is the §3 symbolic-citation rule paying off in the
 precise scenario it was written for: a positional citation into that file would have been silently wrong, and
-nothing about editing this document would have revealed it.
+nothing about editing this document would have revealed it. The only positions this document carries
+are `file:line:col` offsets *inside verbatim rustc output* against the emitted `src/*.rs` mirror — a
+generated artifact with no symbol to name, which is the case §3 explicitly leaves to a position.
 
 Every arm behind this document printed a positive control proving its edit applied *before* the measurement
 ran. Remote controls must be constructed by reversing the edit in the working tree — never by naming a git
