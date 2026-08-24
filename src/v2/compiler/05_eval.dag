@@ -1471,10 +1471,10 @@ fn eval_yield_effect_request(
     result: result
   )
   match result {
-    Accepted { value: v, diagnostics: None } =>
+    Accepted { value: v, diagnostics: ds } =>
       Accepted {
         value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
-        diagnostics: None
+        diagnostics: ds
       }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
