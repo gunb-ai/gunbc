@@ -5345,6 +5345,32 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 diagnostics: workflow_default_diags.clone(),
             });
         }
+        let anonymous_record_diags = Rc::new({
+            let mut result = Vec::new();
+            for tm in typed.modules.iter().cloned() {
+                let module_name =
+                    authored_name_at(tm.type_env.source_indices.clone(), tm.module.clone());
+                for item in tm.items.iter().cloned() {
+                    result.extend(
+                        ambiguous_anonymous_record_literal_diagnostics(
+                            item,
+                            emit_info.type_summaries.clone(),
+                            tm.type_env.source_indices.clone(),
+                            module_name.clone(),
+                        )
+                        .iter()
+                        .cloned(),
+                    );
+                }
+            }
+            result
+        });
+        if !anonymous_record_diags.is_empty() {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: anonymous_record_diags,
+            });
+        }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -25934,6 +25960,85 @@ pub fn anonymous_record_struct_candidates(
             candidates
         }
     }
+}
+
+pub fn ambiguous_anonymous_record_literal_diagnostics(
+    n: Rc<Node>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    let mut result = Vec::new();
+    if matches!(&*n.expr_data, ExprData::ExprRecordLit { .. })
+        && record_lit_type_name_at(n.clone(), source_indices.clone()).is_none()
+    {
+        let resolved = resolved_type(n.clone());
+        if n.children.len() > 1
+            && is_product_type(resolved.clone())
+            && resolved.ident_span.is_none()
+        {
+            let field_names = Rc::new(
+                n.children
+                    .iter()
+                    .cloned()
+                    .map(|field| field_init_node_name_at(field, source_indices.clone()))
+                    .collect(),
+            );
+            let field_type_hints = record_lit_field_type_hints(n.clone(), source_indices.clone());
+            let candidates = anonymous_record_struct_candidates(
+                field_names,
+                field_type_hints,
+                type_summaries.clone(),
+            );
+            if candidates.len() > 1 {
+                let mut candidate_names: Vec<String> = candidates
+                    .iter()
+                    .map(|candidate| candidate.name.clone())
+                    .collect();
+                candidate_names.sort();
+                result.push(make_error_node(
+                    Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
+                        candidates: Rc::new(candidate_names.into_iter().collect()),
+                        span: n.span.clone(),
+                    }),
+                    module_name.clone(),
+                ));
+            }
+        }
+    }
+    for child in n
+        .children
+        .iter()
+        .chain(n.params.iter())
+        .chain(n.uses.iter())
+        .chain(n.properties.iter())
+    {
+        result.extend(
+            ambiguous_anonymous_record_literal_diagnostics(
+                child.clone(),
+                type_summaries.clone(),
+                source_indices.clone(),
+                module_name.clone(),
+            )
+            .iter()
+            .cloned(),
+        );
+    }
+    for optional in [&n.body, &n.transport, &n.type_annotation] {
+        if let Some(child) = optional {
+            result.extend(
+                ambiguous_anonymous_record_literal_diagnostics(
+                    child.clone(),
+                    type_summaries.clone(),
+                    source_indices.clone(),
+                    module_name.clone(),
+                )
+                .iter()
+                .cloned(),
+            );
+        }
+    }
+    Rc::new(result)
 }
 
 pub fn find_unique_struct_name_by_fields(

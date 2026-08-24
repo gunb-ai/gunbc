@@ -31,7 +31,7 @@ fn summaries(rows: &[Rc<TypeSummary>]) -> Rc<HashMap<String, Rc<TypeSummary>>> {
 }
 
 #[test]
-fn identical_shapes_refuse_instead_of_selecting_alphabetically() {
+fn alphabetical_pick_mutation_control_refuses_identical_shapes() {
     let table = summaries(&[
         summary("Alpha", &[("left", "Int"), ("right", "String")]),
         summary("Zulu", &[("left", "Int"), ("right", "String")]),
