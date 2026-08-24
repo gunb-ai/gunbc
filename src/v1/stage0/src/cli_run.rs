@@ -43547,9 +43547,16 @@ pub fn non_verdict_admission(
     NonVerdictAdmission { added, repaid }
 }
 
-/// The admission itself: `added` is empty. Separate from the sets so a caller cannot accidentally
-/// admit on `repaid` — the asymmetry between the two is the content of this wall, not an
-/// inconsistency in it.
+/// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
+/// caller reads the rule rather than reconstructing it. Both arms refuse for different reasons: a
+/// row in `added` is an unenrolled non-verdict, and a row in `repaid` is a STALE ROW — the
+/// identity answers again while the roster still names it, which is a live exemption if it later
+/// regresses. Repaying and deleting the row are one act, so the repaired population is admitted
+/// only once the roster row goes with it.
+///
+/// CORRECTED 2026-08-24 (review 55577): this docstring and the body both described an asymmetry in
+/// which `repaid` was admitted, while the executing gate already refused it via
+/// `stale_non_verdict`.
 pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
     admission.added.is_empty() && admission.repaid.is_empty()
 }

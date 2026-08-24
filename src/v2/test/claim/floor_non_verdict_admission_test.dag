@@ -15,8 +15,11 @@ data roster_fixture: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b"
 // UNCHANGED: the population is exactly the roster.
 data observed_unchanged: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
 
-// REPAID: two identities now answer. Must be admitted -- this is the direction the debt is
-// supposed to move, and refusing it would red the merge that repairs the population.
+// REPAID: two identities now answer while their roster rows still stand. Must REFUSE -- not
+// because repayment is penalised, but because a row the run no longer observes is a stale row
+// asserting a debt that no longer exists, and the executing gate refuses exactly that
+// (stale_non_verdict is a conjunct of required_floor_outcome_is_clean). Repaying and deleting the
+// row are one act; the fixture below drives the deleted-row form and is admitted.
 data observed_repaid: List<String> = Cons { head: "m.b", tail: Empty {} }
 
 // GROWN: a fourth identity begins producing no verdict. Must refuse.
