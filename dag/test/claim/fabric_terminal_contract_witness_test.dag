@@ -1,13 +1,13 @@
 module test.claim.fabric_terminal_contract_witness
 
 import std.types { NonEmptyStr, String, Bool, Int }
-import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
+import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
 import std.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
 import product.fabric.work { Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
-import product.fabric.supply { Offer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
 import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -24,12 +24,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // assertion is that the Work identity they produce is IDENTICAL while the
 // demands remain distinct. If a provider fact ever leaks into Work, this
 // witness reds without anyone needing to notice the leak.
-data fixture_shape: Shape = Shape { hard: HardRequirements { threads: hardware_thread_count(8) } }
+data fixture_shape: Shape = Shape {
+  hard: HardRequirements { threads: hardware_thread_count(8) },
+  envelope: unstated_envelope(),
+}
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data fixture_contract: WorkContract = WorkContract {
@@ -76,15 +80,20 @@ data other_source_contract: WorkContract = WorkContract {
 // matching constraints disagreed about whether two things were the same work.
 
 data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
-  shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(64) },
+    envelope: unstated_envelope(),
+  },
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-amd64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
@@ -212,27 +221,31 @@ test fn principals_do_not_share_work_identity() -> Bool {
 
 // An owned offer states zero explicitly; absence is not free.
 
-data owned_offer: Offer<NonEmptyStr> = Offer {
+data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "operator", key: "offer-srv3-slot" },
   executor: "srv3",
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
+  billing_quantum: second(count: 0),
   evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
-data rented_offer: Offer<NonEmptyStr> = Offer {
+data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   id: FabricIdentity { principal: "operator", key: "offer-rented-1" },
   executor: "rented-pool",
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "rented",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
+  billing_quantum: second(count: 0),
   evidence: QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",

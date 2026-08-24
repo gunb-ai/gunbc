@@ -1,6 +1,6 @@
 module test.claim.scm_repository_envelope_witness
 
-// The repository envelope, executed. What is under test is the layer image.dag deliberately is not:
+// The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
 // an empty initialized repository with NO root, several commits over ONE shared node population, and
 // a checked-out selection that may be absent but may never dangle.
 //
@@ -30,9 +30,9 @@ import gunbc.scm.repository_envelope {
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_node_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
-  RepositoryEncodeRefusal, RepositoryEncodeImageRefusal,
+  RepositoryEncodeRefusal, RepositoryEncodeClosureDocRefusal,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
-  RepositoryDecodeRefusal, RepositoryDecodeImageRefusal,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal,
   RepositoryIdentityRuleUnrecognized,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryUnexpectedMember, RepositoryMemberContext,
@@ -176,7 +176,7 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then
-// reintroduced one layer up -- image.dag's sharing claim had exactly this shape and exactly this
+// reintroduced one layer up -- commit_closure_json_v2's sharing claim had exactly this shape and exactly this
 // repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
 // whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
 // downstream count agree with itself.
@@ -293,7 +293,7 @@ test fn scm_env_a_dangling_commit_root_refuses() -> Bool {
           elements: [
             json_object(
               members: [
-                json_kv(key: "root", value: json_string(s: "4242")),
+                json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "4242"))])),
                 json_kv(key: "message", value: json_string(s: "dangling")),
               ]
             )
@@ -425,7 +425,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
     RepositoryEncoded { value: _ } => "encoded"
     RepositoryEncodeRefused { cause: cause } =>
       match cause {
-        RepositoryEncodeImageRefusal { cause: _ } => "image"
+        RepositoryEncodeClosureDocRefusal { cause: _ } => "closure_document"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
       }
@@ -491,7 +491,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecoded { envelope: _ } => "decoded"
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
-        RepositoryDecodeImageRefusal { cause: _ } => "image"
+        RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
@@ -552,3 +552,9 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
     )
   ) == "unexpected_member"
 }
+
+
+
+
+
+

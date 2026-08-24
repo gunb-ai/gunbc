@@ -218,7 +218,7 @@ fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
 // CLAIM HONEST RATHER THAN DECORATIVE. runner_slot_purpose is total over a host's index range and
 // returns exactly one variant, so a slot cannot be a member of both populations -- there is no
 // state in which GitHub believes srv3-06 is an idle registered runner while the fabric believes
-// it is an available Offer member, which is the double-allocation this partition exists to make
+// it is an available SupplierOffer member, which is the double-allocation this partition exists to make
 // unwritable (two processes inside one 16GiB entitlement).
 //
 // THE SUMMANDS MUST ADD UP OR THE PARTITION IS NOT ONE. If github + fabric ever drifted from the

@@ -1,0 +1,101 @@
+module test.claim.fabric_capacity_class_gap_witness_test
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import gunbc.fabric_capacity_class_gap {
+  CapacityClassEvidence, NoClassCarrierAnywhere, PlausibleCarrierIsUntyped,
+  ProtectionHasNoReachAcrossSeam,
+  CapacityClassRemedy, ClassOnWorkShape, ClassOnSupplierOffer, ClassEncodedInTrustDomain,
+  remedy_is_ruled_in,
+  no_class_carrier, plausible_carrier_is_untyped, protection_has_no_reach,
+  fabric_capacity_class_evidence, capacity_class_ruled_remedy,
+  capacity_class_refused_remedies,
+}
+
+// THE THREE MEASUREMENTS ARE THREE DIFFERENT CLAIMS, AND THE ROW IS ONLY A FINDING WITH ALL THREE.
+//
+// Any one alone is answerable. "No capacity class exists" invites "then add a field". "The carrier
+// is a string" invites "then brand it harder". "The protection has no reach" invites "then import
+// it". Together they say the distinction is absent, that the obvious place to put it cannot hold it
+// as a fact, and that the mechanism people would cite as already solving it lives on the other side
+// of a seam nothing crosses. This asserts the carrier keeps all three rather than collapsing to
+// whichever one a later reader finds most convincing.
+test fn the_finding_keeps_all_three_measurements() -> Bool {
+  let n = fabric_capacity_class_evidence |> count
+  n == 3
+    && any(fabric_capacity_class_evidence, e => match e {
+         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => true
+         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+       })
+    && any(fabric_capacity_class_evidence, e => match e {
+         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => true
+         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+       })
+    && any(fabric_capacity_class_evidence, e => match e {
+         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => true
+       })
+}
+
+// THE ONE VOCABULARY HIT IS RECORDED, NOT ROUNDED TO ZERO.
+//
+// "No hits" is the claim someone re-running the grep will falsify, and then the whole row looks
+// careless. "One hit, in prose, here is why it does not count" survives the re-run and is the
+// stronger statement. This pins that the carrier reports the hit rather than a flattering zero.
+test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool {
+  match no_class_carrier {
+    NoClassCarrierAnywhere { searched_modules: m, vocabulary_hits: h, hit_disposition: d } =>
+      h == 1
+        && (m |> count) == 4
+        && string_contains(s: d as String, pattern: "prose comment")
+    PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+    ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+  }
+}
+
+// THE PROTECTION IS RECORDED WITH ITS CONSUMERS, WHICH IS WHAT MAKES THE SEAM CLAIM CHECKABLE.
+//
+// "It has no reach" is unfalsifiable prose on its own. Naming the consumers it DOES have turns it
+// into something a reader can go and re-derive: these are the importers, none is under product/,
+// therefore the arrow the reader assumed does not exist.
+test fn the_protection_names_the_consumers_it_does_have() -> Bool {
+  match protection_has_no_reach {
+    ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: c, unreached_layer: u } =>
+      (c |> count) == 2 && string_contains(s: u as String, pattern: "product.fabric")
+    NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+    PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+  }
+}
+
+// EXACTLY ONE REMEDY IS RULED IN, AND THE REFUSED ONES ARE KEPT RATHER THAN DELETED.
+//
+// A carrier recording only the accepted answer invites the refused ones to be rediscovered as
+// shortcuts -- particularly the trust_domain one, which is cheap, looks like modeling, and would be
+// worse than the current absence because a convention reads as coverage while enforcing nothing.
+// Keeping them refused-with-reason is what makes the ruling durable instead of a preference someone
+// re-litigates.
+test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool {
+  remedy_is_ruled_in(remedy: capacity_class_ruled_remedy)
+    && (capacity_class_refused_remedies |> count) == 2
+    && !any(capacity_class_refused_remedies, r => remedy_is_ruled_in(remedy: r))
+}
+
+// THE REFUSAL REASONS ARE DISTINCT, BECAUSE THEY REFUSE FOR UNRELATED REASONS.
+//
+// The offer arm is refused because the supplier is the wrong party to ask -- an authority question.
+// The trust-domain arm is refused because a branded string cannot carry the fact -- a representation
+// question. A single shared "not ruled in" would lose exactly the distinction that stops someone
+// arguing the second is fine once the first is addressed.
+test fn the_two_refused_remedies_do_not_share_one_reason() -> Bool {
+  let reasons = map(capacity_class_refused_remedies, r => match r {
+    ClassOnWorkShape { rationale: x } => x as String
+    ClassOnSupplierOffer { rationale: x } => x as String
+    ClassEncodedInTrustDomain { rationale: x } => x as String
+  })
+  (reasons |> count) == 2
+    && !any(reasons, a => (filter(reasons, b => b == a) |> count) > 1)
+    && any(reasons, x => string_contains(s: x, pattern: "least knowledge"))
+    && any(reasons, x => string_contains(s: x, pattern: "magic string"))
+}
