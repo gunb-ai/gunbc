@@ -1,9 +1,9 @@
 module product.fabric.demand
 
-import std.types { NonEmptyStr, Timestamp, Bool }
+import std.types { NonEmptyStr, Timestamp, Bool, List }
 import std.measure { MoneyAmountMicro }
 import std.currency { CurrencyCode }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
 // live here and nowhere else, which is what keeps Work provider-neutral.
@@ -125,4 +125,284 @@ fn demand_reservation_price<P>(d: Demand<P>) -> MoneyAmountMicro {
 
 fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
   d.admission.buy.maximum_buy_order
+}
+
+// The core effect of a command, half one: what it does to the demand
+// POPULATION. This half is a pure demand fact and therefore lives here. The
+// half that joins it to a running execution lives in product.fabric.arbitration,
+// because a running attempt and its reservations are execution carriers and
+// execution already imports this module - the join cannot live here without
+// inverting that edge. Splitting on the import direction is not two
+// authorities for one decision: this module answers who is registered and
+// whether the transition is authorized, and nothing else answers that.
+
+// Refusal causes are separate arms because they have different owners and
+// different repairs, and the pair that matters most is the first two.
+// UnknownDemand means no demand with that key is registered at all - the
+// binding is out of date, or replaying. DemandPrincipalMismatch means the key
+// IS registered, under a different principal: that is not a stale binding, it
+// is one requester presenting another requester's demand identity, and
+// collapsing it into UnknownDemand would report a cross-tenant authorization
+// failure as a bookkeeping miss. The identity pair exists precisely so that
+// dropping the principal is not an ordinary field access; a refusal vocabulary
+// that cannot say which half failed drops it again at the diagnostic layer.
+//
+// There is deliberately no MissingEvidence arm. ObservationReceiptRef is
+// branded over NonEmptyStr, so a command carrying no evidence has no spelling,
+// and an arm for it would be permanently green by construction - cited as
+// coverage while carrying no information.
+type DemandRefusal<P>
+  = UnknownDemand { demand: FabricIdentity<P, DemandKey> }
+  | DemandPrincipalMismatch { demand: FabricIdentity<P, DemandKey> }
+  | DuplicateDemand { demand: FabricIdentity<P, DemandKey> }
+  | ReplacementAlreadyRegistered { demand: FabricIdentity<P, DemandKey> }
+  | SupersedeCrossesPrincipal {
+      superseded: FabricIdentity<P, DemandKey>,
+      replacement: FabricIdentity<P, DemandKey>,
+    }
+  | ReplacementWorkMismatch {
+      superseded_work: FabricIdentity<P, WorkKey>,
+      replacement_work: FabricIdentity<P, WorkKey>,
+    }
+
+// Every admitted command names exactly one subject Work, and carrying it out of
+// the transition is what lets the execution half be decided without a second
+// lookup that could disagree. For a withdrawal the subject is the work of the
+// demand that was removed, which is no longer in the advanced population - a
+// consumer that had to re-derive it would have to search a population the
+// answer has already left.
+type DemandRegistration<P>
+  = RegistrationAdvanced {
+      population: List<Demand<P>>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | RegistrationRefused { refusal: DemandRefusal<P> }
+
+fn demands_for_work<P>(
+  population: List<Demand<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => fabric_identity_eq(left: d.work, right: work))
+}
+
+fn demand_matching_identity<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => fabric_identity_eq(left: d.id, right: id))
+}
+
+fn demand_matching_key<P>(population: List<Demand<P>>, key: DemandKey) -> List<Demand<P>> {
+  population |> filter(d => d.id.key == key)
+}
+
+fn population_without<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => !fabric_identity_eq(left: d.id, right: id))
+}
+
+// Lookup refuses on the pair and distinguishes the two ways it can fail. The
+// key-only search runs only after the pair search has already missed, so a
+// match there is exactly the cross-principal case and nothing else.
+type DemandLookup<P>
+  = DemandFound { demand: Demand<P> }
+  | DemandLookupRefused { refusal: DemandRefusal<P> }
+
+fn lookup_demand<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> DemandLookup<P> {
+  match demand_matching_identity(population: population, id: id) {
+    Cons { head: d, tail: _ } => DemandFound { demand: d }
+    Empty {} =>
+      match demand_matching_key(population: population, key: id.key) {
+        Cons { head: _, tail: _ } =>
+          DemandLookupRefused { refusal: DemandPrincipalMismatch { demand: id } }
+        Empty {} => DemandLookupRefused { refusal: UnknownDemand { demand: id } }
+      }
+  }
+}
+
+// A submission whose identity is already registered refuses rather than
+// replacing silently. Replacing would mean a binding could change the
+// satisfaction requirement or the buy terms of a live demand by re-submitting
+// under the same identity, which is a supersede without the supersede's
+// authorization checks.
+fn submit_demand_into<P>(population: List<Demand<P>>, d: Demand<P>) -> DemandRegistration<P> {
+  match demand_matching_identity(population: population, id: d.id) {
+    Cons { head: _, tail: _ } =>
+      RegistrationRefused { refusal: DuplicateDemand { demand: d.id } }
+    Empty {} =>
+      RegistrationAdvanced { population: concat(population, [d]), subject_work: d.work }
+  }
+}
+
+// Supersede is one requester replacing its own demand on the same Work. Both
+// of those are checked rather than assumed. A replacement naming a different
+// Work is a withdrawal plus a submission, and admitting it here would move a
+// demand across Works under a command whose whole contract is that it does
+// not; a replacement under a different principal is one requester writing into
+// another's population.
+fn supersede_demand_in<P>(
+  population: List<Demand<P>>,
+  superseded: FabricIdentity<P, DemandKey>,
+  replacement: Demand<P>,
+) -> DemandRegistration<P> {
+  match lookup_demand(population: population, id: superseded) {
+    DemandLookupRefused { refusal: r } => RegistrationRefused { refusal: r }
+    DemandFound { demand: prior } =>
+      if prior.id.principal != replacement.id.principal {
+        RegistrationRefused {
+          refusal: SupersedeCrossesPrincipal {
+            superseded: superseded,
+            replacement: replacement.id,
+          }
+        }
+      } else if !fabric_identity_eq(left: prior.work, right: replacement.work) {
+        RegistrationRefused {
+          refusal: ReplacementWorkMismatch {
+            superseded_work: prior.work,
+            replacement_work: replacement.work,
+          }
+        }
+      } else {
+        match demand_matching_identity(population: population, id: replacement.id) {
+          Cons { head: _, tail: _ } =>
+            if fabric_identity_eq(left: replacement.id, right: superseded) {
+              RegistrationAdvanced {
+                population: concat(
+                  population_without(population: population, id: superseded),
+                  [replacement],
+                ),
+                subject_work: prior.work,
+              }
+            } else {
+              RegistrationRefused {
+                refusal: ReplacementAlreadyRegistered { demand: replacement.id }
+              }
+            }
+          Empty {} =>
+            RegistrationAdvanced {
+              population: concat(
+                population_without(population: population, id: superseded),
+                [replacement],
+              ),
+              subject_work: prior.work,
+            }
+        }
+      }
+  }
+}
+
+fn apply_demand_command<P>(
+  population: List<Demand<P>>,
+  command: DemandCommand<P>,
+) -> DemandRegistration<P> {
+  match command {
+    SubmitDemand { demand: d } => submit_demand_into(population: population, d: d)
+    WithdrawDemand { demand: id, evidence: _ } =>
+      match lookup_demand(population: population, id: id) {
+        DemandLookupRefused { refusal: r } => RegistrationRefused { refusal: r }
+        DemandFound { demand: d } =>
+          RegistrationAdvanced {
+            population: population_without(population: population, id: id),
+            subject_work: d.work,
+          }
+      }
+    SupersedeDemand { superseded: s, replacement: r, evidence: _ } =>
+      supersede_demand_in(population: population, superseded: s, replacement: r)
+  }
+}
+
+// Whether any demand still requires a Work is the question a binding cannot
+// answer, and it is the whole reason cancellation routes through the core. The
+// remaining population is carried rather than a count, because the consumer
+// that keeps the attempt running needs to know WHICH demands it is still
+// running for in order to report to them.
+type WorkRequirement<P>
+  = WorkStillRequired { remaining: List<Demand<P>> }
+  | WorkNoLongerRequired { work: FabricIdentity<P, WorkKey> }
+
+fn work_requirement<P>(
+  population: List<Demand<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> WorkRequirement<P> {
+  let remaining = demands_for_work(population: population, work: work)
+  if remaining.length() == 0 {
+    WorkNoLongerRequired { work: work }
+  } else {
+    WorkStillRequired { remaining: remaining }
+  }
+}
+
+// The three satisfaction answers, consumed independently. Each field decides a
+// different arm, and none of them is reachable from the other two: flipping
+// terminal_receipt_may_satisfy moves between satisfaction and execution,
+// flipping new_attempt_required moves between attaching and a fresh attempt,
+// and flipping step_reuse_permitted changes what that fresh attempt may reuse
+// without changing whether it exists. That is the property the three-field
+// decomposition claims, and a directive in which any one field could not move
+// the output would be the collapse the fields exist to prevent.
+type StepReusePolicy =
+  | ReuseAcceptedStepReceipts
+  | RefuseStepReuseAtDeclaredFrame
+
+// Availability is supplied as a named observation rather than a Bool, so that
+// the absent case reads as an observed absence at the call site instead of a
+// polarity the reader has to reconstruct from the parameter name.
+type TerminalReceiptAvailability =
+  | TerminalReceiptPresent
+  | NoTerminalReceipt
+
+type ExecutionPresence =
+  | ExecutionInFlight
+  | NoExecutionInFlight
+
+// AwaitAdmission is a real answer, not a fallthrough: the demand is registered,
+// nothing is running, and nothing about this demand requires that something
+// start immediately - admission and selection decide that. Folding it into
+// RequireNewAttempt would let a demand that did not ask for one manufacture an
+// attempt, and folding it into AttachToExistingExecution would name an
+// execution that does not exist.
+type SatisfactionDirective
+  = SatisfiedByTerminalReceipt
+  | AttachToExistingExecution
+  | RequireNewAttempt { reuse: StepReusePolicy }
+  | AwaitAdmission
+
+fn satisfaction_directive(
+  s: SatisfactionRequirement,
+  terminal: TerminalReceiptAvailability,
+  execution: ExecutionPresence,
+) -> SatisfactionDirective {
+  match terminal {
+    TerminalReceiptPresent =>
+      if s.terminal_receipt_may_satisfy {
+        SatisfiedByTerminalReceipt
+      } else {
+        attempt_directive(s: s, execution: execution)
+      }
+    NoTerminalReceipt => attempt_directive(s: s, execution: execution)
+  }
+}
+
+fn attempt_directive(s: SatisfactionRequirement, execution: ExecutionPresence) -> SatisfactionDirective {
+  if s.new_attempt_required {
+    RequireNewAttempt { reuse: step_reuse_policy(s: s) }
+  } else {
+    match execution {
+      ExecutionInFlight => AttachToExistingExecution
+      NoExecutionInFlight => AwaitAdmission
+    }
+  }
+}
+
+fn step_reuse_policy(s: SatisfactionRequirement) -> StepReusePolicy {
+  if s.step_reuse_permitted {
+    ReuseAcceptedStepReceipts
+  } else {
+    RefuseStepReuseAtDeclaredFrame
+  }
 }

@@ -1,0 +1,423 @@
+module test.claim.fabric_demand_effect_witness_test
+
+import std.types { NonEmptyStr, Bool, List }
+import std.currency { Usd }
+import std.measure { money_amount_micro, MoneyOnce }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.demand {
+  Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms,
+  DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
+  UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
+  ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
+  DemandRefusal, SatisfactionDirective,
+  TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
+  SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
+  ReuseAcceptedStepReceipts, RefuseStepReuseAtDeclaredFrame,
+}
+import product.fabric.execution { ExecutionGrant, ReservationRef, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, LeaseIdentity }
+import product.fabric.supply { QuotedFlatPerGrant }
+import std.content_hash { content_hash_of_value }
+import product.fabric.arbitration {
+  DemandCommandEffect, CommandRefused, DemandAdmitted,
+  WorkStillRequiredAttemptContinues, WorkStillRequiredNothingRunning,
+  WorkReleasedAttemptStops, WorkReleasedNothingRunning,
+  decide_demand_command,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The claim this file exists to hold is the two-provider argument demand.dag
+// makes in prose: a withdrawal arriving from one provider must not destroy Work
+// that a demand from another provider still requires. A witness that only
+// exercised the single-demand path would pass against an implementation that
+// cancels on every withdrawal, which is the exact defect the core surface
+// exists to prevent - so every population assertion below is paired with its
+// mirror.
+
+fn work_of(principal: NonEmptyStr, key: WorkKey) -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn terms() -> AdmissionTerms {
+  AdmissionTerms {
+    priority_class: "default",
+    deadline: none,
+    buy: BuyTerms {
+      budget_account: "fleet-ci",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 100000),
+      maximum_buy_order: money_amount_micro(count: 200000),
+    },
+  }
+}
+
+fn attaching_satisfaction() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: true,
+    new_attempt_required: false,
+    step_reuse_permitted: true,
+  }
+}
+
+fn demand_of(
+  principal: NonEmptyStr,
+  key: DemandKey,
+  work_key: WorkKey,
+  satisfaction: SatisfactionRequirement,
+) -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: principal, key: key),
+    work: work_of(principal: principal, key: work_key),
+    origin: "observation-1",
+    submitted_at: "2026-08-24T00:00:00Z",
+    admission: terms(),
+    satisfaction: satisfaction,
+  }
+}
+
+// The two-provider setup. Both demands name the SAME work identity, which is
+// what makes them demands on one computation rather than two: the work
+// identity is constructed with a single principal, because a shared Work is
+// shared under one accounting scope, while each demand keeps its own requester
+// identity. Reproducing that here rather than fabricating two work identities
+// is what makes the withdrawal test discriminate at all.
+
+fn github_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "github", key: "demand-gh"),
+    work: work_of(principal: "fabric", key: "work-1"),
+    origin: "gh-pr-7",
+    submitted_at: "2026-08-24T00:00:00Z",
+    admission: terms(),
+    satisfaction: attaching_satisfaction(),
+  }
+}
+
+fn gitlab_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "gitlab", key: "demand-gl"),
+    work: work_of(principal: "fabric", key: "work-1"),
+    origin: "gl-mr-3",
+    submitted_at: "2026-08-24T00:00:01Z",
+    admission: terms(),
+    satisfaction: attaching_satisfaction(),
+  }
+}
+
+fn running_grant() -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "fabric", key: "grant-1" },
+    object: FabricGrantObject {
+      offer: FabricIdentity { principal: "supplier", key: "offer-1" },
+      quote: QuotedFlatPerGrant(
+        MoneyOnce { amount: money_amount_micro(count: 50000), currency: Usd },
+      ),
+    },
+    context: FabricGrantContext {
+      demand: demand_id(principal: "github", key: "demand-gh"),
+      work: work_of(principal: "fabric", key: "work-1"),
+      attempt: FabricIdentity { principal: "fabric", key: "attempt-1" },
+      executor: "supplier",
+      lease: LeaseIdentity {
+        lease_key: "lease-1",
+        resource_fingerprint: content_hash_of_value(value: "slice-a"),
+        generation: 1,
+      },
+      issued_at: "2026-08-24T00:00:02Z",
+      maximum_liability: money_amount_micro(count: 200000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "ev-1",
+      offer_authority: "ev-2",
+      resource_conservation: "ev-3",
+      budget_conservation: "ev-4",
+      principal_authority: "ev-5",
+    },
+    resource_reservations: ["res-cpu-1"],
+    money_reservation: "res-money-1",
+  }
+}
+
+// Every assertion names the arm it expects rather than testing that something
+// happened. An effect label collapses to a single string exactly once per arm,
+// so a test asserting "released" cannot be satisfied by a refusal and a test
+// asserting a refusal cannot be satisfied by the wrong cause.
+
+fn effect_label(e: DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
+  match e {
+    CommandRefused { refusal: r } => refusal_label(r: r)
+    DemandAdmitted { population: _, directive: d } => directive_label(d: d)
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempt: _ } =>
+      "still-required-attempt-continues"
+    WorkStillRequiredNothingRunning { population: _, remaining: _ } =>
+      "still-required-nothing-running"
+    WorkReleasedAttemptStops { population: _, work: _, release: _ } =>
+      "released-attempt-stops"
+    WorkReleasedNothingRunning { population: _, work: _ } => "released-nothing-running"
+  }
+}
+
+fn refusal_label(r: DemandRefusal<NonEmptyStr>) -> NonEmptyStr {
+  match r {
+    UnknownDemand { demand: _ } => "unknown-demand"
+    DemandPrincipalMismatch { demand: _ } => "principal-mismatch"
+    DuplicateDemand { demand: _ } => "duplicate-demand"
+    ReplacementAlreadyRegistered { demand: _ } => "replacement-already-registered"
+    SupersedeCrossesPrincipal { superseded: _, replacement: _ } => "supersede-crosses-principal"
+    ReplacementWorkMismatch { superseded_work: _, replacement_work: _ } => "replacement-work-mismatch"
+  }
+}
+
+fn directive_label(d: SatisfactionDirective) -> NonEmptyStr {
+  match d {
+    SatisfiedByTerminalReceipt => "satisfied-by-terminal-receipt"
+    AttachToExistingExecution => "attach-to-existing-execution"
+    AwaitAdmission => "await-admission"
+    RequireNewAttempt { reuse: p } =>
+      match p {
+        ReuseAcceptedStepReceipts => "new-attempt-reusing-steps"
+        RefuseStepReuseAtDeclaredFrame => "new-attempt-refusing-step-reuse"
+      }
+  }
+}
+
+fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> List<Demand<NonEmptyStr>> {
+  match e {
+    CommandRefused { refusal: _ } => []
+    DemandAdmitted { population: p, directive: _ } => p
+    WorkStillRequiredAttemptContinues { population: p, remaining: _, attempt: _ } => p
+    WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
+    WorkReleasedAttemptStops { population: p, work: _, release: _ } => p
+    WorkReleasedNothingRunning { population: p, work: _ } => p
+  }
+}
+
+fn released_reservations(e: DemandCommandEffect<NonEmptyStr>) -> List<ReservationRef> {
+  match e {
+    CommandRefused { refusal: _ } => []
+    DemandAdmitted { population: _, directive: _ } => []
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempt: _ } => []
+    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    WorkReleasedNothingRunning { population: _, work: _ } => []
+    WorkReleasedAttemptStops { population: _, work: _, release: rel } =>
+      concat([rel.money_reservation], rel.resource_reservations)
+  }
+}
+
+fn withdraw(principal: NonEmptyStr, key: DemandKey) -> DemandCommand<NonEmptyStr> {
+  WithdrawDemand { demand: demand_id(principal: principal, key: key), evidence: "withdrawal-1" }
+}
+
+fn both_demands() -> List<Demand<NonEmptyStr>> {
+  [github_demand(), gitlab_demand()]
+}
+
+fn decide(
+  population: List<Demand<NonEmptyStr>>,
+  grants: List<ExecutionGrant<NonEmptyStr>>,
+  command: DemandCommand<NonEmptyStr>,
+) -> DemandCommandEffect<NonEmptyStr> {
+  decide_demand_command(
+    population: population,
+    grants: grants,
+    terminal: NoTerminalReceipt,
+    command: command,
+  )
+}
+
+// THE TWO-PROVIDER CLAIM, FIRST DIRECTION. One of two demands withdraws and the
+// Work survives with the other still attached, so the running attempt
+// continues. This is the case the prose says a provider binding cannot decide
+// on its own, because only the core holds the second demand.
+
+test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
+  let e = decide(population: both_demands(), grants: [running_grant()], command: withdraw(principal: "github", key: "demand-gh"))
+  effect_label(e: e) == "still-required-attempt-continues"
+    && effect_population(e: e).length() == 1
+    && released_reservations(e: e).length() == 0
+}
+
+// THE MIRROR. Withdraw the second demand as well and the Work is released, the
+// attempt stops, and both reservation sets are named for release. Without this
+// direction the test above is satisfied by an implementation that never
+// releases anything at all.
+
+test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() -> Bool {
+  let after_first = decide(population: both_demands(), grants: [running_grant()], command: withdraw(principal: "github", key: "demand-gh"))
+  let e = decide(
+    population: effect_population(e: after_first),
+    grants: [running_grant()],
+    command: withdraw(principal: "gitlab", key: "demand-gl"),
+  )
+  effect_label(e: e) == "released-attempt-stops"
+    && effect_population(e: e).length() == 0
+    && released_reservations(e: e).length() == 2
+}
+
+// Losing the last demand before any grant issued is a real state with its own
+// arm, not a release directive naming an attempt that does not exist.
+
+test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool {
+  let e = decide(population: [github_demand()], grants: [], command: withdraw(principal: "github", key: "demand-gh"))
+  effect_label(e: e) == "released-nothing-running"
+    && released_reservations(e: e).length() == 0
+}
+
+// The cross-principal wall. The key is registered; the principal is not the one
+// presenting it, and the refusal names the principal half rather than reporting
+// the demand as unknown.
+//
+// That an unauthorized withdrawal cannot also have cancelled something is NOT
+// asserted here, because it is not a runtime property to assert: CommandRefused
+// carries no population and no release directive, so a refusal that took effect
+// has no spelling. Asserting an empty population through the helper below would
+// only measure that the helper returns the empty list on the refusal arm - a
+// permanently green check standing where the carrier already made the state
+// unwritable.
+
+test fn a_withdrawal_from_the_wrong_principal_refuses_by_principal_not_as_unknown() -> Bool {
+  effect_label(e: decide(population: both_demands(), grants: [running_grant()], command: withdraw(principal: "gitlab", key: "demand-gh")))
+    == "principal-mismatch"
+}
+
+// The discriminating pair for the refusal vocabulary itself: an entirely
+// unregistered key must refuse for a DIFFERENT reason than a key registered to
+// someone else. One cause covering both would report a cross-tenant attempt as
+// a stale binding.
+
+test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> Bool {
+  effect_label(e: decide(population: both_demands(), grants: [], command: withdraw(principal: "github", key: "demand-none")))
+    == "unknown-demand"
+}
+
+// terminal_receipt_may_satisfy, consumed independently. Same population, same
+// execution state, same other two fields - only this one moves, and it moves
+// the output between satisfaction and execution.
+
+test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool {
+  let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
+  let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
+  effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, command: SubmitDemand { demand: may }))
+    == "satisfied-by-terminal-receipt"
+    && effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, command: SubmitDemand { demand: may_not }))
+      == "await-admission"
+}
+
+// new_attempt_required, consumed independently. With an execution in flight,
+// this field alone decides between attaching to it and demanding a fresh
+// attempt - the answer a system offering only "rerun" cannot give separately.
+
+test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bool {
+  let attaches = github_demand()
+  let reruns = Demand {
+    id: demand_id(principal: "github", key: "demand-gh"),
+    work: work_of(principal: "fabric", key: "work-1"),
+    origin: "gh-pr-7",
+    submitted_at: "2026-08-24T00:00:00Z",
+    admission: terms(),
+    satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: true, step_reuse_permitted: true },
+  }
+  effect_label(e: decide(population: [gitlab_demand()], grants: [running_grant()], command: SubmitDemand { demand: attaches }))
+    == "attach-to-existing-execution"
+    && effect_label(e: decide(population: [gitlab_demand()], grants: [running_grant()], command: SubmitDemand { demand: reruns }))
+      == "new-attempt-reusing-steps"
+}
+
+// step_reuse_permitted, consumed independently. It changes what the fresh
+// attempt may reuse WITHOUT changing whether that attempt exists, which is the
+// separation the three-field decomposition is for: wanting a re-execution must
+// not force a clean recompute.
+
+test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> Bool {
+  let reusing = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: true })
+  let clean = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false })
+  effect_label(e: decide(population: [], grants: [], command: SubmitDemand { demand: reusing }))
+    == "new-attempt-reusing-steps"
+    && effect_label(e: decide(population: [], grants: [], command: SubmitDemand { demand: clean }))
+      == "new-attempt-refusing-step-reuse"
+}
+
+// A supersede whose replacement names a different Work is a withdrawal plus a
+// submission, and admitting it would move a demand across Works under a command
+// that promises not to. The mirror is the same supersede with the Works
+// matching, which must be admitted - otherwise the refusal above is satisfied
+// by an implementation that refuses every supersede.
+
+test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admitted() -> Bool {
+  let elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
+  let same_work = Demand {
+    id: demand_id(principal: "github", key: "demand-gh2"),
+    work: work_of(principal: "fabric", key: "work-1"),
+    origin: "gh-pr-8",
+    submitted_at: "2026-08-24T00:01:00Z",
+    admission: terms(),
+    satisfaction: attaching_satisfaction(),
+  }
+  let refused = decide(
+    population: both_demands(),
+    grants: [running_grant()],
+    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: elsewhere, evidence: "sup-1" },
+  )
+  let admitted = decide(
+    population: both_demands(),
+    grants: [running_grant()],
+    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: same_work, evidence: "sup-1" },
+  )
+  effect_label(e: refused) == "replacement-work-mismatch"
+    && effect_label(e: admitted) == "attach-to-existing-execution"
+    && effect_population(e: admitted).length() == 2
+}
+
+// A supersede never releases a Work, because it removes one demand and adds
+// one. Stating it as a test rather than as prose is what keeps a later
+// refactor of the population transition from making a supersede look like a
+// withdrawal to the execution half.
+
+test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
+  let replacement = Demand {
+    id: demand_id(principal: "github", key: "demand-gh2"),
+    work: work_of(principal: "fabric", key: "work-1"),
+    origin: "gh-pr-8",
+    submitted_at: "2026-08-24T00:01:00Z",
+    admission: terms(),
+    satisfaction: attaching_satisfaction(),
+  }
+  let e = decide(
+    population: [github_demand()],
+    grants: [running_grant()],
+    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: replacement, evidence: "sup-1" },
+  )
+  effect_label(e: e) == "attach-to-existing-execution"
+    && effect_population(e: e).length() == 1
+    && released_reservations(e: e).length() == 0
+}
+
+// A supersede may only replace the presenting requester's own demand. Without
+// this wall a binding could retire another provider's demand by presenting a
+// replacement under its own principal, which is the two-provider failure
+// arriving through the supersede door instead of the withdrawal one.
+
+test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
+  let intruder = demand_of(principal: "gitlab", key: "demand-gh2", work_key: "work-1", satisfaction: attaching_satisfaction())
+  effect_label(
+    e: decide(
+      population: both_demands(),
+      grants: [running_grant()],
+      command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: intruder, evidence: "sup-1" },
+    ),
+  ) == "supersede-crosses-principal"
+}
+
+// Re-submitting under a live identity refuses rather than overwriting. An
+// overwrite would let a binding change a live demand's buy terms and
+// satisfaction requirement without presenting the evidence a supersede needs.
+
+test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> Bool {
+  effect_label(e: decide(population: both_demands(), grants: [], command: SubmitDemand { demand: github_demand() }))
+    == "duplicate-demand"
+}

@@ -1,0 +1,177 @@
+module product.fabric.arbitration
+
+import std.types { NonEmptyStr, List }
+import product.fabric.identity {
+  fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, WorkKey,
+}
+import product.fabric.demand {
+  Demand, DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
+  DemandRefusal, DemandRegistration, RegistrationAdvanced, RegistrationRefused,
+  WorkRequirement, WorkStillRequired, WorkNoLongerRequired,
+  SatisfactionDirective, TerminalReceiptAvailability,
+  ExecutionPresence, ExecutionInFlight, NoExecutionInFlight,
+  apply_demand_command, work_requirement, satisfaction_directive,
+}
+import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity }
+
+// This module is the second half of a command's core effect: it joins the
+// demand-population transition, which product.fabric.demand owns, to the
+// execution state that transition bears on. It exists as a peer rather than as
+// more functions on demand.dag for one structural reason - execution.dag
+// imports demand.dag, so the join cannot sit in demand.dag without inverting a
+// live edge, and acyclicity is the import graph's only law. Nothing new is
+// modeled here: the in-flight execution is read as ExecutionGrant, which
+// already carries the attempt, the work and both reservation sets, so no
+// projection of a grant is minted beside the grant.
+
+// The fabric does not release anything here. A directive NAMES what must be
+// released and why; product.fabric.budget owns the money ledger and its release
+// is a transition on an account. Deciding and actuating in one function would
+// put a second authority for the released quantity in the caller's hands, which
+// is exactly what release_money refuses by deriving the amount from the entry.
+// Both reservation sets travel together because the prose claim is capacity AND
+// budget: releasing money while holding capacity leaks a machine that is still
+// billing under a work nothing requires.
+// The lease travels with the directive because release is fenced: release_money
+// refuses a generation that is not the one the hold was taken under, and a
+// caller that had to re-derive the generation would be a second account of it,
+// free to disagree with the grant that authorized the hold. The whole lease
+// identity is carried rather than the generation alone, for the reason
+// execution.dag already gives about receipt admission - a small integer that
+// every lease starts at names nothing on its own.
+type ReleaseDirective<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  lease: LeaseIdentity
+  money_reservation: ReservationRef
+  resource_reservations: List<ReservationRef>
+  reason: NonEmptyStr
+}
+
+// The arms are the answers a binding is not allowed to reach on its own. Every
+// combination that differs in what the caller must DO is its own arm, and none
+// of them is a wildcard over the others: continuing an attempt and having no
+// attempt to continue are the same population outcome with opposite execution
+// consequences, and releasing a work with nothing running is a real state - not
+// a degraded release - because a work can lose its last demand before any grant
+// ever issued. Collapsing that into the stopping arm would hand the caller a
+// release directive naming an attempt and reservations that do not exist.
+type DemandCommandEffect<P>
+  = CommandRefused { refusal: DemandRefusal<P> }
+  | DemandAdmitted { population: List<Demand<P>>, directive: SatisfactionDirective }
+  | WorkStillRequiredAttemptContinues {
+      population: List<Demand<P>>,
+      remaining: List<Demand<P>>,
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | WorkStillRequiredNothingRunning {
+      population: List<Demand<P>>,
+      remaining: List<Demand<P>>,
+    }
+  | WorkReleasedAttemptStops {
+      population: List<Demand<P>>,
+      work: FabricIdentity<P, WorkKey>,
+      release: ReleaseDirective<P>,
+    }
+  | WorkReleasedNothingRunning {
+      population: List<Demand<P>>,
+      work: FabricIdentity<P, WorkKey>,
+    }
+
+fn grants_for_work<P>(
+  grants: List<ExecutionGrant<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> List<ExecutionGrant<P>> {
+  grants |> filter(g => fabric_identity_eq(left: g.context.work, right: work))
+}
+
+fn execution_presence<P>(
+  grants: List<ExecutionGrant<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> ExecutionPresence {
+  match grants_for_work(grants: grants, work: work) {
+    Empty {} => NoExecutionInFlight
+    Cons { head: _, tail: _ } => ExecutionInFlight
+  }
+}
+
+// The reason is fixed by this module rather than supplied. A caller-chosen
+// release reason is a second account of why the release happened, free to
+// disagree with the transition that produced it.
+fn release_directive_for<P>(g: ExecutionGrant<P>) -> ReleaseDirective<P> {
+  ReleaseDirective {
+    attempt: g.context.attempt,
+    lease: g.context.lease,
+    money_reservation: g.money_reservation,
+    resource_reservations: g.resource_reservations,
+    reason: "no remaining demand requires this work",
+  }
+}
+
+// A withdrawal or a supersede that emptied the work's demand population is the
+// only path that may stop an attempt, and it may do so only after the
+// population transition was admitted. Ordering matters: deciding the execution
+// consequence first and authorizing afterwards is how an unauthorized
+// withdrawal comes to have already cancelled something.
+fn withdrawal_effect<P>(
+  population: List<Demand<P>>,
+  grants: List<ExecutionGrant<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> DemandCommandEffect<P> {
+  match work_requirement(population: population, work: work) {
+    WorkStillRequired { remaining: rem } =>
+      match grants_for_work(grants: grants, work: work) {
+        Empty {} =>
+          WorkStillRequiredNothingRunning { population: population, remaining: rem }
+        Cons { head: g, tail: _ } =>
+          WorkStillRequiredAttemptContinues {
+            population: population,
+            remaining: rem,
+            attempt: g.context.attempt,
+          }
+      }
+    WorkNoLongerRequired { work: w } =>
+      match grants_for_work(grants: grants, work: work) {
+        Empty {} => WorkReleasedNothingRunning { population: population, work: w }
+        Cons { head: g, tail: _ } =>
+          WorkReleasedAttemptStops {
+            population: population,
+            work: w,
+            release: release_directive_for(g: g),
+          }
+      }
+  }
+}
+
+fn decide_demand_command<P>(
+  population: List<Demand<P>>,
+  grants: List<ExecutionGrant<P>>,
+  terminal: TerminalReceiptAvailability,
+  command: DemandCommand<P>,
+) -> DemandCommandEffect<P> {
+  match apply_demand_command(population: population, command: command) {
+    RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
+    RegistrationAdvanced { population: next, subject_work: w } =>
+      match command {
+        SubmitDemand { demand: d } =>
+          DemandAdmitted {
+            population: next,
+            directive: satisfaction_directive(
+              s: d.satisfaction,
+              terminal: terminal,
+              execution: execution_presence(grants: grants, work: w),
+            ),
+          }
+        SupersedeDemand { superseded: _, replacement: r, evidence: _ } =>
+          DemandAdmitted {
+            population: next,
+            directive: satisfaction_directive(
+              s: r.satisfaction,
+              terminal: terminal,
+              execution: execution_presence(grants: grants, work: w),
+            ),
+          }
+        WithdrawDemand { demand: _, evidence: _ } =>
+          withdrawal_effect(population: next, grants: grants, work: w)
+      }
+  }
+}
