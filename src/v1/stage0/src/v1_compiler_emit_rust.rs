@@ -2551,10 +2551,11 @@ pub fn render_rust_alias_rhs_type(
                     None => match rust_opaque_kernel_alias_carrier(name.clone()) {
                         Some(carrier) => carrier.clone(),
                         None => {
+                            let leaf = qualified_last_segment(name.clone());
                             let rendered =
-                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
+                                rust_render_type_leaf_name(leaf.clone(), variant_to_enum.clone());
                             render_rust_shared_type_if_needed(
-                                name.clone(),
+                                leaf.clone(),
                                 rendered.clone(),
                                 shared_types.clone(),
                             )
@@ -21037,10 +21038,10 @@ pub fn emit_typed_call(
                     1024,
                 );
                 let type_name = if (base_arg.inferred.clone() != None) {
-                    authored_name_at(
+                    qualified_last_segment(authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
                         resolved_type(base_arg.clone()),
-                    )
+                    ))
                 } else {
                     "compile_error!(\"with call missing resolved record type\")".to_string()
                 };
@@ -23148,7 +23149,10 @@ pub fn emit_rust_with_method_call(
                 if (rt_is_error.clone() || (rt.ident_span.clone() == None)) {
                     "compile_error!(\"with method missing resolved record type\")".to_string()
                 } else {
-                    authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone())
+                    qualified_last_segment(authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        rt.clone(),
+                    ))
                 }
             }
             _ => "compile_error!(\"with method missing resolved record type\")".to_string(),
