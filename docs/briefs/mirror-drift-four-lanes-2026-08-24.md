@@ -53,6 +53,44 @@ A null result from a stale binary is indistinguishable from a null result from a
 other member of this class announces itself eventually; this one is **silently confirmatory**, and
 it is worst precisely in the probes built to keep their authors honest.
 
+### The silent member has no self-detection route — it was found by its loud sibling
+
+`silent-gull-867` corrected the credit given here, and the correction is the most useful fact in
+this document. An earlier revision said they saw the false negative *before running it*, which
+implies suspicion did the work. It did not:
+
+> I hit the staleness on #9076 first, where it produced a LOUD failure — the floor refusing with an
+> unchanged error while regen named the file — and only then asked whether the probe I had cut from
+> that same head shared it. The loud instance is what made the silent one visible. Had #9076 not
+> failed first, #9103 would have come back "unchanged" and I would have closed the residue on it.
+
+**Nothing about #9103 in isolation would have prompted the check, and its pre-registration would
+have actively discouraged one** — *unchanged → risk not realised* is an instruction to accept the
+very string a stale binary produces.
+
+So the detection route for the silent member is: **a sibling sharing its cause failed loudly, and
+the author generalised from it.** That is not a method. It requires a loud sibling to exist, to be
+noticed, to be diagnosed correctly, and to be recognised as sharing a cause with something that has
+not failed — four conditions, none of them under the author's control, and all four happened to hold
+here.
+
+The practical consequence is the one that matters for the repair: **you cannot catch this after the
+fact.** Every other member of the class announces itself eventually — a wrong number gets
+questioned, a refused gate names its file. The silent member's only tell is a confirmation you were
+already expecting. The property must therefore be enforced **before** measurement, which is why the
+repair belongs at commit or dispatch time and not in anyone's reading discipline.
+
+Confirmed by measurement rather than left as inference, using the guard proposed for #9063:
+
+```
+MARKER_DAG_PP=1             the row IS in dag/std/algebra.dag
+MARKER_MIRROR_PP_BEFORE=0   the row is NOT in the mirror the binary is built from
+```
+
+and after installing the regenerated mirror, 6581 bytes against #9059's 6564 — **a 17-byte delta
+that is itself the cheap confirmation that the two mirrors differ by exactly the treatment and
+nothing else.**
+
 ## Why four, and why in one night
 
 **The gate is correct.** Required-regen detects the drift and names the file. Nothing is broken
