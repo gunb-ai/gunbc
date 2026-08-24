@@ -944,8 +944,8 @@ fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Optional<RuntimeVa
   optional_absent()
 }
 
-fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
-  Map {
+fn empty_runtime_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
+  PartialFunction {
     lookup: runtime_binding_lookup_miss
   }
 }

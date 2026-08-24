@@ -300,7 +300,7 @@ fn cpp_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data cpp_add_inferred_tree: InferredTree = InferredTree {
   root: cpp_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: cpp_add_facts_lookup
   }
 }

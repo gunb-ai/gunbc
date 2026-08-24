@@ -42,7 +42,7 @@ fn sr_lookup_usage_site_witness() -> Optional<InferredFacts> {
   optional_absent()
 }
 
-fn sr_lookup_claim_fact_map() -> Map<Node, InferredFacts> {
+fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
   Map {
     lookup: fn(key) {

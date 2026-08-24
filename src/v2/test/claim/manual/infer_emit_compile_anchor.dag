@@ -31,7 +31,7 @@ data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes
   }
 )
 
-data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
+data anchor_stub_empty_facts_map: PartialFunction<Node, InferredFacts> = Map {
   lookup: fn(_) {
     Absent
   }

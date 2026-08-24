@@ -406,7 +406,7 @@ fn add_arrow_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn add_arrow_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: add_arrow_eval_facts_lookup
     }
   }

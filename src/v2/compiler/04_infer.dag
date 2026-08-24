@@ -486,7 +486,7 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
   match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }

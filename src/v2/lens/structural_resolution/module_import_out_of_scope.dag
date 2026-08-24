@@ -48,7 +48,7 @@ fn sr_mod_claim_facts() -> InferredFacts {
   )
 }
 
-fn sr_mod_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+fn sr_mod_claim_fact_map(facts: InferredFacts) -> PartialFunction<Node, InferredFacts> {
   Map {
     lookup: fn(_) {
       Present { value: facts }
