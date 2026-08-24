@@ -51,8 +51,14 @@ fixtures, unscheduled cadence members, dormant local probes. *A declaration with
 executing consumer is a separate standing and must not be refused for lacking a runtime
 channel that nothing invokes.*
 
-I measured 12278 declared and flagged in passing that the floor's routed roster is ~10439 —
-then quoted the 12278 anyway. **The routed roster is the denominator.** The join is:
+I measured 12278 declared, flagged explicitly that the floor's routed roster is ~10439 and
+that the routed roster was the right denominator — and then quoted 12278 anyway, in every
+message. **And the caveat travelled while the behaviour did not:** it was received, agreed
+with in writing, and the caveated figure was then carried into the operator's thread with the
+caveat stripped, by the second reader. Two people held the correction; neither applied it.
+That is worse than one person forgetting, because a caveat that propagates without changing
+what anyone does is the exact failure a caveat exists to prevent. **The routed roster is the
+denominator.** The join is:
 
     declared witness identity  ×  execution standing  ×  failure-evidence standing
 

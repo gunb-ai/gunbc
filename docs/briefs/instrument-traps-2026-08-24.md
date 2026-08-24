@@ -98,6 +98,25 @@ baseline, so you cannot distinguish a channel that broke from one you never reac
 read succeeds, the absence of a reply is not information — treating it as one is the
 empty-observation narrow with your own observation as the victim.
 
+## 8. A caveat can travel without changing anyone's behaviour
+
+A measured figure (12278 declared `test fn`) was published together with an explicit caveat
+that it was **not** the right denominator, naming the correct one (~10439 routed). The caveat
+was received, agreed with in writing, and the caveated figure was then quoted — by both
+readers, repeatedly, including into the one channel with a confirmed receipt, with the caveat
+dropped in transit. The number was corrected by a third party who had to notice the error from
+scratch.
+
+**This is not a grep failure and no scan discipline prevents it.** The correction existed, was
+correct, was acknowledged, and did nothing. What propagated was the figure; what did not
+propagate was the *not-to-use-this* attached to it.
+
+The mitigation that would have worked is structural rather than attentive: **do not publish a
+number you have already established is the wrong one.** If the right denominator is not yet
+measured, publish the gap, not the figure with a warning stapled to it. A caveat is a request
+that every future reader do work; the readers here were two sessions that had just spent a
+night refusing exactly that kind of request in code.
+
 ---
 
 ## The shape they share
@@ -114,6 +133,7 @@ question is narrower than the one the reader asked:
 | is this PR approved | is it approved *on GitHub* |
 | is a slot free | is the lane closed |
 | did the operator reply | did the fetch succeed |
+| did my message send | did the last command in my pipeline exit 0 |
 
 The transferable move is not vigilance. It is to **make the run assert its own subject**, so
 that a narrower answer cannot be read as the wider one.
