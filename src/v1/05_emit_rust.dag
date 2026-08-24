@@ -4997,6 +4997,9 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   let needs_int = items |> any(item => module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices))
   let needs_partial_function = items |> any(item =>
     module_item_references_type_name(item: item, type_name: "PartialFunction", source_indices: source_indices)
+  )
+  let needs_finitely_supported_function = items |> any(item =>
+    module_item_references_type_name(item: item, type_name: "FinitelySupportedFunction", source_indices: source_indices)
     || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
   )
   let needs_measure_phantoms = closure_has_std_measure && items |> any(item => module_item_references_faithful_expanded_type(item: item, source_indices: source_indices))
@@ -5025,6 +5028,11 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_algebra::PartialFunction;")]
   }
+  let finitely_supported_function = if !needs_finitely_supported_function || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FinitelySupportedFunction") {
+    []
+  } else {
+    [concat(rust_visibility_prefix(), "use crate::std_algebra::FinitelySupportedFunction;")]
+  }
   let memory = if !needs_measure_phantoms || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Memory") {
     []
   } else {
@@ -5035,7 +5043,7 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_measure::One;")]
   }
-  concat(free_monoid, char_line, non_empty_str, int_line, partial_function, memory, one)
+  concat(free_monoid, char_line, non_empty_str, int_line, partial_function, finitely_supported_function, memory, one)
 }
 
 fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) -> String {

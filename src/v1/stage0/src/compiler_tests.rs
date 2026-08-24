@@ -1968,8 +1968,12 @@ mod compiler_tests {
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Rust, "FinitePowerSet".into()),
             Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "FinitelySupportedFunction".into()),
+            Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
@@ -1988,11 +1992,11 @@ mod compiler_tests {
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
+            coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
             Some("BTreeSet<{0}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Rust, "Set".into()),
             Some("BTreeSet<{0}>".to_string())
         );
     }
@@ -2001,8 +2005,12 @@ mod compiler_tests {
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Python, "FinitePowerSet".into()),
             Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "FinitelySupportedFunction".into()),
+            Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Python, "FreeMonoid".into()),
@@ -2021,11 +2029,11 @@ mod compiler_tests {
             Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "Set".into()),
+            coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
             Some("set[{0}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Python, "Set".into()),
             Some("set[{0}]".to_string())
         );
     }
@@ -2034,8 +2042,12 @@ mod compiler_tests {
     fn coercion_go_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Go, "FinitePowerSet".into()),
             Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "FinitelySupportedFunction".into()),
+            Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "FreeMonoid".into()),
@@ -2054,11 +2066,11 @@ mod compiler_tests {
             Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "Set".into()),
+            coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
             Some("map[{0}]struct{}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
+            coerce_container_template(RenderTarget::Go, "Set".into()),
             Some("map[{0}]struct{}".to_string())
         );
     }

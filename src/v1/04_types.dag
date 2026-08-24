@@ -6,9 +6,9 @@ import std.types { SourceSpan, is_container_type, container_expected_arity, cont
 
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  BooleanAlgebraProfile, FinitePowerSetProfile,
   FreeMonoidScalarProfile,
-  FreeMonoidCollectionProfile, PartialFunctionProfile,
+  FreeMonoidCollectionProfile, PartialFunctionProfile, FinitelySupportedFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
