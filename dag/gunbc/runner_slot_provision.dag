@@ -20,6 +20,7 @@ import gunbc.runner_host_deploy {
   runner_index_seq,
 }
 import extdeps.github.actions_runner {
+  ActionsRunnerPrivilegedBinaries,
   ActionsRunnerBinaryArtifact,
   actions_runner_release_2_334_0,
   actions_runner_base_dir,
@@ -30,6 +31,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_slot_allocation { identity_is_fabric_execution_member }
 import gunbc.fleet_host_budget { declared_runner_count_for }
+import gunbc.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoInstall, SudoRm }
 import gunbc.command_runner {
   ProcessOutcome,
   ProcessOutputPresent,
@@ -195,6 +197,17 @@ type RunnerSlotProvisionPlan {
   upsert_extract_scripts: List<String>
 }
 
+// THE ONE PLACE THE GRANT ROSTER MEETS THE INSTALL SHAPE. extdeps.github.actions_runner describes
+// what runner installation IS; this module knows which principal performs it here and therefore
+// which binaries that principal is permitted to execute. Both paths come from the closed
+// CiRunnerSudoBinary vocabulary, so a verb with no grant row has no spelling at this seam.
+fn gunbc_runner_privileged_binaries() -> ActionsRunnerPrivilegedBinaries {
+  ActionsRunnerPrivilegedBinaries {
+    install_path: ci_runner_sudo_binary_path(b: SudoInstall),
+    remove_path: ci_runner_sudo_binary_path(b: SudoRm),
+  }
+}
+
 fn runner_slot_provision_plan(
   deploy: RunnerHostDeploy,
   artifact: ActionsRunnerBinaryArtifact,
@@ -207,7 +220,10 @@ fn runner_slot_provision_plan(
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
-    base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    base_dir_script: actions_runner_base_dir_ensure_script(
+      runner_user: deploy.runner_user,
+      privileged: gunbc_runner_privileged_binaries(),
+    ),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
         MemberAdded { at: _, to: m } =>
@@ -215,6 +231,7 @@ fn runner_slot_provision_plan(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
+            privileged: gunbc_runner_privileged_binaries(),
           )]
         MemberChanged { at: _, from: _, to: _ } => []
         MemberRemoved { at: _, from: _ } => []

@@ -145,10 +145,32 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
 // install -d -o/-g creates the directory already owned by job_user, so tar and the tarball cleanup
 // need no privilege at all, and the surviving sudo verbs are exactly two roster members.
 
+// THE PRIVILEGED BINARIES ARE SUPPLIED, NOT SPELLED, and that is the whole content of this type.
+// This module knows the SHAPE of runner installation -- fetch, verify, place, own -- and it does
+// not know which POSIX principal will run it or what that principal is permitted to execute. Those
+// are fleet policy, and gunbc.fleet_posix_accounts owns them.
+//
+// The prior form wrote `sudo install` and `sudo rm` as literals here, which made this module a
+// second, silent authoring of "these two verbs are available as root". It was correct only by
+// coincidence: both happen to be roster members. Nothing kept them roster members, and the earlier
+// revision of this same function proved the coincidence is not reliable -- it also wrote `sudo tar`
+// and `sudo chown`, which never were.
+//
+// The alternative was to import the roster accessor here, and that is the wrong direction: an
+// extdeps module describing an upstream product would then depend on this repository's principal
+// policy, so the shape could not be reused by a caller with a different one. Passing the paths in
+// keeps the dependency pointing the way it already does -- gunbc consumes extdeps, chooses the
+// realization, and remains the single place that answers what may run as root.
+type ActionsRunnerPrivilegedBinaries {
+  install_path: NonEmptyStr
+  remove_path: NonEmptyStr
+}
+
 fn actions_runner_slot_extract_script(
   artifact: ActionsRunnerBinaryArtifact,
   slot_dir: NonEmptyStr,
   job_user: NonEmptyStr,
+  privileged: ActionsRunnerPrivilegedBinaries,
 ) -> String {
   let url = actions_runner_download_url(artifact: artifact)
   let digest = actions_runner_release_digest(artifact: artifact)
@@ -157,9 +179,11 @@ fn actions_runner_slot_extract_script(
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
     digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
-    join(["sudo rm -rf '", slot_dir as String, "'"], ""),
+    join(["sudo ", privileged.remove_path as String, " -rf '", slot_dir as String, "'"], ""),
     join([
-      "sudo install -d -m 755 -o ",
+      "sudo ",
+      privileged.install_path as String,
+      " -d -m 755 -o ",
       job_user as String,
       " -g ",
       job_user as String,
@@ -182,11 +206,14 @@ data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
   }
 }
 
-fn actions_runner_base_dir_ensure_script(runner_user: NonEmptyStr) -> String {
+fn actions_runner_base_dir_ensure_script(
+  runner_user: NonEmptyStr,
+  privileged: ActionsRunnerPrivilegedBinaries,
+) -> String {
   join([
     "set -e",
-    join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_base_dir], ""),
-    join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_cache_dir], ""),
+    join(["sudo ", privileged.install_path as String, " -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_base_dir], ""),
+    join(["sudo ", privileged.install_path as String, " -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_cache_dir], ""),
     "",
   ], "\n")
 }
