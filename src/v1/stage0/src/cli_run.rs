@@ -7704,6 +7704,38 @@ struct BothClosureEdgeIndex {
     bare_scan_eligible: HashSet<String>,
 }
 
+/// Which source roots the ambiguous-bare-name refusal is live for.
+///
+/// The refusal itself is not scoped by anything about the root — an ambiguous
+/// bare name is unbindable wherever it appears. What IS scoped is the ROLLOUT,
+/// and it is a declared, measured debt contract rather than a preference.
+///
+/// Measured on main (bd84f669681), per root, over the files the bare census is
+/// eligible to scan at all (those declaring zero import lines), counting
+/// capitalised names with two or more declarers outside the referencing module
+/// and excluding each file's own declarations and local binders — an UPPER
+/// bound, since it does not apply the `pullable` filter the census does:
+///
+///   dag     2610 modules,  348 eligible,  138 files with ambiguity,  669 sites
+///   src/v1    55 modules,    7 eligible,    0 files with ambiguity,    0 sites
+///   src/v2  1265 modules,  351 eligible,  129 files with ambiguity, 1049 sites
+///
+/// An upper bound of zero is zero, so the seed root can carry the wall today and
+/// the other two cannot without reddening main on 267 files. Enabling them is
+/// therefore the trigger, not the assumption: this predicate returns true for
+/// every root once those populations reach zero, and each root's burndown is
+/// visible as the population above going to zero for that root.
+///
+/// Note what is NOT claimed: this is adjacent to, not the same mechanism as, the
+/// hole DESIGN already declares on the source→`.dag`-acceptance path — "a
+/// census-AMBIGUOUS type name resolves by silent last-import-wins instead of
+/// refusing". That one is name resolution inside the compiler; this one is
+/// source admission into a closure. They are the same LAW at two layers, and no
+/// join between them is claimed here.
+fn bare_ambiguity_refusal_root(root: &str) -> bool {
+    root.trim_end_matches('/').ends_with("src/v1")
+}
+
 fn source_declares_import_lines(content: &str) -> bool {
     content
         .lines()
@@ -7817,6 +7849,11 @@ fn bare_reference_pull_paths_for_source(
     });
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
+    // Every ambiguous bare name this file carries, with its full candidate list —
+    // collected rather than returned on the first one, so the refusal reports the
+    // whole population of one file instead of making the reader re-run it per name.
+    let ambiguous_refusals: std::cell::RefCell<Vec<(String, Vec<String>)>> =
+        std::cell::RefCell::new(Vec::new());
     let resolve_loop_started = std::time::Instant::now();
     for (name, service_head) in all_names {
         let in_call_position = candidates.call_position.contains(&name);
@@ -7844,17 +7881,42 @@ fn bare_reference_pull_paths_for_source(
                         }
                     }
                     GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                            referencing_module.clone(),
-                            candidates.clone(),
-                        )
-                        .and_then(|c| {
-                            if pullable(&c.binding) {
-                                Some(c.module_path.clone())
-                            } else {
-                                None
-                            }
-                        })
+                        // An ambiguous bare name has NO authority to pick from. The
+                        // nearest-ancestor tiebreak that used to stand here is a
+                        // heuristic over module-path proximity, and DESIGN §4 rules a
+                        // heuristic never necessary in a closed system precisely
+                        // because the richer source exists: the import line that named
+                        // the intended module. Proximity is convention standing where
+                        // an authority was available, and unlike an over-pull it fails
+                        // SILENTLY — nothing in the closure's size reveals that a name
+                        // was bound to the wrong module.
+                        //
+                        // So the arm refuses. Scope: the seed root only, for now — see
+                        // `bare_ambiguity_refusal_root` for the measured population and
+                        // the restoration trigger for the other roots.
+                        let pullable_candidates: Vec<String> = candidates
+                            .iter()
+                            .filter(|c| pullable(&c.binding))
+                            .map(|c| c.module_path.clone())
+                            .collect();
+                        if pullable_candidates.len() > 1 && bare_ambiguity_refusal_root(&root) {
+                            ambiguous_refusals
+                                .borrow_mut()
+                                .push((name.clone(), pullable_candidates));
+                            None
+                        } else {
+                            crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
+                                referencing_module.clone(),
+                                candidates.clone(),
+                            )
+                            .and_then(|c| {
+                                if pullable(&c.binding) {
+                                    Some(c.module_path.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        }
                     }
                 },
                 None => {
@@ -7871,6 +7933,29 @@ fn bare_reference_pull_paths_for_source(
             Some(m) => Some(m),
             None => resolve_in(&pool_bare_census(index)?),
         };
+        if !ambiguous_refusals.borrow().is_empty() {
+            let rows: Vec<String> = ambiguous_refusals
+                .borrow()
+                .iter()
+                .map(|(n, cands)| {
+                    format!(
+                        "  '{n}' -> {} candidates: {}",
+                        cands.len(),
+                        cands.join(", ")
+                    )
+                })
+                .collect();
+            return Err(format!(
+                "bare_reference_closure: {} ambiguous bare name(s) in '{file_rel}' — each is \
+                 declared by more than one module in the pool, so no authority selects one \
+                 and this closure refuses rather than picking by module-path proximity \
+                 (DESIGN §4: a heuristic is never necessary in a closed system — the richer \
+                 source is the qualified reference). Qualify each reference below to the \
+                 module it means:\n{}",
+                rows.len(),
+                rows.join("\n")
+            ));
+        }
         let Some(module_path) = target_module else {
             continue;
         };
