@@ -24,7 +24,6 @@ pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_occurrence_identity::AuthoredTokenOrdinal;
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -154,7 +153,9 @@ use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
+use crate::v1_std_core::CompilerDiagnostic::{
+    AmbiguousAnonymousRecordLiteral, InternalError, UnlistedImportUse,
+};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -5345,6 +5346,41 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 diagnostics: workflow_default_diags.clone(),
             });
         }
+        let anonymous_record_diags = Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in tm.items.clone().iter().cloned() {
+                            __result.extend(
+                                (*ambiguous_anonymous_record_literal_diagnostics(
+                                    item.clone(),
+                                    emit_info.type_summaries.clone(),
+                                    tm.type_env.clone().source_indices.clone(),
+                                    authored_name_at(
+                                        tm.type_env.clone().source_indices.clone(),
+                                        tm.module.clone(),
+                                    ),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        if ((anonymous_record_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: anonymous_record_diags.clone(),
+            });
+        }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -7448,6 +7484,189 @@ pub fn reference_derived_candidate_authored(
         ))
 }
 
+pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
+    {
+        let spaced = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(s.clone(), "<".to_string(), " ".to_string()),
+                                        ">".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    ",".to_string(),
+                                    " ".to_string(),
+                                ),
+                                "(".to_string(),
+                                " ".to_string(),
+                            ),
+                            ")".to_string(),
+                            " ".to_string(),
+                        ),
+                        "[".to_string(),
+                        " ".to_string(),
+                    ),
+                    "]".to_string(),
+                    " ".to_string(),
+                ),
+                "&".to_string(),
+                " ".to_string(),
+            ),
+            ":".to_string(),
+            " ".to_string(),
+        );
+        let unpunctuated = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(
+                                            spaced.clone(),
+                                            ";".to_string(),
+                                            " ".to_string(),
+                                        ),
+                                        "{".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    "}".to_string(),
+                                    " ".to_string(),
+                                ),
+                                ".".to_string(),
+                                " ".to_string(),
+                            ),
+                            "=".to_string(),
+                            " ".to_string(),
+                        ),
+                        "\n".to_string(),
+                        " ".to_string(),
+                    ),
+                    "\t".to_string(),
+                    " ".to_string(),
+                ),
+                "\x0d".to_string(),
+                " ".to_string(),
+            ),
+            "*".to_string(),
+            " ".to_string(),
+        );
+        let untokened = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(unpunctuated.clone(), "!".to_string(), " ".to_string()),
+                        "?".to_string(),
+                        " ".to_string(),
+                    ),
+                    "|".to_string(),
+                    " ".to_string(),
+                ),
+                "+".to_string(),
+                " ".to_string(),
+            ),
+            "#".to_string(),
+            " ".to_string(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for t in Rc::new({
+                let mut __result = Vec::new();
+                for t in Rc::new(
+                    untokened
+                        .clone()
+                        .split(&" ".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(v1_rt::trim(t.clone()));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (t.clone() != "".to_string()) {
+                    __result.push(t);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn collect_type_node_realized_surface_names(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    rust_identifier_tokens(render_rust_type(
+        n.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.clone(),
+    ))
+}
+
+pub fn collect_item_realized_surface_names(
+    item: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    {
+        let from_ann = match item.type_annotation.clone() {
+            Some(t) => collect_type_node_realized_surface_names(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+            None => Rc::new(vec![]),
+        };
+        let from_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_realized_surface_names(
+                        param_node_type_expr(p.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let from_inferred = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                collect_type_node_realized_surface_names(
+                    rt.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(
+            from_ann.clone(),
+            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+        ))
+    }
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -7460,6 +7679,8 @@ pub fn reference_derived_use_lines(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    shared_types: Rc<BTreeSet<String>>,
+    emitted_source: String,
 ) -> Rc<Vec<String>> {
     {
         let module_source = match Rc::new({
@@ -7535,6 +7756,23 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
+        let realized_surface_names = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_item_realized_surface_names(
+                        item.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
+        let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -7542,17 +7780,20 @@ pub fn reference_derived_use_lines(
                 for name in unique_strings(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                            type_surface_names.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                type_surface_names.clone(),
+                            ),
+                            field_surface_names.clone(),
                         ),
-                        field_surface_names.clone(),
+                        variant_payload_structs.clone(),
                     ),
-                    variant_payload_structs.clone(),
+                    realized_surface_names.clone(),
                 ))
                 .iter()
                 .cloned()
                 {
-                    if (reference_derived_candidate_authored(
+                    if ((reference_derived_candidate_authored(
                         module_source.clone(),
                         name.clone(),
                         emit_info.type_summaries.clone(),
@@ -7561,6 +7802,15 @@ pub fn reference_derived_use_lines(
                         let mut __found = false;
                         for h in emitter_attested_anon_heads.iter().cloned() {
                             if (h.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) || {
+                        let mut __found = false;
+                        for t in emitted_source_tokens.iter().cloned() {
+                            if (t.clone() == name.clone()) {
                                 __found = true;
                                 break;
                             }
@@ -7846,6 +8096,62 @@ pub fn emit_module_full(
             }),
             collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
         );
+        let module_import_items = module_imports(m.clone());
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let wire_context_items = v1_rt::concat(
+            typed_module.items.clone(),
+            contracts_items_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_context_imports = v1_rt::concat(
+            module_import_items.clone(),
+            contracts_imports_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_contract_item = Rc::new({
+            let mut __result = Vec::new();
+            for i in wire_context_items.iter().cloned() {
+                if (is_data_def_item(i.clone())
+                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
+                        == "wire_contract".to_string()))
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        let items_str = Rc::new({
+            let mut __result = Vec::new();
+            for item in typed_module.items.clone().iter().cloned() {
+                __result.push(emit_typed_item(
+                    item.clone(),
+                    authored_name(scope.type_env.clone(), m.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    wire_contract_item.clone(),
+                    scoped_data_items.clone(),
+                    wire_context_items.clone(),
+                    wire_context_imports.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    module_index.clone(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n\n".to_string());
         let prelude = emit_prelude(prelude_imported_names.clone(), local_type_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
@@ -7921,6 +8227,8 @@ pub fn emit_module_full(
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
+            shared_types.clone(),
+            items_str.clone(),
         );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
@@ -8041,26 +8349,6 @@ pub fn emit_module_full(
             }
             __result
         });
-        let module_import_items = module_imports(m.clone());
-        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
-        let wire_context_items = v1_rt::concat(
-            typed_module.items.clone(),
-            contracts_items_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
-        let wire_context_imports = v1_rt::concat(
-            module_import_items.clone(),
-            contracts_imports_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
             wire_context_items.clone(),
             wire_context_imports.clone(),
@@ -8084,42 +8372,6 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
-            let mut __result = Vec::new();
-            for i in wire_context_items.iter().cloned() {
-                if (is_data_def_item(i.clone())
-                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
-                        == "wire_contract".to_string()))
-                {
-                    __result.push(i);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned();
-        let items_str = Rc::new({
-            let mut __result = Vec::new();
-            for item in typed_module.items.clone().iter().cloned() {
-                __result.push(emit_typed_item(
-                    item.clone(),
-                    authored_name(scope.type_env.clone(), m.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    wire_contract_item.clone(),
-                    scoped_data_items.clone(),
-                    wire_context_items.clone(),
-                    wire_context_imports.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    module_index.clone(),
-                ));
-            }
-            __result
-        })
-        .join(&"\n\n".to_string());
         let phantom_zst_markers =
             emit_module_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone());
         let phantom_section = if (phantom_zst_markers.clone() == "".to_string()) {
@@ -22090,6 +22342,7 @@ pub fn emit_typed_fold_lambda(
     lambda_expr: Rc<Node>,
     acc_type_str: String,
     elem_type_str: String,
+    elem_borrowed: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -22141,7 +22394,7 @@ pub fn emit_typed_fold_lambda(
                 }
                 __result
             });
-            let param_strs = lambda_param_type_strs(
+            let param_strs_raw = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
                 fallback_types.clone(),
@@ -22151,6 +22404,32 @@ pub fn emit_typed_fold_lambda(
                 true,
                 scope.type_env.clone(),
             );
+            let param_strs = if elem_borrowed.clone() {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for pair in Rc::new(
+                        param_strs_raw
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(if (pair.0.clone() == 1) {
+                            "_".to_string()
+                        } else {
+                            pair.1.clone()
+                        });
+                    }
+                    __result
+                })
+            } else {
+                param_strs_raw.clone()
+            };
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
             let body_str = emit_typed_expr(
@@ -22624,19 +22903,6 @@ pub fn emit_rust_fold_method_call(
             },
             None => "compile_error!(\"missing fold init argument\")".to_string(),
         };
-        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
-            Some(a) => emit_typed_fold_lambda(
-                arg_value(a.clone()),
-                lambda_acc_type_str.clone(),
-                fold_elem_type_str.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                fold_emit_info.clone(),
-            ),
-            None => "compile_error!(\"missing fold function argument\")".to_string(),
-        };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
@@ -22644,6 +22910,20 @@ pub fn emit_rust_fold_method_call(
                 scope.type_env.clone().source_indices.clone(),
             ),
             None => false,
+        };
+        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
+            Some(a) => emit_typed_fold_lambda(
+                arg_value(a.clone()),
+                lambda_acc_type_str.clone(),
+                fold_elem_type_str.clone(),
+                elem_unused.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                fold_emit_info.clone(),
+            ),
+            None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let iter_template = if elem_unused.clone() {
             v1_rt::replace(
@@ -25911,19 +26191,16 @@ pub fn struct_candidates_by_field_names(
     }
 }
 
-pub fn find_struct_name_by_fields(
+pub fn anonymous_record_struct_candidates(
     field_names: Rc<Vec<String>>,
     field_type_hints: Rc<HashMap<String, String>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Option<String> {
+) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let candidates =
             struct_candidates_by_field_names(field_names.clone(), type_summaries.clone());
         if ((candidates.clone().len() as i64) <= 1) {
-            match candidates.clone().first().cloned() {
-                Some(s) => Some(s.name.clone()),
-                None => None,
-            }
+            candidates.clone()
         } else {
             {
                 let typed_candidates = Rc::new({
@@ -25957,28 +26234,215 @@ pub fn find_struct_name_by_fields(
                     __result
                 });
                 if ((typed_candidates.clone().len() as i64) == 1) {
-                    match typed_candidates.clone().first().cloned() {
-                        Some(s) => Some(s.name.clone()),
-                        None => None,
-                    }
+                    typed_candidates.clone()
                 } else {
-                    match Rc::new({
-                        let mut __sorted: Vec<_> = candidates.iter().cloned().collect();
-                        __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
-                            let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
-                            let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
-                            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-                        });
-                        __sorted
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(s) => Some(s.name.clone()),
-                        None => None,
+                    candidates.clone()
+                }
+            }
+        }
+    }
+}
+
+pub fn ambiguous_anonymous_record_literal_diagnostics(
+    n: Rc<Node>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let current = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                    Some(_) => Rc::new(vec![]),
+                    None => {
+                        let resolved = resolved_type(n.clone());
+                        if ((((n.children.clone().len() as i64) > 1)
+                            && is_product_type(resolved.clone()))
+                            && (resolved.ident_span.clone() == None))
+                        {
+                            {
+                                let field_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for f in n.children.clone().iter().cloned() {
+                                        __result.push(field_init_node_name_at(
+                                            f.clone(),
+                                            source_indices.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let field_type_hints =
+                                    record_lit_field_type_hints(n.clone(), source_indices.clone());
+                                let candidates = anonymous_record_struct_candidates(
+                                    field_names.clone(),
+                                    field_type_hints.clone(),
+                                    type_summaries.clone(),
+                                );
+                                if ((candidates.clone().len() as i64) > 1) {
+                                    {
+                                        let candidate_names = Rc::new({
+                                            let mut __sorted: Vec<_> = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for c in candidates.iter().cloned() {
+                                                    __result.push(c.name.clone());
+                                                }
+                                                __result
+                                            })
+                                            .iter()
+                                            .cloned()
+                                            .collect();
+                                            __sorted.sort_by(|a: &String, b: &String| {
+                                                let __ka = (|name: String| name.clone())(a.clone());
+                                                let __kb = (|name: String| name.clone())(b.clone());
+                                                __ka.partial_cmp(&__kb)
+                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                            });
+                                            __sorted
+                                        });
+                                        Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
+    candidates: candidate_names.clone(),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                    }
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                        } else {
+                            Rc::new(vec![])
+                        }
                     }
                 }
             }
+            _ => Rc::new(vec![]),
+        };
+        let direct = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.params.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        );
+        let indirect = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.uses.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.properties.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        );
+        let optional_nodes = v1_rt::concat(
+            match n.body.clone() {
+                Some(b) => ambiguous_anonymous_record_literal_diagnostics(
+                    b.clone(),
+                    type_summaries.clone(),
+                    source_indices.clone(),
+                    module_name.clone(),
+                ),
+                None => Rc::new(vec![]),
+            },
+            v1_rt::concat(
+                match n.transport.clone() {
+                    Some(t) => ambiguous_anonymous_record_literal_diagnostics(
+                        t.clone(),
+                        type_summaries.clone(),
+                        source_indices.clone(),
+                        module_name.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+                match n.type_annotation.clone() {
+                    Some(t) => ambiguous_anonymous_record_literal_diagnostics(
+                        t.clone(),
+                        type_summaries.clone(),
+                        source_indices.clone(),
+                        module_name.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+            ),
+        );
+        v1_rt::concat(
+            current.clone(),
+            v1_rt::concat(
+                direct.clone(),
+                v1_rt::concat(indirect.clone(), optional_nodes.clone()),
+            ),
+        )
+    })
+}
+
+pub fn find_struct_name_by_fields(
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
+    {
+        let candidates = anonymous_record_struct_candidates(
+            field_names.clone(),
+            field_type_hints.clone(),
+            type_summaries.clone(),
+        );
+        if ((candidates.clone().len() as i64) == 1) {
+            match candidates.clone().first().cloned() {
+                Some(s) => Some(s.name.clone()),
+                None => None,
+            }
+        } else {
+            None
         }
     }
 }
@@ -26230,28 +26694,39 @@ pub fn emit_typed_record_lit(
                                     }
                                 }
                                 None => {
-                                    let vals = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for f in fields.iter().cloned() {
-                                            __result.push(emit_typed_expr(
-                                                field_init_node_value(f.clone()),
-                                                registry.clone(),
-                                                scope.clone(),
-                                                depth.clone(),
-                                                shared_types.clone(),
-                                                emit_info.clone(),
-                                                1024,
-                                            ));
+                                    let resolution_candidates = anonymous_record_struct_candidates(
+                                        lit_field_names.clone(),
+                                        field_type_hints.clone(),
+                                        emit_info.type_summaries.clone(),
+                                    );
+                                    if ((resolution_candidates.clone().len() as i64) > 1) {
+                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                    } else {
+                                        {
+                                            let vals = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for f in fields.iter().cloned() {
+                                                    __result.push(emit_typed_expr(
+                                                        field_init_node_value(f.clone()),
+                                                        registry.clone(),
+                                                        scope.clone(),
+                                                        depth.clone(),
+                                                        shared_types.clone(),
+                                                        emit_info.clone(),
+                                                        1024,
+                                                    ));
+                                                }
+                                                __result
+                                            });
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "(".to_string(),
+                                                    vals.clone().join(&", ".to_string()),
+                                                ),
+                                                ")".to_string(),
+                                            )
                                         }
-                                        __result
-                                    });
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "(".to_string(),
-                                            vals.clone().join(&", ".to_string()),
-                                        ),
-                                        ")".to_string(),
-                                    )
+                                    }
                                 }
                             }
                         }
