@@ -5555,56 +5555,66 @@ mod compile_clean_via_index_verdict_equivalence {
     /// compiling only the affected entry must not hide annotation debt elsewhere.
     /// DISCRIMINATING RED for the regen-closure de-fork.
     ///
-    /// A seed module that reaches its provider by REFERENCE ONLY — no `import`
-    /// line anywhere — must still have that provider admitted to the regen
-    /// subject. Before the de-fork `regen_input_sources` grew its closure with
-    /// `extract_import_paths` alone, so this fixture's provider was dropped and
-    /// the emitted seed was computed against a subject missing a module it
-    /// genuinely depends on.
+    /// A seed module that reaches its provider by REFERENCE ONLY -- no `import`
+    /// line anywhere -- must still have that provider admitted to the regen
+    /// subject. Before the de-fork, `regen_input_sources` grew its closure with
+    /// `extract_import_paths` alone, so this fixture's provider was dropped.
     ///
-    /// This test goes RED on the unpatched function: with zero import lines the
-    /// old walk's queue drains on its first pass and the result is the entry
-    /// root alone. It is authored as a controlled fixture — the input and the
-    /// expected population are written here, independently of any live tree —
-    /// so it is an oracle rather than a snapshot of whatever main happens to
-    /// contain (§5).
+    /// THE FIXTURE'S SHAPE IS THE WHOLE CONTROL, and an earlier version of this
+    /// test got it wrong in a way worth recording: it wrote both modules into ONE
+    /// directory and passed that directory as the entry root. `collect_dag_files_result`
+    /// then picked the provider up as a SEED, so the closure was never asked to
+    /// find anything and the test passed against the old import-only walk too --
+    /// green in both arms, therefore evidence of nothing. The provider must live
+    /// OUTSIDE the entry root and inside the wider root set, which is exactly
+    /// production's shape: entry root `src/v1`, providers under `dag/`.
     #[test]
     fn regen_subject_admits_a_provider_reached_only_by_reference() {
-        let corpus = Corpus::new(
-            "regen-closure-defork",
-            &[
-                (
-                    "seed.dag",
-                    "module v1.regen_seed_probe
-fn probe() -> Int {
-  regen_provider_probe_answer()
-}
-",
-                ),
-                (
-                    "provider.dag",
-                    "module std.regen_provider_probe
-fn regen_provider_probe_answer() -> Int {
-  7
-}
-",
-                ),
-            ],
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-defork-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        // Preconditions, asserted rather than assumed -- if a later edit adds an
+        // import to the fixture, or moves the provider under the entry root, this
+        // test would keep passing while testing nothing (which is how its first
+        // version failed).
+        let seed_text = fs::read_to_string(entry_root.join("seed.dag")).expect("read seed");
+        assert!(
+            super::extract_import_paths(&seed_text).is_empty(),
+            "fixture precondition: the seed reaches its provider by reference only"
+        );
+        let mut entry_files = Vec::new();
+        super::collect_dag_files_result(&entry_root, &mut entry_files).expect("walk entry root");
+        assert_eq!(
+            entry_files.len(),
+            1,
+            "fixture precondition: the provider must NOT be reachable as a seed"
         );
 
-        // The fixture states the precondition it is about: no import edges exist,
-        // so an import-only walk has nothing whatsoever to follow. Asserted rather
-        // than assumed, because if a future edit adds an import to the fixture the
-        // test would keep passing while testing nothing.
-        for src in &corpus.sources {
-            assert!(
-                super::extract_import_paths(&src.content).is_empty(),
-                "fixture precondition: no import lines"
-            );
-        }
-
-        let admitted = super::regen_input_sources_over_roots(&corpus.dir, &corpus.roots)
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
             .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
 
         assert!(
             admitted
