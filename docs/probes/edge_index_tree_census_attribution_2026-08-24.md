@@ -127,12 +127,36 @@ produced `tree_census_calls=699 / misses=2` was one witness entry.
 ## The repair in this change — attribution only
 
 `pool_parse` gets its own row (nanos, builds, modules), metered once inside `pool_parse` itself
-so it is counted wherever it is forced from, and `nanos_net_of_pool_parse` subtracts it from
-every enclosing timer that can contain it: `edge_index_tree_census`,
-`edge_index_tree_census_miss_nanos`, `edge_index_bare_half`, `load_bare_edge_index`, and
-reconcile's `assembly_root_symbol_index`. The row hangs off `load` — deliberately not off the
-consumer that forced it, since naming one of three consumers as its parent is the same defect one
-level up.
+so it is counted wherever it is forced from, and every window that can contain it is recorded
+net of it.
+
+**There are TWO forcing paths and they land in different top-level rows.** This is the half the
+first version of the repair got wrong, and review 55349 caught it:
+
+| path | window that first forces the parse |
+|---|---|
+| `load` -> bare-reference closure -> edge index | the per-root census (`edge_index_tree_census`), and the loop's cross-tree fallback `pool_bare_census` |
+| reconcile | **`assembly_pool_fill`** via `pool_qualified_fill`, then `assembly_root_symbol_index` via the per-root census |
+
+`assembly_pool_fill` runs before `assembly_root_symbol_index`, so on the reconcile path it is
+the *real* payer, not a hypothetical one. Netted windows are therefore: `load`,
+`assembly_pool_fill`, `assembly_root_symbol_index`, `load_bare_edge_index`,
+`edge_index_bare_half`, `edge_index_bare_resolve_loop`, `edge_index_tree_census`, and
+`edge_index_tree_census_miss_nanos`.
+
+**The row is an EXCLUSIVE PEER, not an inclusive row under a parent.** It shipped as
+`InclusiveCostRow { contained_in: "load" }`, which is false whenever reconcile forces it
+first — `assembly_pool_fill` is a top-level peer of `load`, not a descendant. No single parent
+is true, because which row forces the parse depends on the path; that is the original defect
+restated one level up, and naming any one parent would have been the same lie in a smaller
+font. Once the parse is carved out of every window that can contain it, it *is* a disjoint
+window inside the parent span, which is what an exclusive row is.
+
+That also keeps `sum_exclusive` invariant across the repair. Before it, the parse was inside
+whichever row forced it and was counted once; after it, the parse is its own row and is still
+counted once. The inclusive form would have quietly dropped `sum_exclusive` by 14.24s and
+migrated the parse into `remainder_nanos` — a second, smaller accounting move that nothing in
+the first version declared.
 
 The sum is unchanged; what changes is that each row is about the work it is named for.
 
@@ -161,3 +185,9 @@ and the row's placement, and both go red if either is dropped. It is not *struct
 guaranteed* — a new timer around a new pool consumer can still absorb the parse, because nothing
 forces a caller to use `nanos_net_of_pool_parse`. The next-rung trigger is a span type that
 carries its own exclusions rather than a helper each caller must remember.
+
+**That residue is not theoretical, and the evidence is this change's own first version.** It
+netted five windows and missed two — `assembly_pool_fill` and `edge_index_bare_resolve_loop` —
+so the reconcile path kept the exact mis-attribution the repair exists to remove. A helper each
+caller must remember was forgotten by the author who wrote the helper, in the same diff
+(review 55349). Anyone weighing the rung above should weight that receipt over the reasoning.

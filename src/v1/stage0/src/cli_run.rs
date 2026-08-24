@@ -7652,6 +7652,7 @@ fn bare_reference_pull_paths_for_source(
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
+    let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
@@ -7752,8 +7753,18 @@ fn bare_reference_pull_paths_for_source(
             }
         }
     }
+    // `pool_bare_census` is the loop's cross-tree fallback and forces the same shared
+    // parse. In practice the census above has already forced it, so this delta is
+    // normally zero — but "normally" is an ordering accident and the row must not
+    // depend on one.
+    let resolve_loop_pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(resolve_loop_pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_bare_resolve_loop += resolve_loop_started.elapsed().as_nanos();
+        st.edge_index_bare_resolve_loop += resolve_loop_started
+            .elapsed()
+            .as_nanos()
+            .saturating_sub(resolve_loop_pool);
     });
     Ok(pulled)
 }
@@ -12376,8 +12387,18 @@ pub struct ResolveStageNanos {
     /// so it has no single owner: charging it to that consumer reports one term's cost
     /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
     /// the 21.3s that `edge_index_tree_census_miss_nanos` used to report, because the
-    /// miss timer started before the pool force. Every enclosing row below is therefore
-    /// recorded NET of it (`nanos_net_of_pool_parse`) and this row carries it once.
+    /// miss timer started before the pool force.
+    ///
+    /// EVERY window that can contain the parse is recorded NET of it, via
+    /// `nanos_net_of_pool_parse` or the same subtraction inline. The forcing paths are
+    /// two, and they land in DIFFERENT top-level rows — which is why this row is an
+    /// exclusive peer rather than a child of any of them:
+    ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
+    ///     (and, as the loop's cross-tree fallback, `pool_bare_census`);
+    ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
+    ///     `assembly_root_symbol_index` (via the per-root census again).
+    /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
+    /// real payer — not a hypothetical one (review 55349).
     pub pool_parse: u128,
     /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
     pub pool_parse_builds: u128,
@@ -12938,6 +12959,28 @@ pub fn exclusive_cost_partition_from(
             name: "assembly_pool_fill",
             nanos: st.assembly_pool_fill,
         },
+        // The shared whole-corpus parse is an EXCLUSIVE PEER, not a child of any row.
+        //
+        // It was an inclusive row `contained_in: "load"` when this landed, and review
+        // 55349 was right that the claim is false: `build_symbol_index_for_reconcile`
+        // can force the parse through `pool_qualified_fill` while timing
+        // `assembly_pool_fill`, which is a top-level exclusive peer of `load`, not a
+        // descendant of it. There is no single true parent, because WHICH row forces the
+        // parse depends on the path — which is the whole defect restated one level up,
+        // and naming any one of them would have been the same lie in a smaller font.
+        //
+        // Once every window that can contain it is recorded net of it (`load`,
+        // `assembly_pool_fill`, `assembly_root_symbol_index`, and the inclusive rows
+        // beneath `load`), the parse is carved out of all of them and is a disjoint
+        // window inside the parent span — which is exactly what an exclusive row is.
+        // This also keeps `sum_exclusive` invariant across the repair: before it, the
+        // parse was inside whichever row forced it; after it, the parse is its own row
+        // and is counted exactly once, rather than silently migrating into
+        // `remainder_nanos` as the inclusive form would have done.
+        CostPartitionRow {
+            name: "pool_parse",
+            nanos: st.pool_parse,
+        },
         CostPartitionRow {
             name: "assembly_symbol_index_merge",
             nanos: st.assembly_symbol_index_merge,
@@ -13054,15 +13097,6 @@ pub fn exclusive_cost_partition_from(
             name: "edge_index_tree_census",
             nanos: st.edge_index_tree_census,
             contained_in: "edge_index_bare_half",
-        },
-        // The whole-corpus parse is NOT contained in the consumer that happened to force
-        // it — that is the mis-attribution this row exists to end — so it hangs off
-        // `load`, the outermost row every forcing site sits under, and every row between
-        // is recorded net of it.
-        InclusiveCostRow {
-            name: "pool_parse",
-            nanos: st.pool_parse,
-            contained_in: "load",
         },
         InclusiveCostRow {
             name: "edge_index_tree_census_miss_nanos",
@@ -13424,9 +13458,10 @@ fn resolve_entry_with_parse_cache_inner(
 > {
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
-    let load_started = std::time::Instant::now();
-    let sources = load_sources_for_entry_with_pool(index, entry_file)?;
-    resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    let (sources, load_nanos) =
+        nanos_net_of_pool_parse(|| load_sources_for_entry_with_pool(index, entry_file));
+    let sources = sources?;
+    resolve_stage_slot_add(|s| s.load += load_nanos);
     resolved_graph_from_sources_with_index(
         index,
         sources,
@@ -14778,9 +14813,9 @@ fn build_symbol_index_for_reconcile(
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
-    let pool_fill_started = std::time::Instant::now();
-    let pool_fill = pool_qualified_fill(index)?;
-    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
+    let (pool_fill, pool_fill_nanos) = nanos_net_of_pool_parse(|| pool_qualified_fill(index));
+    let pool_fill = pool_fill?;
+    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_nanos);
     let merge_started = std::time::Instant::now();
     let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
     resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
@@ -39597,28 +39632,48 @@ mod exclusive_cost_partition_law {
         );
     }
 
-    /// The pool parse hangs off `load`, NOT off whichever consumer forced it. Three
-    /// consumers need it (the per-root bare census, the qualified fill, the pool bare
-    /// census) and none owns it, so a `contained_in` naming one of them would report a
-    /// shared term as that consumer's cost — the defect this row exists to end.
+    /// The pool parse is an EXCLUSIVE PEER, with no parent row at all.
+    ///
+    /// It shipped as an inclusive row `contained_in: "load"`, and review 55349 showed
+    /// that claim false: the reconcile path forces the parse through
+    /// `pool_qualified_fill` while timing `assembly_pool_fill`, which is a top-level
+    /// peer of `load` and not a descendant of it. No single parent is true, because
+    /// which row forces the parse depends on the path — so the row has none.
+    ///
+    /// RED WITHOUT THE FIX: as an inclusive row this asserts `contained_in`, and every
+    /// candidate value is wrong on some path. As an exclusive row the discriminating
+    /// property is the one below — the parse enters `sum_exclusive` exactly once,
+    /// rather than migrating into `remainder_nanos`.
     #[test]
-    fn pool_parse_is_an_inclusive_row_under_load_not_under_its_forcing_consumer() {
+    fn pool_parse_is_an_exclusive_peer_with_no_parent_row() {
         let st = ResolveStageNanos {
             pool_parse: 14_250_000_000,
             pool_parse_builds: 1,
             pool_parse_modules: 3_875,
+            // A `load` already recorded NET of the parse, as the live code records it.
+            load: 6_960_000_000,
             ..ResolveStageNanos::default()
         };
-        let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
+        let p = exclusive_cost_partition_from(&st, "test_basis", 21_210_000_000, 1, 0, Vec::new());
+        // No inclusive row claims it — a parent would be false on one path or the other.
+        assert!(
+            !p.inclusive.iter().any(|r| r.name == "pool_parse"),
+            "pool_parse must not claim a parent it does not have"
+        );
         let row = p
-            .inclusive
+            .exclusive
             .iter()
             .find(|r| r.name == "pool_parse")
-            .expect("pool_parse row");
+            .expect("pool_parse exclusive row");
         assert_eq!(row.nanos, 14_250_000_000);
-        assert_eq!(row.contained_in, "load");
-        // An inclusive row never enters the exclusive sum, so it cannot break the law.
-        assert_eq!(p.sum_exclusive_nanos(), 0);
+        // Counted exactly once, beside the net `load` rather than inside it, and the
+        // partition still reconciles.
+        assert_eq!(p.sum_exclusive_nanos(), 21_210_000_000);
+        assert_eq!(p.remainder_nanos, 0);
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Reconciled { .. }
+        ));
         let json = render_exclusive_cost_partition_json(&p, &[]);
         assert!(
             json.contains("\"pool_parse\":{\"builds\":1,\"modules\":3875}"),
