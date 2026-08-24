@@ -821,3 +821,42 @@ So the remedy cannot be attention. It has to be that the run **names the binary 
 instrument's identity into the receipt makes the two questions above textually different, which is the
 minimum condition for the output channel to be able to carry the distinction at all. Until that lands,
 every green from this loop is a green about an unnamed compiler.
+
+## The same defect pointing the other way: a silently capped list, where absence is the answer
+
+*deep-ant-102, 2026-08-24, deciding whether #9059 intersects #8282's changed set. Recorded next to
+the entry above because they are one defect read in opposite directions.*
+
+The query was: do this PR's paths intersect the cut's? The first run came back **EMPTY** — no
+intersection, PR is clear. It is wrong.
+
+    gh pr view 8282 --json files         ->  100 rows
+    gh pr view 8282 --json changedFiles  ->  3965
+
+Same call, same PR. The file list is capped at 100 and **does not say it was capped**. An intersection
+computed against those 100 is an intersection against 2.5% of the subject, and it returns exactly what
+a genuine non-intersection returns: nothing.
+
+**Why this belongs beside the stale-binary green rather than in its own section.** That trap answers
+`true` to a narrower question than the one asked. This one answers *empty* to a narrower question than
+the one asked. In both cases the output is byte-identical to the correct answer for the real question,
+and in both cases the instrument's own limitation is not among the things the output can express. The
+stale binary cannot report which binary it was; the capped list cannot report that it was capped.
+
+**The direction matters for how it gets caught, and it is the more dangerous direction.** A false green
+is caught by the next thing that depends on it. A **false absence terminates the investigation** — there
+is nothing downstream to trip over, because the finding was "nothing here." It was caught here only
+because empty *contradicted an expectation*. Had the expectation been "this PR is probably clear," the
+empty result would have confirmed it, the PR would have been cleared to land, and it would have landed
+into the cut it shares 24 of 25 files with — including `src/v1/04_infer.dag`, where the cut's two
+remaining blocking diagnostics live and a hypothesis about them was mid-measurement.
+
+**So the guard cannot be "check when the answer surprises you."** That guard is exactly inverted: it
+fires on the results least likely to be the truncated ones, and stays silent on the results where
+truncation is indistinguishable from truth. An absence is only evidence if the instrument that produced
+it can be shown to have looked at the whole subject.
+
+**The operative rule:** never take a file list from `gh pr view` on a large PR. Use
+`gh api --paginate .../files?per_page=100`. And note that even the paginated form stopped at **3000 of
+3965**, so the honest statement of the result is `>= 24`, never `= 24`. Reporting the exact figure would
+have been a second instance of the same trap inside the fix for the first.
