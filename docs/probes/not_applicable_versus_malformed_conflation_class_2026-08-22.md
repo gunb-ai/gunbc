@@ -188,3 +188,66 @@ census rather than beside it: the canonical authority proposed there would carry
 as one field, which subsumes this repair. And that document's §4 constraint binds any such merge —
 preserve every refusal **and the stage each refusal comes from**, since flattening moves which stage
 refuses only for inputs that are already broken, so nothing goes red to announce it.
+
+## 8. A sixth specimen, and the first where the render is a VALUE rather than a diagnostic
+
+Every specimen above renders not-applicable as **malformed** — a wrong error, blaming the input. This
+one renders it as a **determinate answer**, and the pair is worth more than either half, because the
+variant is what the recognition rule was not looking for.
+
+`v1.compiler.infer`, `ExprListLit`. Three arms, of which two are correct:
+
+    expected type present, no element type   -> refuses, located
+    expected type present, not a collection  -> refuses, located
+    NO EXPECTED TYPE AT ALL                  -> Absent => unit_type, and no diagnostic
+
+The third arm's trigger is not-applicable in its purest form: **no expected type was supplied**, so
+there is nothing about the input to be right or wrong about. It answers `unit`. *"I could not
+determine the element type"* rendered as *"the element type is unit."*
+
+### The two renders, and why this one is worse
+
+    not-applicable -> malformed         loud, wrong owner, findable at the stage that refused
+    not-applicable -> a real answer     silent, no owner, findable only by its consequences
+
+**A wrong error at least names a stage.** A wrong *answer* travels. The measured path here: the
+fabricated `unit` flows into `fold(init: [])`, the accumulator becomes `List<()>`, the inner binder
+emits as `|found: bool, k: ()|`, and the refusal finally arrives **from rustc** — naming neither the
+empty literal nor the missing expected type. The diagnosis then points at the choke rather than the
+source, which is the same distance-from-cause property that made the pool-fallback defects hard to
+attribute.
+
+So the class's cost argument (§3) has a second tier: the malformed render misattributes **blame** and
+costs the reader a wrong search; the value render suppresses the signal entirely and costs the reader
+the whole distance between the fabrication and its first observable consequence.
+
+### The recognition rule fires unchanged — and that is the finding
+
+    if the arm sits downstream of a search, lookup or alternative that returned `Absent`,
+    it is not-applicable and needs its own reason
+
+The arm is spelled `Absent => unit_type`. **The rule catches it on the trigger, with no reference to
+what the arm produces** — which is why the rule generalises to a render it was not written for. That
+is a stronger property than the rule's authors claimed for it in §4, and it is stated here because
+the natural next move was to widen the rule to cover value-shaped arms. **It does not need
+widening.** The trigger was always the discriminating half; the render was incidental.
+
+### Why the obvious repair is not the one to make
+
+Recorded from an executed counterfactual (gunbc#9099) rather than argued: making the arm refuse
+surfaces **12 blocking diagnostics** on the entry against 0 in the control, across **24 sites** in
+the affected-set closure alone. The fabrication is load-bearing — it is currently the only thing
+keeping those sites compiling.
+
+**The split is still correct and the repair is still upstream.** The `fold(init: [])` site *has* a
+determinable element type — the outer fold's accumulator — and inference lacks it only because the
+callee's type variable is unsolved when the literal is judged. Solving that variable, or deferring
+the literal's judgement until the expected type is known, makes the fabricating arm **unreachable**
+rather than refusing.
+
+That is the one place in this document where the repair is not *"give the not-applicable case its own
+reason symbol."* Here the better outcome is that the not-applicable state **cannot arise** — §5's
+construction-over-validation preference, one rung above every other repair recorded above. Worth
+noting the asymmetry: a reason symbol is the right repair when the state is genuinely reachable and
+the caller must distinguish it; it is the *second-best* repair when the state exists only because an
+upstream judgement ran too early.
