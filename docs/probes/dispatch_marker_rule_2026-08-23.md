@@ -97,6 +97,51 @@ Without the marker those two collapse into one another, and the second silently 
 `set -x` is part of the rule, not decoration: it makes the transcript show which statements were
 reached, so a truncated run is legible as truncated.
 
+### The marker must not match the request for the marker
+
+Found by `smart-ram-730`, **inside this document's own remedy**, which
+is the reason it is stated here rather than in a footnote.
+
+`ctrl-build --remote` echoes the command it is about to run. So a transcript containing
+`MARKER_ALL_DONE` contains it **twice**: once in the echoed command text, before anything executes,
+and once if the payload actually reaches the end. A `grep -q MARKER_ALL_DONE` therefore succeeds
+**because you asked for the marker**, not because anything produced it — and it succeeds identically
+on a dispatch that ran nothing at all. The marker rule, defeated by the marker.
+
+```bash
+grep -q  MARKER_ALL_DONE   # matches the echoed command. Always true.
+grep -qx MARKER_ALL_DONE   # whole-line match; the echo is one long line, so only real output matches
+```
+
+Anchoring works for the same reason: `grep -E "^MARKER_"` skips the echo, which carries the whole
+script on a single line with the newlines escaped. **Every `EMITTED=`-style table in this document has
+the same exposure** — read those markers anchored or whole-line, never as a bare substring.
+
+This is the class one turn further in than the rest of the document: not an instrument answering a
+narrower question, but *the check matching its own request*. The general form is that a transcript
+containing both the instruction and the result cannot be searched for the result without excluding
+the instruction.
+
+### An exit code answers whether the LAST command succeeded
+
+Two receipts, one night, and the pair is the point.
+
+A 70-module sweep was given a wall-clock budget that could not fit a cold build plus the compiles.
+`timeout` killed `ctrl-build`, a trailing `echo` ran, and **the shell returned exit 0**. The only
+signal that anything had died was that the output carried no data rows — failure inferred from
+missing content, by luck rather than by design, because no completion marker had been planted.
+
+The same hour, on the same tooling: a dispatch printed its first marker (`SUBJ_PF_ROW=1`), then the
+build line, then nothing. No `CI_EXIT=` marker — because the payload exceeded the dispatch wall. Read
+as a *missing* marker, that is unambiguous: the payload did not finish. Read as an exit code, it was
+a success.
+
+> The shell tells you whether the last command in your pipeline succeeded. You asked whether the
+> **payload** completed. Those differ exactly when a timeout kills the thing you care about.
+
+Positive evidence beats an absence you have to notice. Plant a final marker, and read for it
+anchored.
+
 ## Clause 1's precondition: only the party who knows the required answer can author the check
 
 Contributed by `quiet-pike-368`, converged on with `smart-ram-730` from two failures in one night.
