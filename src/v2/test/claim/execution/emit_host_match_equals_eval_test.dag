@@ -349,6 +349,30 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
   }
 }
 
+// WHAT THIS PAIR ESTABLISHES, AND THE STRONGER THING IT DOES NOT. Each `test fn` is its own
+// execution and each calls emit_match_eval_run, so the equals row and this row launch TWO
+// INDEPENDENT UNCACHED rustc subprocesses over the same subject. They are two samples of the
+// environment, not two classifications of one run.
+//
+// So the reading "equals red + reached green therefore emit and eval genuinely disagree" DOES NOT
+// FOLLOW, and an earlier revision of this file's PR asserted it. The counter-case is precisely the
+// population being diagnosed: the first subprocess dies under contention (BuildFailed or RunFailed)
+// while the second, moments later, passes. Both rows would then be telling the truth about
+// different attempts, and the pair would have accused the compiler on the strength of an
+// environment failure -- the same wrong-owner conclusion, one level up.
+//
+// WHAT IT HONESTLY BUYS: a second, independently sampled row whose subject is "can the emit-host
+// path reach a semantic judgment here at all". Both rows red is strong evidence the environment
+// could not run, since two independent attempts failed to reach semantics. Equals red with this
+// row green is a NARROWING, not a proof: it says a contemporaneous run of the same subject did
+// reach judgment, which raises but does not settle the question of what the equals run did.
+//
+// NEXT-RUNG TRIGGER, and it is the durable fix rather than more rows: the floor receipt preserving
+// the typed Verdict instead of reducing it to Bool. One run, one Verdict, both propositions read
+// off the same value -- at which point this row's job is done by construction and it becomes a
+// regression control rather than a sampler. That is a change to the witness protocol, not to this
+// module, which is why it is named here instead of attempted here.
+
 // TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
 // A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
 // the predicate-dissolution rule forbids the AUTHORITY exposing an is_* Bool over its own coproduct,
