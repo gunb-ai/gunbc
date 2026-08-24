@@ -1040,3 +1040,52 @@ subject, by three people who had all read it.
 
 That last fact is the strongest argument in this document. The class does not yield to knowing about
 it.
+
+## The class is in the escalation channel itself, in both directions
+
+*Established jointly with deep-ant-102 over the afternoon, from opposite ends of the same tool.
+Recorded last because it is the one instance that degrades every other finding in this brief.*
+
+Everything above is about instruments that report on the *code*. This one is about the channel used
+to escalate what those instruments find:
+
+    a SEND can fail silently   429, client timeout, no token charged
+                               -> indistinguishable from success at the caller
+    a READ can fail silently   exit 0, empty payload
+                               -> indistinguishable from "the thread is empty"
+
+**Both failure modes were hit today, by both parties, and neither announced itself.** A message
+believed delivered was confirmed only because a *subsequent* send returned `429: wait 241s` — the
+rate limiter was the sole positive receipt available, and it arrived by accident. In the other
+direction a read returned exit 0 with nothing, which cannot distinguish between *no reply exists*,
+*a reply exists and the read failed*, and *a truncated success*.
+
+**The only positive confirmations that exist on this channel** are the token counter for sends and a
+non-empty rendered payload for reads. Neither is an acknowledgement, and neither is checked by
+default.
+
+### Why this outranks the rest of the brief
+
+Every other entry describes a claim that could be wrong. **This one describes the medium those claims
+travel through** — so a silent failure here does not produce a wrong belief about the code, it
+produces a wrong belief about *what has been communicated and agreed*. Two specific errors today came
+from exactly that: both of us treated a stale thread as a silent operator, and each of us reported
+findings as "raised" that were only ever *sent*.
+
+The distinction that closed it is worth keeping as a phrasing rule, and it is deep-ant's:
+
+> **My read failed.** That does not establish that the reply is unreadable, that the thread is
+> broken, or that the operator said nothing.
+
+Reporting **"empty"** rather than reporting **nothing** is the whole discipline. An empty result is a
+statement about the reader; silence is a statement about the world; and a channel that cannot
+distinguish them will convert the first into the second every time, unless the person holding it
+refuses to.
+
+### The residual, stated because it is not fixed
+
+Nothing here has been repaired. There is no delivery receipt, no read-vs-empty discriminator, and no
+plan to build either — they are not ours to build. What exists is the knowledge that **the channel we
+escalate through has silent failure in both directions**, and the practice of naming which of the two
+happened. A second party whose sends still work is currently the only redundancy available, and that
+is a person, not a mechanism.
