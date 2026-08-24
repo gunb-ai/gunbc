@@ -49,12 +49,12 @@ exact count, where the unit still decides something (`eager-lark-892`'s is one).
 | boarded | **15** (the 16th, `program_assembly`, refused before emitting — see below) |
 | ref | `6a59c1a549bee1ba01e59e83d30d1a0d88c5b9b3` |
 | ref contents | `origin/main` `1ed02057a5fac683893afcbb427fa8933cc0f2a4` (which carries #9027) merged into the session branch; `git diff --stat 1ed02057a5..6a59c1a549` is exactly three files — `.gitignore`, and this probe's two instruments. None is a `.dag` or `.rs` source and none is reachable by the compiler |
-| instrument | `docs/probes/curated_cargo_board_cohort.sh` → `curated_cargo_probe_one.sh`, `CSSL_STD_SEED_LINK=1` |
+| instrument | `docs/probes/curated_cargo_probe_one.sh`, `CSSL_STD_SEED_LINK=1`, one board per roster module |
 | join | `docs/probes/cross_module_mechanism_weighting.py` |
 | dispatch | four parallel `ctrl-build --remote` runs; every board's own row carries the ref in column 9, and the join **refuses** unless all fifteen agree with the ref declared on its command line |
 
-**Enumeration is from the authority.** The module list and each row's `shim_lib_rel` are read out
-of the roster by the cohort runner, not from a filename glob, a grep on a field name, or a hand
+**Enumeration is from the authority.** The module list and each row's `shim_lib_rel` come from
+the roster, not from a filename glob, a grep on a field name, or a hand
 list — each of which produced a wrong-but-plausible population in this fleet inside one evening.
 `shim_lib_rel` is not defaultable: 12 rows are empty and 4 are not, so guessing empty is right 12
 times and silently wrong 4, which is worse than being uniformly wrong.
@@ -291,23 +291,31 @@ python3 docs/probes/cross_module_mechanism_weighting.py <log-dir> <out-prefix> \
   --rows docs/probes/frontier_cohort_board_2026-08-24/probe_rows.tsv \
   --expect-sha 6a59c1a549bee1ba01e59e83d30d1a0d88c5b9b3 \
   --declared-absent "program_assembly=EMIT_REFUSE: refused before emitting" \
+  --roster dag/tools/self_host_module_behavioral_transport_roster.dag \
   --shim-board 03_body_producer --shim-board 03_normalize \
   --shim-board parse_engine_hooks --shim-board use_site_verdict
 ```
 
-**One caveat on the second command below.** `curated_cargo_board_cohort.sh` is a hand-authored
-shell runner and therefore a DESIGN §6 scaffold awaiting an operator verdict (raised by
-review 55258 on gunbc#9064; its own header carries the corrected classification and the
-dissolution trigger). If that verdict refuses it, the file is deleted and nothing in this board
-changes: the fifteen logs, their sha256s, the probe rows and the join are all committed here, and
-`curated_cargo_probe_one.sh` — already in tree — takes a board on its own. What deletion costs is
-the mechanised roster read, i.e. the defence against the denominator failure described above.
+**The roster check moved into the join.** The cohort was taken by a hand-authored shell runner,
+which was **deleted before this landed** rather than carried as an unapproved DESIGN §6 scaffold
+(review 55258 raised it; no one in the tree can admit a scaffold on an author's own say-so, and a
+composed convenience whose absence costs nothing has a benefit of nothing). What the runner
+mechanised — enumerating the cohort from the roster authority instead of by glob or by hand — now
+lives in the join as `--roster`, which refuses unless the cohort is exactly the membership the
+roster declares. That is a strictly better home for it: a runner is consulted only by whoever
+chooses to run it, while every published weighting passes through this join.
 
-To take the boards again at a new ref:
+To take the boards again at a new ref, board each roster module with the in-tree probe, passing
+that row's own `shim_lib_rel` (12 of 16 are empty and 4 are not — the value is read from the
+roster, never defaulted):
 
 ```sh
-PROBE_KEEP_LOG_DIR=<dir> docs/probes/curated_cargo_board_cohort.sh   # no args: the whole roster
+PROBE_KEEP_LOG_DIR=<dir> CSSL_STD_SEED_LINK=1 \
+  docs/probes/curated_cargo_probe_one.sh src/v2/compiler/<module>.dag "<shim_lib_rel>"
 ```
+
+Then run the join above with `--roster dag/tools/self_host_module_behavioral_transport_roster.dag`,
+which refuses if the resulting cohort is not the roster's membership.
 
 ## Scope
 

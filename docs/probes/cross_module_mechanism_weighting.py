@@ -35,6 +35,18 @@ different sites in one file that share a message and a type pair. Publishing bot
 between them a reading: a large strict/loose divergence means emitted line numbers are NOT
 stable across closures and the strict figure is the one to discard.
 
+THE ROSTER READ LIVES HERE, because the runner that used to hold it is gone. `--roster` points at
+`dag/tools/self_host_module_behavioral_transport_roster.dag` and the join refuses unless the
+cohort's modules are exactly the modules that authority declares -- no missing member, no
+non-member. This is the defence against the failure that motivated the whole lane: enumerating the
+frontier by filename glob, by grep on a field name, or by hand each produced a population close
+enough to pass a glance and wrong in the denominator (17 where the roster says 16; a glob reported
+as roster membership; a zero where the true answer was five). A wrong denominator does its damage
+in a COMPARISON, where it is afterwards indistinguishable from a real per-module difference.
+Holding the check here rather than in a sweep runner also puts it where it cannot be skipped: a
+runner is only consulted by whoever chooses to run it, while every published weighting passes
+through this join.
+
 SUBJECT ASSERTION IS PART OF THE JOIN, NOT PART OF THE CALLER'S DILIGENCE. `--rows` and
 `--expect-sha` make the cohort refuse unless every board's own row agrees on the ref it was taken
 at and that ref is the one the caller declared. A board taken at an unasserted ref is not a weak
@@ -217,6 +229,8 @@ def main():
     ap.add_argument("--rows", help="the cohort's probe rows TSV (curated_cargo_probe_one 13-column "
                                    "rows); required together with --expect-sha")
     ap.add_argument("--expect-sha", help="the ref every board must declare in its own row")
+    ap.add_argument("--roster", help="path to the frontier roster authority; when given, the "
+                                     "cohort must be exactly the modules it declares")
     ap.add_argument("--shim-board", action="append", default=[], metavar="MODULE",
                     help="a board taken with a lane shim_lib_rel installed. Unresolved crate-root "
                          "paths on such a board are attributed to the shim's undeclared closure, "
@@ -231,11 +245,24 @@ def main():
         sys.exit("cross_module_weighting: REFUSED — --rows and --expect-sha are one assertion and "
                  "must be given together; half of it asserts nothing")
 
+    def roster_membership(path):
+        """Module paths declared by the roster, read from the authority rather than from a glob."""
+        declared_rows, current = [], None
+        with open(path, encoding="utf-8") as fh:
+            for raw in fh:
+                literal = re.search(r'"([^"]*)"', raw)
+                if "module_path:" in raw and literal:
+                    current = literal.group(1)
+                elif "shim_lib_rel:" in raw and literal and current is not None:
+                    declared_rows.append(current)
+                    current = None
+        return declared_rows
+
     logs = sorted(f for f in os.listdir(args.log_dir) if f.endswith(".cargo.log"))
     if not logs:
         sys.exit("cross_module_weighting: REFUSED — no <module>.cargo.log under %s" % args.log_dir)
 
-    declared = {}
+    declared, absent = {}, {}
     if args.rows:
         with open(args.rows, encoding="utf-8") as fh:
             for raw in fh:
@@ -249,7 +276,6 @@ def main():
         if wrong:
             sys.exit("cross_module_weighting: REFUSED — %d board(s) declare a ref other than %s: %s"
                      % (len(wrong), args.expect_sha, wrong))
-        absent = {}
         for spec in args.declared_absent:
             module, sep, reason = spec.partition("=")
             if not sep or not reason.strip():
@@ -268,6 +294,22 @@ def main():
                      "rows-without-log %s, log-without-row %s"
                      % (sorted(set(declared) - logged), sorted(logged - set(declared))))
         print("subject asserted: %d boards, all at %s" % (len(declared), args.expect_sha))
+
+    if args.roster:
+        if not args.rows:
+            sys.exit("cross_module_weighting: REFUSED — --roster checks the cohort against the "
+                     "authority's membership, which needs --rows to know what was attempted")
+        membership = roster_membership(args.roster)
+        if not membership:
+            sys.exit("cross_module_weighting: REFUSED — roster parse produced zero rows; the "
+                     "authority's shape changed and this check would pass vacuously")
+        expected = {os.path.basename(m)[: -len(".dag")] for m in membership}
+        attempted = set(declared) | set(absent)
+        if attempted != expected:
+            sys.exit("cross_module_weighting: REFUSED — cohort is not the roster's membership; "
+                     "declared-but-not-boarded %s, boarded-but-not-declared %s"
+                     % (sorted(expected - attempted), sorted(attempted - expected)))
+        print("roster membership asserted: %d modules from %s" % (len(expected), args.roster))
 
     rows = []
     per_module = collections.OrderedDict()
