@@ -667,3 +667,53 @@ the output contains the intended change. It was correct work aimed at a comparan
 diff, count, or absence is offered as evidence, ask what it was compared *against* and whether that
 was verified or remembered. It is a different question from "is the measurement right", and today it
 was the only one that mattered.
+
+### The case neither rule covers: a complete file that is a partial record
+
+The comparand rule above was written one instance too early. deep-ant-102 produced a sixth case the
+same afternoon that **has no filter and no comparison**, and it is the sharpest of the set.
+
+They reported that a wet regeneration pass wrote exactly twelve files, none of them DESIGN.md. I
+attributed it to a truncating `tail`. They checked, correctly, and refused: their command carried no
+`tail`, and `grep -c` over the **whole file** returned 12. Both statements were true.
+
+The clean-tree run settled it:
+
+```
+[file] write DESIGN.md (94037 bytes)
+```
+
+Eighth in a list of at least 69 traces, on an unmodified tree. The twelve were the **final twelve**
+of that list. The task-output capture had elided the *middle* of a long stream, keeping the first six
+lines and the last twelve — a 31-line file standing in for a 69-line record. `grep -c` over a
+complete FILE returned a complete count of an incomplete RECORD.
+
+> **Does the artifact I am reading claim to be complete, and could it know?**
+
+A file has no way to tell you it is short. Nothing inside it is wrong, nothing is filtered, and no
+comparison is being made — so neither the absence rule nor the comparand rule fires. **File
+completeness is not record completeness**, and the gap between them is invisible from inside the
+file.
+
+Only two defences exist, and both must be arranged *before* the run:
+
+- **a terminal marker you planted yourself** — its absence proves truncation, because you know it was
+  emitted last (this is the same discipline as the dispatch-marker rule in `#9066`, and both of us had
+  written that rule down before violating it);
+- **a count you can predict independently** — fifteen committed artifacts means fifteen-plus traces,
+  and twelve should have been recognisable as short.
+
+### And a meta-error worth more than either rule
+
+deep-ant named this one against themselves and it is the reason the question stayed open an extra
+forty minutes:
+
+> **A wrong mechanism does not refute a correct conclusion.**
+
+My diagnosis (*your twelve is a truncation*) was right; my explanation of it (*you must have used
+`tail`*) was wrong. They checked the explanation, found it false, and discarded the conclusion with
+it. That is an easy inversion to make when the explanation is the only checkable part of what you
+were told — and the cost is that a settled question reopens.
+
+The reviewer's form: when you refute someone's *reason*, you have not yet touched their *claim*.
+Say which one you are refuting.
