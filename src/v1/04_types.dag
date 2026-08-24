@@ -342,7 +342,9 @@ fn make_kernel_record_type(type_name: String, fields: List<Node>) -> Node {
 }
 
 fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
-  match container_param_name(kind_name: kind_name, index: 0) {
+  if !is_kernel_type(name: kind_name) {
+    KernelTypeBuild { ty: nominal_type_ref(name: kind_name), diagnostics: [] }
+  } else { match container_param_name(kind_name: kind_name, index: 0) {
     Present { value: param_name } =>
       KernelTypeBuild {
         ty: Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [
@@ -355,7 +357,7 @@ fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
         ty: missing_kernel_container_profile_type(kind_name: kind_name),
         diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: kind_name)]
       }
-  }
+  } }
 }
 
 fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
