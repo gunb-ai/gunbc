@@ -104,19 +104,6 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
   }
 }
 
-// The positive arm, so a failure above reads as a lost distinction rather than as everything
-// collapsing into one variant.
-test fn zero_exit_with_output_is_present() -> Bool {
-  match run_shell_command_capture(
-    command: printf_command(format: "%s", values: ["value"]),
-    transport: LocalExec,
-  ) {
-    ProcessOutputPresent { text: t } => t == "value"
-    ProcessOutputAbsent => false
-    ProcessRefused { exit_code: _, stderr: _ } => false
-  }
-}
-
 // EMPTY ARGV NO LONGER HAS A TEST BECAUSE IT NO LONGER HAS A STATE, and this paragraph stands where
 // the test did rather than the test being quietly dropped.
 //
@@ -179,3 +166,16 @@ test fn zero_exit_with_output_is_present() -> Bool {
 // And this is a claim about this ONE class, not about argv construction generally: hand-spelled
 // FLAGS remain writable inside a builder's own module, which is the point of homing each builder
 // beside its cited authority rather than the seal's guarantee.
+//
+// The positive arm, so a failure above reads as a lost distinction rather than as everything
+// collapsing into one variant.
+test fn zero_exit_with_output_is_present() -> Bool {
+  match run_shell_command_capture(
+    command: printf_command(format: "%s", values: ["value"]),
+    transport: LocalExec,
+  ) {
+    ProcessOutputPresent { text: t } => t == "value"
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
