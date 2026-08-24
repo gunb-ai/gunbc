@@ -4129,10 +4129,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
-          // Reaching this branch is the keyed-container primitive proof. empty_map is
-          // intentionally absent from builtin_function_registry because its return type
-          // comes from the expected Map shape, so the generic signature lookup cannot be
-          // used as a second target resolver here.
           let empty_map_call_semantics = Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }
           match expected {
             Present { value: exp } =>
@@ -5198,6 +5194,8 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
 
 data resolved_call_target_identity_note: String = "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_projection says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism."
+
+data empty_map_call_target_proof_note: String = "empty_map is intentionally absent from builtin_function_registry because its return type comes from the expected Map shape. Reaching the dedicated empty_map inference branch is therefore both the keyed-container type proof and the runtime-primitive target proof; that branch records RuntimePrimitiveCall directly instead of asking the generic signature lookup to reconstruct an identity it does not own."
 
 fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
