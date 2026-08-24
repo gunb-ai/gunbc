@@ -354,7 +354,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
 }
 
 fn converge_cli_receipt_for_host(host_converge: gunbc.host_converge.HostConverge) -> ConvergeCliReceipt {
-  match gunbc.fleet_converge_apply.converge_apply_for_host(host_converge: gunbc.host_converge, transport: gunbc.host_effect.LocalShell) {
+  match gunbc.fleet_converge_apply.converge_apply_for_host(host_converge: host_converge, transport: gunbc.host_effect.LocalShell) {
     Present { value: r } =>
       match r {
         Converged { evidence: _, applied: _ } =>

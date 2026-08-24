@@ -199,6 +199,6 @@ fn derive_build_cache_instance_readiness(
 ) -> BuildCacheInstanceReadiness {
   match unavailable_input(endpoint: endpoint, storage: storage, capacity: capacity) {
     Present { value: unavailable } => unavailable
-    Absent => observed_readiness(endpoint: endpoint, storage: storage, capacity: capacity, pool: test.claim.shared_pool_encoding_control.pool)
+    Absent => observed_readiness(endpoint: endpoint, storage: storage, capacity: capacity, pool: pool)
   }
 }

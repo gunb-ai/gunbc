@@ -796,7 +796,7 @@ fn floor_run_blocks(
   claim: ClaimSafetyOutcome,
 ) -> v2.std.logic.Bool {
   floor_preparation_outcome_blocks(outcome: preparation)
-    || claim_safety_outcome_blocks(outcome: test.claim.budget_tree_witness.claim)
+    || claim_safety_outcome_blocks(outcome: claim)
 }
 
 // §4b RUNG, DECLARED AT THE HONEST GRAIN. The model above is *mechanically preventable* only

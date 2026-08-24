@@ -116,7 +116,7 @@ fn local_determinism_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Dia
 
 fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.node.fold_node(
-    n: test.claim.extdeps_llm_claude_trust_witness.root,
+    n: root,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) { local_determinism_findings(n: n0) },
       step: fn(acc, _edge, child) { concat(acc, child) }
@@ -125,12 +125,12 @@ fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagno
 }
 
 fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
-  match concat(determinism_denominator_findings(), determinism_findings(root: test.claim.package_graph_witness_test.node)) {
+  match concat(determinism_denominator_findings(), determinism_findings(root: node)) {
     std.algebra.Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: test.claim.package_graph_witness_test.node })
+    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

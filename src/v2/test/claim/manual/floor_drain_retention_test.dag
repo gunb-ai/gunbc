@@ -7,7 +7,7 @@ data floor_drain_retention_note: String = "Width=1 floor drain reuses one in-pro
 
 test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Bool {
   let row = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
-  let retention = extdeps.realization.reconcile_in_process.typed_module_cache_facts.placement.retention
+  let retention = retention
   let released_at_scope_exit = match retention.release_policy {
     ReleasedAtProviderScopeExit => true
     _ => false

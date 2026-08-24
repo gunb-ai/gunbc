@@ -229,7 +229,7 @@ fn host_operation_exec_fleet_ssh(
     v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
       host_operation_outcome_from_exec(
         operation: operation,
-        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: target, context: test.claim.tool_readiness_witness.context, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
       )
     v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } =>
       host_operation_argv_refusal(operation: operation, m: m)

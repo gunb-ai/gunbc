@@ -126,7 +126,7 @@ fn self_host_stage_emission(
   source: extdeps.communication.medium.Medium<v2.std.text.String>
 ) -> SelfHostStageEmission {
   SelfHostStageEmission {
-    node: v2.std.node.node,
+    node: node,
     source: source,
     digest: canonical_emitted_bytes_digest(source: source)
   }

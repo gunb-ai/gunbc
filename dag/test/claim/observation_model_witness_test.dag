@@ -70,7 +70,7 @@ fn obs_glyph_resolves_all_tiers(c: std.observation.ObservationEventClass) -> Boo
 }
 
 test fn w_presentation_is_total_over_class_roster() -> Bool {
-  fold(std.observation.observation_event_classes, init: true, f: (acc, c) =>
+  fold(observation_event_classes, init: true, f: (acc, c) =>
     acc && obs_glyph_resolves_all_tiers(c: c)
   )
 }
@@ -105,7 +105,7 @@ test fn w_refused_is_distinct_from_failed() -> Bool {
 }
 
 test fn w_anomaly_classes_never_collapse() -> Bool {
-  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
+  fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     if std.observation.observation_class_is_intrinsic_anomaly(c: c) {
       acc && !p.collapsible && p.expands_fully
@@ -129,7 +129,7 @@ test fn w_density_is_the_single_display_authority() -> Bool {
 }
 
 test fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
-  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
+  fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     let d = std.observation.observation_class_density(c: c)
     acc &&
@@ -461,7 +461,7 @@ test fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
 }
 
 test fn w_presentation_colour_comes_from_the_glyph_authority() -> Bool {
-  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
+  fold(observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     acc && match extdeps.render.glyphs.symbol_color(id: p.glyph) {
       Present { value: _ } => true
@@ -489,7 +489,7 @@ test fn w_reward_animal_selection_is_deterministic_and_wraps() -> Bool {
 
 test fn w_every_law_is_stated_and_bound_to_an_enforcer() -> Bool {
   count(std.observation.observation_laws) == 5 &&
-  fold(std.observation.observation_laws, init: true, f: (acc, l) =>
+  fold(observation_laws, init: true, f: (acc, l) =>
     acc && l.id != "" && l.statement != "" && l.enforced_by.module_path == "std.observation" && l.enforced_by.decl_name != ""
   )
 }

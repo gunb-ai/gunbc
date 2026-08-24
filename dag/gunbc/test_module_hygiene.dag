@@ -27,19 +27,19 @@ fn without_suffix(s: String, suffix: String) -> String {
 // normalization must not quietly change any stem it already produced -- totality is the
 // change, the stem is not.
 fn witness_stem(function: String) -> String {
-  if ends_with(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_holds") {
-    without_suffix(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_holds")
+  if ends_with(s: function, suffix: "_holds") {
+    without_suffix(s: function, suffix: "_holds")
   } else {
-    without_suffix(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_passes")
+    without_suffix(s: function, suffix: "_passes")
   }
 }
 
 fn failure_receipt_companion(function: String) -> String {
-  concat(witness_stem(function: test.claim.observation_seed_scoped_run_witness.function), "_failure_receipt")
+  concat(witness_stem(function: function), "_failure_receipt")
 }
 
 fn witness_verdict_diagnostic_companion(function: String) -> String {
-  concat(witness_stem(function: test.claim.observation_seed_scoped_run_witness.function), "_verdict_diagnostic")
+  concat(witness_stem(function: function), "_verdict_diagnostic")
 }
 
 type ExplicitExpandInput {
