@@ -906,3 +906,51 @@ up and built it. It would have been built to the wrong size, and — per the ord
 same finding — a flattened lookup would have silently moved which stage refuses. **An unchallenged
 framing from someone senior is a defect with no red.** It survived precisely because it was never
 worth arguing with.
+
+## The highest-stakes instance: two lanes both right, about different refs
+
+*deep-ant-102, 2026-08-24. Recorded last because it is the comparand rule at the largest blast
+radius reached today, and because the author found it in their own message rather than in someone
+else's.*
+
+Two reports about the namespace cut, apparently contradicting each other:
+
+    this lane      #8282 is draft, DIRTY, CONFLICTING at 13:05Z  ->  "the cut is not close"
+    crisp-crab-430 the cut is clean: 94 sources, 0 blocking      ->  "step 2 is met"
+
+Both were true. Neither was about the same thing:
+
+    #8282 head ref  = integration/namespace-cut        416727a98   draft, CONFLICTING
+    the 94/0 push   = integration/namespace-cut-fresh  c6d3a3809
+
+    merge-base = 416727a98      cut ahead of fresh: 0      fresh ahead of cut: 101
+
+`-fresh` is a strict descendant carrying `-cut` plus the 101 commits that include the repair taking
+it to zero. **The work is finished and no mergeable artifact carries it**, because the PR still
+points at the ancestor.
+
+**Why this is the same trap and not merely a mix-up.** Nobody measured anything incorrectly. Every
+number reported was accurate for the ref it was taken from. What was missing is the thing this brief
+keeps finding missing: **the comparands were never checked against the question.** The question was
+*is the cut ready to land*, which is a question about the ref the ruling names — and one report
+answered it about a descendant branch while the other answered it about the PR's head.
+
+**The consequence is the reason it outranks the rest.** The 94/0 was carried to the operator as
+"step 2 met", in the message whose entire purpose was to open their merge window. Accurate sentences,
+wrong comparand, at the exact moment a decision was being requested. And the induced error propagated
+the other way too: this lane read draft-and-conflicting as *the window is hours away* and argued from
+it that idling six stopped lanes was the expensive choice. **The truth was closer to the opposite** —
+the tree is ready, only the artifact is missing, and that is a small mechanical step. An inference
+drawn correctly from a comparand that was never the subject.
+
+**Two properties worth keeping.**
+
+First, **agreement was never available as a check here.** The two reports contradicted each other,
+which is the *lucky* case — it forced someone to look. Had crisp-crab not pushed 94/0, this lane's
+reading would have stood unchallenged and been just as wrong about the window.
+
+Second, and this is why it closes the brief: it was caught by the author re-reading **their own**
+message, the same channel that caught the stale-binary green. Across a full day of instances, in this
+corpus, **not one was caught by its output.** Every single one was caught by someone re-deriving what
+they had already said. That is not a run of bad luck with instruments; it is what it means for a
+distinction to be absent from a channel.
