@@ -743,7 +743,10 @@ data ci_witness_verdict_note: String = "ONE BIT WAS CARRYING SEVEN STATES (2026-
 // THE CAUSE OF A NON-VERDICT ROW, AND WHY IT IS A COPRODUCT RATHER THAN THE PROSE IT REPLACES.
 // A witness that THROWS reaches no subject and decides nothing, so the only fact its row can
 // carry about the failure is WHY it threw. That fact was already typed one layer up --
-// v1_interpreter.InterpError is a closed 27-arm coproduct -- and the witness boundary flattened
+// v1_interpreter.InterpError is a closed 24-arm coproduct (the figure is illustrative -- what
+// actually holds totality is the seed's own exhaustiveness check on of_interp_error, so a new
+// interpreter arm fails to compile there rather than silently aging this sentence) -- and the
+// witness boundary flattened
 // it with format!("{other}") into ClaimOutcome::RuntimeError { message }, after which the console
 // printed the identity and the duration and dropped the message entirely. So the cause existed,
 // was known at the moment of routing, and reached no reader. This is the same shape this file

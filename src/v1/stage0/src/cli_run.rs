@@ -9210,7 +9210,7 @@ pub enum ClaimOutcome {
     /// A THROW, WITH THE REASON IT THREW KEPT AS A TYPE.
     ///
     /// `message` used to be the whole content of this arm, built by `format!("{other}")` over
-    /// `v1_interpreter::InterpError` — which is ALREADY a closed 27-arm coproduct. So the cause
+    /// `v1_interpreter::InterpError` — which is ALREADY a closed 24-arm coproduct. So the cause
     /// was known at this seam, destroyed here, and then guessed back downstream by slicing the
     /// first twelve whitespace-separated words off the prose (`known_red_runtime_error_causes`).
     /// That key embeds the missing NAME, so `no declaration named X` and `no declaration named Y`
