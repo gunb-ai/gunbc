@@ -11703,11 +11703,8 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
             Some(TokenShape::ShIdent) => {
                 let spelling = next.clone().unwrap().text.clone();
                 let end_span = token_span(next.clone());
-                let lit_span = crate::v1_std_core::make_file_span(
-                    span.file.clone(),
-                    span.start.clone(),
-                    end_span.end.clone(),
-                );
+                let lit_span =
+                    make_file_span(span.file.clone(), span.start.clone(), end_span.end.clone());
                 Rc::new(ExprResult {
                     expr: crate::v1_std_core::make_expr_node(
                         Rc::new(ExprData::ExprLiteral {
@@ -11744,7 +11741,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         err: r2.err.clone(),
                     });
                 }
-                let call_span = crate::v1_std_core::make_file_span(
+                let call_span = make_file_span(
                     span.file.clone(),
                     span.start.clone(),
                     r2.token.clone().span.clone().end.clone(),

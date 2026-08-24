@@ -1002,10 +1002,7 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
         }),
         None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
             Some(_) => {
-                if crate::v1_compiler_resolve::map_has(
-                    scope.match_bound_names.clone(),
-                    name.clone(),
-                ) {
+                if v1_rt::map_has(&scope.match_bound_names.clone(), name.clone()) {
                     Rc::new(VarBindingKind::MatchBoundBinding)
                 } else {
                     Rc::new(VarBindingKind::LocalValueBinding)
@@ -1182,7 +1179,7 @@ pub fn constructor_reference_admission_unshadowed(
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<InferResult>> {
-    if crate::v1_compiler_resolve::map_has(scope.body_locals.clone(), callee_name.clone()) {
+    if v1_rt::map_has(&scope.body_locals.clone(), callee_name.clone()) {
         None
     } else {
         constructor_reference_admission_early_refusal(
@@ -2711,7 +2708,7 @@ pub fn where_refinement_diags_for_predicate(
                     }
                 },
                 None => {
-                    if crate::v1_std_core::expr_is_any_literal(value_expr.clone()) {
+                    if expr_is_any_literal(value_expr.clone()) {
                         refinement_refusal
                     } else {
                         Rc::new(vec![where_refinement_unenforced_error(
@@ -2731,9 +2728,7 @@ pub fn where_refinement_diags_for_predicate(
                     let string_literal_value =
                         match crate::v1_std_core::expr_literal_string_optional(value_expr.clone()) {
                             Some(v) => Some(v.clone()),
-                            None => {
-                                crate::v1_std_core::expr_literal_symbol_optional(value_expr.clone())
-                            }
+                            None => expr_literal_symbol_optional(value_expr.clone()),
                         };
                     match string_literal_value.clone() {
                         Some(v) => {
@@ -2756,7 +2751,7 @@ pub fn where_refinement_diags_for_predicate(
                             }
                         }
                         None => {
-                            if crate::v1_std_core::expr_is_any_literal(value_expr.clone()) {
+                            if expr_is_any_literal(value_expr.clone()) {
                                 refinement_refusal
                             } else {
                                 Rc::new(vec![where_refinement_unenforced_error(
@@ -6925,11 +6920,10 @@ Rc::new(ArgGenericFoldState {
                             None
                         }, scope.service_registry.clone(), scope.type_env.clone().source_indices.clone())
                     };
-                                    let callee_is_body_binding =
-                                        crate::v1_compiler_resolve::map_has(
-                                            scope.body_locals.clone(),
-                                            func_name.clone(),
-                                        );
+                                    let callee_is_body_binding = v1_rt::map_has(
+                                        &scope.body_locals.clone(),
+                                        func_name.clone(),
+                                    );
                                     let is_known_method = (!callee_is_body_binding.clone()
                                         && (method_resolution.result_type.clone() != None));
                                     if (is_known_method.clone()
@@ -17235,7 +17229,7 @@ pub fn transparent_alias_qualified_name(
     decl_modules: Rc<HashMap<String, String>>,
     name: String,
 ) -> String {
-    if ((crate::v1_std_core::module_path_segments(name.clone()).len() as i64) > 1) {
+    if ((module_path_segments(name.clone()).len() as i64) > 1) {
         name.clone()
     } else {
         match v1_rt::map_get(&decl_modules, name.clone()) {
@@ -20213,21 +20207,23 @@ pub fn selective_func_env_view(
     env: Rc<ResolvedFuncEnv>,
     names: Rc<Vec<String>>,
 ) -> Rc<ResolvedFuncEnv> {
-    let selected = names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, name: String| match v1_rt::map_get(
-            &env.local,
-            name.clone(),
-        ) {
-            Some(sig) => v1_rt::rc_map_insert(acc, name, sig.clone()),
-            None => acc,
-        },
-    );
-    Rc::new(ResolvedFuncEnv {
-        name: env.name.clone(),
-        local: selected,
-        parents: Rc::new(vec![]),
-    })
+    {
+        let selected = names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, name: String| match v1_rt::map_get(
+                &env.local.clone(),
+                name.clone(),
+            ) {
+                Some(sig) => v1_rt::rc_map_insert(acc.clone(), name.clone(), sig.clone()),
+                None => acc.clone(),
+            },
+        );
+        Rc::new(ResolvedFuncEnv {
+            name: env.name.clone(),
+            local: selected.clone(),
+            parents: Rc::new(vec![]),
+        })
+    }
 }
 
 pub fn func_env_views_for_import(
@@ -20235,43 +20231,78 @@ pub fn func_env_views_for_import(
     is_all: bool,
     specific_names: Rc<Vec<String>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
-    if is_all {
-        Rc::new(vec![parent])
+    if is_all.clone() {
+        Rc::new(vec![parent.clone()])
     } else {
-        v1_rt::concat(Rc::new(vec![parent.clone()]), parent.parents.clone())
-            .iter()
-            .cloned()
-            .map(|env| selective_func_env_view(env, specific_names.clone()))
-            .collect::<Vec<_>>()
-            .into()
+        Rc::new({
+            let mut __result = Vec::new();
+            for env in v1_rt::concat(Rc::new(vec![parent.clone()]), parent.parents.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(selective_func_env_view(env.clone(), specific_names.clone()));
+            }
+            __result
+        })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FuncEnvViewMerge {
+    pub by_owner: Rc<HashMap<String, Rc<ResolvedFuncEnv>>>,
+    pub owner_order: Rc<Vec<String>>,
 }
 
 pub fn merge_func_env_views_by_owner(
     views: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
-    let mut by_owner: HashMap<String, Rc<ResolvedFuncEnv>> = HashMap::new();
-    let mut owner_order: Vec<String> = Vec::new();
-    for view in views.iter().cloned() {
-        if let Some(existing) = by_owner.get(&view.name).cloned() {
-            by_owner.insert(
+    {
+        let merged = views.iter().cloned().fold(
+            Rc::new(FuncEnvViewMerge {
+                by_owner: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncEnv>>(),
+                owner_order: Rc::new(vec![]),
+            }),
+            |acc: Rc<FuncEnvViewMerge>, view: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
+                &acc.by_owner.clone(),
                 view.name.clone(),
-                Rc::new(ResolvedFuncEnv {
-                    name: view.name.clone(),
-                    local: v1_rt::rc_map_merge(existing.local.clone(), view.local.clone()),
-                    parents: Rc::new(vec![]),
+            ) {
+                Some(existing) => Rc::new(FuncEnvViewMerge {
+                    by_owner: v1_rt::rc_map_insert(
+                        acc.by_owner.clone(),
+                        view.name.clone(),
+                        Rc::new(ResolvedFuncEnv {
+                            name: view.name.clone(),
+                            local: v1_rt::rc_map_merge(existing.local.clone(), view.local.clone()),
+                            parents: Rc::new(vec![]),
+                        }),
+                    ),
+                    owner_order: acc.owner_order.clone(),
                 }),
-            );
-        } else {
-            owner_order.push(view.name.clone());
-            by_owner.insert(view.name.clone(), view);
-        }
+                None => Rc::new(FuncEnvViewMerge {
+                    by_owner: v1_rt::rc_map_insert(
+                        acc.by_owner.clone(),
+                        view.name.clone(),
+                        view.clone(),
+                    ),
+                    owner_order: v1_rt::rc_list_push(acc.owner_order.clone(), view.name.clone()),
+                }),
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for owner in merged.owner_order.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&merged.by_owner.clone(), owner.clone()) {
+                        Some(env) => Rc::new(vec![env.clone()]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
     }
-    owner_order
-        .into_iter()
-        .filter_map(|owner| by_owner.get(&owner).cloned())
-        .collect::<Vec<_>>()
-        .into()
 }
 
 pub fn build_module_context(
@@ -20392,7 +20423,7 @@ pub fn build_module_context(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => func_env_views_for_import(
                             typed_parent.func_env.clone(),
-                            imp.is_all,
+                            imp.is_all.clone(),
                             imp.specific_names.clone(),
                         ),
                         None => Rc::new(vec![]),

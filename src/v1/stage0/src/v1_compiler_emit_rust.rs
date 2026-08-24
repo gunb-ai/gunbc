@@ -12192,7 +12192,7 @@ pub fn emit_typed_item(
                         } else {
                             match rust_scalar_checkpoint_grounding_base(
                                 item_text.clone(),
-                                crate::v1_compiler_coercion::decl_identity_file(item.clone()),
+                                decl_identity_file(item.clone()),
                             ) {
                                 Some(host) => v1_rt::concat(
                                     v1_rt::concat(

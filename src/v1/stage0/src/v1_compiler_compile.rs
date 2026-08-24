@@ -652,10 +652,7 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
             v1_rt::rc_map_insert(
                 acc,
                 crate::v1_compiler_dag_collect::dag_node_key(pair.1.clone()),
-                v1_rt::concat(
-                    "n".to_string(),
-                    crate::v1_compiler_emit_core_support::to_string(pair.0.clone()),
-                ),
+                v1_rt::concat("n".to_string(), (pair.0.clone()).to_string()),
             )
         },
     )
@@ -838,13 +835,10 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "{\"start\": ".to_string(),
-                    crate::v1_compiler_emit_core_support::to_string(span.start.clone()),
-                ),
+                v1_rt::concat("{\"start\": ".to_string(), (span.start.clone()).to_string()),
                 ", \"end\": ".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::to_string(span.end.clone()),
+            (span.end.clone()).to_string(),
         ),
         "}".to_string(),
     )
@@ -939,7 +933,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
         LiteralValue::LitInt { value: inner, .. } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"LitInt\", \"value\": ".to_string(),
-                crate::v1_compiler_emit_core_support::to_string(inner.clone()),
+                (inner.clone()).to_string(),
             ),
             "}".to_string(),
         ),
@@ -2176,7 +2170,7 @@ pub fn serialize_dag_nodes_table(
                 v1_rt::concat(
                     crate::v1_compiler_dag_collect_support::json_quote(v1_rt::concat(
                         "n".to_string(),
-                        crate::v1_compiler_emit_core_support::to_string(pair.0.clone()),
+                        (pair.0.clone()).to_string(),
                     )),
                     ": ".to_string(),
                 ),
@@ -2841,11 +2835,11 @@ pub fn interpreter_blocking_diagnostic_messages(
                                     ),
                                     ":".to_string(),
                                 ),
-                                crate::v1_compiler_emit_core_support::to_string(span.start.clone()),
+                                (span.start.clone()).to_string(),
                             ),
                             "-".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::to_string(span.end.clone()),
+                        (span.end.clone()).to_string(),
                     ),
                     ")".to_string(),
                 )
@@ -2866,9 +2860,7 @@ pub fn stage0_self_compile_refusal_message(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(subject.clone(), " produced ".to_string()),
-                        crate::v1_compiler_emit_core_support::to_string(
-                            (hard_messages.clone().len() as i64),
-                        ),
+                        (hard_messages.clone().len() as i64).to_string(),
                     ),
                     " hard diagnostic(s):\n".to_string(),
                 ),

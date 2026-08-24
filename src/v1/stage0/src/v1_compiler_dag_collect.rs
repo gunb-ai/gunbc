@@ -97,21 +97,14 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                            crate::v1_compiler_emit_core_support::to_string(
-                                anchor.span.clone().start.clone(),
-                            ),
+                            (anchor.span.clone().start.clone()).to_string(),
                         ),
                         "..".to_string(),
                     ),
-                    crate::v1_compiler_emit_core_support::to_string(
-                        anchor.span.clone().end.clone(),
-                    ),
+                    (anchor.span.clone().end.clone()).to_string(),
                 ),
                 match anchor.ident.clone() {
-                    Some(id) => v1_rt::concat(
-                        ":".to_string(),
-                        crate::v1_compiler_emit_core_support::to_string(id.clone()),
-                    ),
+                    Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
                     None => "".to_string(),
                 },
             )
