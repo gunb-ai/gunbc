@@ -113,6 +113,8 @@ WHAT FOLLOWS, and what does not. Event name is not the discriminator: an exact r
 
 (3) FixtureExplicitRoster is untouched by this wall. Those patterns name control fixtures consumed by other witnesses rather than witnesses claiming their own coverage, so the has-a-consumer question is answered elsewhere; if that class ever grows a witness of its own it inherits exactly this defect, and the arm is written so extending it is one predicate."
 
+data witness_deferral_freeze_route_gap_shrink_log_note: String = "SHRINK LOG ADDENDUM, 2026-08-24 — dag/test/claim/deploy_access_privilege_witness_test.dag [partial], 1 identity (witness_privileged_fixture_mutation_applies), and dag/test/claim/host_effect_apply_witness_test.dag [partial], 3 identities (witness_converged_is_settled, witness_oneshot_policy_terminal_not_converged, witness_shell_on_host_success_converges), DELETED not exempted: required-floor run 32763326953 measured all four in v2.workflow.floor_route_gap.floor_route_gap_roster while they remained LegacyFrozenPathDeferral rows here. Route-gap enrollment means the required floor consumed each identity and produced its typed refusal, so the claim that these identities have no executing consumer was stale and the floor's RouteGapFreezeIntersection wall correctly refused the contradiction. The route-gap rows remain; only the stale freeze classification retires, removing no coverage."
+
 type FrozenPathDeferral {
   entry: NonEmptyStr
   functions: List<String>
@@ -134,8 +136,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     functions: [
       "witness_modeled_unprivileged_fixture_is_denied",
       "witness_unprivileged_mutation_refused_before_shell",
-      "witness_unprivileged_mutation_directive_is_refused_terminal",
-      "witness_privileged_fixture_mutation_applies"
+      "witness_unprivileged_mutation_directive_is_refused_terminal"
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/direct_rust_door_write_compile_witness_test.dag", functions: ["direct_rust_door_emit_write_compile_holds"] },
@@ -149,11 +150,9 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "dag/test/claim/host_effect_apply_witness_test.dag",
     functions: [
-      "witness_shell_on_host_success_converges",
       "witness_redfish_on_bmc_unimplemented_fails_closed",
       "witness_redfish_on_hostos_typed_mismatch", "witness_shell_on_bmc_typed_mismatch",
-      "witness_oneshot_policy_terminal_not_converged", "witness_incompatible_is_refused_terminal",
-      "witness_converged_is_settled",
+      "witness_incompatible_is_refused_terminal",
       "witness_ssh_empty_script_fails_closed",
       "witness_identity_evidence_derives_oneshot_drive",
       "witness_converge_loop_evidence_derives_converge_drive",
