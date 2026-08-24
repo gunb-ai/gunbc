@@ -143,7 +143,23 @@ CSSL_ASSEMBLE="${CSSL_ASSEMBLE:-$ROOT/target/release/cssl_assemble}"
 # changed nothing" — a false identical, with no failure arm anywhere.
 # Rebuilding on a key miss is a cache doing its job, not a fallback: the answer computed is
 # the correct one for the checked-out tree. An unreadable or absent stamp is a miss.
-probe_binary_tree_key() { git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "no-git"; }
+# The key is the CONTENT of the declared input, not the commit it started from. `rev-parse HEAD`
+# alone is a proper prefix of that input and therefore collides by construction wherever the tree
+# carries uncommitted work: ctrl-build --remote checks out the pushed base sha and APPLIES the
+# caller's diff, so a before/after pair dispatched from one branch has ONE HEAD and two trees, and
+# a HEAD-keyed stamp hands the after-arm the before-arm's binary. Its signature is that both arms
+# AGREE — a confident null result, read as "my change was inert" — which is worse than a loud miss
+# and is the cache-impurity failure DESIGN names ("key on declared-input content"). The key is
+# therefore HEAD plus the full working-tree diff against it, so two trees can never share a stamp.
+# Untracked new sources are not in `diff HEAD` and are declared residue, not silence: they cannot
+# collide with a DIFFERENT untracked state under one HEAD unless one run deletes what another
+# added, and closing that costs a whole-worktree hash on every probe invocation.
+probe_binary_tree_key() {
+  local head diff
+  head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "no-git")"
+  diff="$(git -C "$ROOT" --no-pager diff HEAD 2>/dev/null | sha256sum | cut -d" " -f1)"
+  printf '%s %s\n' "$head" "$diff"
+}
 probe_binary_is_current() {
   local bin="$1"
   [[ -x "$bin" ]] || return 1
