@@ -117,6 +117,21 @@ fn is_declared_container_alias_spelling(name: String) -> Bool {
   }
 }
 
+// THE SORTED KEY IS POLICY, NOT AN IMPLEMENTATION DETAIL, AND IT BECOMES POLICY SILENTLY.
+// This is a total lookup returning A member of the set of spellings that map to `algebra`, and
+// the fold makes `sorted_map_keys` decide WHICH. That is invisible while each algebra has exactly
+// one spelling pair, and it turns into a corpus-wide rename the moment a second one is authored:
+// add a `"FinitelySupportedFunction"` key to `container_template_alias_rows` and it sorts ahead of
+// `"Map"`, so every `Map` in the corpus acquires a new canonical spelling. No diff names it, no
+// refusal fires, and the edit that caused it is one row in a different file.
+//
+// Measured, not hypothesised: this is why the `PartialFunction` repair added only its own key and
+// deliberately left `FinitelySupportedFunction` out, even though the carrier exists and the row
+// would have looked symmetric.
+//
+// The shape generalises past this function — a total lookup over a set whose ordering is
+// incidental until the set has two elements. The fix is not to sort differently; it is for the
+// alias rows to carry which spelling is canonical, so the answer is authored rather than emergent.
 fn container_alias_canonical_spelling(algebra: String) -> String? {
   fold(sorted_map_keys(container_template_alias_rows), init: none, f: (acc, k) =>
     match acc {

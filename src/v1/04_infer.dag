@@ -3100,6 +3100,35 @@ fn unresolved_method_frontier_trigger(module_name: String, method: String, recei
   }
 }
 
+// A RECEIVER IS DECIDED BY TWO MAPS AND NOTHING JOINS THEM. Recorded here because this note is
+// where the receiver-resolution residue already lives, and because the defect was found twice on
+// one day from opposite directions (this lane, via a carrier split; `quiet-pike-368`, via the
+// class it inverts) and each finder concluded it was out of scope for their own change — which is
+// precisely how a known defect becomes nobody's.
+//
+// `std.algebra` `kernel_algebra_profile_value` answers WHAT METHODS DOES THIS HAVE.
+// `std.types` `container_template_alias_rows` answers IS THIS A CONTAINER AT ALL — read by
+// `04_types.dag` `is_declared_container_alias_spelling`, and short-circuited by `04_lookup.dag`
+// `resolve_method_receiver_type` to return the receiver as authored with its type arguments intact.
+//
+// A name present in one and absent from the other is admitted by the map that has it and dropped
+// by the map that does not, and the failure surfaces at a stage that names NEITHER map. Measured
+// on `PartialFunction`: absent from the profile map it reported `establishes no method surface`;
+// absent from the alias map it resolved to its record shape, collapsing `OptionalOf { inner:
+// ReceiverValue }` into a type with no `Present` variant, and reported
+// `variant 'Present' not found in type 'InferredFacts'`. Two unrelated-looking diagnostics, one
+// missing join. The second was predicted to be a knock-on of the first and was not.
+//
+// This is the fifth instance of this note's own class: the frontier admits calls whose receiver
+// could not be established, and every row it holds is an upstream RESOLUTION defect rather than a
+// method-existence fact. A receiver decided by two independently-authored maps is a resolution
+// defect of exactly that kind, and it is upstream of every row below.
+//
+// NEXT-RUNG TRIGGER, and the reason this is an annotation rather than a repair: the two maps are
+// one fact (§3) — an algebra's carrier spelling, with its method surface — forked into two
+// authorities that disagree by omission. Joining them is a replacement migration with its own
+// census, not a row added to whichever map is currently missing one, and it is owned as a declared
+// follow-up rather than folded into the change that surfaced it.
 data unresolved_method_frontier_note: String = "The declared frontier for method calls whose receiver establishes NO method surface even after where-refinement peeling (DESIGN §7: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY A ROSTER AT ALL: MethodExistenceUndecided BLOCKS. Leaving the undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the residue is CORRECT, WORKING code, seven sites of it the v2 tokenizer own LexMatchThunk { apply: fn(s) } idiom, so a blanket refusal would refuse the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. THE KEY IS (module, method, receiver_shape), AND THE THIRD COMPONENT IS THE CORRECTION. A (module, method) key was shipped first and was wrong on two counts, one found by review and one by execution, which is worth recording because they are the same defect seen from two sides. Review found it as a fail-open: any NEW apply call in v2.compiler.tokenize would inherit the pass even on a fully resolved receiver, so the note claim that no new fail-open can enter was false (codex review 45398). Execution found it as an UNDERCOUNT: the roster was measured over the v1 self-compile closure alone, and the first whole-corpus run reded seven sites in three modules the roster had never seen. Both dissolve into the same fix — the frontier admits a receiver whose surface could not be established, so the SHAPE of that receiver is the evidence, and keying on it means a new call refuses unless it reproduces the exact unestablished shape the row was measured on. The residue after that is 13 sites in four shapes: Primitive() with no authored name (a lambda parameter whose type never propagates, 10 sites), Primitive(T) (a bare type variable), Primitive(ok) (a coproduct payload typed as its variant name), and a Product that is really an Optional whose cardinality was dropped. Every one is an upstream receiver-resolution defect, not a method-existence fact, which is exactly why the wall cannot decide them and why each row names the resolution fix rather than a permanent exemption. Admitted rows still emit MethodExistenceFrontierAdmitted, counted and carrying its own trigger, so the frequency stays observable rather than zeroed by construction (§5). THE RESIDUAL WIDENING, STATED RATHER THAN CLAIMED AWAY: a second unresolved call to the same method, in the same module, on a receiver that fails to resolve in the same way, is still admitted. That is narrower than the module-wide pass it replaces and it is not zero. Closing it entirely needs an occurrence identity stable across edits — content-addressed, not line-anchored — which is the same containment/content-hash authority the namespace lane is landing; until then the honest bound is this key, and the peel above is the mechanism that actually SHRINKS the frontier rather than administering it."
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {

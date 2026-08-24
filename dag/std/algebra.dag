@@ -318,11 +318,29 @@ type AlgebraFieldTemplate {
 // preparation — a stricter instrument than the compile board, which reported 0 blocking on the
 // same tree.
 //
-// `PointwisePower` is deliberately NOT added here. Its 80 declaration positions predate this
-// lane, its templates are a different set from `FinitePowerSet`'s, and adding it changes the
-// wall from UNDECIDED to DECIDED for every one of them at once — which would turn any method
-// absent from `pointwise_power_collection_templates` into a hard `MethodNotFound`. That is a
-// measurement this change has not taken, so the row is named as residue rather than added blind.
+// `PointwisePower` IS added, and the reason it is added is a measurement rather than the argument
+// that previously stood here. The stated risk was real in mechanism: `unresolved_method_frontier`
+// admits an undecided call keyed on (module, method, RECEIVER SHAPE), so a call is admitted today
+// BECAUSE its receiver has no surface — give it one and the admitting row stops matching, and any
+// method absent from `pointwise_power_collection_templates` lands as a hard `MethodNotFound` across
+// all 80 declaration positions at once.
+//
+// That argument does not decide whether it happens, so it was measured. A scratch branch
+// (gunbc#9103) carried this change plus ONLY the `PointwisePower` row, regenerated so the row
+// actually reached the binary — without that round the probe returns the stale binary's answer,
+// which is exactly the string the pre-registration expected for `no risk`. Its required-CI run
+// against this branch's:
+//
+//   without the row  offered=12245 routed=10791 declined_long=546 declined_fixture=9
+//                    declined_live=899 planned=10791 executed=10791 passed=10520 failed=0
+//   with the row     offered=12245 routed=10791 declined_long=546 declined_fixture=9
+//                    declined_live=899 planned=10791 executed=10791 passed=10520 failed=0
+//
+// Identical on every disposition. `declined_live` matters on its own: that is the arm that could
+// manufacture an agreement by removing a row from execution rather than passing it, and it did not
+// move. Floor PREPARATION was clean on both, which is where a `MethodNotFound` surfaces — before
+// the fold, so the decline arms cannot mask it. The risk is unrealised in this corpus, and the row
+// closes the fork rather than being named as residue.
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
   map_insert(
     map_insert(
@@ -333,16 +351,18 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
               map_insert(
                 map_insert(
                   map_insert(
-                    map_insert(empty_map(), "Int", OrderedRingProfile),
-                    "Float", ApproximateFieldProfile),
-                  "Bool", BooleanAlgebraProfile),
-                "String", FreeMonoidScalarProfile),
-              "List", FreeMonoidCollectionProfile),
-            "Set", FinitePowerSetProfile),
-          "Map", FinitelySupportedFunctionProfile),
-        "FinitePowerSet", FinitePowerSetProfile),
-      "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
-    "PartialFunction", PartialFunctionProfile)
+                    map_insert(
+                      map_insert(empty_map(), "Int", OrderedRingProfile),
+                      "Float", ApproximateFieldProfile),
+                    "Bool", BooleanAlgebraProfile),
+                  "String", FreeMonoidScalarProfile),
+                "List", FreeMonoidCollectionProfile),
+              "Set", FinitePowerSetProfile),
+            "Map", FinitelySupportedFunctionProfile),
+          "FinitePowerSet", FinitePowerSetProfile),
+        "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
+      "PartialFunction", PartialFunctionProfile),
+    "PointwisePower", PointwisePowerCollectionProfile)
 }
 
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
