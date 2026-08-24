@@ -122,6 +122,7 @@
 // src/v1_compiler_trace.rs
 // src/v1_compiler_trait_bound_witness.rs
 // src/v1_compiler_trait_derive_emit.rs
+// src/v1_compiler_type_head_exposure.rs
 // src/v1_compiler_workspace_members.rs
 // src/v1_gunbc_namespace_reference_derived_closure_production_observations.rs
 // src/v1_gunbc_occurrence_binding_parser_walk.rs
