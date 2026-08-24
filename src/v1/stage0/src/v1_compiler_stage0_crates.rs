@@ -682,11 +682,7 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     match (*dep.source.clone()).clone() {
         CargoDepSource::RegistryDep {
             version, features, ..
-        } => crate::v1_compiler_emit_rust::emit_cargo_dep(
-            dep.name.clone(),
-            version.clone(),
-            features.clone(),
-        ),
+        } => emit_cargo_dep(dep.name.clone(), version.clone(), features.clone()),
         CargoDepSource::LocalPathDep { path: path, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(dep.name.clone(), " = { path = \"".to_string()),
@@ -757,9 +753,7 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        crate::extdeps_cargo_version::render_cargo_package_header_prefix(
-                            spec.package_name.clone(),
-                        ),
+                        render_cargo_package_header_prefix(spec.package_name.clone()),
                         "\nedition = \"2021\"".to_string(),
                     ),
                     render_stage0_crate_features_section(spec.features.clone()),
@@ -821,7 +815,7 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(head.clone(), "\n\n".to_string()),
-                    crate::v1_compiler_emit_rust::emit_non_empty_wrappers(),
+                    emit_non_empty_wrappers(),
                 ),
                 "\n".to_string(),
             )
@@ -1088,7 +1082,7 @@ pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome
 pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
+            unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

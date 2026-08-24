@@ -51,9 +51,8 @@ pub fn is_typed_service_call_receiver(
 ) -> bool {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
-            let f =
-                crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
+            let f = field_access_field_at(receiver.clone(), source_indices.clone());
+            let b = field_access_base(receiver.clone());
             match (*b.expr_data.clone()).clone() {
                 ExprData::ExprVar {
                     binding_kind: _, ..
@@ -77,15 +76,13 @@ pub fn extract_typed_service_name(
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
-            let f =
-                crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
+            let f = field_access_field_at(receiver.clone(), source_indices.clone());
+            let b = field_access_base(receiver.clone());
             match (*b.expr_data.clone()).clone() {
                 ExprData::ExprVar {
                     binding_kind: _, ..
                 } => {
-                    let ns =
-                        crate::v1_std_core::expr_var_name_at(b.clone(), source_indices.clone());
+                    let ns = expr_var_name_at(b.clone(), source_indices.clone());
                     Some(v1_rt::concat(
                         v1_rt::concat(ns.clone(), ".".to_string()),
                         f.clone(),
@@ -106,7 +103,7 @@ pub fn collect_typed_service_calls(
         let result = collect_typed_service_calls_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: panic!("call target identity was not established before Rust emission")(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -126,14 +123,11 @@ pub fn collect_typed_service_calls_into(
                 method_semantics: _,
                 ..
             } => {
-                let r = crate::v1_std_core::method_receiver(texpr.clone());
+                let r = method_receiver(texpr.clone());
                 if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
                     match extract_typed_service_name(r.clone(), source_indices.clone()) {
                         Some(service_name) => {
-                            if crate::v1_compiler_infer_types::emit_map_has(
-                                acc.seen.clone(),
-                                service_name.clone(),
-                            ) {
+                            if emit_map_has(acc.seen.clone(), service_name.clone()) {
                                 acc.clone()
                             } else {
                                 Rc::new(UniqueAccum {
@@ -175,9 +169,8 @@ pub fn collect_called_func_names_into(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                let f =
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
-                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), f.clone()) {
+                let f = expr_call_func_at(texpr.clone(), source_indices.clone());
+                if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
                 } else {
                     Rc::new(UniqueAccum {
@@ -206,7 +199,7 @@ pub fn collect_called_func_names(
         let result = collect_called_func_names_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: panic!("call target identity was not established before Rust emission")(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -229,10 +222,7 @@ pub struct ModuleCallees {
 
 pub fn item_callees_for(m: Rc<TypedModule>, item: Rc<Node>) -> Rc<ItemCallees> {
     {
-        let item_name = crate::v1_std_core::authored_name_at(
-            m.type_env.clone().source_indices.clone(),
-            item.clone(),
-        );
+        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
         let has_no_body = (item.body.clone() == None);
         if has_no_body.clone() {
             Rc::new(ItemCallees {
@@ -377,15 +367,13 @@ pub fn check_service_field_access_node(
         {
             let path = v1_rt::concat(
                 v1_rt::concat(
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), base_type.clone()),
+                    authored_name_at(source_indices.clone(), base_type.clone()),
                     ".".to_string(),
                 ),
                 field.clone(),
             );
             match v1_rt::map_get(&service_registry, path.clone()) {
-                Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
-                    path.clone(),
-                )),
+                Some(_) => Some(nominal_type_ref(path.clone())),
                 None => None,
             }
         }
@@ -405,7 +393,7 @@ pub fn check_service_method_call_node(
     {
         match v1_rt::map_get(
             &service_registry,
-            crate::v1_std_core::authored_name_at(source_indices.clone(), receiver_type.clone()),
+            authored_name_at(source_indices.clone(), receiver_type.clone()),
         ) {
             Some(ops) => {
                 let matching = Rc::new({
@@ -428,7 +416,7 @@ pub fn check_service_method_call_node(
                             Some(Rc::new(ServiceMethodResult {
                                 result_type: Rc::new(Node {
                                     name: "".to_string(),
-                                    span: crate::v1_std_core::no_span(),
+                                    span: no_span(),
                                     ident_span: None,
                                     children: Rc::new({
                                         let mut __result = Vec::new();
@@ -441,9 +429,7 @@ pub fn check_service_method_call_node(
                                                 connective: Connective::NoConnective,
                                                 params: Rc::new(vec![]),
                                                 inferred: Some(Rc::new(InferredNode::Resolved {
-                                                    node: crate::v1_std_core::param_node_type_expr(
-                                                        f.clone(),
-                                                    ),
+                                                    node: param_node_type_expr(f.clone()),
                                                 })),
                                                 return_cardinality: Cardinality::Required,
                                                 uses: Rc::new(vec![]),
@@ -494,8 +480,8 @@ pub fn service_op_entry(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OpEntry> {
     Rc::new(OpEntry {
-        name: crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone()),
-        outputs: crate::v1_compiler_infer_items::inferred_to_outputs(
+        name: authored_name_at(source_indices.clone(), child.clone()),
+        outputs: inferred_to_outputs(
             child.inferred.clone(),
             child.span.clone(),
             source_indices.clone(),

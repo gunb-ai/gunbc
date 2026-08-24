@@ -254,9 +254,7 @@ pub fn module_by_occurrence_build(
 ) -> Rc<OccurrenceModulePathIndexBuild> {
     rows.iter().cloned().fold(
         Rc::new(OccurrenceModulePathIndexBuild {
-            module_by_occurrence: panic!(
-                "call target identity was not established before Rust emission"
-            )(),
+            module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
             refusal: None,
         }),
         |build: Rc<OccurrenceModulePathIndexBuild>, row: Rc<OccurrenceModulePathRow>| {
@@ -310,10 +308,7 @@ pub fn declaration_exposure_eq(
             DeclarationExposure::LexicalExposure {
                 exposing_scope: right_scope,
                 ..
-            } => crate::std_occurrence_identity::occurrence_containment_paths_equal(
-                left_scope.clone(),
-                right_scope.clone(),
-            ),
+            } => occurrence_containment_paths_equal(left_scope.clone(), right_scope.clone()),
             _ => false,
         },
         DeclarationExposure::ModuleExposure {
@@ -492,9 +487,7 @@ pub fn exposure_by_occurrence_build(
 ) -> Rc<DeclarationExposureIndexBuild> {
     rows.iter().cloned().fold(
         Rc::new(DeclarationExposureIndexBuild {
-            exposure_by_occurrence: panic!(
-                "call target identity was not established before Rust emission"
-            )(),
+            exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
             refusal: None,
         }),
         |build: Rc<DeclarationExposureIndexBuild>, row: Rc<DeclarationExposureRow>| {
@@ -545,10 +538,7 @@ pub fn authored_order_fold_step(
             row.occurrence.clone().value.clone(),
         ) {
             Some(existing) => {
-                if crate::std_occurrence_identity::authored_token_ordinal_eq(
-                    existing.clone(),
-                    row.ordinal.clone(),
-                ) {
+                if authored_token_ordinal_eq(existing.clone(), row.ordinal.clone()) {
                     build
                 } else {
                     Rc::new(AuthoredOrderIndexBuild {
@@ -580,9 +570,7 @@ pub fn authored_order_by_occurrence_build(
 ) -> Rc<AuthoredOrderIndexBuild> {
     rows.iter().cloned().fold(
         Rc::new(AuthoredOrderIndexBuild {
-            order_by_occurrence: panic!(
-                "call target identity was not established before Rust emission"
-            )(),
+            order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
             refusal: None,
         }),
         |build: Rc<AuthoredOrderIndexBuild>, row: Rc<AuthoredOrderRow>| {
@@ -773,10 +761,7 @@ pub fn declaration_lexically_exposed(
     exposing_scope: Rc<OccurrenceContainmentPath>,
     reference: Rc<ReferenceOccurrence>,
 ) -> bool {
-    crate::std_occurrence_identity::occurrence_containment_path_is_prefix_of(
-        exposing_scope.clone(),
-        reference.containment.clone(),
-    )
+    occurrence_containment_path_is_prefix_of(exposing_scope.clone(), reference.containment.clone())
 }
 
 pub fn declaration_module_sibling_exposed(
@@ -792,7 +777,7 @@ pub fn declaration_module_sibling_exposed(
             match ordinal_of_occurrence(order_by_occurrence.clone(), reference.occurrence.clone()) {
                 None => false,
                 Some(reference_ordinal) => {
-                    (crate::std_occurrence_identity::authored_token_ordinal_before(
+                    (authored_token_ordinal_before(
                         declaration_ordinal.clone(),
                         reference_ordinal.clone(),
                     ) && match module_of_occurrence(
@@ -917,7 +902,7 @@ pub fn declarations_by_name_build(
     {
         let fold_result = declarations.iter().cloned().fold(
             Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
-                by_name: panic!("call target identity was not established before Rust emission")(),
+                by_name: v1_rt::rc_empty_map::<_, _>(),
             }),
             |acc: Rc<DeclarationsByNameFold>, declaration: Rc<DeclarationOccurrence>| match (*acc
                 .clone())
@@ -990,9 +975,7 @@ pub fn occurrence_candidate_index_build(
     transport: Rc<OccurrenceTransport>,
     inputs: Rc<OccurrenceBindingCandidateInputs>,
 ) -> Rc<OccurrenceCandidateIndexBuild> {
-    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport.clone()))
-        .clone()
-    {
+    match (*occurrence_transport_validate(transport.clone())).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Rc::new(
@@ -1215,9 +1198,7 @@ pub fn direct_module_dependencies_from_providers(
             .cloned()
             .fold(
                 Rc::new(DirectModuleDependencyDedupBuild {
-                    providers_by_consumer: panic!(
-                        "call target identity was not established before Rust emission"
-                    )(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectModuleDependencyDedupBuild>,
@@ -1513,7 +1494,7 @@ pub fn module_path_file_row_dissolution_note() -> String {
 pub fn module_path_file_row_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.".to_string())
+            unbound_dissolution("Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -1620,7 +1601,7 @@ pub fn module_path_file_index_from_rows(
     {
         let build = rows.iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
-                entries: panic!("call target identity was not established before Rust emission")(),
+                entries: v1_rt::rc_empty_map::<String, String>(),
                 refusal: None,
             }),
             |acc: Rc<ModulePathFileIndexBuild>, row: Rc<ModulePathFileRow>| {
@@ -1928,9 +1909,8 @@ pub fn provider_files_for_consumer_file(
                 .cloned()
                 .fold(
                     Rc::new(DirectFileDependencyDedupBuild {
-                        providers_by_consumer: panic!(
-                            "call target identity was not established before Rust emission"
-                        )(),
+                        providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(
+                        ),
                         edges_first_seen: Rc::new(vec![]),
                     }),
                     |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -1964,9 +1944,7 @@ pub fn direct_file_dependencies_from_provenances(
             .cloned()
             .fold(
                 Rc::new(DirectFileDependencyDedupBuild {
-                    providers_by_consumer: panic!(
-                        "call target identity was not established before Rust emission"
-                    )(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -2111,7 +2089,7 @@ pub fn reference_derived_dependency_binding_references(
     {
         let build = references.iter().cloned().fold(Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
     references_reversed: Rc::new(vec![]),
-}), |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>, reference: Rc<ReferenceOccurrence>| match (*crate::std_occurrence_identity::occurrence_category_clause_e_dependency_inducing_verdict(reference.category.clone())).clone() {
+}), |acc: Rc<ReferenceDerivedDependencyBindingReferenceBuild>, reference: Rc<ReferenceOccurrence>| match (*occurrence_category_clause_e_dependency_inducing_verdict(reference.category.clone())).clone() {
     OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => Rc::new(ReferenceDerivedDependencyBindingReferenceBuild {
     references_reversed: v1_rt::concat(Rc::new(vec![reference.clone()]), acc.references_reversed.clone()),
 }),
@@ -2227,7 +2205,7 @@ pub fn occurrence_id_remap_state_with_fresh_map(
 ) -> Rc<OccurrenceIdRemapState> {
     Rc::new(OccurrenceIdRemapState {
         allocator: allocator.clone(),
-        remap: panic!("call target identity was not established before Rust emission")(),
+        remap: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     })
 }
 
@@ -2247,8 +2225,7 @@ pub fn remap_occurrence_id(
             state: state.clone(),
         }),
         None => {
-            let allocated =
-                crate::std_occurrence_identity::alloc_occurrence_id(state.allocator.clone());
+            let allocated = alloc_occurrence_id(state.allocator.clone());
             Rc::new(OccurrenceIdRemapResult {
                 id: allocated.id.clone(),
                 state: Rc::new(OccurrenceIdRemapState {
@@ -2693,9 +2670,8 @@ pub fn assemble_cross_file_binding_closure(
     providers: Rc<Vec<Rc<CrossFileBindingClosureRow>>>,
 ) -> Rc<AssembledCrossFileBindingClosure> {
     {
-        let consumer_state = occurrence_id_remap_state_with_fresh_map(
-            crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-        );
+        let consumer_state =
+            occurrence_id_remap_state_with_fresh_map(occurrence_id_allocator_initial());
         let consumer_transport_rekey =
             rekey_occurrence_transport(consumer.transport.clone(), consumer_state.clone());
         let consumer_inputs_rekey = rekey_occurrence_binding_inputs(
@@ -3122,7 +3098,7 @@ pub fn resolve_reference_via_structural_candidates(
 ) -> Rc<ReferenceBindingProjection> {
     {
         let candidates = candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
-        match (*crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding(
+        match (*resolve_reference_occurrence_binding(
             transport.clone(),
             reference.occurrence.clone(),
             candidates.clone(),
@@ -3580,10 +3556,8 @@ pub fn section13_observation_joins_receipt(
         |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
             Some(_) => found.clone(),
             None => {
-                if (crate::std_decl_ref::declaration_ref_eq(
-                    observation.declaration.clone(),
-                    receipt.clone(),
-                ) && (observation.head.clone() == required_head.clone()))
+                if (declaration_ref_eq(observation.declaration.clone(), receipt.clone())
+                    && (observation.head.clone() == required_head.clone()))
                 {
                     Some(observation.passed.clone())
                 } else {
@@ -3666,7 +3640,7 @@ pub fn section13_population_law_roster_denominator_holds(
 pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i".to_string())
+            unbound_dissolution("feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

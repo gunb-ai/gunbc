@@ -92,11 +92,11 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.iter().cloned().fold(
             Rc::new(UniqueAccum {
-                seen: panic!("call target identity was not established before Rust emission")(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             |acc: Rc<UniqueAccum>, item: String| {
-                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), item.clone()) {
+                if emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
                     Rc::new(UniqueAccum {
@@ -113,7 +113,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 pub fn to_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
-            v1_rt::concat("-".to_string(), to_string((0 - value.clone())))
+            v1_rt::concat("-".to_string(), (0 - value.clone()).to_string())
         } else {
             if (value.clone() == 0) {
                 "0".to_string()
@@ -359,7 +359,7 @@ pub fn to_pascal(name: String) -> String {
 
 pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
     {
-        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
+        let conventions = test_conventions_for_target(target.clone());
         let formatted = match conventions.name_style.clone() {
             TestNameStyle::SnakeCaseTestNames => v1_rt::concat(
                 v1_rt::concat(
@@ -516,7 +516,7 @@ pub fn apply_named_template_nested(
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
-    crate::v1_compiler_languages::language_spec_for_target(target.clone())
+    language_spec_for_target(target.clone())
 }
 
 pub fn escape_string_literal_control_chars_note() -> String {
@@ -616,12 +616,10 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                         if {
                                             let mut __found = false;
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(
-                                                    crate::v1_std_core::field_init_node_name_at(
-                                                        p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
-                                                    ),
-                                                ) {
+                                                if has_mock_prefix(field_init_node_name_at(
+                                                    p.clone(),
+                                                    tm.type_env.clone().source_indices.clone(),
+                                                )) {
                                                     __found = true;
                                                     break;
                                                 }
@@ -637,31 +635,27 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .cloned()
                                 {
                                     __result.push(Rc::new(TestProjection {
-                                        module_name: crate::v1_std_core::authored_name_at(
+                                        module_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
                                         ),
-                                        service_name: crate::v1_std_core::authored_name_at(
+                                        service_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             item.clone(),
                                         ),
-                                        operation_name: crate::v1_std_core::authored_name_at(
+                                        operation_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             c.clone(),
                                         ),
-                                        inferred: crate::v1_compiler_infer_types::resolved_type(
-                                            c.clone(),
-                                        ),
+                                        inferred: resolved_type(c.clone()),
                                         params: c.params.clone(),
                                         mock_field_inits: Rc::new({
                                             let mut __result = Vec::new();
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(
-                                                    crate::v1_std_core::field_init_node_name_at(
-                                                        p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
-                                                    ),
-                                                ) {
+                                                if has_mock_prefix(field_init_node_name_at(
+                                                    p.clone(),
+                                                    tm.type_env.clone().source_indices.clone(),
+                                                )) {
                                                     __result.push(p);
                                                 }
                                             }
@@ -691,7 +685,7 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
+    (authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {
@@ -714,10 +708,7 @@ pub fn is_type_alias_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
-        && is_type_alias_return_node(
-            crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
-        ))
+        && is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone()))
 }
 
 pub fn is_type_decl_item(
@@ -725,10 +716,7 @@ pub fn is_type_decl_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
-        && !is_type_alias_return_node(
-            crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
-        ))
+        && !is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone()))
         || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
             && (item.transport.clone() == None))
             && ((item.children.clone().len() as i64) == 0)))

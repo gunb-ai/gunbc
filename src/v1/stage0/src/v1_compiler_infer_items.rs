@@ -76,7 +76,7 @@ pub struct ModuleInterface {
 pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string())
+            unbound_dissolution("🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -131,12 +131,9 @@ pub fn inferred_to_outputs(
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
-                                            let child_type =
-                                                crate::v1_compiler_infer_types::child_type_node(
-                                                    child.clone(),
-                                                );
-                                            crate::v1_std_core::make_field_node(
-                                                crate::v1_std_core::authored_name_at(
+                                            let child_type = child_type_node(child.clone());
+                                            make_field_node(
+                                                authored_name_at(
                                                     source_indices.clone(),
                                                     child.clone(),
                                                 ),
@@ -145,32 +142,32 @@ pub fn inferred_to_outputs(
                                                 None,
                                                 None,
                                                 span.clone(),
-                                                crate::v1_std_core::node_name_span(child.clone()),
+                                                node_name_span(child.clone()),
                                             )
                                         });
                                     }
                                     __result
                                 })
                             } else {
-                                Rc::new(vec![crate::v1_std_core::make_field_node(
+                                Rc::new(vec![make_field_node(
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
                                     None,
                                     None,
                                     span.clone(),
-                                    crate::v1_std_core::no_span(),
+                                    no_span(),
                                 )])
                             }
                         } else {
-                            Rc::new(vec![crate::v1_std_core::make_field_node(
+                            Rc::new(vec![make_field_node(
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
                                 None,
                                 None,
                                 span.clone(),
-                                crate::v1_std_core::no_span(),
+                                no_span(),
                             )])
                         }
                     }
@@ -180,14 +177,14 @@ pub fn inferred_to_outputs(
                     {
                         Rc::new(vec![])
                     } else {
-                        Rc::new(vec![crate::v1_std_core::make_field_node(
+                        Rc::new(vec![make_field_node(
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
                             None,
                             None,
                             span.clone(),
-                            crate::v1_std_core::no_span(),
+                            no_span(),
                         )])
                     }
                 }

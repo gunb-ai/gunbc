@@ -231,7 +231,7 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
             initial.clone(),
             (source_len(src.clone()) + 1),
         );
-        let eof_span = crate::v1_std_core::make_file_span(
+        let eof_span = make_file_span(
             src.file.clone(),
             final_state.pos.clone(),
             final_state.pos.clone(),
@@ -294,7 +294,7 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
         if (line_start.clone() <= 0) {
             false
         } else {
-            crate::std_source_annotation::advance_line_prefix_indent_only_text(
+            advance_line_prefix_indent_only_text(
                 true,
                 source_substring(
                     source.clone(),
@@ -361,7 +361,7 @@ pub fn preceded_by_annotation_line(source: Rc<SourceRef>, pos: i64) -> bool {
 }
 
 pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
-    crate::std_source_annotation::advance_line_prefix_indent_only_text(
+    advance_line_prefix_indent_only_text(
         true,
         source_substring(
             source.clone(),
@@ -380,11 +380,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                     pos: (pos.pos.clone() + 1),
                     token: make_token(
                         "\n".to_string(),
-                        crate::v1_std_core::make_file_span(
-                            source.file.clone(),
-                            pos.pos.clone(),
-                            (pos.pos.clone() + 1),
-                        ),
+                        make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
                         TokenShape::ShNewline,
                     ),
                     interp_depth: pos.interp_depth.clone(),
@@ -403,14 +399,11 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                     pos: eol.clone(),
                     capture: Rc::new(UnboundAnnotationCapture {
                         lexeme: source_substring(source.clone(), pos.pos.clone(), eol.clone()),
-                        origin: crate::v1_std_core::make_file_span(
-                            source.file.clone(),
+                        origin: make_file_span(source.file.clone(), pos.pos.clone(), eol.clone()),
+                        placement: placement_from_line_prefix(line_prefix_is_indent_only(
+                            source.clone(),
                             pos.pos.clone(),
-                            eol.clone(),
-                        ),
-                        placement: crate::std_source_annotation::placement_from_line_prefix(
-                            line_prefix_is_indent_only(source.clone(), pos.pos.clone()),
-                        ),
+                        )),
                         preceded_by_blank_line: preceded_by_blank_line(
                             source.clone(),
                             pos.pos.clone(),
@@ -448,7 +441,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
                             pos: (pos.pos.clone() + 1),
                             token: make_token(
                                 "}".to_string(),
-                                crate::v1_std_core::make_file_span(
+                                make_file_span(
                                     source.file.clone(),
                                     pos.pos.clone(),
                                     (pos.pos.clone() + 1),
@@ -708,11 +701,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                 };
                 let tok = make_token(
                     "{".to_string(),
-                    crate::v1_std_core::make_file_span(
-                        source.file.clone(),
-                        pos.pos.clone(),
-                        (pos.pos.clone() + 1),
-                    ),
+                    make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
                     TokenShape::ShLBrace,
                 );
                 return Rc::new(ScanResult {
@@ -726,11 +715,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             {
                 let tok = make_token(
                     "}".to_string(),
-                    crate::v1_std_core::make_file_span(
-                        source.file.clone(),
-                        pos.pos.clone(),
-                        (pos.pos.clone() + 1),
-                    ),
+                    make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)),
                     TokenShape::ShRBrace,
                 );
                 return Rc::new(ScanResult {
@@ -770,7 +755,7 @@ pub fn emit(
     {
         let token = make_token(
             text.clone(),
-            crate::v1_std_core::make_file_span(
+            make_file_span(
                 file.clone(),
                 pos.pos.clone(),
                 (pos.pos.clone() + len.clone()),
@@ -800,7 +785,7 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
         };
         let token = make_token(
             text.clone(),
-            crate::v1_std_core::make_file_span(source.file.clone(), pos.pos.clone(), end.clone()),
+            make_file_span(source.file.clone(), pos.pos.clone(), end.clone()),
             shape.clone(),
         );
         Rc::new(ScanResult {
@@ -823,11 +808,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                 let text = source_substring(source.clone(), pos.pos.clone(), frac_end.clone());
                 let token = make_token(
                     text.clone(),
-                    crate::v1_std_core::make_file_span(
-                        source.file.clone(),
-                        pos.pos.clone(),
-                        frac_end.clone(),
-                    ),
+                    make_file_span(source.file.clone(), pos.pos.clone(), frac_end.clone()),
                     TokenShape::ShLitFloat,
                 );
                 return Rc::new(ScanResult {
@@ -845,11 +826,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
         };
         let token = make_token(
             text.clone(),
-            crate::v1_std_core::make_file_span(
-                source.file.clone(),
-                pos.pos.clone(),
-                int_end.clone(),
-            ),
+            make_file_span(source.file.clone(), pos.pos.clone(), int_end.clone()),
             shape.clone(),
         );
         Rc::new(ScanResult {
@@ -927,7 +904,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
+                    make_file_span(
                         source.file.clone(),
                         span_start.clone(),
                         (end_pos.clone() + 1),
@@ -945,7 +922,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
+                    make_file_span(
                         source.file.clone(),
                         span_start.clone(),
                         (end_pos.clone() + 1),
@@ -963,11 +940,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
-                        source.file.clone(),
-                        span_start.clone(),
-                        end_pos.clone(),
-                    ),
+                    make_file_span(source.file.clone(), span_start.clone(), end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
                 Rc::new(ScanResult {
@@ -989,7 +962,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
+                    make_file_span(
                         source.file.clone(),
                         span_start.clone(),
                         (end_pos.clone() + 1),
@@ -1007,7 +980,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
+                    make_file_span(
                         source.file.clone(),
                         span_start.clone(),
                         (end_pos.clone() + 1),
@@ -1025,11 +998,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             } => {
                 let token = make_processed_string_token(
                     content.clone(),
-                    crate::v1_std_core::make_file_span(
-                        source.file.clone(),
-                        span_start.clone(),
-                        end_pos.clone(),
-                    ),
+                    make_file_span(source.file.clone(), span_start.clone(), end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
                 Rc::new(ScanResult {
@@ -1247,9 +1216,7 @@ pub fn unicode_escape_at(
         } else {
             let ch = code_point_at(source.clone(), pos.clone());
             if (ch.clone() == 125) {
-                if ((digit_count.clone() > 0)
-                    && crate::std_unicode_types::unicode_scalar(value.clone()))
-                {
+                if ((digit_count.clone() > 0) && unicode_scalar(value.clone())) {
                     break Some(UnicodeEscape {
                         code_point: value.clone(),
                         next_pos: (pos.clone() + 1),
@@ -1524,7 +1491,7 @@ pub fn sentinel_suffix_matches(
 
 pub fn is_reserved_emit_sentinel(text: String) -> bool {
     {
-        let rule = crate::v1_compiler_languages::canonical_emoji_char_escape();
+        let rule = canonical_emoji_char_escape();
         let pfx = rule.prefix.clone();
         let sfx = rule.suffix.clone();
         let pfx_len = v1_rt::string_length(&pfx);
