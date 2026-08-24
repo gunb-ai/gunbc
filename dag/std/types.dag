@@ -77,13 +77,35 @@ data container_template_algebra_rows: Map<String, String> = {
   "pointwise_power": "PointwisePower"
 }
 
+// PARTIALFUNCTION IS HERE BECAUSE THIS MAP DECIDES WHAT RESOLVES AS A CONTAINER, not merely what
+// is an alias for something else. `is_declared_container_alias_spelling` reads it, and
+// `resolve_method_receiver_type` short-circuits on that predicate to return the receiver AS
+// AUTHORED, type arguments intact. A spelling absent from here takes the other branch, resolves to
+// the carrier's own record shape, and arrives at method lookup as a bare leaf -- so
+// `lookup`'s declared `OptionalOf { inner: ReceiverValue }` has no `ReceiverValue` to substitute
+// and the optional collapses. Measured: `tree.facts.lookup(node)` on a `PartialFunction` receiver
+// produced four `variant 'Present' not found in type 'InferredFacts'` refusals, the Optional's
+// cardinality dropped and the inner product arriving in its place -- which is one of the four
+// receiver-resolution shapes `unresolved_method_frontier` already names as residue.
+//
+// A self-mapping row is not a nickname. The value is the ALGEBRA and the key is a SPELLING that
+// resolves to it; `FreeMonoid` and `PointwisePower` are equally absent and would fail the same way
+// if written directly, which is why `List` and `Set` exist as keys at all. The carriers this lane
+// makes directly writable therefore need their own keys.
+//
+// Only `PartialFunction` is added, and the reason is `container_alias_canonical_spelling`: it
+// returns the FIRST sorted key mapping to an algebra, so a `"FinitelySupportedFunction"` key would
+// sort ahead of `"Map"` and silently become the canonical spelling for that algebra everywhere it
+// is emitted. No existing key maps to `PartialFunction`, so this addition competes with nothing.
 data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "FinitePowerSet",
   "set": "FinitePowerSet",
   "Map": "FinitelySupportedFunction",
-  "map": "FinitelySupportedFunction"
+  "map": "FinitelySupportedFunction",
+  "PartialFunction": "PartialFunction",
+  "partial_function": "PartialFunction"
 }
 
 fn container_template_algebra(name: String) -> String? {
