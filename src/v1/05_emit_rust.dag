@@ -9788,11 +9788,18 @@ fn rust_callable_capture_preamble(lambda_node: Node, scope: InferScope) -> Strin
 // on a parameter the closure never captured, which can reject that function's callers -- an unsafe
 // direction, not a wasted clone. So this walk is filtered twice, and both filters only ever REMOVE:
 //
-//   1. binding_kind == FunctionValueBinding. The bound renders on `impl Fn` parameters and nowhere
-//      else, so a non-function-value occurrence can never be the subject of the decision. This also
-//      excludes MatchBoundBinding by construction rather than by a form list.
-//   2. minus every lambda parameter name in the subtree. A lambda parameter shadowing an enclosing
-//      function-typed parameter is the one shadow that survives filter 1.
+//   1. minus every lambda parameter name in the subtree -- a lambda parameter shadowing an enclosing
+//      function-typed parameter.
+//   2. minus every occurrence whose binding_kind is MatchBoundBinding -- a match binder shadowing one.
+//
+// AN EARLIER REVISION OF THIS FILTER INVERTED THE FIRST ONE, keeping only occurrences whose
+// binding_kind IS FunctionValueBinding on the reasoning that the bound renders on `impl Fn`
+// parameters and nowhere else. MEASURED, THAT ERASED THE REPAIR: the same chain that emitted
+// `key_eq: impl Fn(K, K) -> bool + Clone + 'static` before the filter emitted it WITHOUT the bound
+// after, `'static` back to zero occurrences in the module. A captured enclosing parameter does not
+// carry FunctionValueBinding at its occurrence, so the positive form selected nothing. The subject
+// restriction it was reaching for is already structural and needs no filter: emit_rust_param_type
+// renders the bound only where the parameter's authored type has parameters of its own.
 //
 // Over-subtraction is safe and under-subtraction is not: a name wrongly removed omits the bound,
 // which is exactly today's behaviour at this site, while a name wrongly kept adds one.
@@ -9810,29 +9817,30 @@ fn rust_lambda_param_names_deep(n: Node, source_indices: Map<String, NewlineInde
   unique_strings(items: concat(here, concat(from_children, from_body)))
 }
 
-fn rust_function_value_occurrence_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn rust_match_bound_occurrence_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let self_name = match n.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
-        Present { value: FunctionValueBinding } =>
+        Present { value: MatchBoundBinding } =>
           let nm = expr_var_name_at(texpr: n, source_indices: source_indices)
           if nm != "" { [nm] } else { [] }
         _ => []
       }
     _ => []
   }
-  let from_children = n.children |> flat_map(c => rust_function_value_occurrence_names(n: c, source_indices: source_indices))
+  let from_children = n.children |> flat_map(c => rust_match_bound_occurrence_names(n: c, source_indices: source_indices))
   let from_body = match n.body {
-    Present { value: b } => rust_function_value_occurrence_names(n: b, source_indices: source_indices)
+    Present { value: b } => rust_match_bound_occurrence_names(n: b, source_indices: source_indices)
     Absent => []
   }
   unique_strings(items: concat(self_name, concat(from_children, from_body)))
 }
 
 fn rust_lambda_free_function_value_names(lambda_node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let occurrences = rust_function_value_occurrence_names(n: lambda_node, source_indices: source_indices)
-  let bound = rust_lambda_param_names_deep(n: lambda_node, source_indices: source_indices)
-  occurrences |> filter(nm => (bound |> any(b => b == nm)) == false)
+  let occurrences = expr_var_occurrence_names(n: lambda_node, source_indices: source_indices)
+  let lambda_params = rust_lambda_param_names_deep(n: lambda_node, source_indices: source_indices)
+  let match_bound = rust_match_bound_occurrence_names(n: lambda_node, source_indices: source_indices)
+  occurrences |> filter(nm => (lambda_params |> any(b => b == nm)) == false && (match_bound |> any(b => b == nm)) == false)
 }
 
 // The `+ 'static` obligation is created by a CALLABLE-VALUE WRAP, and there are exactly two wrap
