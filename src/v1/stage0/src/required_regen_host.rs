@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
@@ -272,6 +272,11 @@ pub fn run_required_regen(
     let stage0_src = workspace.join("src/v1/stage0/src");
     let run_started = Instant::now();
 
+    // ADMISSION, AND IT IS THE FIRST THING THIS PHASE DOES. Every normalize below needs the
+    // formatter, so an absent one is decidable here -- before an emit, a digest or a comparison
+    // has been paid for. It used to be discovered at the first spawn, ~50 minutes in.
+    let formatter = ResolvedFormatter::admit()?;
+
     let commit_sha = git_head_sha(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
@@ -321,7 +326,7 @@ pub fn run_required_regen(
             .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
     }
     let fresh_src = candidate_dir.join("src");
-    write_emitted_tree(&fresh_src, &emitted)?;
+    write_emitted_tree(&formatter, &fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     // Verified against what EMIT produced, not against what is committed. Those two populations
     // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
@@ -330,29 +335,33 @@ pub fn run_required_regen(
     // own product landed whole.
     verify_candidate_tree(&fresh_src, &emitted_basenames)?;
 
-    let (committed_basenames, sync) =
-        match adjudicate_generated_surface(&stage0_src, &emitted, &emitted_basenames)? {
-            GeneratedSurfaceAdjudicated::Refused { reason } => {
-                return regen_refusal_outcome(
-                    &workspace,
-                    candidate_dir_rel,
-                    receipt_rel,
-                    commit_sha,
-                    authority_digest,
-                    format!(
-                        "{reason} — the produced candidate tree is at {}",
-                        fresh_src.display()
-                    ),
-                );
-            }
-            GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
-        };
+    let (committed_basenames, sync) = match adjudicate_generated_surface(
+        &formatter,
+        &stage0_src,
+        &emitted,
+        &emitted_basenames,
+    )? {
+        GeneratedSurfaceAdjudicated::Refused { reason } => {
+            return regen_refusal_outcome(
+                &workspace,
+                candidate_dir_rel,
+                receipt_rel,
+                commit_sha,
+                authority_digest,
+                format!(
+                    "{reason} — the produced candidate tree is at {}",
+                    fresh_src.display()
+                ),
+            );
+        }
+        GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
+    };
 
-    let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
+    let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
-        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
-    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
+        tree_digest_for_basenames(&formatter, &stage0_src, &committed_basenames, "committed")?;
+    let candidate_digest = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
@@ -497,6 +506,7 @@ pub fn run_required_regen_fixed_point(
     }
 
     let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
+    let formatter = ResolvedFormatter::admit()?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
     let emitted = compile_stage0(&workspace)?;
@@ -511,7 +521,7 @@ pub fn run_required_regen_fixed_point(
     {
         return Err(reason);
     }
-    let pass2 = tree_digest_from_map(&emitted, &committed_basenames)?;
+    let pass2 = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
     let fixed_point_equal = pass1 == pass2;
 
     // `commit_sha` is what THIS pass ran against; `prior` names the tree its referenced evidence
@@ -627,6 +637,7 @@ fn emit_generated_surface(workspace: &Path) -> Result<GeneratedSurfaceEmit, Stri
 }
 
 fn adjudicate_generated_surface(
+    formatter: &ResolvedFormatter,
     stage0_src: &Path,
     emitted: &HashMap<String, String>,
     emitted_basenames: &[String],
@@ -638,7 +649,7 @@ fn adjudicate_generated_surface(
     {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
-    let sync = compare_generated_surfaces(stage0_src, emitted, &committed)?;
+    let sync = compare_generated_surfaces(formatter, stage0_src, emitted, &committed)?;
     Ok(GeneratedSurfaceAdjudicated::Measured { committed, sync })
 }
 
@@ -649,6 +660,7 @@ fn adjudicate_generated_surface(
 /// drift gate and the behavioural receipt call it unchanged; only the regen path, which has to
 /// write the candidate BETWEEN them, reaches for the halves.
 fn measure_generated_surface(
+    formatter: &ResolvedFormatter,
     workspace: &Path,
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
@@ -661,7 +673,7 @@ fn measure_generated_surface(
             emitted_basenames,
         } => (emitted, emitted_basenames),
     };
-    match adjudicate_generated_surface(stage0_src, &emitted, &emitted_basenames)? {
+    match adjudicate_generated_surface(formatter, stage0_src, &emitted, &emitted_basenames)? {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
@@ -685,7 +697,13 @@ fn measure_generated_surface(
 pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
-    let emitted = match measure_generated_surface(&workspace, &stage0_src)? {
+    // A THIRD ADMISSION SITE, AND THE PARAMETER IS WHAT FOUND IT. This entry serves the
+    // behavioural receipt rather than the regen phase, and reading the code for "who spawns
+    // rustfmt" would not have named it -- it is three calls above the spawn. Threading the
+    // resolved formatter as an argument made the omission a compile error instead of a fourth
+    // way to discover an absent formatter fifty minutes in.
+    let formatter = ResolvedFormatter::admit()?;
+    let emitted = match measure_generated_surface(&formatter, &workspace, &stage0_src)? {
         GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
         GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
     };
@@ -1065,6 +1083,7 @@ fn is_hand_maintained_path(path: &str) -> bool {
 }
 
 fn compare_generated_surfaces(
+    formatter: &ResolvedFormatter,
     stage0_src: &Path,
     emitted: &HashMap<String, String>,
     generated_basenames: &[String],
@@ -1090,7 +1109,7 @@ fn compare_generated_surfaces(
             .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
         let candidate = lookup_emitted(emitted, basename)
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
-        let candidate_norm = normalize_generated_source(candidate)
+        let candidate_norm = normalize_generated_source(formatter, candidate)
             .map_err(|e| format!("normalize candidate {basename}: {e}"))?;
         if committed != candidate_norm {
             drifted.push(basename.clone());
@@ -1103,6 +1122,7 @@ fn compare_generated_surfaces(
 }
 
 fn verify_hand_maintained(
+    formatter: &ResolvedFormatter,
     emitted: &HashMap<String, String>,
     stage0_src: &Path,
     work_dir: &Path,
@@ -1129,29 +1149,31 @@ fn verify_hand_maintained(
         let committed_path = stage0_src.join(file_name);
         let committed = fs::read_to_string(&committed_path)
             .map_err(|e| format!("read committed hand file {}: {e}", committed_path.display()))?;
-        match normalize_with_workdir(&committed, work_dir, "committed") {
-            Ok(committed_norm) => match normalize_with_workdir(candidate, work_dir, "candidate") {
-                Ok(candidate_norm) => {
-                    // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE. The divergent branch was
-                    // an empty block under a comment saying drift is expected on a clean tree,
-                    // which is the absorbing fallback (DESIGN section 5) in its authoring form:
-                    // the comparison ran, found a real divergence between the authority and the
-                    // committed artifact, and produced no typed, located, countable output -- so
-                    // the deficit's frequency was zero by construction and it could never rank for
-                    // repair. Membership in HAND_MAINTAINED_STAGE0_FILES was doing the silencing
-                    // while claiming only to describe what the emitter does not produce.
-                    if committed_norm != candidate_norm {
-                        if is_declared_divergent(file_name) {
-                            declared_divergent.push((*file_name).to_string());
-                        } else {
-                            undeclared_divergent.push((*file_name).to_string());
+        match normalize_with_workdir(formatter, &committed, work_dir, "committed") {
+            Ok(committed_norm) => {
+                match normalize_with_workdir(formatter, candidate, work_dir, "candidate") {
+                    Ok(candidate_norm) => {
+                        // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE. The divergent branch was
+                        // an empty block under a comment saying drift is expected on a clean tree,
+                        // which is the absorbing fallback (DESIGN section 5) in its authoring form:
+                        // the comparison ran, found a real divergence between the authority and the
+                        // committed artifact, and produced no typed, located, countable output -- so
+                        // the deficit's frequency was zero by construction and it could never rank for
+                        // repair. Membership in HAND_MAINTAINED_STAGE0_FILES was doing the silencing
+                        // while claiming only to describe what the emitter does not produce.
+                        if committed_norm != candidate_norm {
+                            if is_declared_divergent(file_name) {
+                                declared_divergent.push((*file_name).to_string());
+                            } else {
+                                undeclared_divergent.push((*file_name).to_string());
+                            }
+                        } else if is_declared_divergent(file_name) {
+                            dissolved_declarations.push((*file_name).to_string());
                         }
-                    } else if is_declared_divergent(file_name) {
-                        dissolved_declarations.push((*file_name).to_string());
                     }
+                    Err(reason) => unverifiable.push(((*file_name).to_string(), reason)),
                 }
-                Err(reason) => unverifiable.push(((*file_name).to_string(), reason)),
-            },
+            }
             Err(reason) => unverifiable.push(((*file_name).to_string(), reason)),
         }
     }
@@ -1164,7 +1186,11 @@ fn verify_hand_maintained(
     })
 }
 
-fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Result<(), String> {
+fn write_emitted_tree(
+    formatter: &ResolvedFormatter,
+    dest_src: &Path,
+    emitted: &HashMap<String, String>,
+) -> Result<(), String> {
     if dest_src.exists() {
         fs::remove_dir_all(dest_src).map_err(|e| format!("remove {}: {e}", dest_src.display()))?;
     }
@@ -1176,7 +1202,7 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
         // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
         // rustfmt-normalizable and is written through verbatim.
         let normalized = if emit_path_basename(path).ends_with(".rs") {
-            normalize_generated_source(content)
+            normalize_generated_source(formatter, content)
                 .map_err(|e| format!("normalize emitted {path}: {e}"))?
         } else {
             content.clone()
@@ -1235,6 +1261,7 @@ fn authority_digest_from_sources(sources: &[(String, String)]) -> Result<String,
 }
 
 fn tree_digest_for_basenames(
+    formatter: &ResolvedFormatter,
     src_dir: &Path,
     basenames: &[String],
     label: &str,
@@ -1249,7 +1276,7 @@ fn tree_digest_for_basenames(
         let path = src_dir.join(name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("read {label} {}: {e}", path.display()))?;
-        let norm = normalize_generated_source(&content)
+        let norm = normalize_generated_source(formatter, &content)
             .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
@@ -1260,6 +1287,7 @@ fn tree_digest_for_basenames(
 }
 
 fn tree_digest_from_map(
+    formatter: &ResolvedFormatter,
     emitted: &HashMap<String, String>,
     basenames: &[String],
 ) -> Result<String, String> {
@@ -1270,7 +1298,7 @@ fn tree_digest_from_map(
     for name in basenames {
         let content = lookup_emitted(emitted, name)
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
-        let norm = normalize_generated_source(content)
+        let norm = normalize_generated_source(formatter, content)
             .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
@@ -1307,10 +1335,13 @@ const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 /// consumers agree on. Iterating here rather than teaching the comparator to tolerate a second
 /// pass is deliberate -- tolerance would have to be granted to the fmt gate too, and a tolerance
 /// shared by two gates is a hole in both.
-fn normalize_generated_source(content: &str) -> Result<String, String> {
-    let mut current = normalize_generated_source_attempt(content)?;
+fn normalize_generated_source(
+    formatter: &ResolvedFormatter,
+    content: &str,
+) -> Result<String, String> {
+    let mut current = normalize_generated_source_attempt(formatter, content)?;
     for _ in 1..NORMALIZE_FIXED_POINT_MAX_PASSES {
-        let next = normalize_generated_source_attempt(&current)?;
+        let next = normalize_generated_source_attempt(formatter, &current)?;
         if next == current {
             return Ok(current);
         }
@@ -1321,15 +1352,93 @@ fn normalize_generated_source(content: &str) -> Result<String, String> {
     ))
 }
 
-fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
-    let mut child = Command::new("rustfmt")
+/// THE FORMATTER, RESOLVED ONCE AT ADMISSION INSTEAD OF LOOKED UP AT EVERY SPAWN.
+///
+/// Both normalize paths used to spawn a BARE `rustfmt`, so the program was resolved from
+/// ambient PATH at the moment of use -- which in a required run is 45-50 minutes deep. A run on
+/// 2026-08-24 (run 32693719649, srv2-05) failed there with `spawn rustfmt: No such file or
+/// directory` after the job's own toolchain probe had printed `/home/ghrunner/.cargo/bin/rustfmt`
+/// 48 minutes earlier in the same shell environment. The cost of that shape is not the ENOENT, it
+/// is WHERE it lands: a question about PATH became a fifty-minute-deep failure in a phase that
+/// has nothing to do with PATH.
+///
+/// WHAT THIS FIXES AND WHAT IT DOES NOT, stated because the distinction is the whole honesty of
+/// the row. It fixes the class where the formatter is ABSENT AT ADMISSION: that now refuses
+/// immediately, naming the PATH searched, instead of running most of an hour first. It does NOT
+/// prevent a formatter that is present at admission and gone at spawn -- resolving a path is not
+/// holding a file open, and nothing here can make a concurrent process stop replacing a shim.
+/// What it does for that case is make the failure ATTRIBUTABLE: the spawn error names the exact
+/// program resolved at admission and states that it existed then, which turns an ambiguous ENOENT
+/// into direct evidence that the environment mutated under the run -- the question the workflow's
+/// toolchain probe is currently collecting baselines for, and which no run has yet answered.
+///
+/// NO FALLBACK ARM EXISTS AND NONE MAY BE ADDED. There is no retry, no tolerated absence, no
+/// "skip normalization and compare raw" path. The emitted artifact must be a fixed point of the
+/// formatter or the comparison is meaningless (see `normalize_generated_source`), so a run
+/// without a formatter has nothing to say and must stop. The line still stops; it stops at
+/// admission rather than at minute fifty.
+#[derive(Debug, Clone)]
+pub struct ResolvedFormatter {
+    program: PathBuf,
+    /// The PATH the program was found on, kept so a later failure can say what was searched
+    /// rather than making the reader reconstruct it from the environment they are not in.
+    searched: String,
+}
+
+impl ResolvedFormatter {
+    /// Resolve `rustfmt` against a supplied PATH string. Separate from the environment read so
+    /// the refusal is testable without mutating a process-global that every other test shares.
+    fn from_path_var(path_var: &str) -> Result<Self, String> {
+        let entries: Vec<&str> = path_var.split(':').filter(|e| !e.is_empty()).collect();
+        for dir in &entries {
+            let candidate = Path::new(dir).join("rustfmt");
+            if candidate.is_file() {
+                return Ok(ResolvedFormatter {
+                    program: candidate,
+                    searched: path_var.to_string(),
+                });
+            }
+        }
+        Err(format!(
+            "rustfmt is not on PATH: searched {} entr(ies) [{}]. The required regen phase              normalizes every emitted source through rustfmt to a fixed point, so it cannot run              without one -- install the component (`rustup component add rustfmt`) or repair              PATH. Refused at admission rather than at the first normalize, which is ~50 minutes              into the run.",
+            entries.len(),
+            entries.join(", ")
+        ))
+    }
+
+    fn admit() -> Result<Self, String> {
+        Self::from_path_var(&std::env::var("PATH").unwrap_or_default())
+    }
+
+    fn command(&self) -> Command {
+        Command::new(&self.program)
+    }
+
+    /// The spawn-failure message, which is the attributable half described on the type. It says
+    /// the program EXISTED at admission, because that is the fact a reader cannot recover later
+    /// and the one that discriminates "never installed" from "replaced under the run".
+    fn spawn_refusal(&self, cause: std::io::Error) -> String {
+        format!(
+            "spawn rustfmt: {cause} -- program {} was resolved at admission from PATH [{}] and              existed then, so it has been removed or replaced while this run was executing; this              is not a missing installation",
+            self.program.display(),
+            self.searched
+        )
+    }
+}
+
+fn normalize_generated_source_attempt(
+    formatter: &ResolvedFormatter,
+    content: &str,
+) -> Result<String, String> {
+    let mut child = formatter
+        .command()
         .arg("--edition")
         .arg("2021")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("spawn rustfmt: {e}"))?;
+        .map_err(|e| formatter.spawn_refusal(e))?;
     let mut stdin = child
         .stdin
         .take()
@@ -1350,15 +1459,21 @@ fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
     }
 }
 
-fn normalize_with_workdir(content: &str, work_dir: &Path, label: &str) -> Result<String, String> {
+fn normalize_with_workdir(
+    formatter: &ResolvedFormatter,
+    content: &str,
+    work_dir: &Path,
+    label: &str,
+) -> Result<String, String> {
     let path = work_dir.join(format!("{label}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
-    let output = Command::new("rustfmt")
+    let output = formatter
+        .command()
         .arg("--edition")
         .arg("2021")
         .arg(path.as_os_str())
         .output()
-        .map_err(|e| format!("rustfmt {label}: {e}"))?;
+        .map_err(|e| formatter.spawn_refusal(e))?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
@@ -1493,11 +1608,75 @@ mod tests {
         path
     }
 
+    /// THE REFUSAL NAMES WHAT WAS SEARCHED, AND THE PAIR IS THE ASSERTION.
+    ///
+    /// RED against the pre-change code: there was no admission at all, so the absent-formatter
+    /// case had no return value to assert on -- it surfaced as `spawn rustfmt: No such file or
+    /// directory` from whichever normalize happened to run first, ~50 minutes into a required
+    /// run. The empty-PATH arm is the discriminating input; the real-PATH arm is the control
+    /// without which a resolver that refused everything would also pass.
+    ///
+    /// `from_path_var` takes the PATH rather than reading the environment precisely so this test
+    /// does not mutate a process-global that every other test in this binary shares -- a
+    /// `set_var("PATH", "")` here would make unrelated tests fail depending on thread order,
+    /// which is the flake class that costs more to diagnose than the check is worth.
+    #[test]
+    fn an_absent_formatter_refuses_at_admission_and_names_the_path_searched() {
+        let refused = ResolvedFormatter::from_path_var("/nonexistent/aa:/nonexistent/bb")
+            .expect_err("no rustfmt exists under either entry");
+        assert!(
+            refused.contains("not on PATH"),
+            "the refusal must say what is missing: {refused}"
+        );
+        assert!(
+            refused.contains("/nonexistent/aa") && refused.contains("/nonexistent/bb"),
+            "and must name every entry it searched, or the reader cannot act on it: {refused}"
+        );
+        assert!(
+            refused.contains("admission"),
+            "and must say WHERE it refused, since the whole point is that this is not the \
+             spawn-time failure it replaces: {refused}"
+        );
+
+        let resolved = ResolvedFormatter::admit().expect(
+            "the real PATH has a rustfmt; this arm is the control against a resolver \
+                     that refuses everything",
+        );
+        assert!(
+            resolved.program.is_file(),
+            "a resolved formatter must name a real file, not a bare program name"
+        );
+    }
+
+    /// THE SPAWN REFUSAL DISTINGUISHES "NEVER INSTALLED" FROM "REPLACED UNDER THE RUN", which is
+    /// the fact the run that motivated this row could not report. It is asserted on the message
+    /// rather than by staging a mid-run deletion: nothing here can portably make a live process
+    /// lose a file it already resolved, and faking it by pointing at a path that never existed
+    /// would assert the message while proving nothing about the case it describes.
+    #[test]
+    fn the_spawn_refusal_says_the_program_existed_at_admission() {
+        let formatter = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
+        let message = formatter.spawn_refusal(std::io::Error::from_raw_os_error(2));
+        assert!(
+            message.contains("existed then"),
+            "the message must carry the admission-time fact: {message}"
+        );
+        assert!(
+            message.contains("is not a missing installation"),
+            "and must rule out the reading it is there to rule out: {message}"
+        );
+        assert!(
+            message.contains(&formatter.program.display().to_string()),
+            "and must name the exact program, not the bare name: {message}"
+        );
+    }
+
     #[test]
     fn empty_population_digest_refuses() {
-        let err = tree_digest_for_basenames(Path::new("/tmp"), &[], "committed").unwrap_err();
+        let fmt = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
+        let err = tree_digest_for_basenames(&fmt, Path::new("/tmp"), &[], "committed").unwrap_err();
         assert!(err.contains("empty population"));
-        let err = tree_digest_from_map(&HashMap::new(), &[]).unwrap_err();
+        let err = tree_digest_from_map(&fmt, &HashMap::new(), &[]).unwrap_err();
         assert!(err.contains("empty population"));
     }
 
