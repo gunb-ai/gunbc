@@ -1827,7 +1827,11 @@ an artifact of it.
 WRONG, not to one that is IRRELEVANT.** If the binary measuring both arms was itself built from a
 contaminated mirror, the delta is real *for that compiler* and says nothing about the one the
 repository ships. Such a result is stated as *"X changes behaviour in this compiler"*, never *"in
-gunbc"* — and the same one-dispatch fix upgrades it.
+gunbc"* — and re-running the pair under a merge-base-built seed upgrades it only as far as **that
+seed's revision** — "in the merge-base compiler" — never to "in gunbc" unconditionally. **A claim
+generalises exactly as far as the provenance of the binary that produced it, and no further.**
+Reaching "in the compiler this repository ships" requires the pair to be run under that compiler,
+which is a different and usually unavailable control.
 
 **Stating the rule without the scope would have been the next over-correction**, sending lanes to
 retract paired comparisons that were never contaminated. The unscoped version was written first, by
