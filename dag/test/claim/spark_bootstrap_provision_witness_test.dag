@@ -1,11 +1,11 @@
 module test.claim.spark_bootstrap_provision_witness
 
+import std.types { list_length }
 // Adding ANY explicit import scopes this witness's resolution, so the subject module -- previously
 // reached by bare reference through pool coincidence -- must now be named too. That is the correct
 // direction (a witness should carry its own edge to its subject), but the transition is abrupt:
 // one import turned every bare reference into "no such function".
 import std.measure { second }
-import std.algebra { length }
 import gunbc.spark.bootstrap_provision {
   SparkCredentialKind, FactoryHotspotCredential, AdministratorCredential,
   SparkCredentialOccurrence, spark_srv5, spark_srv6, spark_credential_occurrence,
@@ -562,7 +562,7 @@ test fn spark_reported_principal_cannot_actuate() -> Bool {
 test fn spark_effective_access_is_only_partially_observed() -> Bool {
   match spark_effective_access_standing() {
     EffectiveAccessPartiallyObserved { positively_observed: p, requested_but_not_returned: r, overbreadth_unobserved_cause: _ } =>
-      p.length() == 1 && r.length() > 0
+      list_length(items: p) == 1 && list_length(items: r) > 0
     EffectiveAccessExact { observed_cells: _ } => false
     EffectiveAccessOverbroad { extra_cells: _ } => false
     EffectiveAccessUnobserved { cause: _ } => false
