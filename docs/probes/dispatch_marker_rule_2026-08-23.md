@@ -18,6 +18,8 @@ asking.** Not one of them involves anything lying, erroring, or malfunctioning:
 | what is true of this *tree* | what did *I* do | 5 |
 | were these two *built as named* | were the two things I compared *actually different* | 6 |
 | (nothing — the artifact is well-formed) | *who is even able to check this?* | 1's precondition |
+| this narrower thing is *green* | is the thing I care about green | the third leg |
+| this check *failed* | did it fail, or was it *cancelled* | the third leg, in the tooling |
 
 That is why **none of them has a failure arm**, and it is the whole difficulty: there is nothing to
 catch, no error to check for, no status to inspect that would have been different. The absence of
@@ -145,6 +147,62 @@ mismatch and **nothing at all** when the file list was empty, so "the regen cand
 committed mirror" and "`find` matched no files" rendered identically. The regen verdict said
 `first_generation_equal=false` in the same output, which is the only reason the empty list was not
 read as agreement.
+
+## The third leg: assert what the instrument's GREEN actually entails
+
+Clause 1 says assert **that** you measured. Clause 2 says assert **what** you measured. This is the
+third leg, and it is the one that fires when both of those pass:
+
+> A green that answers a narrower question is indistinguishable from the green you wanted.
+
+Nothing here is a marker problem. The instrument ran, on the right tree, and returned an honest
+success. The reader simply took it as covering a question it never asked.
+
+**Three receipts, from three lanes, in one night:**
+
+1. A `.dag` compile board run three times, green three times, read as evidence a carrier
+   decomposition was complete. The board compiles **source**; it says nothing about whether the
+   emitted **seed** still matches. `claim_executor --required-regen` asked the other question and
+   answered `first_generation_equal=false` with ten drifted mirrors, immediately. Two instruments,
+   two questions, and only one was run.
+2. Whole-tree compile-clean read as evidence a module can be emitted **alone**. It cannot: the
+   definers are in the pool only because some other module imported them, so the tree-wide green
+   entails nothing about the single-module case.
+3. `gh pr checks` rendering `fail` for a run whose job conclusion is `cancelled` — see the next
+   section, where the same shape reaches the merge-readiness signal itself.
+
+The repair is not a better marker. It is to name, before reading a green, **the exact proposition it
+establishes**, and then check whether that is the proposition you need. If the two differ, the green
+is not weak evidence for your question; it is no evidence at all.
+
+## Where this reaches the tooling: CANCELLED renders as `fail`
+
+Worth stating on its own because it manufactures reds for anyone stacking branches, and a
+manufactured red gets chased.
+
+`witnesses.yml` keys concurrency on the **resolved PR number**
+(`witness-floor-${{ github.event.pull_request.number || github.run_id }}`, `cancel-in-progress` on
+`pull_request`). GitHub attributes a run to a **branch**. So when branch B is based on branch A and
+both have open PRs, a run created for A's PR can carry `head_branch: B` — and B's pushes cancel it.
+A's checks then read **fail** indefinitely while nothing is wrong with A's diff.
+
+The discriminators, because at a glance a cancelled run and a failed one are the same word:
+
+| tell | cancelled-by-concurrency | genuine failure |
+|---|---|---|
+| job `conclusion` | `cancelled` | `failure` |
+| `steps` | `[]` — never picked up a runner | populated |
+| `runner_id` | `0` | real |
+| lifetime | ~2 min from `started_at` | full duration |
+| job `head_branch` | the CHILD's branch, not the PR's | the PR's own |
+
+```bash
+gh api repos/<owner>/<repo>/actions/runs/<id>/jobs \
+  --jq '.jobs[]|"\(.name) \(.conclusion) steps=\(.steps|length) branch=\(.head_branch)"'
+```
+
+Recovery is to stop pushing the child, then rerun the parent's run. Reruns issued *while* the child
+is still pushing get cancelled again — two attempts were burned confirming that.
 
 ## Second clause: assert the SUBJECT, not only that you measured
 
