@@ -127,3 +127,55 @@ Two things follow for anyone reviewing at this bar:
   (forbidden)* or *relocate (impossible)* and never named the third. A weaker true claim is
   always on the menu; if the reviewer does not put it there, the author will reach for a stronger
   false one.
+
+---
+
+## The unifying class: three defaults, none of which can say "I do not know"
+
+Converged on 2026-08-24 from three instruments found independently, in one night, by three
+sessions. Recorded together because each was diagnosed as a local defect and the third arrival
+is what makes it a class.
+
+| instrument | the ignorance | rendered as | cost of forgetting |
+|---|---|---|---|
+| floor live-tree disposition | module declares nothing | `ReadsLiveTree` — a positive claim about behaviour | silently declined; evidence never runs |
+| floor primary scanner | `test data` declaration, or any non-column-zero form | not a witness at all | 13 files contribute no roster row; one identity historically verdict-bearing, now undiscovered |
+| bare-name closure | scoped resolve fails | the whole corpus is affected | silent, uncounted, corpus-denominated |
+
+**Each default answers a question it was not asked.** *No declaration* is not `ReadsLiveTree`.
+*Unrecognised syntax* is not *not-a-witness*. *Resolve failed* is not *everything is affected*.
+In every case a state meaning **I could not determine this** is written into a slot typed for
+**the determination**, and every downstream reader is then structurally unable to recover the
+difference.
+
+**And in all three the direction is the same one.** The failure arms are silent, so the deficit's
+frequency is zero by construction and never ranks for fixing — §5's absorbing fallback and the
+empty-observation narrow are the *runtime* members of this family, and these three are its
+*routing* and *discovery* members. The repository already names the runtime shape; it did not
+name the shape at the boundaries where facts enter the system.
+
+The tell is uniform and cheap to apply: **look at the default arm of any resolution, and ask
+whether its value is a determination or a shrug wearing a determination's clothes.** If the
+answer for "I could not tell" is the same symbol as the answer for a real case, the two are
+already conflated, whether or not anything has fallen in yet.
+
+The repair is uniform too, and it is not a wider default: it is a **refusal**. All three
+instruments already have a refusal arm or could carry one — `EntryLiveTreeDispositionRefused`
+exists and is unreached for this case. A boundary that cannot express *I do not know* must be
+given that state explicitly, and the state must be loud.
+
+### The authoring-time member of the same family
+
+`smart-ram-730`, reviewing, and `deep-ant-102`, instructing a peer, each produced the same shape
+from the other side in the same night: an instruction that admitted no true compliant response.
+Mine demanded evidence by a route that was closed; theirs handed a peer a discriminator whose YES
+arm fired on healthy behaviour, and the peer ran it and reported a class that was not there.
+
+**An instruction from a senior party gets executed, not questioned.** So the compliant response to
+an impossible or miscalibrated instruction is to produce the artifact that satisfies it — which
+means the instruction, not the author, is the proximate cause of the false result. That is the
+authoring-time twin of the absorbing fallback: the reviewer's demand is the arm that widens, and
+the false declaration is what it fabricates.
+
+Both of us recorded it about ourselves rather than about the person who executed it, which is the
+only framing under which it is useful.
