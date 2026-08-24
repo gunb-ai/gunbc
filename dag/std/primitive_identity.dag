@@ -321,7 +321,12 @@ data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
 
 data primitive_sorted_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_sorted_map_keys,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "sorted_map_keys" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "sorted_map_keys" as NonEmptyStr,
+    signature: SignatureUngrounded {
+      reason: "sorted_map_keys is typed by the v1 inference special case beside map_keys, but std.algebra declares no sorted_map_keys template. Grounding it on FinitelySupportedFunctionProfile would resolve SignatureAbsentFromProfile and would falsely claim an algebra surface that does not exist." as NonEmptyStr
+    },
+  },
 }
 
 data primitive_map_values_definition: PrimitiveDefinition = PrimitiveDefinition {
