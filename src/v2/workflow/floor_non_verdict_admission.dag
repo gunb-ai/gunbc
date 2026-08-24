@@ -25,8 +25,18 @@ fn non_verdict_added(observed: List<String>, roster: List<String>) -> List<Strin
   )
 }
 
-// REPAID = roster - observed. Reported, never gating: a repaid row must not red the run that
-// repaid it.
+// REPAID = roster - observed: rows whose identity produced a verdict this run, so the debt is
+// paid and the row must come out. IT REFUSES, and an earlier revision of this line said the
+// opposite -- "reported, never gating: a repaid row must not red the run that repaid it". That
+// was the original design and review 55361 refuted it: a stale row is a LIVE EXEMPTION, so
+// leaving it standing lets the identity regress later and be admitted by the roster that exists
+// to bound it. Repayment and deletion are ONE ACT.
+//
+// The line is called out here rather than quietly overwritten because of WHERE it survived. The
+// reversal updated the roster header, the seed's field doc and the gate conjunct, and missed the
+// docstring on this function -- leaving two authorities stating opposite rules about one
+// admission, inside the module whose whole subject is single authority (review 55515). The
+// mechanism was never wrong; only this sentence was, which is exactly why it lasted.
 fn non_verdict_repaid(observed: List<String>, roster: List<String>) -> List<String> {
   fold_list(
     xs: roster,
