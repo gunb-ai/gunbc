@@ -55,6 +55,13 @@ type PopulationBasis
   = MeasuredOnOneRun { run: String, head_commit: String }
   | BoundedByRefusal { refusal: String }
 
+// A REPAIR IS ALREADY IN FLIGHT AGAINST THIS POPULATION, AND THE ROW IS DELIBERATELY NOT
+// PRE-ADJUSTED FOR IT. gunbc#9020 resolves 99 of the 142 -- measured, not projected: its branch
+// head c767f4c962 runs 43 where the base runs 142, over an identical planned population of 10791.
+// The figure below is what MAIN reports, which is the only population any floor run today
+// measures, and writing 43 here would be a count copied from a branch that has not landed --
+// exactly the fix-carrying baseline that produced the false regression this carrier was dispatched
+// under. The row is re-measured when that PR merges, and the basis arm is what says it must be.
 data floor_non_verdict_population_basis: PopulationBasis = MeasuredOnOneRun {
   run: "github actions witnesses.yml run 32681700364",
   head_commit: "5482863b4e8c01c91bb0261481acfd727cea552b",

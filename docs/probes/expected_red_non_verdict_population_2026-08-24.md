@@ -34,26 +34,36 @@ to `outcome.failures`, which **is** a gating conjunct. `PASSED → RUNTIME-ERROR
 today. The one runtime-error arm that does not stop the line is the *enrolled* one, and an enrolled
 identity that passes reports as `known_red_now_passing`, which is also gating.
 
-## 2. What actually happened, on a different day and with a different transition
+## 2. Where the 99 came from: a baseline that carried the fix
 
-The event the brief is a distorted echo of is real, and it is a **`HELD → RUNTIME-ERRORED`**
-reclassification that landed on 2026-08-23 in `ec2f3c318fe` (#8959, "Enrollment cannot hold a claim
-that was never decided: the other two non-verdict outcomes").
+The figure is real and the sign is inverted. The brief was differenced against **#9020's branch
+head**, not against `330f63c514` — and that branch carries the resolution repair.
 
-| run | head | `known_red_held` | `known_red_runtime_errored` |
+| baseline used | run | `passed` | `known_red_runtime_errored` |
 |---|---|---|---|
-| `32603180703` (2026-08-22T22:42Z, before) | `f2d1ae7e1` | 208 | *(counter did not exist)* |
-| `32644028606` (2026-08-23T13:59Z, after) | `50bac70dc` | 36 | 164 |
-| `32681700364` (2026-08-24T02:02Z) | `5482863b4e8` | 35 | 142 |
+| `5482863b4e` (the actual base) | `32681700364` | 10520 | 142 |
+| `c767f4c962` (#9020 branch head) | `32680784546` | 10619 | 43 |
 
-That commit did not break anything. It **revealed** something: 164 identities that had been counted
-as "known red, behaving as enrolled" had in fact been throwing, and `Held` was absorbing them. Its
-own commit message states the harm exactly — "a known-red witness which ROTS … is indistinguishable
-from one still doing its job, forever, and its enrollment never comes up for review."
+The delta is exactly **−99 runtime-errored / +99 passed**, and it is #9020's repair *doing its job*:
+99 witnesses that threw now answer. Read in the other direction — fixed branch as the normal state,
+unfixed base as the degraded one — a repair reports as a regression with the sign flipped.
 
-The half of the brief that survives contact with the evidence is therefore its second clause, and it
-is worth keeping: **142 enrolled identities produce no verdict on every run, and the floor reports
-`failed=0` and exits green.**
+`planned` is **10791 on both runs**, which is what let the mistake survive a sanity check: an equal
+planned population reads as an equal baseline, and it is not one. That is the generalizable failure
+and it is worth more than the incident: **a comparison anchored on a feature branch inherits that
+branch's effect as its zero.** The control that would have caught it is cheap — pull the run for the
+exact base SHA and diff the *identity sets*, not the counts.
+
+(An earlier revision of this document attributed the 99 to the `HELD → RUNTIME-ERRORED`
+reclassification in `ec2f3c318fe` (#8959) of 2026-08-23, where `known_red_held` fell 208 → 36 as
+`runtime_errored` appeared at 164. That reclassification is real and is why the population is
+*visible* at all — it is how `Held` stopped absorbing witnesses that had rotted — but it is **not**
+where the brief's 99 came from, and this document said it was. Corrected on the authority of the
+dispatching session, then verified here against run `32680784546` directly.)
+
+The half of the brief that survives contact with the evidence is its second clause, and it is worth
+keeping: **142 enrolled identities produce no verdict on every run, and the floor reports `failed=0`
+and exits green.**
 
 ## 3. Why the line does not stop, which is a decision and not a defect
 
@@ -126,3 +136,14 @@ owner, which is precisely the outcome the arm's author reserved the change to av
   reaching a subject; what they would have answered is unknown, and that is the whole content of
   "enrollment asserts a verdict this claim never produced."
 - **It changes no gate.** The conjunct is named as the next rung, not added.
+
+## 7. The population is about to move, and the carrier is not pre-adjusted
+
+`gunbc#9020` resolves 99 of the 142 — measured on its branch head `c767f4c962` (run
+`32680784546`), which reports 43 where the base reports 142 over an identical planned population.
+
+The carrier keeps the **142**. Writing 43 into it today would be a count copied from a branch that
+has not landed, which is precisely the fix-carrying-baseline error described in §2 — committed a
+second time, into the artifact that documents it. The `PopulationBasis` arm names the run and the
+commit it was measured on, so the row is re-measured when that PR merges rather than quietly
+carrying a figure from a tree nobody is running.
