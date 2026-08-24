@@ -1,7 +1,0 @@
-module test.fixture.function_import_surface_ambiguous_provider
-
-import std.types { Int }
-
-fn other_fn(value: Int) -> Int { value }
-
-fn hidden_fn(value: Int) -> Int { value - 1 }
