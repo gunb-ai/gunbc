@@ -20209,6 +20209,44 @@ pub fn build_imported_variants(
     )
 }
 
+pub fn selective_func_env_view(
+    env: Rc<ResolvedFuncEnv>,
+    names: Rc<Vec<String>>,
+) -> Rc<ResolvedFuncEnv> {
+    let selected = names.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, name: String| match v1_rt::map_get(
+            &env.local,
+            name.clone(),
+        ) {
+            Some(sig) => v1_rt::rc_map_insert(acc, name, sig.clone()),
+            None => acc,
+        },
+    );
+    Rc::new(ResolvedFuncEnv {
+        name: env.name.clone(),
+        local: selected,
+        parents: Rc::new(vec![]),
+    })
+}
+
+pub fn func_env_views_for_import(
+    parent: Rc<ResolvedFuncEnv>,
+    is_all: bool,
+    specific_names: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    if is_all {
+        Rc::new(vec![parent])
+    } else {
+        v1_rt::concat(Rc::new(vec![parent.clone()]), parent.parents.clone())
+            .iter()
+            .cloned()
+            .map(|env| selective_func_env_view(env, specific_names.clone()))
+            .collect::<Vec<_>>()
+            .into()
+    }
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -20325,7 +20363,11 @@ pub fn build_module_context(
             for imp in resolved_imports.iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => Rc::new(vec![typed_parent.func_env.clone()]),
+                        Some(typed_parent) => func_env_views_for_import(
+                            typed_parent.func_env.clone(),
+                            imp.is_all,
+                            imp.specific_names.clone(),
+                        ),
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -22065,7 +22107,14 @@ pub fn rewire_func_env_parent_links(
                                     let path =
                                         import_module_path_at(imp.clone(), source_indices.clone());
                                     match v1_rt::map_get(&index, path.clone()) {
-                                        Some(parent) => Rc::new(vec![parent.func_env.clone()]),
+                                        Some(parent) => func_env_views_for_import(
+                                            parent.func_env.clone(),
+                                            crate::v1_std_core::import_is_all(imp.clone()),
+                                            crate::v1_std_core::import_specific_names_at(
+                                                imp.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        ),
                                         None => Rc::new(vec![]),
                                     }
                                 })
