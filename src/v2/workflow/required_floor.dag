@@ -625,9 +625,9 @@ type FloorPreparationPhase =
 type FloorPreparationOutcome =
     PreparationWithinLimits {
       phase: FloorPreparationPhase
-      observed_cpu: Int
-      observed_wall: Int
-      observed_rss_growth: Int
+      observed_cpu: Millisecond
+      observed_wall: Millisecond
+      observed_rss_growth: ByteSize
     }
   | FloorPreparationRefused {
       phase: FloorPreparationPhase
@@ -636,24 +636,6 @@ type FloorPreparationOutcome =
       observed_rss_growth: ByteSize
     }
 
-// FLAT-SCALAR UNIT FIELDS ON THE PREPARATION CARRIERS — A PEER OF THE `ClaimSafetyOutcome` ROW
-// ABOVE, NOT COVERED BY IT (review 55296, BLOCKING, and correctly so). The existing
-// `flat_scalar_millisecond_fields_dissolve_on` enumerates the `ClaimSafetyOutcome` scalars BY NAME,
-// so it does not reach the carriers below; and `floor_preparation_host_mirror_dissolve_on` covers a
-// RUNG CLIMB (host mirroring the derivation), not units. A tracked obligation that names the wrong
-// symbols is not coverage, which is why this is a new row rather than a sentence added to either.
-//
-// THE DEBT IS THE SAME CLASS AND SO IS THE REASON IT IS NOT FIXED INLINE. `std.measure`
-// `Millisecond = Measure<Time, Milli, Nat>` and `ByteSize = Measure<Memory, One, Nat>` are built on
-// v1's host-backed `Nat`, while this module's `Int` is v2's inductive Peano tower
-// (`v2.std.integer` over `v2.std.nat`, `Nat = Zero | Succ { prev: Nat }`). No verified bridge
-// between the two numeric towers exists anywhere in this corpus, so converting these here would
-// mean authoring that bridge for the first time, unverified, inside an attribution change — the
-// cross-representation mismatch class this repository's own incident history warns against.
-//
-// THE BYTES AXIS IS NAMED SEPARATELY FROM THE MILLISECOND AXES because it dissolves onto a
-// DIFFERENT carrier (`ByteSize`, not `Millisecond`) and could therefore be discharged independently;
-// folding both into one sentence would let a half-done conversion close the whole row.
 // THREE INDEPENDENT LIMITS FOR A DIFFERENT UNIT, and the reason they are not the claim numbers
 // is not that 5000ms is too small -- it is that 5000ms answers a DIFFERENT QUESTION. The claim
 // limits bound one witness's marginal evaluation; a shared build is one whole-corpus artifact
