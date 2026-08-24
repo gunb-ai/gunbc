@@ -10201,6 +10201,15 @@ type FuncEnvViewMerge {
   owner_order: List<String>
 }
 
+fn merge_func_sig_maps(base: Map<String, ResolvedFuncSig>, incoming: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
+  fold(map_keys(incoming), init: base, f: (acc, name) =>
+    match map_get(incoming, name) {
+      Present { value: sig } => map_insert(acc, name, sig)
+      Absent => acc
+    }
+  )
+}
+
 // Separate direct imports can reach the same real owner through different
 // flattened closures.  Union their admitted locals before owner deduplication;
 // otherwise an empty selective view can suppress an explicitly imported name.
@@ -10212,7 +10221,7 @@ fn merge_func_env_views_by_owner(views: List<ResolvedFuncEnv>) -> List<ResolvedF
           by_owner: map_insert(
             acc.by_owner,
             view.name,
-            ResolvedFuncEnv { name: view.name, local: map_merge(existing.local, view.local), parents: [] }
+            ResolvedFuncEnv { name: view.name, local: merge_func_sig_maps(base: existing.local, incoming: view.local), parents: [] }
           ),
           owner_order: acc.owner_order
         }

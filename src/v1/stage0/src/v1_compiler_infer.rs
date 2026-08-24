@@ -20253,6 +20253,15 @@ pub struct FuncEnvViewMerge {
     pub owner_order: Rc<Vec<String>>,
 }
 
+pub fn merge_func_sig_maps(
+    base: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    incoming: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
+    incoming.iter().fold(base, |acc, (name, sig)| {
+        v1_rt::rc_map_insert(acc, name.clone(), sig.clone())
+    })
+}
+
 pub fn merge_func_env_views_by_owner(
     views: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
@@ -20272,7 +20281,7 @@ pub fn merge_func_env_views_by_owner(
                         view.name.clone(),
                         Rc::new(ResolvedFuncEnv {
                             name: view.name.clone(),
-                            local: v1_rt::rc_map_merge(existing.local.clone(), view.local.clone()),
+                            local: merge_func_sig_maps(existing.local.clone(), view.local.clone()),
                             parents: Rc::new(vec![]),
                         }),
                     ),
