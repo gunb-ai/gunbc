@@ -1,6 +1,6 @@
 module extdeps.cpu_attachment.lotes_azifa072
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -40,7 +40,33 @@ data extdeps_external_authority_anchor: ExternalAuthority = azifa072_drawing_aut
 // point at; a citation naming a document only this repository's authors have seen is not a
 // citation. Committing the bytes is what makes the reference resolvable by a later reader, and
 // the absence of any confidentiality marking is what makes committing them permissible.
-data lotes_correspondence_note: String = "Drawing supplied by Lotes in direct response to a request for the socket-body part that mates with AZIF0222 and its recommended PCB land pattern -- the public route recorded in extdeps.cpu_attachment.ilm4926 lga4926_land_pattern_public_route. Not access-gated and carrying no confidentiality marking, so unlike the Ampere Customer Connect route its content is carriable in a public repository."
+// CARRIABILITY IS A TYPED FACT, NOT A REASSURING SENTENCE. Whether a document's content may be
+// reproduced in a public repository decides whether resolving a question ADVANCES the model or
+// merely satisfies a reader, and ilm4926 already types that distinction on its two routes
+// (route_yields_a_carriable_fact). Writing it as prose here would leave the one fact that governs
+// what may be copied out of this drawing invisible to everything except a human re-reading it.
+type DocumentCarriage
+  = CarriableOpenSupply {
+      supplied_in_response_to: NonEmptyStr
+      no_confidentiality_marking_observed: Bool
+    }
+  | NotCarriableAccessGated { gate: NonEmptyStr }
+
+// THE SECOND FIELD IS AN OBSERVATION, AND ITS NAME SAYS SO. "No confidentiality marking observed"
+// is what this repository checked; it is not a legal clearance and must not read as one. The arm
+// is still Carriable because the operator cleared it in the request that produced this work --
+// the observation supports that ruling rather than substituting for it.
+data azifa072_drawing_carriage: DocumentCarriage = CarriableOpenSupply {
+  supplied_in_response_to: "the socket-body part number that mates with AZIF0222, then its customer drawing or recommended PCB layout -- the public route recorded in extdeps.cpu_attachment.ilm4926 lga4926_land_pattern_public_route",
+  no_confidentiality_marking_observed: true,
+}
+
+fn document_content_may_be_carried(c: DocumentCarriage) -> Bool {
+  match c {
+    CarriableOpenSupply { supplied_in_response_to: _, no_confidentiality_marking_observed: seen } => seen
+    NotCarriableAccessGated { gate: _ } => false
+  }
+}
 
 data lotes_catalogue_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -156,10 +182,53 @@ data azifa072_pad_positions_artifact: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE INTERIOR VOIDS ARE WHY THE CSV EXISTS. A lattice plus an outline does not reproduce this
-// array: filling the perimeter the 3D model carries gives 5,285 positions against an actual
-// 4,926, so 359 interior positions are depopulated by a pattern no parameter here encodes.
-data azifa072_interior_voids_note: String = "The array is not a filled lattice. A naive fill of the outline the STEP solid carries gives 5285 positions against the drawing's 4926, so 359 interior positions are depopulated -- including a central void roughly 13.9 mm wide by 25 mm tall and a 4.13 mm gap splitting the array into two banks of 42 rows whose X phases differ. Those voids are recoverable only from the drawing's own vector content, which is why the extracted positions are committed as an artifact rather than regenerated from azifa072_lattice."
+// THE INTERIOR VOIDS ARE WHY THE CSV EXISTS, AND THE DISCREPANCY IS CARRIED AS NUMBERS RATHER
+// THAN AS PROSE. A lattice plus an outline does not reproduce this array, and the size of the
+// shortfall is the whole reason the extracted positions are committed as an artifact instead of
+// regenerated from azifa072_lattice. Written as a sentence, "359 positions are depopulated"
+// is a claim no reader can check and no lens can see; as three fields with a derived identity
+// it is arithmetic that either holds or does not (DESIGN section 4c -- a machine-consumed fact
+// belongs in a typed carrier, and a String whose sole purpose is commentary is misplaced data).
+type LatticeFillDiscrepancy {
+  outline_fill_position_count: Int
+  actual_pad_count: Int
+  depopulated_position_count: Int
+  bank_count: Int
+  bank_gap_um: Int
+  central_void_width_um: Int
+  central_void_height_um: Int
+}
+
+data azifa072_fill_discrepancy: LatticeFillDiscrepancy = LatticeFillDiscrepancy {
+  outline_fill_position_count: 5285,
+  actual_pad_count: 4926,
+  depopulated_position_count: 359,
+  bank_count: 2,
+  bank_gap_um: 4130,
+  central_void_width_um: 13900,
+  central_void_height_um: 25000,
+}
+
+// THE THIRD FIELD IS DERIVABLE FROM THE FIRST TWO, AND THAT IS THE POINT. Carrying it and
+// checking it is not redundancy: the fill count and the pad count come from DIFFERENT sources --
+// the STEP solid's perimeter and the drawing's own vector content -- so their difference is a
+// cross-source arithmetic identity. A future edit that changes one number without the other is
+// the failure this catches, and it is decidable rather than a matter of someone re-reading prose.
+// THE SUBTRACTION IS PARENTHESISED ON ONE LINE ON PURPOSE, AND THE REASON IS A LANGUAGE DEFECT
+// RATHER THAN TASTE. Written across lines with the operator leading its continuation --
+//     azifa072_fill_discrepancy.outline_fill_position_count
+//       - azifa072_fill_discrepancy.actual_pad_count
+// -- the parser ENDS the expression at the newline and reads `- x` as a fresh statement applying
+// unary minus, silently discarding one operand. Measured, not inferred: this exact function
+// returned false with the numbers correct, and a reduced case gives `100 \n - 1` == -1 while
+// `100 \n + 1` == 101 and `100 \n * 3` == 300. Only `-` is affected, because only `-` has a
+// unary form that can legally begin a statement -- the classic automatic-semicolon hazard.
+// Receipt and reduced cases: docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md
+fn azifa072_depopulation_is_arithmetically_consistent() -> Bool {
+  (azifa072_fill_discrepancy.outline_fill_position_count - azifa072_fill_discrepancy.actual_pad_count)
+    == azifa072_fill_discrepancy.depopulated_position_count
+    && azifa072_fill_discrepancy.actual_pad_count == azifa072_pad_geometry.pad_count
+}
 
 type SolderTermination {
   ball_diameter_before_smt_um: Int
@@ -238,10 +307,22 @@ fn land_pattern_gap_count() -> Int {
   count(azifa072_open_gaps)
 }
 
-// A FOOTPRINT MAY NOT EMIT WHILE ANY GAP STANDS. This is the predicate a footprint emitter
-// consults. It is deliberately not a warning: a paste layer released without its aperture and a
-// board rotated by a guessed A1 are both unrecoverable at fabrication, so the failure arm refuses
-// rather than proceeding with a default (DESIGN section 5).
+// A FOOTPRINT MAY NOT EMIT WHILE ANY GAP STANDS -- AND NOTHING TODAY ASKS IT. The rung is stated
+// honestly rather than implied by the function's existence: no footprint emitter for this part
+// exists in the tree, so the only consumer is the witness that executes this predicate. That
+// makes it a real, executing answer to "may it emit" and NOT evidence that anything is prevented.
+// Calling it the gate an emitter consults would be the specification-without-execution claim
+// DESIGN section 5 names, one step before the inert-lens tier: the machinery exists and nothing
+// gates on it.
+//
+// NEXT-RUNG TRIGGER: the first consumer that turns this land pattern into pads. product.pcb.footprint
+// already carries the Pad carrier that would receive them, and it is the module that would have to
+// call this before emitting. Until such a caller exists the class sits at mitigatable -- the answer
+// is right and unenforced -- and a released footprint is prevented by review, not by construction.
+//
+// The refusal itself is deliberately not a warning: a paste layer released without its aperture
+// and a board rotated by a guessed A1 are both unrecoverable at fabrication, so the failure arm
+// refuses rather than proceeding with a default (DESIGN section 5).
 fn azifa072_footprint_may_emit() -> Bool {
   land_pattern_gap_count() == 0
 }

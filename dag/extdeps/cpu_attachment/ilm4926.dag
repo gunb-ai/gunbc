@@ -353,8 +353,15 @@ fn attachment_socket_body_is_identified(a: AttachmentStanding) -> Bool {
 }
 
 // A FOOTPRINT MAY NOT EMIT WHILE THE SOCKET BODY IS UNIDENTIFIED. The land pattern belongs to a
-// part, so a released footprint whose part is unknown is a drawing of nothing -- this is the
-// predicate a footprint emitter consults, not a comment asking it to be careful.
+// part, so a released footprint whose part is unknown is a drawing of nothing.
+//
+// THE RUNG, STATED RATHER THAN IMPLIED (corrected 2026-08-23): an earlier revision of this comment
+// called this "the predicate a footprint emitter consults, not a comment asking it to be careful".
+// No footprint emitter exists in the tree -- measured, not assumed: the only consumers of this
+// function are the witnesses. So the sentence claimed enforcement the corpus does not have, which
+// is the specification-without-execution failure wearing the vocabulary of a wall. The predicate
+// itself is real and executes correctly; what is absent is anything that must ask it.
+// NEXT-RUNG TRIGGER: the first caller in product.pcb.footprint that turns a land pattern into pads.
 //
 // THE THIRD CONJUNCT WAS ADDED BECAUSE THE FIRST TWO WENT TRUE AND THE FOOTPRINT STILL WAS NOT
 // RELEASABLE (2026-08-23). When the Lotes drawing resolved the socket body, this gate flipped
