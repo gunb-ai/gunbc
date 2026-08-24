@@ -226,18 +226,6 @@ pub struct PointwisePower<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Clone)]
-pub struct FinitePowerSet<T> {
-    pub member: Rc<dyn Fn(T) -> bool>,
-    pub union: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub intersect: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub diff: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub contains: Rc<dyn Fn(T) -> bool>,
-    pub count: Rc<dyn Fn() -> i64>,
-    pub length: Rc<dyn Fn() -> i64>,
-    pub _phantom: std::marker::PhantomData<T>,
-}
-
 pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -269,35 +257,16 @@ impl<T: Clone + PartialEq> PartialEq for FreeSemigroup<T> {
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub _phantom: std::marker::PhantomData<(K, V)>,
-}
-
-#[derive(Clone)]
-pub struct FinitelySupportedFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub empty: Rc<FinitelySupportedFunction<K, V>>,
+    pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub merge:
-        Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
+    pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<PartialFunction<K, V>>) -> Rc<PartialFunction<K, V>>>,
     pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
-}
-
-#[derive(Clone)]
-pub struct TotalMap<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> V>,
-    pub _phantom: std::marker::PhantomData<(K, V)>,
-}
-
-#[derive(Clone)]
-pub struct TotalPolicy<K, Context, RowTemplate> {
-    pub lookup: Rc<dyn Fn(K, Context) -> RowTemplate>,
-    pub _phantom: std::marker::PhantomData<(K, Context, RowTemplate)>,
 }
 
 #[derive(
@@ -346,12 +315,11 @@ pub enum AlgebraProfile {
     OrderedRingProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
-    FinitePowerSetProfile,
+    BooleanAlgebraCollectionProfile,
     PointwisePowerCollectionProfile,
     FreeMonoidScalarProfile,
     FreeMonoidCollectionProfile,
     PartialFunctionProfile,
-    FinitelySupportedFunctionProfile,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -441,38 +409,31 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
                     v1_rt::rc_map_insert(
                         v1_rt::rc_map_insert(
                             v1_rt::rc_map_insert(
-                                v1_rt::rc_map_insert(
-                                    v1_rt::rc_map_insert(
-                                        v1_rt::rc_map_insert(
-                                            v1_rt::rc_empty_map::<String, AlgebraProfile>(),
-                                            "Int".to_string(),
-                                            AlgebraProfile::OrderedRingProfile,
-                                        ),
-                                        "Float".to_string(),
-                                        AlgebraProfile::ApproximateFieldProfile,
-                                    ),
-                                    "Bool".to_string(),
-                                    AlgebraProfile::BooleanAlgebraProfile,
+                                panic!(
+                                    "call target identity was not established before Rust emission"
+                                )(
+                                    panic!("malformed arg: missing value"),
+                                    panic!("malformed arg: missing value"),
                                 ),
-                                "String".to_string(),
-                                AlgebraProfile::FreeMonoidScalarProfile,
+                                "Int".to_string(),
+                                AlgebraProfile::OrderedRingProfile,
                             ),
-                            "List".to_string(),
-                            AlgebraProfile::FreeMonoidCollectionProfile,
+                            "Float".to_string(),
+                            AlgebraProfile::ApproximateFieldProfile,
                         ),
-                        "Set".to_string(),
-                        AlgebraProfile::FinitePowerSetProfile,
+                        "Bool".to_string(),
+                        AlgebraProfile::BooleanAlgebraProfile,
                     ),
-                    "Map".to_string(),
-                    AlgebraProfile::FinitelySupportedFunctionProfile,
+                    "String".to_string(),
+                    AlgebraProfile::FreeMonoidScalarProfile,
                 ),
-                "FinitePowerSet".to_string(),
-                AlgebraProfile::FinitePowerSetProfile,
+                "List".to_string(),
+                AlgebraProfile::FreeMonoidCollectionProfile,
             ),
-            "FinitelySupportedFunction".to_string(),
-            AlgebraProfile::FinitelySupportedFunctionProfile,
+            "Set".to_string(),
+            AlgebraProfile::PointwisePowerCollectionProfile,
         ),
-        "PartialFunction".to_string(),
+        "Map".to_string(),
         AlgebraProfile::PartialFunctionProfile,
     )
 }
@@ -685,7 +646,7 @@ pub fn boolean_algebra_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     ])
 }
 
-pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
+pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "union".to_string(),
@@ -1499,50 +1460,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: None,
             callback_element_position: None,
         }),
-    ])
-}
-
-pub fn finitely_supported_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
-        Rc::new(AlgebraFieldTemplate {
-            name: "get".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "map_get".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "lookup".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
         Rc::new(AlgebraFieldTemplate {
             name: "map_insert".to_string(),
             param_types: Rc::new(vec![
@@ -1696,12 +1613,11 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
         AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
-        AlgebraProfile::FinitePowerSetProfile => finite_power_set_templates(),
+        AlgebraProfile::BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates(),
         AlgebraProfile::PointwisePowerCollectionProfile => pointwise_power_collection_templates(),
         AlgebraProfile::FreeMonoidScalarProfile => free_monoid_scalar_templates(),
         AlgebraProfile::FreeMonoidCollectionProfile => free_monoid_collection_templates(),
         AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
-        AlgebraProfile::FinitelySupportedFunctionProfile => finitely_supported_function_templates(),
     }
 }
 
@@ -1710,14 +1626,11 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
         AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),
-        AlgebraProfile::FinitePowerSetProfile => Rc::new(vec!["T".to_string()]),
+        AlgebraProfile::BooleanAlgebraCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::PointwisePowerCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::FreeMonoidScalarProfile => Rc::new(vec![]),
         AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
-        AlgebraProfile::FinitelySupportedFunctionProfile => {
-            Rc::new(vec!["K".to_string(), "V".to_string()])
-        }
     }
 }
 
@@ -1726,12 +1639,11 @@ pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::ApproximateFieldProfile,
         AlgebraProfile::BooleanAlgebraProfile,
-        AlgebraProfile::FinitePowerSetProfile,
+        AlgebraProfile::BooleanAlgebraCollectionProfile,
         AlgebraProfile::PointwisePowerCollectionProfile,
         AlgebraProfile::FreeMonoidScalarProfile,
         AlgebraProfile::FreeMonoidCollectionProfile,
         AlgebraProfile::PartialFunctionProfile,
-        AlgebraProfile::FinitelySupportedFunctionProfile,
     ])
 }
 
@@ -1785,7 +1697,7 @@ pub struct ApproximateFieldProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BooleanAlgebraProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FinitePowerSetProfile;
+pub struct BooleanAlgebraCollectionProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointwisePowerCollectionProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1794,8 +1706,6 @@ pub struct FreeMonoidScalarProfile;
 pub struct FreeMonoidCollectionProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PartialFunctionProfile;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FinitelySupportedFunctionProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShrinkEffect;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

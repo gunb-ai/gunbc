@@ -64,7 +64,7 @@ pub fn observe_ordinary_frontend(
     sources: Rc<Vec<Rc<SourceFile>>>,
 ) -> Rc<OrdinaryFrontendObservation> {
     {
-        let frontend = front_end_sources(sources.clone());
+        let frontend = crate::v1_compiler_compile::front_end_sources(sources.clone());
         Rc::new(OrdinaryFrontendObservation {
             subject: sources.clone(),
             occurrence_transport: frontend.occurrence_transport.clone(),

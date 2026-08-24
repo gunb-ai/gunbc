@@ -79,7 +79,10 @@ pub fn dag_collect_pack_slots(
 
 pub fn json_quote(s: String) -> String {
     v1_rt::concat(
-        v1_rt::concat("\"".to_string(), escape_json_string(s.clone())),
+        v1_rt::concat(
+            "\"".to_string(),
+            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
+        ),
         "\"".to_string(),
     )
 }
@@ -194,15 +197,17 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
 pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
     match (*value.clone()).clone() {
         LiteralValue::LitStr { value: v, .. } => v1_rt::concat("LitStr:".to_string(), v.clone()),
-        LiteralValue::LitInt { value: v, .. } => {
-            v1_rt::concat("LitInt:".to_string(), (v.clone()).to_string())
-        }
+        LiteralValue::LitInt { value: v, .. } => v1_rt::concat(
+            "LitInt:".to_string(),
+            crate::v1_compiler_emit_core_support::to_string(v.clone()),
+        ),
         LiteralValue::LitFloat { value: v, .. } => {
             v1_rt::concat("LitFloat:".to_string(), v.clone())
         }
-        LiteralValue::LitBool { value: v, .. } => {
-            v1_rt::concat("LitBool:".to_string(), (v.clone()).to_string())
-        }
+        LiteralValue::LitBool { value: v, .. } => v1_rt::concat(
+            "LitBool:".to_string(),
+            crate::v1_compiler_emit_core_support::to_string(v.clone()),
+        ),
         LiteralValue::LitNull => "LitNull".to_string(),
         LiteralValue::LitSymbol { value: v, .. } => {
             v1_rt::concat("LitSymbol:".to_string(), v.clone())
@@ -304,7 +309,7 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
         } else {
             "".to_string()
         };
-        make_error_node(
+        crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::InternalError {
                 message: v1_rt::concat(
                     v1_rt::concat(
