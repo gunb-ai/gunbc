@@ -7586,6 +7586,40 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             continue;
         }
         let name = &content[start..i];
+        // A PARENTHESIS-FREE arrow lambda binds its single parameter: `any(t => ...)`,
+        // `map(rm => ...)`, `fold(xs, init: 0, f: acc => ...)`. `destructuring_bound_spans`
+        // only recognises the parenthesised form `(a, b) =>` and the pattern form
+        // `{ .. } =>`, so this one leaked its binder into the reference set — and a
+        // one-letter binder resolves against the WHOLE POOL, where some module
+        // somewhere declares `fn t`. Receipt: `dag/std/algebra.dag`'s
+        // `any(t => t.name == name)` pulled `dag/test/claim/pcb_footprint_witness_test.dag`
+        // (which declares `fn t(component, terminal)`) and through it the entire PCB
+        // product corpus into the v1 seed's compile closure.
+        //
+        // The guard is the PRECEDING token, not the arrow alone: a match arm head is
+        // also `ident =>` but is preceded by `{`, `}` or a newline, whereas a lambda
+        // parameter sits in argument position — after `(`, `,` or a named-argument
+        // `:`. Measured over the corpus, all 4397 sites matching that shape are
+        // lambdas; no match-arm head is preceded by any of the three.
+        let is_bare_arrow_lambda_param = {
+            let mut j = i;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let arrow = content.as_bytes()[j..].starts_with(b"=>");
+            let mut k = start;
+            while k > 0 && bytes[k - 1].is_ascii_whitespace() {
+                k -= 1;
+            }
+            let prev = if k > 0 { bytes[k - 1] } else { b'\0' };
+            arrow && matches!(prev, b'(' | b',' | b':')
+        };
+        if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
         let was_after_colon = just_saw_colon;
         just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
