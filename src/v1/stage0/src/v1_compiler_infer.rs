@@ -20257,9 +20257,16 @@ pub fn merge_func_sig_maps(
     base: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     incoming: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 ) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    incoming.iter().fold(base, |acc, (name, sig)| {
-        v1_rt::rc_map_insert(acc, name.clone(), sig.clone())
-    })
+    Rc::new(v1_rt::map_keys(&incoming)).iter().cloned().fold(
+        base.clone(),
+        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, name: String| match v1_rt::map_get(
+            &incoming,
+            name.clone(),
+        ) {
+            Some(sig) => v1_rt::rc_map_insert(acc.clone(), name.clone(), sig.clone()),
+            None => acc.clone(),
+        },
+    )
 }
 
 pub fn merge_func_env_views_by_owner(
