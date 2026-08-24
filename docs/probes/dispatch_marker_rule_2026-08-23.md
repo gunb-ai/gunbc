@@ -647,6 +647,64 @@ Two halves, and each belongs to a different party:
 
 The artifact fixes the next reader. It never fixes the current one.
 
+## Answering NO question, typeset as an answer — and the repair at the RENDER
+
+Most failures in this document answer a *narrower* question than the reader asked. This one answers
+**no question at all** and is typeset as an answer. `quiet-pike-368`'s, with the full stack, because
+the third layer is the transferable part.
+
+A probe dumped the emitter's candidate union across five modules, to separate *never proposed* from
+*proposed then filtered* — two states with opposite owners and opposite repairs. It returned **empty
+for all five**. Empty is a perfectly good answer to that question: it locates the defect on the
+producer side, and it would have been reported.
+
+Three failures stacked:
+
+1. emitted files land at `<out>/src/`; the grep path omitted the `src/` segment, so it read a
+   directory that does not exist;
+2. a `2>/dev/null` on the probe swallowed the `No such file or directory` that would have said so in
+   one line;
+3. **the render for "no probe line present" was an empty name set** — byte-identical to "the probe
+   ran and the union is genuinely empty".
+
+Each is ordinary. Together they convert a *failed observation* into a *confident negative finding
+about the producer*, and they point the reader at the wrong half of the system: the hunt would have
+been in the candidate producer for a defect that was in a shell path.
+
+Only a **positive control** separated them — one of the five was a module already known to propose
+names, and it came back empty too.
+
+**The repair is at the render, not the query**, which is what makes it more than a warning:
+
+```
+<no probe line>          the instrument did not report
+[]                       it reported, and the set is empty
+PROBE_LINES_TOTAL=171    liveness, so a zero is visible as a zero rather than inferred from absence
+```
+
+That is the same move as a liveness assertion on a grep, applied one layer up.
+
+## Two failures with one symptom and opposite remedies: lag vs miss
+
+`dashboard-ops reviews` can report `request_changes: none` / `has_request_changes: false` for two
+completely different reasons, and the field it lies on is the one that gates merging.
+
+| | direction | determinism | remedy |
+|---|---|---|---|
+| **ingestion lag** (working form) | conservative — `checks_state=pending` while GitHub says SUCCESS | self-resolving | re-read |
+| **lookup miss** (`reviews <n> <repo>`, wrong arg form) | conservative on approvals, **dangerous on request_changes** | deterministic | never use that form |
+
+The miss returns well-formed JSON with zeros and nulls instead of erroring, so a PR with an open
+REQUEST_CHANGES reads exactly like a clean one.
+
+**The discriminator is a head sha:** real data always carries one. `head_sha: None` with
+`reviews: 0` is a miss; a populated head sha with per-requirement breakdown is the working form, and
+a stale reading from it is lag.
+
+Recorded as two rows rather than one because filing a lag case as the specimen for the miss would put
+a wrong example under a right rule — and the next person to hit a real miss would find the documented
+symptom not matching what they see.
+
 ## Neighbours already recorded, and how this differs
 
 - `cargo` exiting 0 without compiling is the same rule for a different harness.
