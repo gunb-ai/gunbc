@@ -58,13 +58,16 @@ fn blocking_count_for(source: String, wanted: String) -> Int {
   }
 }
 
+// NOT-RUNNABLE IS NOT ZERO, which is why the Absent arm answers -1 rather than 0.
+//
+// A census that could not run has observed NOTHING, and reporting that as "no diagnostics" would
+// let a broken harness satisfy the green control while making the red unsatisfiable -- the
+// empty-observation narrow, one layer up from the class this file is about. -1 fails in both
+// directions: it is neither the 0 a green asserts nor the positive count a red asserts, so a
+// harness that stops working cannot masquerade as either verdict.
 fn blocking_ambiguous_reference_count(source: String) -> Int {
   match census_blocking_count_for_class(census: census_of(source: source), wanted: "AmbiguousReference") {
     Present { value: n } => n
-    // NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and reporting
-    // it as "no diagnostics" would let a broken harness satisfy the green control while making
-    // the red unsatisfiable -- the empty-observation narrow, one layer up from the class this
-    // file is about. -1 fails both directions.
     Absent => 0 - 1
   }
 }
