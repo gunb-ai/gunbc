@@ -102,3 +102,61 @@ was visible and leaves the half that made it invisible.
 That any of the five is *currently* mis-bound. Nobody has shown that, and the point of the finding is
 precisely that the current mechanism could not show it either way. The claim is about what the
 evidence can report, not about which way it would report if it could.
+
+## The population the five sit in, and why it is not a corner case
+
+*Added after deep-ant-102 corrected the numbers I first circulated; the corrections are theirs and
+are load-bearing.*
+
+The floor prints this on every run, including green ones (run 32611811529):
+
+```
+[floor-bare-name-ambiguity] scopes_affected=971 of 1358 names_total=85889 worst_scope=123
+```
+
+Read against the emitting site in `cli_run.rs`:
+
+```rust
+eprintln!("[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
+    scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max);
+```
+
+**The headline is `names_total`, not `scopes_affected`.** 85,889 bare names per floor run are
+resolved by scope precedence; 971 counts only how many scope constructions contain at least one, and
+123 is the worst single scope. The denominator is scope *constructions*, not distinct scopes — though
+in this run the line above reports `1358 scope construction(s) for 1358 distinct scope(s)`, so the
+two coincide here and the 71% holds under either reading. It is one run's measurement and moves with
+the corpus; cite the run.
+
+So the five wrappers are not an anomaly in the evidence layer. They are five instances of the
+corpus's ordinary resolution behaviour, distinguished only by *also* being pre-accepted as red.
+
+## The correction that matters most, and it is not about numbers
+
+My first framing was that the measurement had been sitting unread. That is the weaker claim and it
+is slightly unfair to whoever built it. Their own comment, at the emitting site:
+
+> Each of these is a bare name two transitively-reached modules both spell, resolved by scope
+> precedence because a registry keyed on bare names cannot hold both — a resolution nothing the
+> author wrote authorizes. Reported, not refused: the honest arm is to refuse the ambiguous lookup,
+> and whether that is affordable is a question about this population, which until now nobody had
+> measured.
+
+The instrument's author understood exactly what the mechanism was, named refusal as the honest arm,
+declined to take it *pending a measurement of the population*, and left a counter to size the fix.
+That is DESIGN.md §5's **wall after grounding** executed properly: decidable, not yet grounded, so
+counted rather than absorbed — and counted *loudly*, in a line printed on every run.
+
+Two consequences.
+
+**The measurement it was waiting for now exists**, and it has existed on every run since. The
+question the author deferred — *is refusal affordable* — has an answer available to anyone who reads
+the line: 85,889 picks across 971 of 1358 scope constructions. That is the input to the decision,
+not an argument for either side of it.
+
+**It changes what #9075 is.** smart-wolf-868's PR narrows this arm. Framed as an opinion about bare
+names it invites a debate; framed correctly it is **taking the arm the instrument's author named as
+the honest one**, against the population they said would decide it. The five unfalsifiable wrappers
+are then not a separate finding but a demonstration of why the counter alone is insufficient: a
+mechanism that silently picks, feeding evidence that cannot report, is two layers of the same
+failure to make a resolution answerable to something an author wrote.
