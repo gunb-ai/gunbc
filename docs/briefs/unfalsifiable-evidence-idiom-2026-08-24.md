@@ -85,9 +85,10 @@ that cannot report.
 > unedited because the reasoning that produced it is instructive and because deleting a wrong
 > recommendation hides that it was made. See **The repair, corrected** at the end.
 
-**The repair is unchanged in shape and now has a stronger reason:** author wrappers *with* imports
-naming the assertion module, and retrofit the existing five. Two properties make this the right move
-rather than hygiene:
+**What this section originally recommended — refuted, recorded, NOT to be applied:** that wrappers
+be authored *with* imports naming the assertion module and that the existing five be retrofitted.
+Two properties were offered at the time as making it the right move rather than hygiene, and they
+are preserved because the second one is where the reasoning actually failed:
 
 1. **The retrofit is itself discriminating.** If adding imports changes what any of the five resolve
    to, there is a live wrong-binding in the idiom we call the working one — found by construction
@@ -97,7 +98,7 @@ rather than hygiene:
    population repair is not blocked on the wall, while the wall makes the repair mandatory rather
    than optional.
 
-A third property is worth stating because it is the one that gets skipped: **the retrofit should be
+A third property was stated at the time because it is the one that gets skipped: **the retrofit was said to be
 paired with removing the five from `floor_expected_red.dag`, or with an explicit statement of why
 each stays.** Retrofitting the binding while leaving the verdict pre-accepted fixes the half that
 was visible and leaves the half that made it invisible.
