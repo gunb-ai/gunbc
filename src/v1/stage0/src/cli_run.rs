@@ -464,6 +464,200 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
+mod bare_reference_scanner_tests {
+    use super::{bare_identifier_candidates, module_self_declared_names};
+
+    /// Every coproduct shape the corpus actually writes. The multiline form is the one
+    /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
+    /// `ExtentInFrame` and `std.realization_schedule` declares `Predicted` — two of the
+    /// four variants this guard exists for.
+    #[test]
+    fn self_declared_names_collect_every_coproduct_form() {
+        let src = "module std.probe\n\
+                   type VisibilityScope = Repo | Org | Network | World\n\
+                   type FrameExtent\n\
+                     = ExtentInFrame { length: FrameLength }\n\
+                     | ExtentFrameUnregistered { identity: Id }\n\
+                   type CostBasis\n\
+                     = Predicted\n\
+                     | Measured\n\
+                   type CostAccount<S> {\n\
+                     time: Measure<Time, S>\n\
+                   }\n\
+                   type Result<ok, err> = Ok { value: ok } | Err { value: err }\n\
+                   data volume_row: Int = 3\n\
+                   fn trim_one(s: String) -> String { s }\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "VisibilityScope",
+            "Repo",
+            "Org",
+            "Network",
+            "World",
+            "FrameExtent",
+            "ExtentInFrame",
+            "ExtentFrameUnregistered",
+            "CostBasis",
+            "Predicted",
+            "Measured",
+            "CostAccount",
+            "S",
+            "Result",
+            "ok",
+            "err",
+            "Ok",
+            "Err",
+            "volume_row",
+            "trim_one",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing self-declared name {expected}"
+            );
+        }
+    }
+
+    /// A coproduct may be spaced out. `std.measure`'s `Dimension` puts blank lines
+    /// between groups of variants and `Volume` sits after one; breaking the block scan
+    /// on the blank line dropped it and silently reopened the edge this guard closes.
+    #[test]
+    fn blank_lines_do_not_end_a_coproduct_block() {
+        let src = "module std.measure\n\
+                   type Dimension\n\
+                     = Length\n\
+                     | Mass\n\
+                   \n\
+                     | Area\n\
+                     | Volume\n\
+                   \n\
+                   type Scale =\n\
+                     | Nano\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "Dimension",
+            "Length",
+            "Mass",
+            "Area",
+            "Volume",
+            "Scale",
+            "Nano",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing {expected} across a blank line"
+            );
+        }
+    }
+
+    // A type ALIAS does not declare its target. `type List<element> = FreeMonoid<element>`
+    // declares `List`; `FreeMonoid` is a REFERENCE OUT, and collecting it here suppressed
+    // the closure edge to whichever module declares it — an UNDER-pull, the dangerous
+    // direction. Review 55399 called this correctly. An earlier revision carried it as a
+    // marked known gap; a marked gap records how debt ENDS, it does not authorize creating
+    // it, and this one pointed the wrong way.
+    //
+    // The discriminator is the right-hand side's own shape: a coproduct alternates (`|`) or
+    // carries a record payload (`{`), an alias does neither.
+    //
+    // THE ARM THAT SHAPE CANNOT DECIDE, named rather than left to be found: `type X = Foo`
+    // with a bare capitalized RHS is an alias under this rule, but the same bytes are how a
+    // single-alternative coproduct would spell itself if the grammar admits one — same text,
+    // opposite correct answers. Censused across `dag` + `src/v2` + `src/v1` rather than
+    // assumed: 60 occurrences, and every one decides ALIAS. 47 name a type declared in
+    // ANOTHER module (unambiguous alias — the suppressed edge was real, so this class is 47
+    // instances wide, not one). The other 13 name a type declared in the SAME FILE, each
+    // hand-checked: `type FileEntry {` under `type FileClassification = FileEntry`,
+    // `type ParseTableRealization {` under `type ParseTable`, and eleven more of that shape.
+    // Those 13 are inert either way — a same-file `type` head is already in this set via the
+    // declaration-head arm, so the resolve loop skips the name before the pool is consulted.
+    // ZERO of the 60 is a single-alternative coproduct.
+    //
+    // What is NOT claimed: that the ambiguity is impossible. `type X = Foo` where `Foo` is
+    // declared nowhere is undecidable from the RHS alone, and someone can author one
+    // tomorrow. The residual failure would be an OVER-pull, not an under-pull.
+    #[test]
+    fn an_alias_target_is_a_reference_out_not_a_declared_variant() {
+        let names = module_self_declared_names(
+            "type List<element> = FreeMonoid<element>\ntype Bit = Bool\n",
+        );
+        assert!(names.contains("List"), "the alias itself is declared here");
+        assert!(
+            names.contains("element"),
+            "its type parameter is bound here"
+        );
+        assert!(
+            !names.contains("FreeMonoid"),
+            "an alias TARGET is a reference out — collecting it suppresses a real closure edge"
+        );
+        assert!(
+            !names.contains("Bool"),
+            "same for a non-generic alias target"
+        );
+    }
+
+    #[test]
+    fn a_single_variant_coproduct_with_a_payload_is_still_a_declaration() {
+        let names =
+            module_self_declared_names("type FrameExtent = ExtentInFrame { length: Int }\n");
+        assert!(
+            names.contains("ExtentInFrame"),
+            "a record payload marks a variant, not an alias — the brace is the discriminator"
+        );
+    }
+
+    /// A record body's field labels are not declarations the module exports.
+    #[test]
+    fn record_field_labels_are_not_self_declared() {
+        let src = "module std.probe\n\
+                   type CostAccount {\n\
+                     observation: Observation\n\
+                   }\n";
+        let names = module_self_declared_names(src);
+        assert!(names.contains("CostAccount"));
+        assert!(
+            !names.contains("observation"),
+            "field label collected as a declaration"
+        );
+    }
+
+    /// A parenthesis-free arrow lambda binds its parameter. The guard keys on the
+    /// PRECEDING token, not the arrow, because a match arm head is also `ident =>` and
+    /// binding one would suppress a real edge — a silent under-pull.
+    #[test]
+    fn bare_arrow_lambda_parameter_is_bound_but_a_match_arm_head_is_not() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Row>) -> Bool {\n\
+                     xs |> any(t => t.name == name)\n\
+                   }\n\
+                   fn g(o: Optional<Int>) -> Int {\n\
+                     match o {\n\
+                       Absent => 0\n\
+                       Present { value: v } => v\n\
+                     }\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.bound.contains("t"),
+            "lambda parameter not treated as a binder"
+        );
+        assert!(
+            !c.bound.contains("Absent"),
+            "match arm head bound — this would silently drop a real closure edge"
+        );
+    }
+
+    /// The other two legal preceding tokens: a comma and a named argument's colon.
+    #[test]
+    fn named_argument_and_comma_positioned_lambdas_bind_too() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Int>) -> Int {\n\
+                     fold(xs, init: 0, f: acc => acc)\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(c.bound.contains("acc"));
+    }
+}
+#[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
 
@@ -7586,6 +7780,40 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             continue;
         }
         let name = &content[start..i];
+        // A PARENTHESIS-FREE arrow lambda binds its single parameter: `any(t => ...)`,
+        // `map(rm => ...)`, `fold(xs, init: 0, f: acc => ...)`. `destructuring_bound_spans`
+        // only recognises the parenthesised form `(a, b) =>` and the pattern form
+        // `{ .. } =>`, so this one leaked its binder into the reference set — and a
+        // one-letter binder resolves against the WHOLE POOL, where some module
+        // somewhere declares `fn t`. Receipt: `dag/std/algebra.dag`'s
+        // `any(t => t.name == name)` pulled `dag/test/claim/pcb_footprint_witness_test.dag`
+        // (which declares `fn t(component, terminal)`) and through it the entire PCB
+        // product corpus into the v1 seed's compile closure.
+        //
+        // The guard is the PRECEDING token, not the arrow alone: a match arm head is
+        // also `ident =>` but is preceded by `{`, `}` or a newline, whereas a lambda
+        // parameter sits in argument position — after `(`, `,` or a named-argument
+        // `:`. Measured over the corpus, all 4397 sites matching that shape are
+        // lambdas; no match-arm head is preceded by any of the three.
+        let is_bare_arrow_lambda_param = {
+            let mut j = i;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let arrow = content.as_bytes()[j..].starts_with(b"=>");
+            let mut k = start;
+            while k > 0 && bytes[k - 1].is_ascii_whitespace() {
+                k -= 1;
+            }
+            let prev = if k > 0 { bytes[k - 1] } else { b'\0' };
+            arrow && matches!(prev, b'(' | b',' | b':')
+        };
+        if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
         let was_after_colon = just_saw_colon;
         just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
@@ -7704,6 +7932,139 @@ struct BothClosureEdgeIndex {
     bare_scan_eligible: HashSet<String>,
 }
 
+/// The names a module declares FOR ITSELF, including the variant heads of its own
+/// coproducts.
+///
+/// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
+/// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
+/// and then writes `World` was scanned as referencing some other module — and the
+/// pool happens to contain `type World sole_constructor` in `dag/product/spatial_world.dag`,
+/// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
+///
+/// Three more of the identical shape in one closure: `Volume` (a variant of
+/// `std.measure`'s own `Dimension`, pulled `gunbc.roadmap_model`), `Measured` (a
+/// variant of `std.realization_schedule`'s own coproduct, pulled `std.observation`),
+/// and `ExtentInFrame` (a variant in `std.spatial_frame`, pulled `std.attribution`).
+///
+/// This is not a tiebreak and not a policy: a name the module itself declares is
+/// bound by that declaration, so it can never be a reference OUT. Skipping it is the
+/// language's own scoping rule, not a heuristic about which candidate is likelier.
+fn module_self_declared_names(content: &str) -> BTreeSet<String> {
+    let content: &str = &annotation_erased_scan_text(content);
+    let mut out = BTreeSet::new();
+    let ident_head = |s: &str| -> Option<String> {
+        let s = s.trim_start();
+        let mut end = 0;
+        for (idx, c) in s.char_indices() {
+            if c.is_alphanumeric() || c == '_' {
+                end = idx + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if end == 0 {
+            None
+        } else {
+            Some(s[..end].to_string())
+        }
+    };
+    let mut in_coproduct = false;
+    for line in content.lines() {
+        let l = line.trim_start();
+        let decl_head = [
+            "pub type ",
+            "pub data ",
+            "pub fn ",
+            "pub func ",
+            "type ",
+            "data ",
+            "fn ",
+            "func ",
+            "test fn ",
+            "test data ",
+        ]
+        .iter()
+        .find_map(|k| l.strip_prefix(*k));
+        if let Some(rest) = decl_head {
+            if let Some(name) = ident_head(rest) {
+                out.insert(name);
+            }
+            // TYPE PARAMETERS on the declaration head. `type Result<ok, err> = Ok { value: ok }
+            // | Err { value: err }` in `std.error_primitives` binds `ok` and `err`; scanned as
+            // references they resolved against the whole pool to `fn ok(out: String) ->
+            // SshSessionExecResult` in a spark serving witness test, so `std.error_primitives`
+            // acquired closure edges to that witness and to `extdeps.ssh.session` — and
+            // `extdeps.dns.domain_name`'s `Ok { value: labels |> list_push(label) }` then
+            // typed `labels` as `SshSessionExecResult`.
+            let after_name = rest.trim_start();
+            let ident_end = after_name
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(after_name.len());
+            let tail = after_name[ident_end..].trim_start();
+            if let Some(params) = tail.strip_prefix('<').and_then(|s| s.split_once('>')) {
+                for part in params.0.split(',') {
+                    if let Some(name) = ident_head(part) {
+                        out.insert(name);
+                    }
+                }
+            }
+            // `type X = ...` opens a coproduct whose variant heads continue on this
+            // line and on following lines beginning with `|`. The MULTILINE form puts
+            // the `=` on the NEXT line instead —
+            //
+            //     type FrameExtent
+            //       = ExtentInFrame { length: FrameLength }
+            //       | ExtentFrameUnregistered { .. }
+            //
+            // — so a bare `type X` head opens one too, pending its `=`. Review 55386
+            // caught this: without it `ExtentInFrame` and `Predicted` were never
+            // collected, two of the four variants this guard exists for, and the
+            // closure improvement measured for their modules came from those modules
+            // leaving the closure for an unrelated reason. Right conclusion, wrong
+            // evidence.
+            //
+            // The same-line extraction below is gated on the LINE's own `=` rather than
+            // on the flag, so widening the flag cannot silently disable it.
+            let is_type_head = l.starts_with("type ") || l.starts_with("pub type ");
+            in_coproduct = is_type_head;
+            if is_type_head {
+                if let Some((_, body)) = l.split_once('=') {
+                    // An ALIAS is not a declaration of its target. `type List<element> =
+                    // FreeMonoid<element>` declares `List`; `FreeMonoid` is a REFERENCE
+                    // OUT, and collecting it here suppresses the closure edge to whoever
+                    // declares it — an under-pull, the dangerous direction (review 55399).
+                    // The discriminator is the RHS's own shape: a coproduct alternates
+                    // (`|`) or carries a record payload (`{`); an alias does neither.
+                    let is_alias = !body.contains('|') && !body.contains('{');
+                    if is_alias {
+                        in_coproduct = false;
+                    } else {
+                        for part in body.split('|') {
+                            if let Some(name) = ident_head(part) {
+                                out.insert(name);
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if l.starts_with('|') || (in_coproduct && l.starts_with('=')) {
+            in_coproduct = true;
+            for part in l.trim_start_matches(['|', '=']).split('|') {
+                if let Some(name) = ident_head(part) {
+                    out.insert(name);
+                }
+            }
+            continue;
+        }
+        if !l.is_empty() && !l.starts_with('|') {
+            in_coproduct = in_coproduct && l.starts_with('{');
+        }
+    }
+    out
+}
+
 fn source_declares_import_lines(content: &str) -> bool {
     content
         .lines()
@@ -7760,10 +8121,11 @@ fn bare_reference_pull_paths_for_source(
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
         return Ok(Vec::new());
     };
-    let census_started = std::time::Instant::now();
-    let census = tree_bare_census_for_root(index, &root)?;
+    let (census, census_nanos) =
+        nanos_net_of_pool_parse(|| tree_bare_census_for_root(index, &root));
+    let census = census?;
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census += census_started.elapsed().as_nanos();
+        st.edge_index_tree_census += census_nanos;
         st.edge_index_tree_census_calls += 1;
     });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
@@ -7815,10 +8177,16 @@ fn bare_reference_pull_paths_for_source(
     resolve_stage_slot_add(|st| {
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
+    let self_declared = module_self_declared_names(&sf.content);
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
+    let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
+        // Bound by this module's own declaration — see `module_self_declared_names`.
+        if !service_head && self_declared.contains(&name) {
+            continue;
+        }
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
             in_call_position
@@ -7826,24 +8194,37 @@ fn bare_reference_pull_paths_for_source(
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+        // Returns WHAT was selected and, beside it, WHICH CENSUS STATE produced the
+        // selection. The state is the census's own verdict — `GlobalBareUniqueBinding`
+        // versus `GlobalBareAmbiguousBinding` — and it is the authority on whether a
+        // bare name has competing declarations. Reconstructing that from source with a
+        // declaration-head scanner does not work: a line-leading `=`/`|` regex
+        // undercounts (it misses `type Connective = Conj | Disj | NoConnective | Arrow`
+        // entirely) and a permissive one overcounts (it reads an alias target and a
+        // `data` initializer's head as variants), and the two answers differ by 30x on
+        // the same trace. The census already knows; carrying its verdict costs nothing.
+        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
             if service_head {
-                return v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone());
+                return (
+                    v1_rt::map_get(&census.services, name.clone())
+                        .map(|entry| entry.module_path.clone()),
+                    "service",
+                );
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => {
+                    } => (
                         if pullable(binding) {
                             Some(module_path.clone())
                         } else {
                             None
-                        }
-                    }
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        },
+                        "unique",
+                    ),
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
                         crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
@@ -7854,22 +8235,39 @@ fn bare_reference_pull_paths_for_source(
                             } else {
                                 None
                             }
-                        })
-                    }
+                        }),
+                        "ambiguous",
+                    ),
                 },
-                None => {
+                None => (
                     if in_call_position {
                         v1_rt::map_get(&census.services, name.clone())
                             .map(|entry| entry.module_path.clone())
                     } else {
                         None
-                    }
-                }
+                    },
+                    "absent",
+                ),
             }
         };
-        let target_module = match resolve_in(&census) {
-            Some(m) => Some(m),
-            None => resolve_in(&pool_bare_census(index)?),
+        // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
+        // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
+        // and a whole-pool fallback hit into one `Option<String>`, so a name that the
+        // file's own tree could NOT resolve — and that only the pool answered — was
+        // indistinguishable from one resolved in scope. The two have different meanings:
+        // the second is the closure depending on ambient pool membership rather than on
+        // anything the file's tree provides, and it is exactly the state a zero-import
+        // corpus can sit in while looking green.
+        //
+        // Carrying the provenance costs nothing (the arms already know it) and makes the
+        // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
+        // "what did it resolve to".
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+            (Some(m), state) => (Some(m), "scoped", state),
+            (None, _) => {
+                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                (m, "pool-fallback", state)
+            }
         };
         let Some(module_path) = target_module else {
             continue;
@@ -7900,8 +8298,8 @@ fn bare_reference_pull_paths_for_source(
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
-                "[bare-pull] {} -> '{}' -> {} ({})",
-                file_rel, name, module_path, dep_rel
+                "[bare-pull] {} -> '{}' -> {} ({}) [{} {}]",
+                file_rel, name, module_path, dep_rel, resolution_arm, census_state
             );
         }
         if !index.module_graph_facts.declares_repo_path(&dep_rel) {
@@ -7918,8 +8316,18 @@ fn bare_reference_pull_paths_for_source(
             }
         }
     }
+    // `pool_bare_census` is the loop's cross-tree fallback and forces the same shared
+    // parse. In practice the census above has already forced it, so this delta is
+    // normally zero — but "normally" is an ordering accident and the row must not
+    // depend on one.
+    let resolve_loop_pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(resolve_loop_pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_bare_resolve_loop += resolve_loop_started.elapsed().as_nanos();
+        st.edge_index_bare_resolve_loop += resolve_loop_started
+            .elapsed()
+            .as_nanos()
+            .saturating_sub(resolve_loop_pool);
     });
     Ok(pulled)
 }
@@ -7979,10 +8387,11 @@ fn build_both_closure_edge_index(
             continue;
         }
         bare_scan_eligible.insert(file_rel.clone());
-        let bare_started = std::time::Instant::now();
-        let bare_paths = bare_reference_pull_paths_for_source(sf, index)?;
+        let (bare_paths, bare_nanos) =
+            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(sf, index));
+        let bare_paths = bare_paths?;
         resolve_stage_slot_add(|st| {
-            st.edge_index_bare_half += bare_started.elapsed().as_nanos();
+            st.edge_index_bare_half += bare_nanos;
             st.edge_index_bare_eligible += 1;
         });
         bare_out.insert(file_rel, bare_paths);
@@ -8022,9 +8431,9 @@ fn extend_with_bare_reference_closure(
     // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
     // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
     // what decides whether the fix is a memo, an incremental closure, or a union graph.
-    let edge_started = std::time::Instant::now();
-    let edges = both_closure_edge_index(index)?;
-    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_started.elapsed().as_nanos());
+    let (edges, edge_nanos) = nanos_net_of_pool_parse(|| both_closure_edge_index(index));
+    let edges = edges?;
+    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_nanos);
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -12522,7 +12931,8 @@ pub struct ResolveStageNanos {
     pub edge_index_closure_expand: u128,
     /// Calls to that expansion — the multiplicity the per-call cost is paid at.
     pub edge_index_closure_expand_calls: u128,
-    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census.
+    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census,
+    /// NET of the shared whole-corpus `pool_parse` it may be the first to force.
     pub edge_index_tree_census: u128,
     /// Calls to that census.
     pub edge_index_tree_census_calls: u128,
@@ -12530,8 +12940,33 @@ pub struct ResolveStageNanos {
     /// interpretable: total/calls is an average over mostly-free hits and describes no
     /// real call.
     pub edge_index_tree_census_misses: u128,
-    /// Nanos spent in cold census builds only.
+    /// Nanos spent in cold census builds only, NET of `pool_parse` (see that row): the
+    /// census's own BFS over the root's compile closure plus
+    /// `build_symbol_index_census_nodes`, and nothing else.
     pub edge_index_tree_census_miss_nanos: u128,
+    /// `pool_parse` — the WHOLE-CORPUS tokenize+parse behind every pool-derived term
+    /// (the per-root bare census, the qualified fill, the pool bare census). It is
+    /// memoized on the index and forced LAZILY by whichever consumer reaches it first,
+    /// so it has no single owner: charging it to that consumer reports one term's cost
+    /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
+    /// the 21.3s that `edge_index_tree_census_miss_nanos` used to report, because the
+    /// miss timer started before the pool force.
+    ///
+    /// EVERY window that can contain the parse is recorded NET of it, via
+    /// `nanos_net_of_pool_parse` or the same subtraction inline. The forcing paths are
+    /// two, and they land in DIFFERENT top-level rows — which is why this row is an
+    /// exclusive peer rather than a child of any of them:
+    ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
+    ///     (and, as the loop's cross-tree fallback, `pool_bare_census`);
+    ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
+    ///     `assembly_root_symbol_index` (via the per-root census again).
+    /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
+    /// real payer — not a hypothetical one (review 55349).
+    pub pool_parse: u128,
+    /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
+    pub pool_parse_builds: u128,
+    /// Modules parsed by those cold builds.
+    pub pool_parse_modules: u128,
     /// `bare_identifier_candidates` — the per-file identifier scan.
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
@@ -12591,6 +13026,9 @@ impl ResolveStageNanos {
         self.edge_index_tree_census_calls += other.edge_index_tree_census_calls;
         self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
         self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
+        self.pool_parse += other.pool_parse;
+        self.pool_parse_builds += other.pool_parse_builds;
+        self.pool_parse_modules += other.pool_parse_modules;
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
@@ -12706,6 +13144,9 @@ thread_local! {
             edge_index_tree_census_calls: 0,
             edge_index_tree_census_misses: 0,
             edge_index_tree_census_miss_nanos: 0,
+            pool_parse: 0,
+            pool_parse_builds: 0,
+            pool_parse_modules: 0,
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
@@ -12748,6 +13189,29 @@ fn resolve_stage_slot_add(update: impl FnOnce(&mut ResolveStageNanos)) {
 
 fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
     RESOLVE_STAGE_SLOT.with(|s| s.get())
+}
+
+/// Run `f` and return its value beside its wall NET of any cold `pool_parse` build
+/// forced inside it.
+///
+/// The whole-corpus pool parse is a SHARED, lazily-forced term: the per-root bare
+/// census, the qualified fill and the pool bare census all need it, none of them owns
+/// it, and whichever arrives first pays for all of them. A timer started around that
+/// first arrival therefore reports the corpus parse under the arriving consumer's name
+/// — the mis-attribution measured 2026-08-24, where two `tree_bare_census_for_root`
+/// misses reported 23.02s of which 14.25s was this parse. Subtracting here (and
+/// reporting the parse once, on `pool_parse`) is what keeps the enclosing rows about
+/// the work they are named for. `saturating_sub` because the two clocks are read at
+/// slightly different instants, never because a negative remainder is meaningful.
+fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
+    let before = resolve_stage_slot_snapshot().pool_parse;
+    let started = std::time::Instant::now();
+    let out = f();
+    let elapsed = started.elapsed().as_nanos();
+    let pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(before);
+    (out, elapsed.saturating_sub(pool))
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
@@ -12938,6 +13402,8 @@ pub struct ExclusiveCostPartition {
     pub edge_index_closure_expand_calls: u128,
     pub edge_index_tree_census_misses: u128,
     pub edge_index_tree_census_calls: u128,
+    pub pool_parse_builds: u128,
+    pub pool_parse_modules: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
@@ -13055,6 +13521,28 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_pool_fill",
             nanos: st.assembly_pool_fill,
+        },
+        // The shared whole-corpus parse is an EXCLUSIVE PEER, not a child of any row.
+        //
+        // It was an inclusive row `contained_in: "load"` when this landed, and review
+        // 55349 was right that the claim is false: `build_symbol_index_for_reconcile`
+        // can force the parse through `pool_qualified_fill` while timing
+        // `assembly_pool_fill`, which is a top-level exclusive peer of `load`, not a
+        // descendant of it. There is no single true parent, because WHICH row forces the
+        // parse depends on the path — which is the whole defect restated one level up,
+        // and naming any one of them would have been the same lie in a smaller font.
+        //
+        // Once every window that can contain it is recorded net of it (`load`,
+        // `assembly_pool_fill`, `assembly_root_symbol_index`, and the inclusive rows
+        // beneath `load`), the parse is carved out of all of them and is a disjoint
+        // window inside the parent span — which is exactly what an exclusive row is.
+        // This also keeps `sum_exclusive` invariant across the repair: before it, the
+        // parse was inside whichever row forced it; after it, the parse is its own row
+        // and is counted exactly once, rather than silently migrating into
+        // `remainder_nanos` as the inclusive form would have done.
+        CostPartitionRow {
+            name: "pool_parse",
+            nanos: st.pool_parse,
         },
         CostPartitionRow {
             name: "assembly_symbol_index_merge",
@@ -13255,6 +13743,8 @@ pub fn exclusive_cost_partition_from(
         edge_index_closure_expand_calls: st.edge_index_closure_expand_calls,
         edge_index_tree_census_calls: st.edge_index_tree_census_calls,
         edge_index_tree_census_misses: st.edge_index_tree_census_misses,
+        pool_parse_builds: st.pool_parse_builds,
+        pool_parse_modules: st.pool_parse_modules,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
@@ -13341,6 +13831,14 @@ pub fn render_exclusive_cost_partition_json(
     out.push_str(&json_num(p.edge_index_tree_census_calls));
     out.push_str(",\"tree_census_misses\":");
     out.push_str(&json_num(p.edge_index_tree_census_misses));
+    out.push_str("}");
+
+    // The shared whole-corpus parse, reported beside its own volume so the row can be
+    // priced per module rather than per forcing consumer.
+    out.push_str(",\"pool_parse\":{\"builds\":");
+    out.push_str(&json_num(p.pool_parse_builds));
+    out.push_str(",\"modules\":");
+    out.push_str(&json_num(p.pool_parse_modules));
     out.push_str("}");
 
     out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
@@ -13523,9 +14021,10 @@ fn resolve_entry_with_parse_cache_inner(
 > {
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
-    let load_started = std::time::Instant::now();
-    let sources = load_sources_for_entry_with_pool(index, entry_file)?;
-    resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    let (sources, load_nanos) =
+        nanos_net_of_pool_parse(|| load_sources_for_entry_with_pool(index, entry_file));
+    let sources = sources?;
+    resolve_stage_slot_add(|s| s.load += load_nanos);
     resolved_graph_from_sources_with_index(
         index,
         sources,
@@ -14686,6 +15185,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
     pool_paths.sort();
+    let pool_started = std::time::Instant::now();
     let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
     for module_path in pool_paths {
@@ -14704,6 +15204,15 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si: Rc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
+    // The one place this term is measured, so it is counted once wherever it is forced
+    // from. Every enclosing timer records itself net of this row — see
+    // `nanos_net_of_pool_parse`.
+    let modules = parsed.nodes_by_file.len() as u128;
+    resolve_stage_slot_add(|st| {
+        st.pool_parse += pool_started.elapsed().as_nanos();
+        st.pool_parse_builds += 1;
+        st.pool_parse_modules += modules;
+    });
     Ok(parsed)
 }
 
@@ -14769,6 +15278,7 @@ fn tree_bare_census_for_root(
     // instead of the right one (make the cold build cheaper, or build it once per process
     // rather than once per index).
     let miss_started = std::time::Instant::now();
+    let pool_before = resolve_stage_slot_snapshot().pool_parse;
     resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
     // Identity of the cold misses, not just their count. The count alone cannot
     // distinguish "the same subject recomputed per index" from "a different subject
@@ -14818,8 +15328,16 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    // Net of the whole-corpus pool parse this build may have been the first to force:
+    // that parse is shared with the qualified fill and the pool bare census and is
+    // reported once on `pool_parse`. Before this subtraction the row read 23.02s for
+    // two misses, 14.25s of which was the parse (measured 2026-08-24).
+    let pool_here = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census_miss_nanos += miss_started.elapsed().as_nanos();
+        st.edge_index_tree_census_miss_nanos +=
+            miss_started.elapsed().as_nanos().saturating_sub(pool_here);
     });
     Ok(census)
 }
@@ -14858,9 +15376,9 @@ fn build_symbol_index_for_reconcile(
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
-    let pool_fill_started = std::time::Instant::now();
-    let pool_fill = pool_qualified_fill(index)?;
-    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
+    let (pool_fill, pool_fill_nanos) = nanos_net_of_pool_parse(|| pool_qualified_fill(index));
+    let pool_fill = pool_fill?;
+    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_nanos);
     let merge_started = std::time::Instant::now();
     let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
     resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
@@ -15057,18 +15575,20 @@ fn reconcile_with_typed_cache(
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
                                             Some(hit) => hit.clone(),
                                             None => {
-                                                let root_symbol_index_started =
-                                                    std::time::Instant::now();
-                                                let composed =
-                                                    v1_compiler_infer::symbol_index_with_bare_fill(
-                                                        symbol_index.clone(),
-                                                        tree_bare_census_for_root(index, &root)?,
-                                                    );
+                                                let (composed, composed_nanos) =
+                                                    nanos_net_of_pool_parse(|| {
+                                                        tree_bare_census_for_root(index, &root).map(
+                                                            |tree| {
+                                                                v1_compiler_infer::symbol_index_with_bare_fill(
+                                                                    symbol_index.clone(),
+                                                                    tree,
+                                                                )
+                                                            },
+                                                        )
+                                                    });
+                                                let composed = composed?;
                                                 resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_symbol_index +=
-                                                        root_symbol_index_started
-                                                            .elapsed()
-                                                            .as_nanos()
+                                                    s.assembly_root_symbol_index += composed_nanos
                                                 });
                                                 // The composed index's global_bare = closure ∪ tree,
                                                 // so its variant base is computed from the composed
@@ -39646,6 +40166,86 @@ mod exclusive_cost_partition_law {
             p.sum_exclusive_nanos() + p.remainder_nanos
         );
         assert_eq!(p.share_of_parent("load"), Some(0.6));
+    }
+
+    /// The shared pool parse is subtracted from the row that happened to force it.
+    ///
+    /// RED WITHOUT THE SUBTRACTION: drop the `saturating_sub` in
+    /// `nanos_net_of_pool_parse` and this returns the full elapsed — which is exactly
+    /// the state measured on 2026-08-24, where `edge_index_tree_census_miss_nanos`
+    /// reported 23.02s for two cold censuses because 14.25s of whole-corpus
+    /// `pool_parse` had started inside its timer.
+    #[test]
+    fn a_pool_parse_forced_inside_a_row_is_not_charged_to_that_row() {
+        let slot_before = resolve_stage_slot_snapshot().pool_parse;
+        // A body that spends real, nonzero wall AND "forces" a 10s pool build. The 10s
+        // dwarfs any wall this body can plausibly spend, so the net saturates to zero —
+        // and WITHOUT the subtraction the net is the body's own wall, which the busy
+        // loop guarantees is greater than zero. That gap is what makes this test
+        // discriminating; asserting merely `net < 10s` would pass either way, which is
+        // how the first version of this test failed to catch its own mutation.
+        let ((), net) = nanos_net_of_pool_parse(|| {
+            let spin = std::time::Instant::now();
+            while spin.elapsed().as_millis() < 5 {
+                std::hint::spin_loop();
+            }
+            resolve_stage_slot_add(|st| st.pool_parse += 10_000_000_000);
+        });
+        assert_eq!(net, 0, "row kept the pool parse it forced: {net}ns");
+        assert_eq!(
+            resolve_stage_slot_snapshot().pool_parse - slot_before,
+            10_000_000_000,
+            "the parse must still be counted — once, on its own row"
+        );
+    }
+
+    /// The pool parse is an EXCLUSIVE PEER, with no parent row at all.
+    ///
+    /// It shipped as an inclusive row `contained_in: "load"`, and review 55349 showed
+    /// that claim false: the reconcile path forces the parse through
+    /// `pool_qualified_fill` while timing `assembly_pool_fill`, which is a top-level
+    /// peer of `load` and not a descendant of it. No single parent is true, because
+    /// which row forces the parse depends on the path — so the row has none.
+    ///
+    /// RED WITHOUT THE FIX: as an inclusive row this asserts `contained_in`, and every
+    /// candidate value is wrong on some path. As an exclusive row the discriminating
+    /// property is the one below — the parse enters `sum_exclusive` exactly once,
+    /// rather than migrating into `remainder_nanos`.
+    #[test]
+    fn pool_parse_is_an_exclusive_peer_with_no_parent_row() {
+        let st = ResolveStageNanos {
+            pool_parse: 14_250_000_000,
+            pool_parse_builds: 1,
+            pool_parse_modules: 3_875,
+            // A `load` already recorded NET of the parse, as the live code records it.
+            load: 6_960_000_000,
+            ..ResolveStageNanos::default()
+        };
+        let p = exclusive_cost_partition_from(&st, "test_basis", 21_210_000_000, 1, 0, Vec::new());
+        // No inclusive row claims it — a parent would be false on one path or the other.
+        assert!(
+            !p.inclusive.iter().any(|r| r.name == "pool_parse"),
+            "pool_parse must not claim a parent it does not have"
+        );
+        let row = p
+            .exclusive
+            .iter()
+            .find(|r| r.name == "pool_parse")
+            .expect("pool_parse exclusive row");
+        assert_eq!(row.nanos, 14_250_000_000);
+        // Counted exactly once, beside the net `load` rather than inside it, and the
+        // partition still reconciles.
+        assert_eq!(p.sum_exclusive_nanos(), 21_210_000_000);
+        assert_eq!(p.remainder_nanos, 0);
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Reconciled { .. }
+        ));
+        let json = render_exclusive_cost_partition_json(&p, &[]);
+        assert!(
+            json.contains("\"pool_parse\":{\"builds\":1,\"modules\":3875}"),
+            "{json}"
+        );
     }
 
     #[test]
