@@ -176,7 +176,7 @@ git status --porcelain          # PRINT THIS
 depth-1 fetch — so a checkout-between-arms is either defeated or cannot reach the parent commit at
 all. A patch carried in the script text survives whatever the runner did to the worktree.
 
-Three things make it an instrument rather than a gesture, each learned by being burned:
+Four things make it an instrument rather than a gesture, each learned by being burned:
 
 1. **Print `git status` after the revert.** A silently-failed revert gives you two *after* arms
    reporting identical numbers, which reads exactly like "my change had no effect" — a false null
@@ -187,7 +187,23 @@ Three things make it an instrument rather than a gesture, each learned by being 
    says "already built" and arm two silently reuses arm one's compiler — a false identical. This is
    the stale-binary class the probe's own header documents, arriving from a direction that header
    does not cover: the arms differ by a **worktree patch**, not by a commit.
-3. **Read the rows that did NOT move.** A delta on your target row is equally consistent with
+3. **Revert the full set the binary is built FROM, not the set you edited by hand.** In a
+   self-hosting tree the generated mirror is what the compiler is actually built from, so it must be
+   in the reverse patch too. Receipt — one commit, two files, both required:
+
+   ```
+   src/v1/05_emit_rust.dag                      the authority
+   src/v1/stage0/src/v1_compiler_emit_rust.rs   the mirror the binary compiles
+   ```
+
+   Reverse-patching only the `.dag` gives you a *before* arm whose `gunbc` was built from the
+   **after** mirror: both arms then measure the change, the histogram rows come back identical, and
+   it reads as "my change had no effect". That is the same false null as condition 1, arriving
+   through a door `git status` does not close — the revert genuinely applied, the porcelain listing
+   is honest, and the arm is still not a before arm. `git show <commit> --stat` is the roster; if a
+   generated artifact is in it, it belongs in the reverse patch. The `.dag` is what the author
+   thinks of as "my change"; the mirror is what the compiler thinks of as its source.
+4. **Read the rows that did NOT move.** A delta on your target row is equally consistent with
    "fixed 8" and with "fixed 12, broke 4 elsewhere". Only the unchanged remainder discriminates.
    Receipt: `E0425` 24 → 16 while all seventeen other histogram rows stayed byte-identical.
 
@@ -196,7 +212,7 @@ that the change had broken emit, and a plausible mechanism was ready to blame. T
 **identical refusals in both arms** — so it was not the author's. It was a trailing `//` block in a
 file not even in the compiled closure, since fixed on main as #9027.
 
-Note the two failures this clause names are ones that *pass* clauses 1–4 completely: the run
+Note the failure this clause names passes clauses 1–4 completely: the run
 executed, on the right tree, the subject stood alone, and the arms were genuinely two arms. What is
 missing is any evidence about **whose** the difference is.
 
