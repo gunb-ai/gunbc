@@ -149,6 +149,15 @@ type List<element> = FreeMonoid<element>
 // carrier at once rather than at these two. Until that exists the class stays mitigatable and only
 // review sees a new one; what this change buys is that each alias now names a carrier that can
 // answer for it, which is the single-authority half, not the wall.
+//
+// CARRIED FORWARD FROM THE PREDICATE-HALF CHANGE (#9055), whose note this row replaces: the
+// fusion was measured, not argued -- `extdeps.languages.rust.types` gave `PointwisePower` the
+// inhabitant `BTreeSet<{0}>`, so a declaration position lowered to `im::OrdSet` while a record
+// literal lowered to the algebra struct, and the two met as a rustc refusal wherever one compiled
+// closure held both (`docs/probes/t3_collection_realization_2026-08-22.md`). That change also
+// closed the predicate half: no `Set { member: .. }` literal survives in `src/v2`, so the Set side
+// of the fork is a spelling question only. Its stated NEXT-RUNG TRIGGER was the Map-side
+// decomposition landing, after which both rows retarget in one motion. That is this row.
 type Set<element> = FinitePowerSet<element>
 type Map<key, value> = FinitelySupportedFunction<key, value>
 
