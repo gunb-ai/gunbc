@@ -7,7 +7,12 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
-import v2.workflow.required_floor { ClaimSafetyOutcome }
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome,
+  CompletedPastSafetyLimit,
+  CompletedWithinSafetyLimits,
+  SafetyInterrupted
+}
 
 // THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
 //
@@ -77,7 +82,8 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 //
 // These arms are not a taxonomy invented here: they mirror the arms the seed ALREADY holds
 // typed, one for one. `ClaimOutcome` in the seed is Pass | Fail | NotBool { got } | RuntimeError
-// { message } | TimedOut { elapsed_ms, budget_ms, kind, completion } | HostToolUnresolved { name,
+// { message } | BudgetInterrupted { elapsed_at_least_ms, budget_ms, kind } | CompletedOverBudget
+// { elapsed_ms, budget_ms, kind } | HostToolUnresolved { name,
 // probed } | (route gap), and its own comment at that match says why: "Every non-pass arm is
 // reported with the fact that distinguishes it. A collapsed `failed` would make a budget refusal,
 // a runtime error and a witness that answered false read alike, and those three have different
@@ -236,6 +242,14 @@ type ClaimDisposition
   | KnownRedHeld
   | KnownRedNowPassing
   | BudgetRefusedBeforeVerdict
+  // REACHED ITS VERDICT, THEN EXCEEDED ITS BUDGET. Deliberately not a `...BeforeVerdict` arm:
+  // the erasure this repairs was precisely a disposition whose NAME asserted that no verdict was
+  // produced, for a row that demonstrably produced one.
+  | PassedOverBudget
+  // THE CONTRADICTORY PAIRING, NAMED RATHER THAN ABSORBED: a budget terminal whose safety
+  // outcome says the claim stayed WITHIN its limits. No measurement supports calling it either a
+  // refusal or a completed overrun, so it is neither.
+  | BudgetTerminalWithoutSafetyCause
   | HostToolUnresolvedBeforeVerdict
   | RouteGapBeforeVerdict
   | RuntimeErroredBeforeVerdict
@@ -243,7 +257,24 @@ type ClaimDisposition
 
 fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
   match row.terminal {
-    BudgetRefused { safety: _ } => BudgetRefusedBeforeVerdict
+    // THE MODEL HAD THE DISTINCTION; THIS PROJECTION DROPPED IT. `ClaimSafetyOutcome` already
+    // separates an interruption from a completion past the limit -- the axis was modelled one
+    // import away -- and `safety: _` gave both the single disposition `BudgetRefusedBeforeVerdict`,
+    // whose name asserts BEFORE VERDICT for a claim that had reached one. That is the same habit
+    // its seed mirror carried at four further sites: total at the level examined, blind one level
+    // down. The expectation split mirrors the seed exactly, because the two mappings are compared
+    // per row in production and a divergence here makes the ledger unrenderable.
+    BudgetRefused { safety: s } =>
+      match s {
+        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+          BudgetRefusedBeforeVerdict
+        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+          match row.expectation {
+            ExpectedToHold => PassedOverBudget
+            ExpectedRed => KnownRedNowPassing
+          }
+        CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
+      }
     RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
     RouteGap { route: _ } => RouteGapBeforeVerdict
