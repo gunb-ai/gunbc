@@ -7932,7 +7932,7 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
 // emit_rust_generic_method_call computes bridge_name only in the else of a guard
 // that already refuses when rt_functions() misses. Registry-vs-derivation
-// agreement is held by test.claim.v1_source_audit_witness_test
+// agreement is held by test.claim.rt_bridge_registry_witness_test
 // rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
