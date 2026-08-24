@@ -22,11 +22,11 @@ mechanism owned elsewhere and is listed only so the arithmetic closes.
 | id | mechanism | rows | evidence |
 |----|-----------|------|----------|
 | A | coproduct realization has no unused-parameter carrier | 10 | **measured** (executed counterfactual) |
-| B | fn-typed params captured into an `Rc` closure demanding `'static` | 4 | read |
+| B | callable lifetime obligations arise at `Rc<dyn Fn>` materialization and propagate | 4 | **measured** (counterfactual, negative) |
 | C | `ABSENT_CLONE_BOUND` (established, not documented here) | 2 | read |
 | D | authority substitution after resolution (emission rebinds to a v1_rt builtin) | 5 | **measured** (peer board, 28 blocks) |
-| E | empty list literal element type resolves to unit | 2 | read |
-| F | by-value closure params against a reference-yielding iterator | 1 | read |
+| E | an undetermined empty-list element type is answered as `unit`, silently | 2 | **measured** (counterfactual, negative) |
+| F | fold's unused-element strip changes the item type without telling the signature | 1 | **measured** (counterfactual) — **REPAIRED**, gunbc#9101 |
 
 10 + 4 + 2 + 5 + 2 + 1 = 24.
 
@@ -121,9 +121,15 @@ variant produces.
 
 ---
 
-## B — fn-typed params captured into an `Rc` closure demanding `'static`
+## B — callable lifetime obligations arise at `Rc<dyn Fn>` materialization and propagate through callable-valued parameters
 
-**Rows:** 4 (`E0310` x4), in `std_change.rs`. **Read.**
+**Rows:** 4 (`E0310` x4), in `std_change.rs`. **Measured** — and the measurement SUPERSEDED this
+mechanism's description. It was recorded as *fn-typed params captured into an `Rc` closure demanding
+`'static`*, which named the first symptom as though it were the mechanism. It is not: the obligation is
+created wherever a Rust `dyn` callable is materialized, and it **propagates transitively through
+callable-valued parameters**. The counterfactual below is what forced the rewrite, and it is a
+NEGATIVE result — the repair that follows from the old description relocates rows instead of retiring
+them.
 
 ### Source
 
@@ -159,6 +165,68 @@ error[E0310]: the parameter type `impl Fn(K, K) -> bool + Clone` may not live lo
 ```
 
 Four rows: `K` and `V` at `:140`, and the two `impl Fn` types at `:203`. Two sites, four parameters.
+
+### The two obligations, which the old description collapsed into one
+
+The four rows are not four instances of one thing. They are two mechanisms that share an error code:
+
+1. **Closure environment lifetime.** `op: fn(left, right) { .. key_eq .. }` lexically captures `key_eq`
+   and `value_eq`; the values it captures must satisfy the target callable's lifetime requirement.
+   A capture walk can see this one.
+2. **Callable value lifetime.** `op: Rc::new(keyed_patch_append)` — a **bare function reference**, no
+   lexical capture at all, so no capture walk can see it — yet the resulting type is still
+   `Rc<dyn Fn(..) + 'static>` and the callable value itself must satisfy `'static`. The `K` and `V`
+   rows are this one, and a bound on the fn-typed *parameters* cannot discharge it, because the
+   obligation is on the type parameters the `dyn Fn` mentions.
+
+### Counterfactual (executed) — the local repair RELOCATES, it does not retire
+
+The repair the old description implies: derive `+ 'static` per parameter from the capture set of a
+wrapped closure, covering the record-field wrap site that the emitter's existing return-connective
+gate cannot see. Implemented, regenerated, installed, and measured on this tree — both arms, binary
+stamps cleared between them, with the positive control taken on the **installed mirror** rather than on
+the source tree.
+
+|  | control | with the local repair |
+|---|---|---|
+| board primary | 100 | 100 |
+| `E0310` | 4 | **4** |
+
+Same count, **different four** — which the count alone cannot show and only reading the blocks does:
+
+- `K` / `V` still refused at `op: Rc::new(keyed_patch_append)` — obligation 2, untouched, as it must be.
+- the two `impl Fn` rows **moved from the definition site to the call site**, now refused at
+  `keyed_three_way_patch_monoid(key_eq.clone(), value_eq.clone())` inside `std_change` itself.
+
+The repair discharges the obligation where it is created and re-creates it one call up, in a caller
+whose own fn-typed parameters carry no `'static`. By the standard mechanism A's counterfactual set —
+*rows were retired, not moved* — this is not a repair, and it is not landed. The emitted specimen did
+change as intended (`key_eq: impl Fn(K, K) -> bool + Clone + 'static`) and the generation-2 seed built
+with zero errors, so the negative result is about the mechanism, not about the patch being broken.
+
+### What the emitter's own note claimed, and what replaces it
+
+`v1.compiler.emit_rust` `emit_rust_param_type` gates the bound on the enclosing function returning an
+arrow, and its note calls that "precise rather than a proxy" because the `Rc::new(move |..|)` site
+"exists exactly when the function returns an arrow". The `exactly` is false: `keyed_three_way_patch_monoid`
+returns a RECORD with an arrow-typed field, reaches the second wrap site
+(`rust_callable_field_value_wrap`), and the return-type test cannot see it. The replacement invariant the
+measurement supports is stronger than a wider return-type test:
+
+> the obligation site is **every lowering site that creates or accepts a Rust `dyn` callable requiring
+> `'static`** — not every source construct whose return type happens to be arrow-shaped.
+
+Deriving that correctly is a fixpoint over the call graph (infer callable lifetime requirements,
+propagate them backward through callable-valued arguments, repeat to stability, with SCC handling for
+recursion). That is a lifetime-propagation engine, not an affected-set repair: this board **exposed**
+the mechanism, it does not **own** it — the same ownership line that keeps mechanism D with #9060.
+
+**Instrument note, because it nearly cost this result.** A first attempt at the arms produced a perfect
+null — `E0310` 4 → 4, every code identical — from an arm that could not have shown anything: `claim_executor`
+was never built in that dispatch, so regen produced no candidate, the install silently no-opped, and the
+"repair" arm measured the same committed mirror as the control. It was caught by the `cp: cannot stat`
+line, not by the numbers, which were entirely plausible. Every arm behind the table above carries a
+positive control on the artifact under test.
 
 ---
 
@@ -391,9 +459,15 @@ is why the arm is left exactly as `main` has it rather than reddened.
 
 ---
 
-## F — by-value closure params against a reference-yielding iterator
+## F — fold's unused-element strip changes the item type without telling the closure signature
 
-**Rows:** 1 (`E0631`). **Read.**
+**Rows:** 1 (`E0631`). **Measured, and REPAIRED** — gunbc#9101. One producer fact, `elem_unused`, decides
+two things: it strips `.cloned()` (so the iterator yields `&T`) and it should decide the lambda's element
+annotation (which still declared `T`). The second consequence was never told. `emit_typed_fold_lambda`
+now forces `_` at the element position, so inference supplies whichever of `T` / `&T` the iterator yields.
+Counterfactual, both arms on one tree with the positive control on the installed mirror: board primary
+100 -> 99, `E0631` 2 -> 1, eleven other codes byte-identical, generation-2 seed clean. Retired, not
+relocated. The surviving `E0631` is mechanism E's — a different mechanism sharing the code.
 
 ### Source
 
@@ -434,11 +508,11 @@ mechanisms already went through.
 | id | evidence today | disposition | next trigger |
 |----|----------------|-------------|--------------|
 | A | measured | **repair open: #9041** | merge retires the 10 rows. One question survives the merge and the board cannot answer it: a zero-occupancy counterfactual does not distinguish a dead parameter from a placeholder for an unbuilt variant. That belongs to `v2.lens.application`'s author, not to this board. |
-| B | read | **unowned** — no lane holds it | promote to measured: at the pinned tree, vary the `'static`/`Clone` bound emission for fn-typed params captured behind `Rc` and confirm the 4 `E0310` rows retire with no relocation. |
+| B | **measured** (executed counterfactual, negative) | **unowned, and reclassified** — the local repair was implemented, measured, and rejected; what remains is a lifetime-propagation engine this board does not own | build the transitive obligation derivation: requirements inferred at every `dyn`-callable materialization site and propagated backward through callable-valued parameters to a fixpoint. Until then the 4 rows stand, and the honest reason is recorded rather than a trigger nobody can act on. |
 | C | read | **owned elsewhere** — the corpus-wide `ABSENT_CLONE_BOUND` population (`docs/probes/rustc_mechanism_partition_2026-08-23.md`, 22 manifestations at `967b5bc1b92`) | none here. This board contributes 2 rows to that population and tracks nothing separately; a second trigger beside that document's would be a second authority for one class. |
-| D | measured (peer board) | **lane open: #8952** (`CALLABLE-LOOKUP-UNIQUE`) | #8952's own trigger. The seam this board adds to it is stated above and is a defect-side property: the decisive `&&` consults resolved semantics in its first conjunct and the leaf spelling in its second, so what is missing is a recorded target identity for `PlainCallSemantics`, not a different table lookup. |
+| D | measured (peer board) | **lane open: #9060**, which states itself to be PR A of the resolved-call identity repair and reserves PR B for carrying resolved callable identity through all three Rust-emission seams | PR B of that lane. The seam this board adds is a defect-side property: the decisive `&&` consults resolved semantics in its first conjunct and the leaf spelling in its second, so what is missing is a recorded target identity for `PlainCallSemantics`, not a different table lookup — which is the fact PR B is reserved to carry. **Not #8952**, though the two share the `map_get` collision and it is the near-miss worth naming: #8952 refuses the ambiguity at *resolution*, while D is emission rebinding a call that resolution already answered correctly. Same collision, opposite sides of the resolve boundary, different repairs. |
 | E | **measured** (executed counterfactual, negative) | **unowned, and reclassified** — the local refusal was implemented and measured: 24 sites in this closure depend on the fabricated `unit`, and refusing turns 1 downstream row into 12 blocking ones | solve the empty literal's element type from the callee's unsolved type variable, or defer its judgement until the expected type is known, so the fabricating arm becomes unreachable rather than refusing. The arm is left as `main` has it until then, because it is currently the only thing keeping those 24 sites compiling. |
-| F | read | **unowned** — no lane holds it | promote to measured: vary the closure parameter's by-value/by-reference binding against the reference-yielding iterator and confirm the 1 row retires. |
+| F | **measured** (executed counterfactual) | **REPAIRED** — gunbc#9101, with the regenerated stage0 mirror at its fixed point | none. `E0631` 2 -> 1 with eleven codes byte-identical; the row is retired, not relocated. |
 
 **Three mechanisms are declared unowned, and that is the disposition rather than a gap in it.** B, E and F
 are 7 rows between them; nothing in the repository holds them today, and writing a lane row here would

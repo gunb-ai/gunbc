@@ -26,8 +26,6 @@ service llm.Anthropic {
     auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
 
     rate_limit: { requests: 1000, per: minute, scope: messages }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 529] }
   }
 
   operation Messages {
