@@ -79,7 +79,7 @@ fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
 // creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
 // managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
 // arm has no slice name to render and the bad unit cannot be built.
-fn compile_pool_service_directives(placement: CompilePoolPlacement) -> List<ServiceDirective> {
+fn compile_pool_service_directives(placement: CompilePoolPlacement) -> List<SystemdServiceDirective> {
   match placement {
     CompilePoolSliceDeclared { slice_unit: u } => [ServiceSlice { name: u as NonEmptyStr }]
     CompilePoolInRunnerSlots => []
