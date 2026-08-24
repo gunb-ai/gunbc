@@ -7,6 +7,7 @@ import gunbc.fleet_posix_accounts {
 }
 import extdeps.github.actions_runner {
   actions_runner_slot_extract_script, actions_runner_release_2_334_0,
+  ActionsRunnerBinaryArtifact, ActionsRunnerLinuxArm64,
 }
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberRemoved }
@@ -618,7 +619,10 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
 // what makes the extract and the cleanup after it unprivileged rather than merely un-sudo-ed.
 test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
   let sc = actions_runner_slot_extract_script(
-    artifact: actions_runner_release_2_334_0,
+    artifact: ActionsRunnerBinaryArtifact {
+      binary_release: actions_runner_release_2_334_0,
+      arch: ActionsRunnerLinuxArm64,
+    },
     slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
     job_user: "ghrunner" as NonEmptyStr,
   )
