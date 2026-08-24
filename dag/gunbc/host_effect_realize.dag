@@ -2609,7 +2609,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     },
   )
   let verdict = srv3_summarize_independent_observations(
-    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
+    steps: list_map(xs: observations, f: fn(o: Srv3ToolObservation) { o.verdict }),
   )
   let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
