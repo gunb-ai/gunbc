@@ -224,6 +224,50 @@ discarding a true forecast, which cost more than the original error.
   a name resolves only through the pool, at which point an unauthorized edge becomes unwritable
   rather than merely observable.
 
+## 5b. Operator ruling: this is declared debt, and the cut's green result may not be quoted against it
+
+**Operator ruling, 2026-08-24, relayed verbatim through deep-ant-102.** The namespace cut's landing
+window may proceed without folding a kernel-name fallback guard into the prerequisite, *provided the
+cohort receipt states this debt's standing accurately*:
+
+```text
+WholePoolFallbackDebt:
+  measured
+  not closed
+  not required for this landing
+  restoration trigger retained
+```
+
+> Do not let the successful `94/0` subject be quoted as evidence that the fallback mechanism itself
+> is safe. The landing can proceed without folding that separate guard into the prerequisite, but it
+> must remain **declared debt rather than disappearing behind the green product result.**
+
+That is this document's subject given a §4b(3) standing, and the second sentence is the operative
+one: **a green product result on the cut corpus is not evidence about the mechanism in §2.** It is
+precisely the inference §3 shows the ambiguity counter cannot license, arriving by a different route
+— `94 sources / 0 blocking / 0 imports` says the corpus compiles, not that its edges were authorized.
+
+**One word in that ruling needs reconciling with §4, and this document must not paper over it.**
+The ruling says `measured`. Per the evidence status above, what has been measured is the
+**import-bearing baseline** (`37389 / 733`, a lane report with no durable receipt) — **not** the
+fallback population on the cut corpus, which §4 asks for and which nobody had at the time of the
+ruling. Read `measured` as *the class has an observed instance and a baseline*, never as *its size
+under the cut is known*. Stating it the other way would let the debt read as bounded when its
+governing quantity is exactly the open one.
+
+**That gap is now being closed rather than left open:** deep-ant-102 has dispatched
+`measure_whole_tree_resolve` over `dag` + `src/v1` + `src/v2` on current main, which emits the
+`[cost-partition]` line carrying `edge_index_bare_candidates`, `edge_index_bare_name_universe`,
+`edge_index_bare_resolve_loop`, `edge_index_bare_eligible` and `edge_index_source_files` together —
+giving per-eligible-file cost for the three unmeasured slots and the exact multiplier from the two
+counts, in place of §4d's ~5.5x approximation. **This document should be updated with those figures
+when they land, and its `~5.5x` retired.**
+
+**RESTORATION TRIGGER for the debt**, so it is retained here as the ruling requires rather than only
+in a cohort receipt: the debt closes when a name that resolves *only* through the whole-tree pool is
+refused rather than silently bound — the §4 counter being the intermediate rung that makes the
+population visible first.
+
 ## 6. Provenance
 
 Three lanes, none of which had the whole picture, and none of which had the loader in front of them:
