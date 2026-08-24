@@ -954,3 +954,45 @@ message, the same channel that caught the stale-binary green. Across a full day 
 corpus, **not one was caught by its output.** Every single one was caught by someone re-deriving what
 they had already said. That is not a run of bad luck with instruments; it is what it means for a
 distinction to be absent from a channel.
+
+## The class stated as a rule, by someone who was not writing about the class
+
+*keen-tern-667, 2026-08-24, in the body of gunbc#9083 — a PR about a single module's import header.*
+
+> **Whole-tree compile-clean is not evidence that a module can be emitted alone.**
+
+Every other entry in this brief is a war story: an instrument answered a narrower question, someone
+caught it, here is what it cost. That sentence is the same content as a **rule**, written by someone
+who was diagnosing one module and not writing about instruments at all.
+
+The mechanism behind it is the one this brief keeps describing. `v2.compiler.program_assembly`
+declares two imports and uses about twenty-six names homed in nine other modules. Whole-tree
+compile-clean passes, because **the definers are in the pool — put there by some other module's
+imports — so the unlisted names bind by coincidence.** The module's own header can be arbitrarily
+wrong and nothing goes red. Scope the closure to the module's own declared edges, which is exactly
+what emitting it alone does, and every definer drops at once: twenty-six diagnostics from one root.
+
+**Green compile-clean and emittable-standalone are different properties, and the first was being
+read as the second.** No measurement was wrong. The comparands were never checked against the
+question.
+
+### Why it belongs at the end of this brief
+
+It supplies the **positive form** that the rest of the entries only approach negatively. The other
+traps are recognised by their symptoms — a green that cannot go red, an empty that cannot be
+distinguished from truncated, a true that is the same byte for two questions. This one names the
+general defect directly: *a property that holds of an aggregate is being cited as a property of a
+member*, and the aggregate supplies from elsewhere exactly what the member is missing.
+
+That framing makes the whole class searchable, because the question it licenses is mechanical:
+**what is the instrument supplying that the subject would have to supply for itself?** For
+compile-clean it is the pool. For the stale binary it is the compiler's identity. For the capped
+list it is the unseen 3865 rows. For two lanes reading two refs it is the branch the ruling names.
+In every case the instrument was making up a difference the subject could not, and reporting a
+result that read as the subject's own.
+
+**And the corroboration arrived from the opposite direction the same day.** crisp-crab-430 traced
+the namespace cut's two remaining blockers to `src/v1/04_infer.dag` pulling `List` by pool-fallback
+and resolving to the `FreeMonoid` alias instead of the kernel `List` that imports used to shadow.
+Same mechanism, worse symptom — the name finds the *wrong* definer rather than none, so it resolves
+and continues. A refusal announces itself; a wrong-definer binding does not.
