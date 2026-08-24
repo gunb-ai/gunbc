@@ -1,0 +1,6 @@
+module fixture.v2_emission_gate.green
+
+// The annotation placement DESIGN §4c admits: a standalone leading `//` block attached to
+// the module-scope declaration that follows it. This fixture is the positive control for
+// the v2-emission phase — it must EMIT.
+data v2_emission_gate_green_subject: String = "green control: this module emits"
