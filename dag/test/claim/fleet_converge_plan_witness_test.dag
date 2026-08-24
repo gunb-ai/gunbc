@@ -9,6 +9,13 @@ import gunbc.fabric_cell_converge {
   FabricCellPopulation,
   FabricCellPopulationObserved,
   FabricCellMember,
+  FabricCellReadback,
+  FabricCellHostReadback,
+  FabricCellAddressObservation,
+  AddressObserved,
+  AddressAbsent,
+  fabric_cell_population,
+  fabric_cell_resource_addresses,
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
   FabricCellResourceBoundaryAddress,
@@ -618,18 +625,53 @@ fn fabric_witness_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
 }
 
-fn fabric_cells_observed_converged() -> FabricCellPopulation {
-  FabricCellPopulationObserved {
-    host: operator_host_srv3,
-    members: fabric_cell_desired_members(host: operator_host_srv3),
+// THESE POPULATIONS ARE OBSERVED THROUGH THE FOLD, NOT ASSERTED BY LITERAL, AND THE CHANGE IS THE
+// POINT RATHER THAN A TIDY-UP. An earlier cut wrote `FabricCellPopulationObserved { host: ..,
+// members: [] }` directly here -- a witness claiming the host was read and holds nothing, with no
+// observation anywhere behind it. That is the very state the population type exists to separate
+// from "not read", asserted for free by the test that is supposed to prove the separation holds.
+// `FabricCellObservedMembers` is now `sole_constructor`, so this module CANNOT write that literal;
+// both fixtures below build a real `FabricCellReadback` and run the same fold production runs.
+fn fabric_cell_readback_all_absent() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_resource_addresses(),
+      a => AddressAbsent { slot: fabric_witness_slot(), address: a },
+    ),
   }
 }
 
-fn fabric_cells_observed_empty() -> FabricCellPopulation {
-  FabricCellPopulationObserved {
-    host: operator_host_srv3,
-    members: [],
+fn fabric_cell_readback_all_present() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_desired_members(host: operator_host_srv3),
+      m => AddressObserved { member: m },
+    ),
   }
+}
+
+fn fabric_cells_observed_converged() -> FabricCellPopulation {
+  fabric_cell_population(
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [fabric_cell_readback_all_present()],
+    }
+  )
+}
+
+// EXPLICIT ABSENCE AT EVERY REQUIRED ADDRESS IS A COMPLETE OBSERVATION OF AN EMPTY HOST, and it is
+// the only route to observed-empty. Contrast the zero-observation readback, which is
+// ObservationRefused and covered by witness_fabric_cell_empty_readback_is_observation_refused in
+// the model suite: read-and-empty plans every member, unread plans nothing.
+fn fabric_cells_observed_empty() -> FabricCellPopulation {
+  fabric_cell_population(
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [fabric_cell_readback_all_absent()],
+    }
+  )
 }
 
 fn fabric_fingerprint_with(population: FabricCellPopulation) -> String {

@@ -41,6 +41,11 @@ import gunbc.fabric_cell_converge {
   FabricCellSubstrateUnprovisioned,
   FabricCellSubstrateObservationRefused,
   fabric_cell_readback_without_observations,
+  FabricCellHostReadback,
+  fabric_cell_population,
+  FabricCellPopulation,
+  FabricCellPopulationObserved,
+  FabricCellPopulationObservationRefused,
 }
 
 fn srv3_fabric_slot() -> RunnerSlotIdentity {
@@ -52,13 +57,12 @@ fn desired_member(address: FabricCellResourceAddress) -> FabricCellMember {
     slot: srv3_fabric_slot(),
     address: address,
     state_digest: fabric_cell_desired_state_digest(slot: srv3_fabric_slot(), address: address),
-    ownership: Owned,
   }
 }
 
 fn converged_readback() -> FabricCellReadback {
   FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: [
       AddressObserved { member: desired_member(address: FabricCellRootAddress) },
       AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
@@ -69,7 +73,7 @@ fn converged_readback() -> FabricCellReadback {
 
 fn readback_plus(extra: FabricCellAddressObservation) -> FabricCellReadback {
   FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: concat(converged_readback().observations, [extra])
   }
 }
@@ -168,7 +172,7 @@ fn verdict_is_observation_refused(v: FabricCellSubstrateVerdict) -> Bool {
 }
 
 test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
-  verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback(), slot: srv3_fabric_slot()))
+  verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback()))
 }
 
 // A READBACK WITH NO OBSERVATIONS IS REFUSED, NOT PROVISIONED AND NOT UNPROVISIONED.
@@ -186,10 +190,7 @@ test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
 test fn witness_fabric_cell_empty_readback_is_observation_refused() -> Bool {
   verdict_is_observation_refused(
     v: fabric_cell_substrate_verdict(
-      readback: fabric_cell_readback_without_observations(
-        cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot())
-      ),
-      slot: srv3_fabric_slot()
+      readback: fabric_cell_readback_without_observations(slot: srv3_fabric_slot())
     )
   )
 }
@@ -228,7 +229,7 @@ test fn witness_fabric_cell_contradiction_does_not_resolve_by_order() -> Bool {
     && disposition_is_present(
       d: fabric_cell_address_disposition(readback: contradicted, slot: srv3_fabric_slot(), address: FabricCellAttemptRootAddress)
     )
-    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: contradicted, slot: srv3_fabric_slot()))
+    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: contradicted))
 }
 
 // AN UNREADABLE RESOURCE NEVER ARRIVES AS AN ABSENT ONE. This is the empty-observation narrow in its
@@ -242,21 +243,21 @@ test fn witness_fabric_cell_unreadable_address_refuses_rather_than_reading_as_ab
       cause: "probe could not read the cell resource boundary"
     }
   )
-  verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: refused, slot: srv3_fabric_slot()))
+  verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: refused))
 }
 
 // A MISSING ADDRESS IS UNPROVISIONED AND NOT REFUSED -- absent and unreadable have different
 // remedies, and the verdict keeps them apart.
 test fn witness_fabric_cell_absent_address_is_unprovisioned_not_refused() -> Bool {
   let partial = FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: [
       AddressObserved { member: desired_member(address: FabricCellRootAddress) },
       AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
       AddressAbsent { slot: srv3_fabric_slot(), address: FabricCellResourceBoundaryAddress },
     ]
   }
-  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: partial, slot: srv3_fabric_slot()))
+  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: partial))
 }
 
 // DRIFT IS UNPROVISIONED, NOT PROVISIONED. A present resource carrying the wrong value is the case a
@@ -264,7 +265,7 @@ test fn witness_fabric_cell_absent_address_is_unprovisioned_not_refused() -> Boo
 // memory ceiling after the fleet row moves.
 test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
   let drifted = FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: [
       AddressObserved { member: desired_member(address: FabricCellRootAddress) },
       AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
@@ -273,13 +274,12 @@ test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
           slot: srv3_fabric_slot(),
           address: FabricCellResourceBoundaryAddress,
           state_digest: "fabric-cell-srv3-06.slice;memory_max=1" as NonEmptyStr,
-          ownership: Owned,
         }
       },
     ]
   }
-  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: drifted, slot: srv3_fabric_slot()))
-    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback(), slot: srv3_fabric_slot()))
+  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: drifted))
+    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback()))
 }
 
 
@@ -296,7 +296,7 @@ test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
 // reading and goes green; only a fold that compares every observation can go red here.
 test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bool {
   let conflicting = FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: [
       AddressObserved { member: desired_member(address: FabricCellRootAddress) },
       AddressObserved {
@@ -304,7 +304,6 @@ test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bo
           slot: srv3_fabric_slot(),
           address: FabricCellRootAddress,
           state_digest: "/opt/fabric-cells/srv3-06-stale-reading" as NonEmptyStr,
-          ownership: Owned,
         }
       },
       AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
@@ -317,7 +316,7 @@ test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bo
     && disposition_is_present(
       d: fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: FabricCellAttemptRootAddress)
     )
-    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: conflicting, slot: srv3_fabric_slot()))
+    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: conflicting))
 }
 
 // AGREEING DUPLICATE OBSERVATIONS ARE NOT A CONTRADICTION. Without this control the fix above could
@@ -325,7 +324,7 @@ test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bo
 // that agree -- turning a redundant probe into an outage.
 test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Bool {
   let duplicated = FabricCellReadback {
-    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    slot: srv3_fabric_slot(),
     observations: concat(
       converged_readback().observations,
       [AddressObserved { member: desired_member(address: FabricCellRootAddress) }]
@@ -334,5 +333,54 @@ test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Boo
   disposition_is_present(
     d: fabric_cell_address_disposition(readback: duplicated, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
   )
-    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: duplicated, slot: srv3_fabric_slot()))
+    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: duplicated))
+}
+
+fn population_is_observation_refused(p: FabricCellPopulation) -> Bool {
+  match p {
+    FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
+    FabricCellPopulationObserved { host: _, observed: _ } => false
+  }
+}
+
+// COMPLETENESS IS DECIDED AGAINST THE SLOT AUTHORITY, NOT AGAINST WHAT THE CALLER SUPPLIED, and
+// this row is what makes that a measured fact rather than a claim about the fold's shape. The host
+// readback below carries a COMPLETE, fully-converged readback -- for a slot that is not a declared
+// fabric member of this host. The expected subject srv3-06 therefore has no readback at all, folds
+// to AddressUnobserved, and the population must refuse.
+//
+// If the fold trusted the supplied list it would see one complete cell readback, find nothing
+// blocked, and answer PopulationObserved -- with the real cell silently missing from the member
+// list, which reconcile would then plan as three additions against a host nobody read. That is the
+// exact failure the host-grain cut exists to close, and it is authorable today precisely because
+// the supplied slot need not be a declared one.
+//
+// WHAT THIS ROW DOES NOT COVER, said rather than left implied: the two-declared-cells case, where
+// one cell is read and the other is not. `fabric_execution_slot_identities` declares exactly one
+// fabric slot today, so that input cannot be authored without adding a second slot to the
+// authority. The guard is reachable and currently unoccupied -- a quiet guard, not a dead one --
+// and this row exercises the same mechanism through the one input the authority does admit.
+test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_foreign_readback() -> Bool {
+  let foreign_slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
+  let foreign_readback = FabricCellReadback {
+    slot: foreign_slot,
+    observations: map(
+      fabric_cell_resource_addresses(),
+      a => AddressObserved {
+        member: FabricCellMember {
+          slot: foreign_slot,
+          address: a,
+          state_digest: fabric_cell_desired_state_digest(slot: foreign_slot, address: a),
+        }
+      }
+    ),
+  }
+  population_is_observation_refused(
+    p: fabric_cell_population(
+      readback: FabricCellHostReadback {
+        host: operator_host_srv3,
+        cell_readbacks: [foreign_readback],
+      }
+    )
+  )
 }

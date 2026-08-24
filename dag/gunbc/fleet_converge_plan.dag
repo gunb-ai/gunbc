@@ -46,6 +46,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_member_key_eq,
   fabric_cell_member_value_eq,
   fabric_cell_member_ownership,
+  fabric_cell_observed_members,
   FabricCellPopulation,
   FabricCellPopulationObserved,
   FabricCellPopulationObservationRefused,
@@ -467,7 +468,8 @@ fn fleet_converge_fabric_cell_family(
           "; the host was not read, so its substrate state is unknown and no membership may be planned against it",
         )
       }
-    FabricCellPopulationObserved { host: _, members: observed } =>
+    FabricCellPopulationObserved { host: _, observed: obs } =>
+      let observed = fabric_cell_observed_members(observed: obs)
       let planned = membership_plan_admitting_outcome(
         outcome: membership_reconcile(
           desired: fabric_cell_desired_members(host: host as HostIdentity),
@@ -677,8 +679,8 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
 
 fn fabric_cell_baseline_rows(population: FabricCellPopulation) -> List<String> {
   match population {
-    FabricCellPopulationObserved { host: _, members: ms } =>
-      map(ms, m => concat(
+    FabricCellPopulationObserved { host: _, observed: obs } =>
+      map(fabric_cell_observed_members(observed: obs), m => concat(
         "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
       ))
     FabricCellPopulationObservationRefused { host: h, blocked: b } =>
