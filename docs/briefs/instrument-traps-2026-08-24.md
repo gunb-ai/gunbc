@@ -1202,3 +1202,94 @@ that still needs its dropped evidence has not been narrowed, only hedged.
 *Kept because it happened in the front matter of a document about instruments answering narrower
 questions than they were asked, written by someone who had spent the day cataloguing the class, and
 was caught by a reviewer rather than by its author.*
+
+## The predicate with no domain — and the two authors who applied it to everyone but themselves
+
+*The afternoon's capstone, and the one entry whose instances are all the people writing this document.*
+
+A correct rule was issued: **no PR may land between the prerequisite and the namespace cut if it
+alters the cut's conflict set.** Unambiguous, operator-ruled, with a decidable test — does this PR's
+file set intersect the cut's.
+
+**It named its predicate and not its DOMAIN.** It said which PRs must hold without saying over what
+set to evaluate that — so the domain silently defaulted to **"the PRs someone happened to mention."**
+
+    largest list anyone had named        6
+    one subtree, rebuilt from gh pr list 7 ready, 6 intersecting
+    computed across all open PRs        41 of 69 intersecting
+
+The six were real. They were also 15% of the population, and the gap was invisible because every PR
+in it was individually fine — approved, green, mergeable. **Nothing was wrong with any of them
+except that no one had evaluated the predicate against them.**
+
+### Then both authors of the census found their own PRs on it
+
+One session published the intersecting list. The other read it and found **two of their own PRs on
+it**, having spent the afternoon telling six other sessions that ready-and-intersecting means hold —
+they had read their own PRs' *status field* and run the intersection test only on other people's.
+
+Ten minutes later the session that **built** the list found **their own PR at row 41 of it**, which
+they had written and not noticed.
+
+**Both PRs turned out to touch the same file: `dag/gunbc/design_document.dag`, the DESIGN.md
+authority.** Two people, one authority, each believing only the other's PR was in scope.
+
+### The near-miss inside the near-miss
+
+Reasoning from that collision, one of them asserted a mechanism: *the two PRs merge cleanly and the
+generated DESIGN.md silently loses a row, with the drift gates removed by the floor cut.* The other
+adopted it and called it the strongest available argument for restoring the gate.
+
+**It was false, and nobody had run the merge.** One `grep '^@@'` on each diff settles it:
+
+    #9002   @@ -137,7 +137,7 @@ DESIGN.md   |  @@ -168,7 +168,7 @@ design_document.dag
+    #9098   @@ -137,7 +137,7 @@ DESIGN.md   |  @@ -168,7 +168,7 @@ design_document.dag
+
+Byte-identical. Both edited the same long paragraph, so the second to land goes CONFLICTING under any
+merge algorithm. **The author of the claim was the instrument that answered a narrower question than
+it was asked** — "could this in principle be silent" rather than "is *this one* silent."
+
+What survives is better than what was claimed, and stronger for being honest: **the case that would
+have been silent is one line-number away from the case that was loud.** Different lines in the same
+authority merge cleanly while the committed artifact is neither side's regeneration of the merged
+authority — untested by anyone, with the near-miss as the only evidence.
+
+### The ownership column, one field over
+
+    author = briansrls    on every PR in the repository
+
+Ownership had been read off `author`, which is the human's account and identical everywhere. **Not
+unreliable — deterministically wrong.** Unreliable would be *better*: it eventually disagrees with
+itself and someone notices. A constant wrong answer survives every consistency check anyone would
+think to run, which is why two senders misrouted the same session's PRs to the same wrong recipient
+without either guessing badly. Ownership derives from `headRefName` and nothing else.
+
+**A census with a wrong ownership column is a correct set delivered to the wrong people** — the same
+failure as an uncomputed domain, one field over.
+
+### What actually fixed it
+
+Not a better rule. **A computed domain, and holds that live on the artifact:**
+
+- the intersection recomputed per PR (one API call each, ~2 minutes for 69)
+- an explicit HOLD comment on all 41, carrying the cap and the `>=` inline so the rows cannot travel
+  without them — because **the merge hand reads the PR, not the thread**
+- the two self-caught PRs converted to **draft**, making the hold structural rather than readable
+
+And two limits kept attached, because both are the difference between a list and a false clearance:
+
+> **Sound for holding, unsound for releasing.** An intersection found is an intersection; a zero
+> means "none among the 3000 of 3965 fetched." A PR overlapping only in the 965 unfetched reads as
+> *actively safe* by sitting on a list someone takes as cleared.
+
+> **"Computed" reads as "solved" and it is only "solved as of a timestamp."** Every PR opened after
+> the census starts unheld.
+
+### Why this closes the brief
+
+Every other entry is an instrument that misled its reader. This one is a **rule** that misled the
+people enforcing it — and it caught both of them, on the same file, inside an hour, while they were
+actively cataloguing the class.
+
+**A rule whose domain is uncomputed is not a weak rule. It is a rule with a silent exemption list,
+and the people most confident it is being applied are the ones most likely to be on it.**
