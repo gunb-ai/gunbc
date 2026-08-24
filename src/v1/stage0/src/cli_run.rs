@@ -8322,6 +8322,46 @@ pub enum ClaimOutcome {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FloorRouteGapExpectedGround {
+    UnpublishedMockCase,
+    NoMockResponse,
+    FilesystemRemoval,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FloorRouteGapExpectation {
+    operation: String,
+    ground: FloorRouteGapExpectedGround,
+}
+
+fn floor_route_gap_expectation_mismatch(
+    expectation: Option<&FloorRouteGapExpectation>,
+    operation: &str,
+    ground: &v1_interpreter::HermeticEffectGround,
+) -> Option<String> {
+    let expectation = expectation?;
+    let observed_ground = match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            FloorRouteGapExpectedGround::UnpublishedMockCase
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => {
+            FloorRouteGapExpectedGround::NoMockResponse
+        }
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+            FloorRouteGapExpectedGround::FilesystemRemoval
+        }
+    };
+    if expectation.operation == operation && expectation.ground == observed_ground {
+        None
+    } else {
+        Some(format!(
+            "typed route-gap enrollment expected operation={} ground={:?}, observed operation={} ground={:?}",
+            expectation.operation, expectation.ground, operation, observed_ground
+        ))
+    }
+}
+
 /// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
 /// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
 /// external/blocking interaction is judged on wall — and NEVER by which clock happened to
@@ -42641,6 +42681,92 @@ pub fn run_required_floor(
         route_gap_roster.len()
     );
 
+    // New enrollments carry the operation and the closed remedy-ground observed at the
+    // interpreter boundary. Their identities are projected into `floor_route_gap_roster` by
+    // the .dag authority; this decode reads the detail rather than authoring a second identity
+    // list in Rust. A changed operation or ground blocks below instead of being silently held
+    // by an identity-only row whose original fact no longer applies.
+    let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_route_gap.floor_route_gap_expectations",
+            false,
+        )
+        .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let mut out = HashMap::new();
+        for item in items {
+            let v1_interpreter::Value::Record { type_name, fields } = item else {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got {}",
+                    floor_value_shape(Some(&item))
+                ));
+            };
+            if !hermetic.sym_eq(*type_name, "FloorRouteGapExpectation") {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got record {}",
+                    hermetic.resolve(*type_name)
+                ));
+            }
+            let identity = match hermetic.field(&fields, "identity") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: identity must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let operation = match hermetic.field(&fields, "operation") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: operation must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let ground = match hermetic.field(&fields, "ground") {
+                Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                    match hermetic.resolve(*variant_name).as_str() {
+                        "UnpublishedMockCase" => FloorRouteGapExpectedGround::UnpublishedMockCase,
+                        "NoMockResponse" => FloorRouteGapExpectedGround::NoMockResponse,
+                        "FilesystemRemoval" => FloorRouteGapExpectedGround::FilesystemRemoval,
+                        other => {
+                            return Err(format!(
+                                "floor_route_gap_expectations: unknown ground {other}"
+                            ));
+                        }
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: ground must be a typed variant, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            if !route_gap_roster.contains(identity.as_str()) {
+                return Err(format!(
+                    "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
+                ));
+            }
+            if out
+                .insert(
+                    identity.clone(),
+                    FloorRouteGapExpectation { operation, ground },
+                )
+                .is_some()
+            {
+                return Err(format!(
+                    "floor_route_gap_expectations: duplicate enrolled identity: {identity}"
+                ));
+            }
+        }
+        out
+    };
+
     // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
     // between them stays a split rather than decaying back into the conflation it was created
     // to undo.
@@ -43217,12 +43343,21 @@ pub fn run_required_floor(
                 // enrolled — the failure this whole lane exists to close.
                 ExpectedRedArm::HostEffectRefused => {
                     known_red_host_effect_refused += 1;
-                    let detail = match &result {
-                        ClaimOutcome::HostEffectRefused { operation, ground } => format!(
-                            "hermetic route has no arm for {operation}: {}",
-                            hermetic_effect_ground_label(ground)
+                    let (operation, ground, detail) = match &result {
+                        ClaimOutcome::HostEffectRefused { operation, ground } => (
+                            operation.as_str(),
+                            ground,
+                            format!(
+                                "hermetic route has no arm for {operation}: {}",
+                                hermetic_effect_ground_label(ground)
+                            ),
                         ),
-                        other => format!("{other:?}"),
+                        other => {
+                            return Err(format!(
+                                "required-floor expected-red arm/result disagreement for {}: {other:?}",
+                                claim.qualified
+                            ));
+                        }
                     };
                     // THE TWO ROSTERS ARE DIFFERENT AXES, AND THIS ROW SITS ON BOTH. Being
                     // enrolled as expected-red says nothing about whether the floor has a route
@@ -43231,7 +43366,18 @@ pub fn run_required_floor(
                     // not cover the gap, and the gap does not discharge the enrollment.
                     route_gap_seen.insert(claim.qualified.clone());
                     if route_gap_roster.contains(claim.qualified.as_str()) {
-                        route_gap_held += 1;
+                        if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                            route_gap_expectations.get(claim.qualified.as_str()),
+                            operation,
+                            ground,
+                        ) {
+                            outcome.route_gap.push(format!(
+                                "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                                claim.qualified, mismatch
+                            ));
+                        } else {
+                            route_gap_held += 1;
+                        }
                     } else {
                         outcome.route_gap.push(format!(
                             "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
@@ -43334,7 +43480,18 @@ pub fn run_required_floor(
             ClaimOutcome::HostEffectRefused { operation, ground } => {
                 route_gap_seen.insert(claim.qualified.clone());
                 if route_gap_roster.contains(claim.qualified.as_str()) {
-                    route_gap_held += 1;
+                    if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                        route_gap_expectations.get(claim.qualified.as_str()),
+                        &operation,
+                        &ground,
+                    ) {
+                        outcome.route_gap.push(format!(
+                            "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                            claim.qualified, mismatch
+                        ));
+                    } else {
+                        route_gap_held += 1;
+                    }
                 } else {
                     outcome.route_gap.push(format!(
                         "{} never reached its subject: the hermetic route has no arm for {} \

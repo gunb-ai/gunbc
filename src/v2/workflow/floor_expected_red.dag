@@ -497,25 +497,29 @@ fn floor_expected_red_chunk_21() -> List<String> {
   Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
 }
 
+// Seventeen moved-subject rows from required-floor run 32721781133 answered Bool(false) after
+// first execution. They remain executing while their owners re-establish the expectation; a
+// passing repair makes this roster's stale-row wall demand removal. Three sibling moved-subject
+// rows are deliberately absent: both accumulator-copy rows could not resolve their scanner, and
+// cost_coverage_unknown_fraction divided by zero. Those produced no verdict, so enrolling them
+// here would assert a failure that never occurred; their honest disposition is expectation/probe
+// repair, not expected-red.
+fn floor_expected_red_chunk_22() -> List<String> {
+  Cons { head: "test.claim.ci_budget_tree_witness.witness_overcommit_fails_conservation", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv2_symmetric_to_srv1", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} }
+  } } } } } } } } } } } } } } } }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
 // closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
 // but exclude the now-green family from the live expected-red roster.
 //
-// THE THREE compile_accepted_unevaluable_program_control ROWS ARE EXCLUDED FOR THE OPPOSITE
-// REASON. They remain the authored-red identities in chunk 21; only their LIVENESS is false. The file
-// declares ReadsLiveTree, the DeclinedLiveTree arm declines it (declined_live=899 on that run),
-// and the arm's deletion is still unmerged (gunbc#8977, gunbc#8982 both OPEN at the time of
-// writing). A declined identity is never executed, while live expected-red enrolment requires an
-// observed failure, so the filter keeps the identity and temporary execution standing distinct.
-//
-// RESTORATION TRIGGER, and it is a COUPLING someone must honour rather than a note: when either
-// #8977 or #8982 lands and these identities become executable, DELETE these three exclusions in
-// the same change. They are reds, so once they execute while excluded they count as ordinary
-// failures and red the build -- the exclusion must not outlive the decline that motivated it.
+// The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run
+// 32721781133 executed all three and observed the enrolled compile-acceptance holes. The former
+// exclusions dissolved with DeclinedLiveTree in the same change, as their coupling required.
 fn floor_expected_red_is_live(name: String) -> Bool {
   !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
@@ -537,10 +541,7 @@ fn floor_expected_red_is_live(name: String) -> Bool {
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
     || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile")
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds")
 }
 
 fn floor_expected_red_roster() -> List<String> {
