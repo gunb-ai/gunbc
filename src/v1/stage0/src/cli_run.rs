@@ -42122,6 +42122,54 @@ fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+/// The non-verdict admission, as a PURE FUNCTION OF TWO IDENTITY SETS.
+///
+/// It is written this way so it can be exercised without a floor run, a fixture, or a witness
+/// that actually throws — the thing that decides admission should be a pure function of two
+/// sets, and the seed's discriminating red lives in `tests` below rather than only in the
+/// modeled admission it mirrors.
+///
+/// `added` is what the run observed and the roster does not carry: the growth this wall exists
+/// to refuse. `repaid` is what the roster carries and the run did not observe: a debt paid,
+/// REPORTED and never refused, because refusing it makes the merge that repairs the population
+/// the merge that reds the floor.
+///
+/// SETS, NEVER COUNTS. The case that decides the shape is a swap — one identity repaired while a
+/// different identity begins producing no verdict — where `added` and `repaid` are both nonempty
+/// and every count in the run is unchanged. A length comparison admits exactly that trade, which
+/// is a repaired witness buying permission for an unrelated witness to lose its verdict.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct NonVerdictAdmission {
+    pub added: Vec<String>,
+    pub repaid: Vec<String>,
+}
+
+pub fn non_verdict_admission(
+    observed: &HashSet<String>,
+    roster: &HashSet<String>,
+) -> NonVerdictAdmission {
+    let mut added: Vec<String> = observed
+        .iter()
+        .filter(|q| !roster.contains(q.as_str()))
+        .cloned()
+        .collect();
+    let mut repaid: Vec<String> = roster
+        .iter()
+        .filter(|q| !observed.contains(q.as_str()))
+        .cloned()
+        .collect();
+    added.sort();
+    repaid.sort();
+    NonVerdictAdmission { added, repaid }
+}
+
+/// The admission itself: `added` is empty. Separate from the sets so a caller cannot accidentally
+/// admit on `repaid` — the asymmetry between the two is the content of this wall, not an
+/// inconsistency in it.
+pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
+    admission.added.is_empty()
+}
+
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
@@ -43018,6 +43066,7 @@ pub fn run_required_floor(
     // IDENTITY GRAIN, NEVER COUNTS. The whole point of the roster is the case where one
     // identity is repaired while a different one begins throwing and the COUNT DOES NOT MOVE.
     let mut non_verdict_seen: HashSet<String> = HashSet::new();
+    let mut non_verdict_detail: BTreeMap<String, String> = BTreeMap::new();
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -43398,18 +43447,7 @@ pub fn run_required_floor(
                         }
                     };
                     non_verdict_seen.insert(claim.qualified.clone());
-                    if !non_verdict_roster.contains(claim.qualified.as_str()) {
-                        outcome.non_verdict_unenrolled.push(format!(
-                            "{} is enrolled as expected-red and produced NO VERDICT ({}), and it \
-                             is NOT enrolled in v2.workflow.floor_non_verdict. Enrollment as \
-                             expected-red admits a known SEMANTIC VERDICT -- this witness \
-                             reaches its subject and answers false -- and is not permission for \
-                             the subject to stop evaluating. Repair the witness or its subject. \
-                             Enrolling the identity records the debt; it does not make the \
-                             missing verdict acceptable, and the roster is frozen against growth.",
-                            claim.qualified, detail
-                        ));
-                    }
+                    non_verdict_detail.insert(claim.qualified.clone(), detail.clone());
                     outcome.known_red_runtime_errored.push(format!(
                         "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
                          Enrollment asserts an expected verdict; a claim that threw \
@@ -43423,16 +43461,10 @@ pub fn run_required_floor(
                 ExpectedRedArm::ObservationUnreadable => {
                     known_red_observation_unreadable_count += 1;
                     non_verdict_seen.insert(claim.qualified.clone());
-                    if !non_verdict_roster.contains(claim.qualified.as_str()) {
-                        outcome.non_verdict_unenrolled.push(format!(
-                            "{} is enrolled as expected-red and produced NO VERDICT (returned \
-                             {:?}, which is not a Bool), and it is NOT enrolled in \
-                             v2.workflow.floor_non_verdict. Enrollment as expected-red admits a \
-                             known SEMANTIC VERDICT and is not permission for the subject to \
-                             stop producing one. Make the witness return a Bool.",
-                            claim.qualified, result
-                        ));
-                    }
+                    non_verdict_detail.insert(
+                        claim.qualified.clone(),
+                        format!("returned {result:?}, which is not a Bool"),
+                    );
                     outcome.known_red_observation_unreadable.push(format!(
                         "{} is enrolled as expected-red but returned something that is NOT A \
                          VERDICT ({:?}), so it is neither the enrolled failure nor a \
@@ -43691,23 +43723,34 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
-    // THE NON-VERDICT ROSTER'S OTHER DIRECTION, REPORTED AND NOT GATING. An identity enrolled
-    // here that produced a verdict this run has been repaired, and its row must come out — but
-    // saying so is the whole remedy. Refusing would make the merge that repairs the population
-    // the merge that reds the floor, which is how a repository teaches people not to repair
-    // debt. `added` is walled; `repaid` is announced.
+    // ONE DECISION POINT, TAKEN AFTER THE FOLD, over the two identity sets. The arms above only
+    // RECORD what they observed; nothing there decides admission, so there is no second place
+    // where the rule could drift from the one written in
+    // `v2.workflow.floor_non_verdict_admission`.
     {
-        let mut stale: Vec<&String> = non_verdict_roster
-            .iter()
-            .filter(|q| !non_verdict_seen.contains(*q))
-            .collect();
-        stale.sort();
-        for identity in stale {
+        let admission = non_verdict_admission(&non_verdict_seen, &non_verdict_roster);
+        for identity in &admission.added {
+            let detail = non_verdict_detail
+                .get(identity)
+                .map(|d| d.as_str())
+                .unwrap_or("no verdict");
+            outcome.non_verdict_unenrolled.push(format!(
+                "{identity} is enrolled as expected-red and produced NO VERDICT ({detail}), and \
+                 it is NOT enrolled in v2.workflow.floor_non_verdict. Enrollment as expected-red \
+                 admits a known SEMANTIC VERDICT -- this witness reaches its subject and answers \
+                 false -- and is not permission for the subject to stop evaluating. Repair the \
+                 witness or its subject. Enrolling the identity records the debt; it does not \
+                 make the missing verdict acceptable, and the roster is frozen against growth."
+            ));
+        }
+        // REPORTED, NOT GATING. An identity enrolled here that produced a verdict this run has
+        // been repaired and its row must come out -- but saying so is the whole remedy.
+        for identity in &admission.repaid {
             let ran = receipted.contains(identity.as_str());
             outcome.stale_non_verdict.push(if ran {
                 format!(
                     "{identity} is enrolled in v2.workflow.floor_non_verdict but PRODUCED A \
-                     VERDICT this run — it reaches its subject again. Delete the row; the debt \
+                     VERDICT this run -- it reaches its subject again. Delete the row; the debt \
                      is repaid."
                 )
             } else {

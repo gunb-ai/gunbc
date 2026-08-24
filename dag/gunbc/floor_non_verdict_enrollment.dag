@@ -118,6 +118,27 @@ data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module
 // So 142 -> 0 is admitted in any order, 142 -> 143 refuses, and a swap that leaves the count
 // unmoved refuses too, which is the case that makes the identity-grain decision load-bearing
 // rather than incidental.
+// THE DECISION NOW HAS TWO IMPLEMENTATIONS, AND THE CLASS RUNG IS THE MINIMUM ACROSS THEM.
+//
+// `v2.workflow.floor_non_verdict_admission` models the admission -- added = observed - roster,
+// admit iff added is empty -- and `v1_compiler.cli_run` `non_verdict_admission` recomputes it
+// over two HashSets. That is a second representation of one rule, and it is recorded here rather
+// than left for a reader to notice, on exactly the footing the corpus already uses for the same
+// shape: `v1_compiler.required_regen_host` `run_required_regen` mirrors its carrier's ordering BY
+// HAND and is therefore only MITIGATABLE, with its next-rung trigger declared as the host being
+// derived from the carrier rather than written beside it.
+//
+// So: the modeled half may reach a higher rung; THE SEED HALF IS MITIGATABLE UNTIL DERIVED, and
+// the class rung is the minimum, which is mitigatable. What keeps that honest rather than
+// nominal is that the seed half carries its OWN discriminating red -- `non_verdict_admission` is
+// a pure function of two identity sets precisely so it can be refuted without a floor run, and
+// `floor_non_verdict_admission_seed_path` drives growth, the equal-count swap, and the empty
+// roster through the code that actually gates. What that test does NOT reach is the wiring from
+// a real thrown witness into the observed set; that is the residual gap and it is named here
+// rather than papered over.
+
+data floor_non_verdict_seed_mirror_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v1_compiler.cli_run non_verdict_admission is DERIVED from v2.workflow.floor_non_verdict_admission rather than written beside it -- the same trigger v1_compiler.required_regen_host carries for its hand-mirrored ordering -- at which point the two implementations become one and the minimum-across-paths rung stops being pinned by the seed. Not satisfied by the seed's unit test alone: a discriminating red proves the mirror is correct TODAY, which is what mitigatable means, and does not make a divergence unwritable.")
+
 data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: known_red_runtime_errored and known_red_observation_unreadable are conjuncts of v1_compiler.claim_executor required_floor_outcome_is_clean, established by execution against a discriminating red -- one enrolled identity made to throw, the run refusing. Precondition, not a follow-up: the measured population is repaid to zero first (the unresolved-name majority by giving each witness the import its subject needs, or by deleting the witness), so the conjunct lands over an empty collection rather than converting a counted silence into an uncounted red.")
 
 // WHERE THE ARMS AND THE GATE ACTUALLY LIVE. Cited rather than copied: this module must not become
