@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
@@ -15223,8 +15224,8 @@ pub fn infer_property_values(
                 __result.push({
                     let val = field_init_node_value(p.clone());
                     let val_result = infer_expr(val.clone(), scope.clone(), None);
-                    (
-                        Rc::new(Node {
+                    Rc::new(ServiceConfigPropertyResult {
+                        prop: Rc::new(Node {
                             name: p.name.clone(),
                             span: p.span.clone(),
                             ident_span: p.ident_span.clone(),
@@ -15244,8 +15245,8 @@ pub fn infer_property_values(
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
-                        val_result.diagnostics.clone(),
-                    )
+                        diagnostics: val_result.diagnostics.clone(),
+                    })
                 });
             }
             __result
@@ -15269,19 +15270,50 @@ pub fn infer_property_values(
     }
 }
 
-pub fn service_config_field_reference_judged(field: String) -> bool {
-    (((field.clone() == "svc_endpoint".to_string()) || (field.clone() == "svc_auth".to_string()))
-        || (field.clone() == "svc_auth_source".to_string()))
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceConfigPropertyResult {
+    pub prop: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn service_config_field_deferral_trigger(field: String) -> String {
-    if (field.clone() == "svc_auth_input".to_string()) {
-        "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string()
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ServiceConfigFieldJudgment {
+    FieldJudged,
+    FieldDeferred { trigger: String },
+    FieldCarriesNoReference,
+}
+impl ServiceConfigFieldJudgment {
+    pub fn trigger(&self) -> String {
+        match self {
+            ServiceConfigFieldJudgment::FieldJudged => panic!("no trigger on unit variant"),
+            ServiceConfigFieldJudgment::FieldDeferred { trigger: __val, .. } => __val.clone(),
+            ServiceConfigFieldJudgment::FieldCarriesNoReference => {
+                panic!("no trigger on unit variant")
+            }
+        }
+    }
+}
+
+pub fn service_config_field_judgment(field: String) -> Rc<ServiceConfigFieldJudgment> {
+    if (((field.clone() == "svc_endpoint".to_string())
+        || (field.clone() == "svc_auth".to_string()))
+        || (field.clone() == "svc_auth_source".to_string()))
+    {
+        Rc::new(ServiceConfigFieldJudgment::FieldJudged)
     } else {
-        if (field.clone() == "svc_rate_limit".to_string()) {
-            "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string()
+        if (field.clone() == "svc_auth_input".to_string()) {
+            Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+    trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string(),
+})
         } else {
-            "no field-specific trigger is declared for this service config field".to_string()
+            if (field.clone() == "svc_rate_limit".to_string()) {
+                Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+    trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string(),
+})
+            } else {
+                Rc::new(ServiceConfigFieldJudgment::FieldCarriesNoReference)
+            }
         }
     }
 }
@@ -15302,60 +15334,50 @@ pub fn infer_service_config_properties(
             let mut __result = Vec::new();
             for p in props.iter().cloned() {
                 __result.push({
-                    let field = field_init_node_name_at(
-                        p.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    if service_config_field_reference_judged(field.clone()) {
-                        {
-                            let val = field_init_node_value(p.clone());
-                            let val_result = infer_expr(val.clone(), scope.clone(), None);
-                            (
-                                Rc::new(Node {
-                                    name: p.name.clone(),
-                                    span: p.span.clone(),
-                                    ident_span: p.ident_span.clone(),
-                                    children: Rc::new(vec![val_result.typed.clone()]),
-                                    connective: p.connective.clone(),
-                                    params: p.params.clone(),
-                                    inferred: p.inferred.clone(),
-                                    return_cardinality: p.return_cardinality.clone(),
-                                    uses: p.uses.clone(),
-                                    body: p.body.clone(),
-                                    transport: p.transport.clone(),
-                                    properties: p.properties.clone(),
-                                    type_annotation: p.type_annotation.clone(),
-                                    is_self_recursive: p.is_self_recursive.clone(),
-                                    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
-                                    match_pattern: p.match_pattern.clone(),
-                                    expr_data: p.expr_data.clone(),
-                                    ident: None,
-                                }),
-                                val_result.diagnostics.clone(),
-                            )
-                        }
-                    } else {
-                        (
-                            p.clone(),
-                            Rc::new(vec![make_error_node(
-                                Rc::new(
-                                    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
-                                        field: field.clone(),
-                                        referenced_name: service_config_property_referenced_name(
-                                            p.clone(),
-                                            scope.clone(),
-                                        ),
-                                        trigger: service_config_field_deferral_trigger(
-                                            field.clone(),
-                                        ),
-                                        span: p.span.clone(),
-                                    },
-                                ),
-                                scope.module_name.clone(),
-                            )]),
-                        )
-                    }
-                });
+            let field = field_init_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone());
+match (*service_config_field_judgment(field.clone())).clone() {
+    ServiceConfigFieldJudgment::FieldJudged => {
+                let val = field_init_node_value(p.clone());
+let val_result = infer_expr(val.clone(), scope.clone(), None);
+Rc::new(ServiceConfigPropertyResult {
+    prop: Rc::new(Node {
+    name: p.name.clone(),
+    span: p.span.clone(),
+    ident_span: p.ident_span.clone(),
+    children: Rc::new(vec![val_result.typed.clone()]),
+    connective: p.connective.clone(),
+    params: p.params.clone(),
+    inferred: p.inferred.clone(),
+    return_cardinality: p.return_cardinality.clone(),
+    uses: p.uses.clone(),
+    body: p.body.clone(),
+    transport: p.transport.clone(),
+    properties: p.properties.clone(),
+    type_annotation: p.type_annotation.clone(),
+    is_self_recursive: p.is_self_recursive.clone(),
+    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+    match_pattern: p.match_pattern.clone(),
+    expr_data: p.expr_data.clone(),
+    ident: None,
+}),
+    diagnostics: val_result.diagnostics.clone(),
+})
+},
+    ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(ServiceConfigPropertyResult {
+    prop: p.clone(),
+    diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
+    field: field.clone(),
+    referenced_name: service_config_property_referenced_name(p.clone(), scope.clone()),
+    trigger: t.clone(),
+    span: p.span.clone(),
+}), scope.module_name.clone())]),
+}),
+    ServiceConfigFieldJudgment::FieldCarriesNoReference => Rc::new(ServiceConfigPropertyResult {
+    prop: p.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+}
+});
             }
             __result
         });
@@ -15363,14 +15385,14 @@ pub fn infer_service_config_properties(
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.0.clone());
+                    __result.push(r.prop.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.1.clone()).iter().cloned());
+                    __result.extend((*r.diagnostics.clone()).iter().cloned());
                 }
                 __result
             }),

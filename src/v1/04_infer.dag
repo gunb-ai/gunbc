@@ -7853,17 +7853,42 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
 // carrying its own next-rung trigger, non-blocking (DESIGN section 4b FrontierAccepted:
 // typed-located-counted with the phase still Accepted). It is not a pass, and its frequency
 // is observable, which is exactly what the empty diagnostic list destroyed.
-fn service_config_field_reference_judged(field: String) -> Bool {
-  field == "svc_endpoint" || field == "svc_auth" || field == "svc_auth_source"
+// A NAMED CARRIER, not an anonymous record, and the reason is grammatical as well as modelled:
+// `=>` followed by `{` opens a BLOCK, so an anonymous record literal as a match-arm body is a
+// parse error at its first field colon. Naming the carrier makes the arm start with an
+// identifier, and gives the per-property result a type instead of a positional shape.
+type ServiceConfigPropertyResult {
+  prop: Node
+  diagnostics: List<ErrorNode>
 }
 
-fn service_config_field_deferral_trigger(field: String) -> String {
-  if field == "svc_auth_input" {
-    "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists"
+type ServiceConfigFieldJudgment
+  = FieldJudged
+  | FieldDeferred { trigger: String }
+  | FieldCarriesNoReference
+
+// THREE ARMS, AND THE THIRD IS THE ONE EXECUTION FORCED ME TO ADD. `item.properties` is not
+// a service-config-only channel: the parser also mints `namespace_root` (a module-scope
+// String literal) and `sole_constructor` (a Bool literal on a type) onto the same list.
+// Measured on four extdeps entries, an earlier revision of this function reported those as
+// DEFERRED SERVICE CONFIG FIELDS -- five `namespace_root` and one `sole_constructor` on
+// `gcp/iam.dag` alone. That was wrong twice over: wrong category, and wrong claim, because
+// their values are parser-minted LITERALS with no authored reference in them, so no
+// reference judgment is owed at all. Not-applicable rendered as unjudged is the same
+// conflation this function exists to remove, one layer out.
+//
+// So the classification is total over the closed set `service_config_properties` mints, and
+// a NEW service-config field fails to compile HERE rather than silently inheriting whichever
+// arm a wildcard happened to name.
+fn service_config_field_judgment(field: String) -> ServiceConfigFieldJudgment {
+  if field == "svc_endpoint" || field == "svc_auth" || field == "svc_auth_source" {
+    FieldJudged
+  } else if field == "svc_auth_input" {
+    FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
   } else if field == "svc_rate_limit" {
-    "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit"
+    FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
   } else {
-    "no field-specific trigger is declared for this service config field"
+    FieldCarriesNoReference
   }
 }
 
@@ -7874,34 +7899,36 @@ fn service_config_property_referenced_name(p: Node, scope: InferScope) -> String
 fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
   let results = props |> map(p =>
     let field = field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices)
-    if service_config_field_reference_judged(field: field) {
-      let val = field_init_node_value(n: p)
-      let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-      {
-        prop: Node {
-          name: p.name, span: p.span, ident_span: p.ident_span,
-          children: [val_result.typed], connective: p.connective,
-          params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
-          uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
-          type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
-          has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-          expr_data: p.expr_data
-        },
-        diagnostics: val_result.diagnostics
-      }
-    } else {
-      {
-        prop: p,
-        diagnostics: [make_error_node(
-          diagnostic: ServiceConfigReferenceJudgmentDeferred {
-            field: field,
-            referenced_name: service_config_property_referenced_name(p: p, scope: scope),
-            trigger: service_config_field_deferral_trigger(field: field),
-            span: p.span
+    match service_config_field_judgment(field: field) {
+      FieldJudged =>
+        let val = field_init_node_value(n: p)
+        let val_result = infer_expr(texpr: val, scope: scope, expected: none)
+        ServiceConfigPropertyResult {
+          prop: Node {
+            name: p.name, span: p.span, ident_span: p.ident_span,
+            children: [val_result.typed], connective: p.connective,
+            params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
+            uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
+            type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
+            has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
+            expr_data: p.expr_data
           },
-          module_name: scope.module_name
-        )]
-      }
+          diagnostics: val_result.diagnostics
+        }
+      FieldDeferred { trigger: t } =>
+        ServiceConfigPropertyResult {
+          prop: p,
+          diagnostics: [make_error_node(
+            diagnostic: ServiceConfigReferenceJudgmentDeferred {
+              field: field,
+              referenced_name: service_config_property_referenced_name(p: p, scope: scope),
+              trigger: t,
+              span: p.span
+            },
+            module_name: scope.module_name
+          )]
+        }
+      FieldCarriesNoReference => ServiceConfigPropertyResult { prop: p, diagnostics: [] }
     }
   )
   InferPropertiesResult {
