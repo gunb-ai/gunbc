@@ -6,6 +6,7 @@ import std.types { NonEmptyStr }
 import std.primitive_identity {
   PrimitiveDefinition,
   PrimitiveSemanticContract,
+  SignatureUngrounded,
   primitive_definitions_missing_traversal_fact_in,
   primitive_identity_slug,
   primitive_map_keys_definition,
@@ -228,7 +229,10 @@ fn unclassified_planted_definition() -> PrimitiveDefinition {
   PrimitiveDefinition {
     identity: primitive_identity_slug(name: "planted_primitive_with_no_traversal_fact"),
     semantic_contract: PrimitiveSemanticContract {
-      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr
+      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr,
+      signature: SignatureUngrounded {
+        reason: "planted fixture with no algebra template arm; this definition exists to leave the TRAVERSAL denominator open, and grounding a signature on it would fabricate one for a primitive that does not exist." as NonEmptyStr
+      }
     }
   }
 }
