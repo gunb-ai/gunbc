@@ -331,6 +331,29 @@ opposite things from it — selection wants unknown treated as *reads*, executio
 treated as *decide properly* — and neither can have it, because by the time they see the value the
 question they needed answered is gone.
 
+**There are THREE production consumers, and the third is the worst one.** Enumerated by
+`deep-ant-102` rather than assumed:
+
+| consumer | via | what it decides |
+|---|---|---|
+| affected-set selection | `reads_live_tree_effective` | is this entry selection-eligible |
+| floor execution | `reads_live_tree_effective` | does this entry run at all |
+| **U3 explicit-entry expansion** | `read_entry_live_tree_disposition` | `DiscoveryRow.reads_live_tree` |
+
+The third is **the escape route**. `read_entry_live_tree_disposition` is a thin file-reading
+wrapper with exactly one production caller: the file-grain explicit-enrolment path — what an
+author reaches for precisely *when discovery has missed their witness*. It reads the same
+destroyed bool, so **an explicitly enrolled undeclared module is declined exactly as an
+auto-discovered one is.**
+
+That is worse than the default itself, because it **defeats the remedy**. The one deliberate
+action available to someone whose evidence is not running fails silently, for the same reason,
+and gives the same non-signal. *Explicit enrolment does not rescue you* is the sentence an author
+needs, and it does not follow from the two-consumer version of this finding — which is why the
+enumeration mattered and the assumption would not have.
+
+The repair below covers it for free: it is the same carrier.
+
 **So the repair is not a changed default and not a refusal at the boundary.** It is to return the
 three-state value — `Option<bool>`, or better a named coproduct — and let each consumer decide.
 Selection keeps its fail-closed reading of `undeclared`, correctly and explicitly. Execution routes
@@ -344,3 +367,22 @@ carefully — and it is a strictly smaller change than the refusal arm proposed 
 brief, which would have made *undeclared* loud without making it **meaningful**. Earlier proposal
 superseded; this one supersedes it because it was reached by asking why the state was missing
 rather than what to do when it is.
+
+---
+
+## A positional citation in this brief, caught by review, one night after I ruled against them
+
+`deep-ant-102` read the section above and could not follow its citation: the two line numbers I
+gave land on `match &result {` and `current_file = None;` in their tree — both unrelated — because
+we are on different revisions of a file that has moved by roughly 600 lines between them.
+
+This is DESIGN §3's positional-citation class, in a durable brief, committed by someone who had
+**already** stripped rotted offsets out of a different brief earlier the same night for exactly
+this reason. The rule is not hard to state and it did not survive one hour of contact with a
+convenient copy-paste. Worth recording plainly rather than quietly fixing, because the interesting
+fact is not that positions rot — that is the ruling — but that *knowing* it does not prevent
+writing one. The habit is the load-bearing part, and the habit is what failed.
+
+The citation is now symbolic and stays true across every revision: `parse_entry_live_tree_disposition`,
+its `Option<bool>` local, and its `unwrap_or` tail. Note that the symbolic form is also *shorter*
+and says more — it names what the reader should look for rather than where it happened to sit.
