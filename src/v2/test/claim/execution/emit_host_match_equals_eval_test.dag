@@ -284,6 +284,12 @@ test fn emit_host_match_equals_eval_holds() -> v2.std.logic.Bool {
 // of either execution. emit -> host run -> parse actual -> compare must sit in ONE lineage. So
 // without the typed Verdict carried with its receipt, this row can only ever report stability,
 // never cause -- the current shape cannot answer the question the row's NAME asks.
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 // TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
 // A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
