@@ -59,9 +59,15 @@ currently lands in it; here, a dead path is adopted because the type says someth
   `ssh_exec_portable_words_supersedes_exec_argv_note` dissolve-on names `host_effect_realize` *first*
   among the consumers that must route through a `FleetSshExecutionContext`.
 - The repair that was designed and never landed — typed argv for publish/rename/reload/start, plus a
-  **typed, located, countable refusal** for the bytes half naming both the missing context and the
-  transport actually present — **has no owner**, because the session that designed it was archived when
-  its PR merged.
+  **typed, located, countable refusal** for the bytes half — **has no owner**, because the session that
+  designed it was archived when its PR merged.
+
+**The refusal must name both the missing `FleetSshExecutionContext` and the transport that *is*
+present.** This is the requirement most likely to be lost between now and whoever picks the repair up,
+and it is not a presentation preference: a refusal that says only *no context* cannot be joined to
+`extdeps.ssh.session`'s dissolve-on row without re-deriving the measurement above — and preventing that
+re-derivation is the entire reason this brief exists. A refusal naming one half of a two-transport
+seam is a diagnostic about a fact nobody disputed.
 
 That last point is the reason for the brief. **A deficit that is real, landed, and uncounted has a
 frequency of zero by construction**, and the lane holding the correct end state keeps its obligation
