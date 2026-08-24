@@ -96,7 +96,7 @@ fn w_selective_function_import_admits_named_function() -> Bool {
 
 fn w_selective_function_import_refuses_unlisted_parent_local() -> Bool {
   !compile_dag_rust_emit_check(
-    "module test.claim.selective_function_import_red\nimport std.types { Int }\nimport test.fixture.function_import_surface_provider { imported_fn }\nfn probe() -> Int { hidden_fn(1) }\n",
+    "module test.claim.selective_function_import_red\nimport std.types { Int }\nimport test.fixture.function_import_surface_provider { imported_fn }\nimport test.fixture.function_import_surface_ambiguous_provider { other_fn }\nfn probe() -> Int { hidden_fn(1) }\n",
     "src/test_claim_selective_function_import_red.rs",
     [],
     []
