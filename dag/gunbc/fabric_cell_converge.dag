@@ -587,38 +587,3 @@ fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation
     )
   }
 }
-
-fn fabric_cell_ids() -> List<CellId> {
-  map(fabric_execution_slot_identities(), s => fabric_cell_id_for_slot(slot: s))
-}
-
-// NO FABRIC CELL OBSERVER IS WIRED YET, AND THIS IS HOW THAT FACT ENTERS THE SPINE.
-//
-// The sibling families' callers pass an empty list when they have no observation, which reconcile
-// reads as "the host has none of these" and answers with a full install plan. For a family whose
-// resources are a cgroup and two directories, that is the empty-observation narrow with real
-// consequences: a host nobody read would be planned as a host with nothing on it.
-//
-// So the absence of an observer is a REFUSAL carrying its cause, not an empty population. It stops
-// the fabric family at the plan boundary, it renders a line the reviewer can see, and it changes the
-// observed baseline -- so a plan produced while no observer existed cannot silently admit later
-// against a host that has since been read.
-//
-// DISSOLVE-ON: a real fabric cell observer, at which point this function has no callers and goes.
-fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
-  FabricCellPopulationObservationRefused {
-    host: host,
-    blocked: fold(
-      fabric_execution_slot_identities(),
-      init: [],
-      f: (acc, slot) =>
-        concat(acc, map(
-          fabric_cell_resource_addresses(),
-          a => AddressUnreadable {
-            ref: FabricCellAddressRef { slot: slot, address: a },
-            cause: "no fabric cell observer is wired: this host has not been read for fabric cell resources, and an unread host is not an empty one",
-          }
-        ))
-    )
-  }
-}
