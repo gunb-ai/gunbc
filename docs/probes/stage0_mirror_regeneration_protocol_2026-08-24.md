@@ -16,10 +16,16 @@ now carries the new behaviour — so when *it* regenerates, it re-emits every ot
 reaches. Measured on gunbc#9101, whose change altered how folds with an unused element emit:
 
 ```
-ITER=1  RC=1  first_generation_equal=false  drift: v1_compiler_emit_rust.rs   <- the edited authority
-ITER=2  RC=1  first_generation_equal=false  drift: std_types.rs               <- a module the new emitter now emits differently
-ITER=3  RC=0  first_generation_equal=true
+generation 1   drift: v1_compiler_emit_rust.rs   <- the edited authority itself
+generation 2   drift: std_types.rs               <- a module the new emitter now emits differently
+generation 3   first_generation_equal=true
 ```
+
+That is the sequence across the whole exercise, not a transcript of one command: generation 1 was
+observed and committed on its own, and CI then refused the branch with `drift: std_types.rs`, which is
+what sent me back for the loop. The loop itself reported `ITER=1 RC=1 drift: std_types.rs` and
+`ITER=2 RC=0 first_generation_equal=true` — the same two remaining rounds, numbered from where it
+started. Run the loop from the beginning and it reports all three.
 
 `std_types.rs` `list_length` is a fold with an unused element: `|acc: i64, _: _|` became
 `|acc: i64, _|`. It is not unrelated cleanup riding along with the fix; it is the same change
